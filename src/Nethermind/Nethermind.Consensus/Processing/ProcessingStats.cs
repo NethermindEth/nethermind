@@ -110,10 +110,22 @@ namespace Nethermind.Consensus.Processing
             long chunkBlocks = Metrics.Blocks - _lastBlockNumber;
             _totalBlocks += chunkBlocks;
 
-            double chunkMGas = Metrics.Mgas - _lastTotalMGas;
             double chunkMicroseconds = _chunkProcessingMicroseconds;
-            double mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1_000_000.0;
-            Metrics.MgasPerSec = mgasPerSecond;
+            double chunkMGas = Metrics.Mgas - _lastTotalMGas;
+            double mgasPerSecond;
+            if (chunkMicroseconds == 0)
+            {
+                mgasPerSecond = -1;
+            }
+            else
+            {
+                mgasPerSecond = chunkMGas / chunkMicroseconds * 1_000_000.0;
+
+                if (chunkMGas != 0)
+                {
+                    Metrics.MgasPerSec = mgasPerSecond;
+                }
+            }
 
             Block? block = Interlocked.Exchange(ref _lastBlock, null);
             if (block is not null && _logger.IsInfo)

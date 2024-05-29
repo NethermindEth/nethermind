@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -12,7 +10,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;

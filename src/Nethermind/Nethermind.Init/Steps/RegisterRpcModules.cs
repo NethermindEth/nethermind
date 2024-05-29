@@ -81,10 +81,9 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
-        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
-
         RpcLimits.Init(_jsonRpcConfig.RequestQueueLimit);
-        rpcModuleProvider.RegisterBounded(ethModuleFactory, _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+        RegisterEthRpcModule(rpcModuleProvider);
+
 
         StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
@@ -213,7 +212,7 @@ public class RegisterRpcModules : IStep
         await Task.CompletedTask;
     }
 
-    protected virtual ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
+    protected ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
     {
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
@@ -241,5 +240,13 @@ public class RegisterRpcModules : IStep
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle);
+    }
+
+    protected virtual void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
+
+        rpcModuleProvider.RegisterBounded(ethModuleFactory,
+            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
     }
 }

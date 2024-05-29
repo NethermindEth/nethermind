@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -36,14 +37,30 @@ namespace Nethermind.State
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
         private readonly Dictionary<StorageCell, byte[]> _blockCache = new(4_096);
+        private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
+        private readonly Func<StorageCell, byte[]> _loadFromTree;
 
-        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager, IStorageTreeFactory? storageTreeFactory = null)
-            : base(logManager)
+        /// <summary>
+        /// Manages persistent storage allowing for snapshotting and restoring
+        /// Persists data to ITrieStore
+        /// </summary>
+        public PersistentStorageProvider(ITrieStore? trieStore,
+            StateProvider? stateProvider,
+            ILogManager? logManager,
+            IStorageTreeFactory? storageTreeFactory = null,
+            ConcurrentDictionary<StorageCell, byte[]>? preBlockCache = null) : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
+            _preBlockCache = preBlockCache;
+            _loadFromTree = storageCell =>
+            {
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+                Db.Metrics.StorageTreeReads++;
+                return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
+            };
         }
 
         public Hash256 StateRoot { get; set; } = null!;
@@ -305,6 +322,7 @@ namespace Nethermind.State
             _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise
             _storages.Reset();
+            _preBlockCache?.Clear();
         }
 
         private StorageTree GetOrCreateStorage(Address address)
@@ -313,10 +331,14 @@ namespace Nethermind.State
             if (!exists)
             {
                 value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
-                return value;
             }
 
             return value;
+        }
+
+        public void WarmUp(in StorageCell storageCell)
+        {
+            LoadFromTree(in storageCell);
         }
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
@@ -324,13 +346,17 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
             if (!exists)
             {
-                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+                long priorReads = Db.Metrics.StorageTreeReads;
 
-                Db.Metrics.StorageTreeReads++;
+                value = _preBlockCache is not null
+                    ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
+                    : _loadFromTree(storageCell);
 
-                value = !storageCell.IsHash ?
-                    tree.Get(storageCell.Index) :
-                    tree.GetArray(storageCell.Hash.Bytes);
+                if (Db.Metrics.StorageTreeReads == priorReads)
+                {
+                    // Read from Concurrent Cache
+                    Db.Metrics.StorageTreeCache++;
+                }
             }
             else
             {
@@ -378,8 +404,15 @@ namespace Nethermind.State
         public override void ClearStorage(Address address)
         {
             base.ClearStorage(address);
+
             // Bit heavy-handed, but we need to clear all the cache for that address
-            _blockCache.Clear();
+            foreach (KeyValuePair<StorageCell, byte[]> pair in _blockCache)
+            {
+                if (pair.Key.Address == address)
+                {
+                    _blockCache[pair.Key] = StorageTree.EmptyBytes;
+                }
+            }
 
             // here it is important to make sure that we will not reuse the same tree when the contract is revived
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not

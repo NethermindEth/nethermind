@@ -649,7 +649,8 @@ namespace Nethermind.Trie.Pruning
                                 Stopwatch sw = Stopwatch.StartNew();
                                 if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
-                                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                                long memoryUsedByDirtyCache = MemoryUsedByDirtyCache;
+                                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
                                 {
                                     // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
                                     // usually faster to just SaveSnapshot causing most of the entry to be persisted.
@@ -667,10 +668,10 @@ namespace Nethermind.Trie.Pruning
                                     SaveSnapshot();
 
                                     PruneCache();
-                                }
 
-                                Metrics.PruningTime = sw.ElapsedMilliseconds;
-                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds.");
+                                    Metrics.PruningTime = sw.ElapsedMilliseconds;
+                                    if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
+                                }
                             }
                         }
 
@@ -767,7 +768,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (persistedHashes is null) return;
 
-            bool CanRemove(Hash256? address, TinyTreePath path, in TreePath fullPath, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+            bool CanRemove(Hash256? address, TinyTreePath path, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
             {
                 // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
                 if (currentlyPersistingKeccak is null) return false;
@@ -791,7 +792,7 @@ namespace Nethermind.Trie.Pruning
             void DoAct(KeyValuePair<HashAndTinyPath, Hash256> keyValuePair)
             {
                 HashAndTinyPath key = keyValuePair.Key;
-                if (_pastPathHash.TryGet(new(key.addr, in key.path), out ValueHash256 prevHash))
+                if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
                     if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))

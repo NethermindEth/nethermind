@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State.Tracing;
@@ -68,7 +69,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     Snapshot TakeSnapshot(bool newTransactionStart = false);
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
-
+    void WarmUp(AccessList? accessList);
+    void WarmUp(Address address);
     /// <summary>
     /// Clear all storage at specified address
     /// </summary>

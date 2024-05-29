@@ -38,23 +38,23 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public partial class EthRpcModule : IEthRpcModule
+public abstract partial class EthRpcModule<TReceiptForRpc> : IEthRpcModule<TReceiptForRpc> where TReceiptForRpc : ReceiptForRpc
 {
-    private readonly Encoding _messageEncoding = Encoding.UTF8;
-    private readonly IJsonRpcConfig _rpcConfig;
-    private readonly IBlockchainBridge _blockchainBridge;
-    private readonly IBlockFinder _blockFinder;
-    private readonly IReceiptFinder _receiptFinder;
-    private readonly IStateReader _stateReader;
-    private readonly ITxPool _txPoolBridge;
-    private readonly ITxSender _txSender;
-    private readonly IWallet _wallet;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
-    private readonly IGasPriceOracle _gasPriceOracle;
-    private readonly IEthSyncingInfo _ethSyncingInfo;
+    protected readonly Encoding _messageEncoding = Encoding.UTF8;
+    protected readonly IJsonRpcConfig _rpcConfig;
+    protected readonly IBlockchainBridge _blockchainBridge;
+    protected readonly IBlockFinder _blockFinder;
+    protected readonly IReceiptFinder _receiptFinder;
+    protected readonly IStateReader _stateReader;
+    protected readonly ITxPool _txPoolBridge;
+    protected readonly ITxSender _txSender;
+    protected readonly IWallet _wallet;
+    protected readonly ISpecProvider _specProvider;
+    protected readonly ILogger _logger;
+    protected readonly IGasPriceOracle _gasPriceOracle;
+    protected readonly IEthSyncingInfo _ethSyncingInfo;
 
-    private readonly IFeeHistoryOracle _feeHistoryOracle;
+    protected readonly IFeeHistoryOracle _feeHistoryOracle;
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
         return blockchainBridge.HasStateForRoot(header.StateRoot!);
@@ -193,7 +193,7 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
     }
 
-    public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+    public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
     {
         if (blockParameter == BlockParameter.Pending)
         {
@@ -231,11 +231,6 @@ public partial class EthRpcModule : IEthRpcModule
         return searchResult.IsError
             ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
-    }
-
-    public ResultWrapper<ReceiptForRpc[]> eth_getBlockReceipts(BlockParameter blockParameter)
-    {
-        return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
     }
 
     public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash)
@@ -295,14 +290,14 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<byte[]>.Success(sig.Bytes);
     }
 
-    public Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
         TxHandlingOptions options = rpcTx.Nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return SendTx(tx, options);
     }
 
-    public async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
     {
         try
         {
@@ -343,7 +338,7 @@ public partial class EthRpcModule : IEthRpcModule
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
+    public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
@@ -466,18 +461,6 @@ public partial class EthRpcModule : IEthRpcModule
             _logger.Debug(
                 $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
-    }
-
-    public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Hash256 txHash)
-    {
-        (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
-        if (receipt is null || gasInfo is null)
-        {
-            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
-        }
-
-        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-        return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo.Value, logIndexStart)));
     }
 
     public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
@@ -730,4 +713,8 @@ public partial class EthRpcModule : IEthRpcModule
 
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());
+
+    public abstract ResultWrapper<TReceiptForRpc[]?> eth_getBlockReceipts([JsonRpcParameter(ExampleValue = "latest")] BlockParameter blockParameter);
+
+    public abstract ResultWrapper<TReceiptForRpc?> eth_getTransactionReceipt([JsonRpcParameter(ExampleValue = "[\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\"]")] Hash256 txHashData);
 }
