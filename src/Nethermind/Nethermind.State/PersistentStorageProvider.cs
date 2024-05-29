@@ -36,7 +36,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-        private readonly Dictionary<Address, Dictionary<StorageCell, byte[]>> _blockCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, Dictionary<StorageCell, byte[]>> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
 
