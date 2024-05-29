@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
 using Nethermind.Trie.Pruning;
@@ -28,7 +29,7 @@ namespace Nethermind.State
         private readonly ILogManager? _logManager;
         internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
-        private readonly HashSet<Address> _toUpdateRoots = new();
+        private readonly HashSet<AddressAsKey> _toUpdateRoots = new();
 
         /// <summary>
         /// EIP-1283
@@ -302,13 +303,13 @@ namespace Nethermind.State
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
 
-            ref Dictionary<StorageCell, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+            ref Dictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new Dictionary<StorageCell, byte[]>();
+                dict = new Dictionary<UInt256, byte[]>();
             }
 
-            dict[change.StorageCell] = change.Value;
+            dict[change.StorageCell.Index] = change.Value;
         }
 
         /// <summary>
@@ -350,13 +351,13 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref Dictionary<StorageCell, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+            ref Dictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new Dictionary<StorageCell, byte[]>();
+                dict = new Dictionary<UInt256, byte[]>();
             }
 
-            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell, out exists);
+            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell.Index, out exists);
             if (!exists)
             {
                 long priorReads = Db.Metrics.StorageTreeReads;
