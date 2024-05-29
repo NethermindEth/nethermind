@@ -642,7 +642,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             if (!vmState.IsTopLevel)
             {
-                Metrics.EmptyCalls++;
+                Metrics.IncrementEmptyCalls();
             }
             goto Empty;
         }
@@ -1743,7 +1743,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
                     {
-                        Metrics.Creates++;
+                        Metrics.IncrementCreates();
                         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
 
                         if (vmState.IsStatic) goto StaticCallViolation;
@@ -2057,7 +2057,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
-        Metrics.Calls++;
+        Metrics.IncrementCalls();
 
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
@@ -2221,7 +2221,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 _state.AddToBalance(target, transferValue, spec);
             }
-            Metrics.EmptyCalls++;
+            Metrics.IncrementEmptyCalls();
 
             returnData = CallResult.BoxedEmpty;
             return EvmExceptionType.None;
@@ -2502,7 +2502,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingInstructions : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        Metrics.SloadOpcode++;
+        Metrics.IncrementSLoadOpcode();
         gasAvailable -= spec.GetSLoadCost();
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
@@ -2530,7 +2530,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        Metrics.SstoreOpcode++;
+        Metrics.IncrementSStoreOpcode();
 
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset
