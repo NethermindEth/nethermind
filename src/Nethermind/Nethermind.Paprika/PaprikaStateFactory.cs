@@ -73,8 +73,10 @@ public class PaprikaStateFactory : IStateFactory
 
     public IState Get(Hash256 stateRoot) => new State(_blockchain.StartNew(Convert(stateRoot)), this);
 
-    public IReadOnlyState GetReadOnly(Hash256 stateRoot) =>
-        new ReadOnlyState(_blockchain.StartReadOnly(Convert(stateRoot)));
+    public IReadOnlyState GetReadOnly(Hash256? stateRoot) =>
+        new ReadOnlyState(stateRoot != null
+            ? _blockchain.StartReadOnly(Convert(stateRoot))
+            : _blockchain.StartReadOnlyLatestFromDb());
 
     public bool HasRoot(Hash256 stateRoot)
     {
