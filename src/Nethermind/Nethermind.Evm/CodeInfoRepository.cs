@@ -25,27 +25,27 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly LruCache<ValueHash256, CodeInfo>[] _caches;
+        private readonly LruCacheLowObject<ValueHash256, CodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new LruCache<ValueHash256, CodeInfo>[CacheCount];
+            _caches = new LruCacheLowObject<ValueHash256, CodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new LruCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+                _caches[i] = new LruCacheLowObject<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
             }
         }
 
         public CodeInfo? Get(in ValueHash256 codeHash)
         {
-            LruCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            LruCacheLowObject<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
         public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
         {
-            LruCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            LruCacheLowObject<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 
@@ -122,7 +122,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
         else
         {
-            Db.Metrics.CodeDbCache++;
+            Db.Metrics.IncrementCodeDbCache();
         }
 
         return cachedCodeInfo;

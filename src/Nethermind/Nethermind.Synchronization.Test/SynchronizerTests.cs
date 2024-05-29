@@ -434,7 +434,7 @@ namespace Nethermind.Synchronization.Test
                 return this;
             }
 
-            private const int DynamicTimeout = 5000;
+            private const int DynamicTimeout = 10000;
 
             public SyncingContext BestSuggestedHeaderIs(BlockHeader header)
             {

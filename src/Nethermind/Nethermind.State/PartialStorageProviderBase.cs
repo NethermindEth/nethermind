@@ -209,7 +209,7 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset()
+        public virtual void Reset(bool resizeCollections = true)
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
