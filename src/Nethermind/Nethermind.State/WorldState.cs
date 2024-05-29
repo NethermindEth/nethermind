@@ -96,7 +96,7 @@ namespace Nethermind.State
         }
         public void FullReset()
         {
-            _state.Reset();
+            ResetStateToNull();
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
@@ -250,6 +250,11 @@ namespace Nethermind.State
         private void ResetState(Hash256 stateRoot)
         {
             Interlocked.Exchange(ref _state, _factory.Get(stateRoot))?.Dispose();
+        }
+
+        private void ResetStateToNull()
+        {
+            Interlocked.Exchange(ref _state, null)?.Dispose();
         }
     }
 }
