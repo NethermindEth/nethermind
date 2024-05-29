@@ -44,12 +44,17 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
         try
         {
-            G1 x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
-            G1 y = BlsExtensions.G1FromUntrimmed(inputData[BlsParams.LenG1..]);
+            G1? x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
+            G1? y = BlsExtensions.G1FromUntrimmed(inputData[BlsParams.LenG1..]);
 
-            if (x.on_curve() && y.on_curve())
+            // if (!x.HasValue || !y.HasValue)
+            // {
+            //     result = ()
+            // }
+
+            if (x!.Value.on_curve() && y!.Value.on_curve())
             {
-                G1 res = x.add(y);
+                G1 res = x.Value.add(y.Value);
                 result = (res.ToBytesUntrimmed(), true);
             }
             else

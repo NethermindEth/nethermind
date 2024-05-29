@@ -22,11 +22,35 @@ public static class BlsParams
 
 public static class BlsExtensions
 {
-    public static G1 G1FromUntrimmed(in ReadOnlyMemory<byte> untrimmed)
+    public static G1? G1FromUntrimmed(in ReadOnlyMemory<byte> untrimmed)
     {
         if (untrimmed.Length != BlsParams.LenG1)
         {
             throw new Exception();
+        }
+
+        for (int i = 0; i < BlsParams.LenFpPad; i++)
+        {
+            if (untrimmed.Span[i] != 0 || untrimmed.Span[BlsParams.LenFp + i] != 0)
+            {
+                return null;
+                // throw new Exception();
+            }
+        }
+
+        bool isInfinity = true;
+        for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
+        {
+            if (untrimmed.Span[BlsParams.LenFpPad  + i] != 0 || untrimmed.Span[BlsParams.LenFp + BlsParams.LenFpPad + i] != 0)
+            {
+                isInfinity = false;
+                break;
+            }
+        }
+
+        if (isInfinity)
+        {
+            return null;
         }
 
         byte[] trimmed = new byte[BlsParams.LenG1Trimmed];
@@ -49,6 +73,18 @@ public static class BlsExtensions
         if (untrimmed.Length != BlsParams.LenG2)
         {
             throw new Exception();
+        }
+
+        for (int i = 0; i < BlsParams.LenFpPad; i++)
+        {
+            if (untrimmed.Span[i] != 0 ||
+                untrimmed.Span[BlsParams.LenFp + i] != 0 ||
+                untrimmed.Span[(2 * BlsParams.LenFp) + i] != 0 ||
+                untrimmed.Span[(3 * BlsParams.LenFp) + i] != 0
+                )
+            {
+                throw new Exception();
+            }
         }
 
         byte[] trimmed = new byte[BlsParams.LenG2Trimmed];

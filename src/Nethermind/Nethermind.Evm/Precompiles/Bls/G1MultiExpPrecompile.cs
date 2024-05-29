@@ -61,7 +61,7 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             for (int i = 0; i < points.Length; i++)
             {
                 int offset = i * ItemSize;
-                points[i] = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
+                points[i] = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)])!.Value;
                 scalars[i] = new(inputData[(offset + BlsParams.LenG1)..(offset + BlsParams.LenG1 + 32)].ToArray());
 
                 if (!points[i].in_group() || !points[i].on_curve())

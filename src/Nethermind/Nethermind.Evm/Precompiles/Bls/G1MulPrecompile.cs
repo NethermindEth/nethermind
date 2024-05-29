@@ -5,7 +5,7 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-
+using Nethermind.Serialization.Json;
 using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
@@ -45,10 +45,23 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
         try
         {
-            G1 x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
-            if (x.on_curve() && x.in_group())
+            G1? x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
+            if (!x.HasValue)
             {
-                G1 res = x.mult(inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray());
+                // x = inf
+                return (Enumerable.Repeat<byte>(0, 128).ToArray(), false);
+            }
+
+            if (x.Value.on_curve() && x.Value.in_group())
+            {
+                byte[] scalar = inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray();
+
+                if (scalar.All(x => x == 0))
+                {
+                    return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+                }
+
+                G1 res = x.Value.mult(scalar);
                 result = (res.ToBytesUntrimmed(), true);
             }
             else
