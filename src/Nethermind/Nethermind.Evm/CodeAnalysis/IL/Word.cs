@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
@@ -46,6 +47,29 @@ internal struct Word
     public ulong Ulong3;
 
     public bool IsZero => (Ulong0 | Ulong1 | Ulong2 | Ulong3) == 0;
+    public void ToZero()
+    {
+        Ulong0 = 0; Ulong1 = 0;
+        Ulong2 = 0; Ulong3 = 0;
+    }
+
+    public unsafe ValueHash256 Keccak
+    {
+        get
+        {
+            fixed(byte* ptr = _buffer) {
+                return new ValueHash256(new Span<byte>(ptr, 32));
+            }
+        }
+        set
+        {
+            ReadOnlySpan<byte> buffer = value.Bytes;
+            for (int i = 0; i < 20; i++)
+            {
+                _buffer[i] = buffer[i];
+            }
+        }
+    }
 
     public unsafe Address Address
     {
@@ -120,10 +144,14 @@ internal struct Word
     public static readonly FieldInfo Ulong3Field = typeof(Word).GetField(nameof(Ulong3));
 
     public static readonly MethodInfo GetIsZero = typeof(Word).GetProperty(nameof(IsZero))!.GetMethod;
+    public static readonly MethodInfo SetToZero = typeof(Word).GetProperty(nameof(ToZero))!.GetMethod;
 
     public static readonly MethodInfo GetUInt256 = typeof(Word).GetProperty(nameof(UInt256))!.GetMethod;
     public static readonly MethodInfo SetUInt256 = typeof(Word).GetProperty(nameof(UInt256))!.SetMethod;
 
     public static readonly MethodInfo GetAddress = typeof(Word).GetProperty(nameof(Address))!.GetMethod;
     public static readonly MethodInfo SetAddress = typeof(Word).GetProperty(nameof(Address))!.SetMethod;
+
+    public static readonly MethodInfo GetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.GetMethod;
+    public static readonly MethodInfo SetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.SetMethod;
 }

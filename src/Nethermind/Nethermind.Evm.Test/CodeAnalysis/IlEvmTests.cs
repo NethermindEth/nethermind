@@ -126,9 +126,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 try
                 {
                     ILCompiler.CompileSegment(name, [opcode], []);
-                } catch (Exception e)
+                } catch (NotSupportedException nse) {
+                    notYetImplemented.Add((instruction, nse));
+                }
+                catch (Exception)
                 {
-                    notYetImplemented.Add((instruction, e));
                 }
             }
 
@@ -220,9 +222,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done);
 
             yield return (14, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .EQ()
+                    .PushSingle(1)
                     .NOT()
                     .Done);
         }
