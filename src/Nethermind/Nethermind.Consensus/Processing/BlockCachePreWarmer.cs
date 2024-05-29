@@ -23,9 +23,10 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
-    public Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken = default)
+    public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, CancellationToken cancellationToken = default)
     {
-        if (preBlockCaches is not null)
+        // Parent state root is null for genesis block
+        if (preBlockCaches is not null && parentStateRoot is not null)
         {
             if (preBlockCaches.IsDirty)
             {
