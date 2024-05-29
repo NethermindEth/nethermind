@@ -196,6 +196,26 @@ public class DiscoveryV5App : IDiscoveryApp
     {
         async Task DiscoverAsync(IEnr[] getAllNodes, byte[] nodeId, CancellationToken token)
         {
+            static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
+            {
+                const int totalDistances = 3;
+                int[] distances = new int[totalDistances];
+                distances[0] = TableUtility.Log2Distance(srcNodeId, destNodeId);
+                for (int n = 1, i = 1; n < totalDistances; i++)
+                {
+                    if (distances[0] - i > 0)
+                    {
+                        distances[n++] = distances[0] - i;
+                    }
+                    if (distances[0] + i <= 256)
+                    {
+                        distances[n++] = distances[0] + i;
+                    }
+                }
+
+                return distances;
+            }
+
             ConcurrentQueue<IEnr> nodesToCheck = new(getAllNodes);
             HashSet<IEnr> checkedNodes = [];
 
@@ -205,6 +225,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 {
                     return;
                 }
+
                 NodeAddedByDiscovery(newEntry);
 
                 if (!checkedNodes.Add(newEntry))
@@ -212,7 +233,7 @@ public class DiscoveryV5App : IDiscoveryApp
                     continue;
                 }
 
-                IEnr[]? newNodesFound = (await _discv5Protocol.SendFindNodeAsync(newEntry, nodeId))?.Where(x => !checkedNodes.Contains(x)).ToArray();
+                IEnr[]? newNodesFound = (await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, nodeId)))?.Where(x => !checkedNodes.Contains(x)).ToArray();
 
                 if (newNodesFound is not null)
                 {
@@ -246,61 +267,6 @@ public class DiscoveryV5App : IDiscoveryApp
                 if (_logger.IsWarn) _logger.Warn($"Custom random walk failed with {ex.Message} at {ex.StackTrace}.");
             }
             await Task.Delay(_discoveryConfig.DiscoveryInterval, _appShutdownSource.Token);
-        }
-    }
-
-    private async Task DiscoverViaRandomWalk()
-    {
-        try
-        {
-            await _discv5Protocol!.InitAsync();
-
-            Random random = new();
-
-            _logger.Info($"Initially discovered: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
-
-            byte[] randomNodeId = new byte[32];
-            while (!_appShutdownSource.IsCancellationRequested)
-            {
-                try
-                {
-                    {
-                        IEnumerable<IEnr>? foundEnrs = await _discv5Protocol.DiscoverAsync(_discv5Protocol.SelfEnr.NodeId);
-                        if (foundEnrs is not null)
-                        {
-                            foreach (IEnr enr in foundEnrs)
-                            {
-                                NodeAddedByDiscovery(enr);
-                            }
-                        }
-                    }
-
-                    for (int i = 0; i < 3 && !_appShutdownSource.IsCancellationRequested; i++)
-                    {
-                        random.NextBytes(randomNodeId);
-                        IEnumerable<IEnr>? foundEnrs = await _discv5Protocol.DiscoverAsync(randomNodeId);
-                        if (foundEnrs is not null)
-                        {
-                            foreach (IEnr enr in foundEnrs)
-                            {
-                                NodeAddedByDiscovery(enr);
-                            }
-                        }
-                    }
-
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Custom random walk failed with {ex.Message} at {ex.StackTrace}.");
-                }
-
-                await Task.Delay(_discoveryConfig.DiscoveryInterval, _appShutdownSource.Token);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"DiscoverViaRandomWalk exception {ex.Message}.");
-
         }
     }
 

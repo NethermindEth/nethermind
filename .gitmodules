@@ -6,4 +6,4 @@
 	url = https://github.com/shamatar/bench_precompiles.git
 [submodule "src/Lantern.Discv5"]
 	path = src/Lantern.Discv5
-	url = https://github.com/NethermindEth/Lantern.Discv5.git
+	url = https://github.com/Pier-Two/Lantern.Discv5.git
