@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using MathGmp.Native;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -62,7 +63,8 @@ namespace Nethermind.Evm.Precompiles
 
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
-                UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
+                using ArrayPoolList<byte> expSpan = inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32);
+                UInt256 exp = new(expSpan.AsSpan(), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
                 result /= 3;
@@ -72,6 +74,12 @@ namespace Nethermind.Evm.Precompiles
             {
                 return long.MaxValue;
             }
+        }
+
+        private static mpz_t ImportDataToGmp(ReadOnlyMemory<byte> inputData, int startIndex, int length)
+        {
+            using ArrayPoolList<byte> baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(startIndex, length);
+            return ImportDataToGmp(baseData.AsSpan());
         }
 
         private static unsafe mpz_t ImportDataToGmp(ReadOnlySpan<byte> data)
@@ -115,19 +123,15 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, true);
             }
 
-            ReadOnlySpan<byte> modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
-            using mpz_t modulusInt = ImportDataToGmp(modulusData);
+            using mpz_t modulusInt = ImportDataToGmp(inputData, 96 + baseLength + expLength, modulusLength);
 
             if (gmp_lib.mpz_sgn(modulusInt) == 0)
             {
                 return (new byte[modulusLength], true);
             }
 
-            ReadOnlySpan<byte> baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
-            using mpz_t baseInt = ImportDataToGmp(baseData);
-
-            ReadOnlySpan<byte> expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
-            using mpz_t expInt = ImportDataToGmp(expData);
+            using mpz_t baseInt = ImportDataToGmp(inputData, 96, baseLength);
+            using mpz_t expInt = ImportDataToGmp(inputData, 96 + baseLength, expLength);
 
             using mpz_t powmResult = new();
             gmp_lib.mpz_init(powmResult);
@@ -154,19 +158,24 @@ namespace Nethermind.Evm.Precompiles
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
 
-            Span<byte> inputDataSpan = inputData.AsSpan();
+            ReadOnlySpan<byte> inputDataSpan = inputData.AsSpan();
 
-            BigInteger modulusInt = inputDataSpan
-                .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
+            BigInteger modulusInt = ExtractBigInteger(inputDataSpan, 96 + baseLength + expLength, modulusLength);
 
             if (modulusInt.IsZero)
             {
                 return (new byte[modulusLength], true);
             }
 
-            BigInteger baseInt = inputDataSpan.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-            BigInteger expInt = inputDataSpan.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength).ToUnsignedBigInteger();
+            BigInteger baseInt = ExtractBigInteger(inputDataSpan, 96, baseLength);
+            BigInteger expInt = ExtractBigInteger(inputDataSpan, 96 + baseLength, expLength);
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
+
+            BigInteger ExtractBigInteger(ReadOnlySpan<byte> span, int startIndex, int length)
+            {
+                using ArrayPoolList<byte> arrayPoolList = span.SliceWithZeroPaddingEmptyOnError(startIndex, length);
+                return arrayPoolList.AsSpan().ToUnsignedBigInteger();
+            }
         }
 
         /// <summary>
