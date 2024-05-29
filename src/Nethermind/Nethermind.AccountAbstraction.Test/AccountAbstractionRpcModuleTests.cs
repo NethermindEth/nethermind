@@ -98,7 +98,7 @@ public partial class AccountAbstractionRpcModuleTests
 
             using ArrayPoolList<byte> data = Bytes.FromHexString(chain.EthRpcModule.eth_call(new TransactionForRpc(getAccountAddressTransaction)).Data)
                 .SliceWithZeroPaddingEmptyOnError(12, 20);
-            
+
             return new(data.ToArray());
         }
 
