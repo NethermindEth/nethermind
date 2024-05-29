@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -187,9 +188,9 @@ public class EthSimulateTestsPrecompilesWithRedirection
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        byte[] addressBytes = result.Data[0].Calls[0].ReturnData!
-            .AsSpan().SliceWithZeroPaddingEmptyOnError(12, 20).ToArray();
-        Address resultingAddress = new(addressBytes);
+        using ArrayPoolList<byte> addressBytes = result.Data[0].Calls[0].ReturnData!
+            .SliceWithZeroPaddingEmptyOnError(12, 20);
+        Address resultingAddress = new(addressBytes.ToArray());
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressA));
     }
 }

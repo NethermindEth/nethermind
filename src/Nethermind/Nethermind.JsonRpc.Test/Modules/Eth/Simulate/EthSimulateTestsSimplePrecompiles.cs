@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -98,9 +100,9 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
 
         SimulateOutput result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
 
-        byte[] addressBytes = result.Items[0].Calls[0].ReturnData!
-            .AsSpan().SliceWithZeroPaddingEmptyOnError(12, 20).ToArray();
-        Address resultingAddress = new(addressBytes);
+        using ArrayPoolList<byte> addressBytes = result.Items[0].Calls[0].ReturnData!
+            .SliceWithZeroPaddingEmptyOnError(12, 20);
+        Address resultingAddress = new(addressBytes.ToArray());
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 
         //Check that initial VM is intact
