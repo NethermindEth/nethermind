@@ -95,9 +95,8 @@ public partial class AccountAbstractionRpcModuleTests
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .TestObject;
 
-            Address accountAddress = new(Bytes.FromHexString(chain.EthRpcModule.eth_call(new TransactionForRpc(getAccountAddressTransaction)).Data).SliceWithZeroPaddingEmptyOnError(12, 20));
-
-            return accountAddress;
+            return new(Bytes.FromHexString(chain.EthRpcModule.eth_call(new TransactionForRpc(getAccountAddressTransaction)).Data)
+                .AsSpan().SliceWithZeroPaddingEmptyOnError(12, 20).ToArray());
         }
 
         public byte[] GetWalletConstructor(Address entryPointAddress)

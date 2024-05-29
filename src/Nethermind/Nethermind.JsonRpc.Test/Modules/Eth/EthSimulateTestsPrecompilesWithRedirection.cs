@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -186,7 +187,8 @@ public class EthSimulateTestsPrecompilesWithRedirection
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        byte[] addressBytes = result.Data[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
+        byte[] addressBytes = result.Data[0].Calls[0].ReturnData!
+            .AsSpan().SliceWithZeroPaddingEmptyOnError(12, 20).ToArray();
         Address resultingAddress = new(addressBytes);
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressA));
     }

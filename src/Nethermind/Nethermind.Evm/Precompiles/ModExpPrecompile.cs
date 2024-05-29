@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -40,6 +41,7 @@ namespace Nethermind.Evm.Precompiles
         /// <param name="inputData"></param>
         /// <param name="releaseSpec"></param>
         /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
+        [SkipLocalsInit]
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsEip2565Enabled)
@@ -75,14 +77,15 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        private static mpz_t ImportDataToGmp(byte[] data)
+        private static unsafe mpz_t ImportDataToGmp(ReadOnlySpan<byte> data)
         {
             mpz_t result = new();
             gmp_lib.mpz_init(result);
             ulong memorySize = (ulong)data.Length;
             using void_ptr memoryChunk = gmp_lib.allocate(memorySize);
 
-            Marshal.Copy(data, 0, memoryChunk.ToIntPtr(), data.Length);
+            Span<byte> spanUnmanagedBuffer = new(memoryChunk.ToIntPtr().ToPointer(), data.Length);
+            data.CopyTo(spanUnmanagedBuffer);
             gmp_lib.mpz_import(result, memorySize, 1, 1, 1, 0, memoryChunk);
 
             return result;
@@ -114,7 +117,7 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, true);
             }
 
-            byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
+            ReadOnlySpan<byte> modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
             using mpz_t modulusInt = ImportDataToGmp(modulusData);
 
             if (gmp_lib.mpz_sgn(modulusInt) == 0)
@@ -122,10 +125,10 @@ namespace Nethermind.Evm.Precompiles
                 return (new byte[modulusLength], true);
             }
 
-            byte[] baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
+            ReadOnlySpan<byte> baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
             using mpz_t baseInt = ImportDataToGmp(baseData);
 
-            byte[] expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
+            ReadOnlySpan<byte> expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
             using mpz_t expInt = ImportDataToGmp(expData);
 
             using mpz_t powmResult = new();
@@ -152,7 +155,9 @@ namespace Nethermind.Evm.Precompiles
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
 
-            BigInteger modulusInt = inputData
+            Span<byte> inputDataSpan = inputData.AsSpan();
+
+            BigInteger modulusInt = inputDataSpan
                 .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
 
             if (modulusInt.IsZero)
@@ -160,9 +165,8 @@ namespace Nethermind.Evm.Precompiles
                 return (new byte[modulusLength], true);
             }
 
-            BigInteger baseInt = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-            BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength)
-                .ToUnsignedBigInteger();
+            BigInteger baseInt = inputDataSpan.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
+            BigInteger expInt = inputDataSpan.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength).ToUnsignedBigInteger();
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
         }
 

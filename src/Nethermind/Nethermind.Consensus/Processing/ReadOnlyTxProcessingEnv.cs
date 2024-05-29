@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Processing
             PreBlockCaches? preBlockCaches = null
             ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, preBlockCaches)
         {
-            CodeInfoRepository = new CodeInfoRepository();
+            CodeInfoRepository = new CodeInfoRepository(preBlockCaches?.PrecompileCache);
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, CodeInfoRepository, logManager);
         }

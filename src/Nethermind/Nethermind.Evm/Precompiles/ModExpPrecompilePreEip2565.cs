@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -24,11 +25,9 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(5);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
+        [SkipLocalsInit]
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             try
@@ -43,7 +42,7 @@ namespace Nethermind.Evm.Precompiles
 
                 UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
 
-                byte[] expSignificantBytes = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
+                ReadOnlySpan<byte> expSignificantBytes = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
 
                 UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
                 UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
@@ -77,28 +76,20 @@ namespace Nethermind.Evm.Precompiles
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
         }
 
-        private UInt256 MultComplexity(in UInt256 adjustedExponentLength)
-        {
-            if (adjustedExponentLength <= 64)
-            {
-                return adjustedExponentLength * adjustedExponentLength;
-            }
+        private UInt256 MultComplexity(in UInt256 adjustedExponentLength) =>
+            adjustedExponentLength <= 64
+                ? adjustedExponentLength * adjustedExponentLength
+                : adjustedExponentLength <= 1024
+                    ? adjustedExponentLength * adjustedExponentLength / 4 + 96 * adjustedExponentLength - 3072
+                    : adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
 
-            if (adjustedExponentLength <= 1024)
-            {
-                return adjustedExponentLength * adjustedExponentLength / 4 + 96 * adjustedExponentLength - 3072;
-            }
-
-            return adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
-        }
-
-        private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, byte[] exponent)
+        private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, ReadOnlySpan<byte> exponent)
         {
             bool overflow = false;
             bool underflow = false;
             UInt256 result;
 
-            int leadingZeros = exponent.AsSpan().LeadingZerosCount();
+            int leadingZeros = exponent.LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
                 overflow |= UInt256.MultiplyOverflow(lengthOver32, 8, out result);

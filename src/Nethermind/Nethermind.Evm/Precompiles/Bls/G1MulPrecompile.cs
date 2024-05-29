@@ -21,15 +21,9 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0c);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 12000L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 12000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

@@ -21,15 +21,9 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(1);
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 3000L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
 
         private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet, LimboLogs.Instance);
 

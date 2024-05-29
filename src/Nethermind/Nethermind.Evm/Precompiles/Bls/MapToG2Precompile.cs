@@ -21,15 +21,9 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
     public static Address Address { get; } = Address.FromNumber(0x13);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 75000;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 75000;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

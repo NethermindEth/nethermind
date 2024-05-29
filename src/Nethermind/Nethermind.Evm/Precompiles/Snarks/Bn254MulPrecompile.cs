@@ -17,15 +17,9 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(7);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

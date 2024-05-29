@@ -23,10 +23,7 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 65000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 43000L * (inputData.Length / PairSize);
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 43000L * (inputData.Length / PairSize);
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

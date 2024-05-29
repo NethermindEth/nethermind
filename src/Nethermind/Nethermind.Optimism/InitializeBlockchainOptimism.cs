@@ -35,14 +35,11 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return base.InitBlockchain();
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor()
+    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
-
-        CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
@@ -84,7 +81,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor()
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -107,7 +104,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             new BlockhashStore(_api.BlockTree, _api.SpecProvider, _api.WorldState),
             _api.LogManager,
             _api.SpecHelper,
-            contractRewriter);
+            contractRewriter,
+            preWarmer: preWarmer);
     }
 
     protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;

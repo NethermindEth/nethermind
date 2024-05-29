@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -97,7 +98,8 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
 
         SimulateOutput result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
 
-        byte[] addressBytes = result.Items[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
+        byte[] addressBytes = result.Items[0].Calls[0].ReturnData!
+            .AsSpan().SliceWithZeroPaddingEmptyOnError(12, 20).ToArray();
         Address resultingAddress = new(addressBytes);
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 
