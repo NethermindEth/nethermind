@@ -30,7 +30,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider);
 
         return new SimulateReadOnlyBlocksProcessingEnv(
-            traceTransfers,
             overlayWorldStateManager,
             baseBlockTree,
             editableDbProvider,

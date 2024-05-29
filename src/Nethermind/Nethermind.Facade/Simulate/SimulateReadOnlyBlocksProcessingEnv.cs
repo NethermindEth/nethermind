@@ -46,7 +46,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     private readonly TransactionProcessor _transactionProcessor;
 
     public SimulateReadOnlyBlocksProcessingEnv(
-        bool traceTransfers,
         IWorldStateManager worldStateManager,
         IReadOnlyBlockTree baseBlockTree,
         IReadOnlyDbProvider readOnlyDbProvider,
