@@ -30,22 +30,11 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
         const int expectedInputLength = 4 * BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
-
-        (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
         bool success = Pairings.BlsG1Add(inputData.Span, output);
-        if (success)
-        {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
-        }
-
-        return result;
+        return success ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }

@@ -55,6 +55,7 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
+        [SkipLocalsInit]
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;

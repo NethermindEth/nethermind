@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -21,6 +22,7 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
@@ -28,18 +30,7 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
         inputData.PrepareEthInput(inputDataSpan);
 
         Span<byte> output = stackalloc byte[64];
-        bool success = Pairings.Bn254Mul(inputDataSpan, output);
+        return Pairings.Bn254Mul(inputDataSpan, output) ? (output.ToArray(), true) : IPrecompile.Failure;
 
-        (byte[], bool) result;
-        if (success)
-        {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
-        }
-
-        return result;
     }
 }

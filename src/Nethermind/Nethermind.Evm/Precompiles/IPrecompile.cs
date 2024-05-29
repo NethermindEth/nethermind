@@ -16,6 +16,8 @@ namespace Nethermind.Evm.Precompiles
         long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
         (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+
+        protected static (ReadOnlyMemory<byte>, bool) Failure { get; } = (Array.Empty<byte>(), false);
     }
 
 

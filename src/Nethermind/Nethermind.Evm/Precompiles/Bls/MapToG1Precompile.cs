@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -25,27 +26,16 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = 64;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
-
-        (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[128];
-        bool success = Pairings.BlsMapToG1(inputData.Span, output);
-        if (success)
-        {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
-        }
-
-        return result;
+        return Pairings.BlsMapToG1(inputData.Span, output) ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }

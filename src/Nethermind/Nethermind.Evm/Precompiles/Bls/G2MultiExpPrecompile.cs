@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -31,11 +32,12 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
 
     private const int ItemSize = 288;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
         for (int i = 0; i < (inputData.Length / ItemSize); i++)
@@ -43,23 +45,11 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             int offset = i * ItemSize;
             if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
             {
-                return (Array.Empty<byte>(), false);
+                return IPrecompile.Failure;
             }
         }
 
-        (byte[], bool) result;
-
         Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        bool success = Pairings.BlsG2MultiExp(inputData.Span, output);
-        if (success)
-        {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
-        }
-
-        return result;
+        return Pairings.BlsG2MultiExp(inputData.Span, output) ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }

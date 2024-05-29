@@ -26,10 +26,7 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(5);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
         /// <summary>
         /// https://github.com/ethereum/EIPs/pull/2892
@@ -105,6 +102,7 @@ namespace Nethermind.Evm.Precompiles
             return (baseLength, expLength, modulusLength);
         }
 
+        [SkipLocalsInit]
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
@@ -149,6 +147,7 @@ namespace Nethermind.Evm.Precompiles
         }
 
         [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
+        [SkipLocalsInit]
         public static (ReadOnlyMemory<byte>, bool) OldRun(byte[] inputData)
         {
             Metrics.ModExpPrecompile++;
@@ -177,6 +176,7 @@ namespace Nethermind.Evm.Precompiles
         /// return words**2
         /// </summary>
         /// <returns></returns>
+        [SkipLocalsInit]
         private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength)
         {
             UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
@@ -213,7 +213,7 @@ namespace Nethermind.Evm.Precompiles
                         bitLength--;
                     }
 
-                    bool overflow = UInt256.MultiplyOverflow((exponentLength - 32), 8, out UInt256 multiplicationResult);
+                    bool overflow = UInt256.MultiplyOverflow(exponentLength - 32, 8, out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
                     {
