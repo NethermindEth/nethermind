@@ -38,6 +38,13 @@ namespace Nethermind.Consensus.Processing
         private long _runMicroseconds;
         private long _reportMs;
         private Block? _lastBlock;
+        private long _sloadOpcodeProcessing;
+        private long _sstoreOpcodeProcessing;
+        private long _callsProcessing;
+        private long _emptyCallsProcessing;
+        private long _codeDbCacheProcessing;
+        private long _contractAnalysedProcessing;
+        private long _createsProcessing;
 
         public ProcessingStats(ILogger logger)
         {
@@ -86,6 +93,13 @@ namespace Nethermind.Consensus.Processing
             {
                 _lastReportMs = _reportMs;
                 _lastBlock = block;
+                _sloadOpcodeProcessing = Evm.Metrics.ThreadLocalSLoadOpcode;
+                _sstoreOpcodeProcessing = Evm.Metrics.ThreadLocalSStoreOpcode;
+                _callsProcessing = Evm.Metrics.ThreadLocalCalls;
+                _emptyCallsProcessing = Evm.Metrics.ThreadLocalEmptyCalls;
+                _codeDbCacheProcessing = Db.Metrics.ThreadLocalCodeDbCache;
+                _contractAnalysedProcessing = Evm.Metrics.ThreadLocalContractsAnalysed;
+                _createsProcessing = Evm.Metrics.ThreadLocalCreates;
                 GenerateReport();
             }
         }
@@ -132,13 +146,13 @@ namespace Nethermind.Consensus.Processing
             {
                 double totalMicroseconds = _blockProcessingMicroseconds;
                 long chunkTx = Metrics.Transactions - _lastTotalTx;
-                long chunkCalls = Evm.Metrics.Calls - _lastTotalCalls;
-                long chunkEmptyCalls = Evm.Metrics.EmptyCalls - _lastTotalEmptyCalls;
-                long chunkCreates = Evm.Metrics.Creates - _lastTotalCreates;
-                long chunkSload = Evm.Metrics.SloadOpcode - _lastTotalSLoad;
-                long chunkSstore = Evm.Metrics.SstoreOpcode - _lastTotalSStore;
-                long contractsAnalysed = Evm.Metrics.ContractsAnalysed - _lastContractsAnalysed;
-                long cachedContractsUsed = Db.Metrics.CodeDbCache - _lastCachedContractsUsed;
+                long chunkCalls = _callsProcessing - _lastTotalCalls;
+                long chunkEmptyCalls = _emptyCallsProcessing - _lastTotalEmptyCalls;
+                long chunkCreates = _createsProcessing - _lastTotalCreates;
+                long chunkSload = _sloadOpcodeProcessing - _lastTotalSLoad;
+                long chunkSstore = _sstoreOpcodeProcessing - _lastTotalSStore;
+                long contractsAnalysed = _contractAnalysedProcessing - _lastContractsAnalysed;
+                long cachedContractsUsed = _codeDbCacheProcessing - _lastCachedContractsUsed;
                 double totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1_000_000.0;
                 double totalTxPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Transactions / totalMicroseconds * 1_000_000.0;
                 double totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : _totalBlocks / totalMicroseconds * 1_000_000.0;
@@ -239,17 +253,17 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
-            _lastCachedContractsUsed = Db.Metrics.CodeDbCache;
-            _lastContractsAnalysed = Evm.Metrics.ContractsAnalysed;
+            _lastCachedContractsUsed = _codeDbCacheProcessing;
+            _lastContractsAnalysed = _contractAnalysedProcessing;
             _lastBlockNumber = Metrics.Blocks;
             _lastTotalMGas = Metrics.Mgas;
             _lastElapsedRunningMicroseconds = _runningMicroseconds;
             _lastTotalTx = Metrics.Transactions;
-            _lastTotalCalls = Evm.Metrics.Calls;
-            _lastTotalEmptyCalls = Evm.Metrics.EmptyCalls;
-            _lastTotalCreates = Evm.Metrics.Creates;
-            _lastTotalSLoad = Evm.Metrics.SloadOpcode;
-            _lastTotalSStore = Evm.Metrics.SstoreOpcode;
+            _lastTotalCalls = _callsProcessing;
+            _lastTotalEmptyCalls = _emptyCallsProcessing;
+            _lastTotalCreates = _createsProcessing;
+            _lastTotalSLoad = _sloadOpcodeProcessing;
+            _lastTotalSStore = _sstoreOpcodeProcessing;
             _lastSelfDestructs = currentSelfDestructs;
             _chunkProcessingMicroseconds = 0;
         }

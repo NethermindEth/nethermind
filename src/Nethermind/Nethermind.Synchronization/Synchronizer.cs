@@ -457,7 +457,9 @@ namespace Nethermind.Synchronization
             _syncReport.Dispose();
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();
+            _stateSyncFeed = null;
             SnapSyncFeed?.Dispose();
+            _snapSyncFeed = null;
             _fullSyncFeed?.Dispose();
             HeadersSyncFeed?.Dispose();
             BodiesSyncFeed?.Dispose();

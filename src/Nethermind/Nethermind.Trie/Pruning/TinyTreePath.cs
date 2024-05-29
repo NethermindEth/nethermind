@@ -10,6 +10,7 @@ namespace Nethermind.Trie;
 /// <summary>
 /// Like TreePath, but tiny. Fit in 8 byte, like a long. Can only represent 14 nibble.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly struct TinyTreePath : IEquatable<TinyTreePath>
 {
     public const int MaxNibbleLength = 14;
@@ -40,6 +41,17 @@ public readonly struct TinyTreePath : IEquatable<TinyTreePath>
     }
 
     public bool Equals(TinyTreePath other) => _data == other._data;
+    public bool Equals(in TinyTreePath other) => _data == other._data;
     public override bool Equals(object? obj) => obj is TinyTreePath other && Equals(other);
     public override int GetHashCode() => _data.GetHashCode();
+
+    public static bool operator ==(in TinyTreePath left, in TinyTreePath right)
+    {
+        return left.Equals(in right);
+    }
+
+    public static bool operator !=(in TinyTreePath left, in TinyTreePath right)
+    {
+        return !(left == right);
+    }
 }

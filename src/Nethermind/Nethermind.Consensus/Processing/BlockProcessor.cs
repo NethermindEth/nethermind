@@ -145,6 +145,7 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 preBlockStateRoot = processedBlock.StateRoot;
+                _stateProvider.Reset(resizeCollections: true);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))

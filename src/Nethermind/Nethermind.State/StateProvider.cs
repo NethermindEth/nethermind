@@ -649,7 +649,7 @@ namespace Nethermind.State
             _tree = stateTree ?? new StateTree(trieStore, logManager);
             _getStateFromTrie = address =>
             {
-                Metrics.StateTreeReads++;
+                Metrics.IncrementStateTreeReads();
                 return _tree.Get(address);
             };
         }
@@ -665,19 +665,19 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                long priorReads = Metrics.StateTreeReads;
+                long priorReads = Metrics.ThreadLocalStateTreeReads;
                 account = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
                     : _getStateFromTrie(addressAsKey);
 
-                if (Metrics.StateTreeReads == priorReads)
+                if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
-                    Metrics.IncrementTreeCacheHits();
+                    Metrics.IncrementStateTreeCacheHits();
                 }
             }
             else
             {
-                Metrics.IncrementTreeCacheHits();
+                Metrics.IncrementStateTreeCacheHits();
             }
             return account;
         }
@@ -819,12 +819,12 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset()
+        public void Reset(bool resizeCollections = true)
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _blockCache.Clear();
-            _intraTxCache.Reset();
-            _committedThisRound.Reset();
+            _intraTxCache.Reset(resizeCollections);
+            _committedThisRound.Reset(resizeCollections);
             _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);

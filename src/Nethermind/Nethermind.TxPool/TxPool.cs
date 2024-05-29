@@ -773,16 +773,16 @@ namespace Nethermind.TxPool
         private sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
-            private readonly LruCache<AddressAsKey, AccountStruct>[] _caches;
+            private readonly LruCacheLowObject<AddressAsKey, AccountStruct>[] _caches;
 
             public AccountCache(IAccountStateProvider provider)
             {
                 _provider = provider;
-                _caches = new LruCache<AddressAsKey, AccountStruct>[16];
+                _caches = new LruCacheLowObject<AddressAsKey, AccountStruct>[16];
                 for (int i = 0; i < _caches.Length; i++)
                 {
                     // Cache per nibble to reduce contention as TxPool is very parallel
-                    _caches[i] = new LruCache<AddressAsKey, AccountStruct>(1_024, "");
+                    _caches[i] = new LruCacheLowObject<AddressAsKey, AccountStruct>(1_024, "");
                 }
             }
 
@@ -800,7 +800,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    Db.Metrics.IncrementTreeCacheHits();
+                    Db.Metrics.IncrementStateTreeCacheHits();
                 }
 
                 return true;
