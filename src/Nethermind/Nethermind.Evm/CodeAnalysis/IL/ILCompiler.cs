@@ -128,6 +128,9 @@ internal class ILCompiler
                     method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.StopExecution)));
                     method.Branch(ret);
                     break;
+                case Instruction.INVALID:
+                    method.Branch(labels[EvmExceptionType.InvalidCode]);
+                    break;
                 case Instruction.NOT:
                     method.Load(stack, head);
                     method.Call(Word.GetUInt256);
@@ -168,6 +171,12 @@ internal class ILCompiler
 
                     method.MarkLabel(noJump);
                     method.StackPop(head, 2);
+                    break;
+                case Instruction.PUSH0:
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.Call(Word.SetToZero);
+                    method.StackPush(head);
                     break;
                 case Instruction.PUSH1:
                 case Instruction.PUSH2:
@@ -270,7 +279,21 @@ internal class ILCompiler
                             il.MarkLabel(label);
                         }, uint256A, uint256B);
                     break;
-
+                case Instruction.SHL:
+                    EmitShiftUInt256Method(method, uint256R, (stack, head), isLeft:true, null, uint256A, uint256B);
+                    break;
+                case Instruction.SHR:
+                    EmitShiftUInt256Method(method, uint256R, (stack, head), isLeft:false, null, uint256A, uint256B);
+                    break;
+                case Instruction.AND:
+                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.And), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
+                    break;
+                case Instruction.OR:
+                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Or), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
+                    break;
+                case Instruction.XOR:
+                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Xor), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
+                    break;
                 case Instruction.EXP:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
@@ -624,15 +647,6 @@ internal class ILCompiler
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
                     break;
-                case Instruction.AND:
-                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.And), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
-                    break;
-                case Instruction.OR:
-                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Or), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
-                    break;
-                case Instruction.XOR:
-                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Xor), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
-                    break;
                 case Instruction.KECCAK256:
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
@@ -717,6 +731,9 @@ internal class ILCompiler
             }
         }
 
+        method.LoadLocal(gasAvailable);
+        method.LoadConstant(0);
+        method.BranchIfLess(labels[EvmExceptionType.OutOfGas]);
 
         // prepare ILEvmState
         // check if returnState is null
@@ -825,6 +842,45 @@ internal class ILCompiler
             Method = dynEmitedDelegate,
             Data = data
         };
+    }
+
+    private static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, bool isLeft, params Local[] locals)
+    {
+        MethodInfo shiftOp = typeof(UInt256).GetMethod(isLeft ? nameof(UInt256.LeftShift) : nameof(UInt256.RightShift));
+        Label skipPop = il.DefineLabel("skipSecondPop");
+        Label endOfOpcode = il.DefineLabel("endOfOpcode");
+
+        // Note: Use Vector256 directoly if UInt256 does not use it internally
+        // we the two uint256 from the stack
+        il.StackLoadPrevious(stack.span, stack.idx, 1);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[0]);
+
+        il.LoadLocalAddress(locals[0]);
+        il.LoadConstant(Word.Size * sizeof(byte));
+        il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int)}));
+        il.BranchIfTrue(skipPop);
+
+        il.LoadLocalAddress(locals[0]);
+        il.StackLoadPrevious(stack.span, stack.idx, 2);
+        il.LoadField(Word.Int0Field);
+        il.LoadLocalAddress(uint256R);
+        il.Call(shiftOp);
+        il.StackPop(stack.idx, 2);
+        il.StackPop(stack.idx, 2);
+        il.CleanWord(stack.span, stack.idx);
+        il.LoadLocal(uint256R);
+        il.Call(Word.SetUInt256);
+        il.StackPush(stack.idx, 1);
+        il.BranchIfTrue(endOfOpcode);
+
+        il.MarkLabel(skipPop);
+        il.StackPop(stack.idx, 2);
+        il.CleanWord(stack.span, stack.idx);
+        il.Load(stack.span, stack.idx);
+        il.Call(Word.SetToZero);
+
+        il.MarkLabel(endOfOpcode);
     }
 
     private static void EmitBitwiseUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, params Local[] locals)
