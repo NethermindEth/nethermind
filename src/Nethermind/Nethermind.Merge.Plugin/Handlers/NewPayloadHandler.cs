@@ -204,6 +204,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Invalid(Keccak.Zero, errorMessage);
         }
 
+        // TODO: check how to deal with this while running in stateless mode
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
@@ -253,7 +254,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
 
         // when stateless processing enabled we dont need processed parent
-        bool parentProcessed = parentBlockInfo is { WasProcessed: true } || _processStateless;
+        bool parentProcessed = parentBlockInfo is { WasProcessed: true };
+        // TODO: add more conditions here so that we can avoid the parent not present things
+        bool processStateless = _processStateless;
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
         // We want to force process the whole branch then, but not longer than few blocks.
@@ -277,7 +280,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             processingOptions &= ~ProcessingOptions.IgnoreParentNotOnMainChain;
         }
 
-        return parentProcessed || processTerminalBlock;
+        return parentProcessed || processTerminalBlock || processStateless;
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
