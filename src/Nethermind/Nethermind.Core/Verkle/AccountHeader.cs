@@ -87,4 +87,30 @@ public readonly struct AccountHeader
         UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
         subIndex.ToBigEndian(subIndexBytes);
     }
+
+    public static byte[] BasicDataToValue(byte[] basicDataLeafVal, int offset, int size)
+    {
+        byte[] accountValueBytes = new byte[size];
+        Array.Copy(basicDataLeafVal, offset, accountValueBytes, 0, size);
+        return accountValueBytes;
+    }
+
+    public static byte[] AccountToBasicData(Account account)
+    {
+        byte[] basicData = new byte[32];
+
+        byte[] version = account.Version.ToLittleEndian();
+        Array.Copy(version, 0, basicData, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
+
+        byte[] nonce = account.Nonce.ToLittleEndian();
+        Array.Copy(nonce, 0, basicData, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
+
+        byte[] codeSize = account.CodeSize.ToLittleEndian();
+        Array.Copy(codeSize, 0, basicData, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
+
+        byte[] balance = account.Balance.ToLittleEndian();
+        Array.Copy(balance, 0, basicData, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
+
+        return basicData;
+    }
 }

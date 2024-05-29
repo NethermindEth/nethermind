@@ -556,29 +556,22 @@ public class VerkleWorldState : IWorldState
 
         if (basicDataLeafVal is null || basicDataLeafVal.Length != 32) return null;
 
-        byte[] versionVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
+        byte[] versionVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
         UInt256 version = new(versionVal);
 
-        byte[] balanceVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
+        byte[] balanceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
         UInt256 balance = new(balanceVal);
 
-        byte[] nonceVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
+        byte[] nonceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
         UInt256 nonce = new(nonceVal);
 
         headerTreeKey[31] = AccountHeader.CodeHash;
         byte[]? codeHash = (_tree.Get(headerTreeKey) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
 
-        byte[] codeSizeVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
+        byte[] codeSizeVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
         UInt256 codeSize = new(codeSizeVal);
 
         return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
-    }
-
-    private byte[] GetAccountValueBytes(byte[] basicDataLeafVal, int offset, int size)
-    {
-        byte[] accountValueBytes = new byte[size];
-        Array.Copy(basicDataLeafVal, offset, accountValueBytes, 0, size);
-        return accountValueBytes;
     }
 
     protected void BulkSet(Dictionary<Address, Account> accountChange)
