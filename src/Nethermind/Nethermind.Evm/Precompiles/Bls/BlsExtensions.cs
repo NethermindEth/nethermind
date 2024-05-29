@@ -33,15 +33,14 @@ public static class BlsExtensions
         {
             if (untrimmed.Span[i] != 0 || untrimmed.Span[BlsParams.LenFp + i] != 0)
             {
-                return null;
-                // throw new Exception();
+                throw new Exception();
             }
         }
 
         bool isInfinity = true;
         for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
         {
-            if (untrimmed.Span[BlsParams.LenFpPad  + i] != 0 || untrimmed.Span[BlsParams.LenFp + BlsParams.LenFpPad + i] != 0)
+            if (untrimmed.Span[BlsParams.LenFpPad + i] != 0 || untrimmed.Span[BlsParams.LenFp + BlsParams.LenFpPad + i] != 0)
             {
                 isInfinity = false;
                 break;
@@ -68,7 +67,7 @@ public static class BlsExtensions
         return untrimmed;
     }
 
-    public static G2 G2FromUntrimmed(in ReadOnlyMemory<byte> untrimmed)
+    public static G2? G2FromUntrimmed(in ReadOnlyMemory<byte> untrimmed)
     {
         if (untrimmed.Length != BlsParams.LenG2)
         {
@@ -85,6 +84,25 @@ public static class BlsExtensions
             {
                 throw new Exception();
             }
+        }
+
+        bool isInfinity = true;
+        for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
+        {
+            if (untrimmed.Span[BlsParams.LenFpPad + i] != 0 ||
+                untrimmed.Span[BlsParams.LenFp + BlsParams.LenFpPad + i] != 0 ||
+                untrimmed.Span[(2 * BlsParams.LenFp) + BlsParams.LenFpPad + i] != 0 ||
+                untrimmed.Span[(3 * BlsParams.LenFp) + BlsParams.LenFpPad + i] != 0
+                )
+            {
+                isInfinity = false;
+                break;
+            }
+        }
+
+        if (isInfinity)
+        {
+            return null;
         }
 
         byte[] trimmed = new byte[BlsParams.LenG2Trimmed];

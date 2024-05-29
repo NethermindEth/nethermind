@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -47,7 +48,14 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
         {
             G1 res = new();
             res.map_to(inputData[16..64].ToArray());
-            result = (res.ToBytesUntrimmed(), true);
+            if (res.is_inf())
+            {
+                result = (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+            }
+            else
+            {
+                result = (res.ToBytesUntrimmed(), true);
+            }
         }
         catch (Exception)
         {

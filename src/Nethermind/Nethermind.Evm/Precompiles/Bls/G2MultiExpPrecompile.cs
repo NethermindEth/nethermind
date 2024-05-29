@@ -45,14 +45,14 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
-        for (int i = 0; i < (inputData.Length / ItemSize); i++)
-        {
-            int offset = i * ItemSize;
-            if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
-            {
-                return (Array.Empty<byte>(), false);
-            }
-        }
+        // for (int i = 0; i < (inputData.Length / ItemSize); i++)
+        // {
+        //     int offset = i * ItemSize;
+        //     if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
+        //     {
+        //         return (Array.Empty<byte>(), false);
+        //     }
+        // }
 
         (byte[], bool) result;
 
@@ -63,7 +63,8 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             for (int i = 0; i < points.Length; i++)
             {
                 int offset = i * ItemSize;
-                points[i] = BlsExtensions.G2FromUntrimmed(inputData[offset..(offset + BlsParams.LenG2)]);
+                G2? p = BlsExtensions.G2FromUntrimmed(inputData[offset..(offset + BlsParams.LenG2)]);
+                points[i] = p!.Value;
                 scalars[i] = new(inputData[(offset + BlsParams.LenG2)..(offset + BlsParams.LenG2 + 32)].ToArray());
 
                 if (!points[i].in_group() || !points[i].on_curve())
@@ -73,7 +74,14 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             }
             G2 res = new();
             res.multi_mult(points, scalars);
-            result = (res.ToBytesUntrimmed(), true);
+            if (res.is_inf())
+            {
+                result = (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
+            }
+            else
+            {
+                result = (res.ToBytesUntrimmed(), true);
+            }
         }
         catch (Exception)
         {

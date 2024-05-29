@@ -48,8 +48,8 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
             G1? x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
             if (!x.HasValue)
             {
-                // x = inf
-                return (Enumerable.Repeat<byte>(0, 128).ToArray(), false);
+                // x == inf
+                return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
             }
 
             if (x.Value.on_curve() && x.Value.in_group())
@@ -62,7 +62,14 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
                 }
 
                 G1 res = x.Value.mult(scalar);
-                result = (res.ToBytesUntrimmed(), true);
+                if (res.is_inf())
+                {
+                    result = (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+                }
+                else
+                {
+                    result = (res.ToBytesUntrimmed(), true);
+                }
             }
             else
             {

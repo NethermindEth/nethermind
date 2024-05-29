@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -44,13 +45,32 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
         try
         {
-            G2 x = BlsExtensions.G2FromUntrimmed(inputData[..BlsParams.LenG2]);
-            G2 y = BlsExtensions.G2FromUntrimmed(inputData[BlsParams.LenG2..]);
+            G2? x = BlsExtensions.G2FromUntrimmed(inputData[..BlsParams.LenG2]);
+            G2? y = BlsExtensions.G2FromUntrimmed(inputData[BlsParams.LenG2..]);
 
-            if (x.on_curve() && y.on_curve())
+            if (!x.HasValue)
             {
-                G2 res = x.add(y);
-                result = (res.ToBytesUntrimmed(), true);
+                // x == inf
+                return (inputData[BlsParams.LenG2..], true);
+            }
+
+            if (!y.HasValue)
+            {
+                // y == inf
+                return (inputData[..BlsParams.LenG2], true);
+            }
+
+            if (x.Value.on_curve() && y.Value.on_curve())
+            {
+                G2 res = x.Value.add(y.Value);
+                if (res.is_inf())
+                {
+                    result = (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
+                }
+                else
+                {
+                    result = (res.ToBytesUntrimmed(), true);
+                }
             }
             else
             {

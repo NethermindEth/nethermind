@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -43,14 +44,14 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
-        for (int i = 0; i < (inputData.Length / ItemSize); i++)
-        {
-            int offset = i * ItemSize;
-            if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
-            {
-                return (Array.Empty<byte>(), false);
-            }
-        }
+        // for (int i = 0; i < (inputData.Length / ItemSize); i++)
+        // {
+        //     int offset = i * ItemSize;
+        //     if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
+        //     {
+        //         return (Array.Empty<byte>(), false);
+        //     }
+        // }
 
         (byte[], bool) result;
 
@@ -61,7 +62,8 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             for (int i = 0; i < points.Length; i++)
             {
                 int offset = i * ItemSize;
-                points[i] = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)])!.Value;
+                G1? p = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
+                points[i] = p!.Value;
                 scalars[i] = new(inputData[(offset + BlsParams.LenG1)..(offset + BlsParams.LenG1 + 32)].ToArray());
 
                 if (!points[i].in_group() || !points[i].on_curve())
@@ -71,7 +73,14 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             }
             G1 res = new();
             res.multi_mult(points, scalars);
-            result = (res.ToBytesUntrimmed(), true);
+            if (res.is_inf())
+            {
+                result = (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+            }
+            else
+            {
+                result = (res.ToBytesUntrimmed(), true);
+            }
         }
         catch (Exception)
         {
