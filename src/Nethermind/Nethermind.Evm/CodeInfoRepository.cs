@@ -33,7 +33,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new LruCacheLowObject<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+                _caches[i] = new LruCacheLowObject<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
             }
         }
 
