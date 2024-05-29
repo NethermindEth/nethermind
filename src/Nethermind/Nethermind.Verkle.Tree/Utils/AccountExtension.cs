@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Verkle;
 using Nethermind.Verkle.Tree.Sync;
 
 namespace Nethermind.Verkle.Tree.Utils;
@@ -15,14 +15,29 @@ public static class AccountExtension
     {
         List<LeafInSubTree> subTree =
         [
-            new LeafInSubTree(0, account.Version.ToLittleEndian()),
-            new LeafInSubTree(1, account.Balance.ToLittleEndian()),
-            new LeafInSubTree(2, account.Nonce.ToLittleEndian()),
-            new LeafInSubTree(3, account.CodeHash.Bytes.ToArray())
+            new LeafInSubTree(AccountHeader.BasicDataLeafKey, AccountBasicDataToBytes(account)),
+            new LeafInSubTree(AccountHeader.CodeHash, account.CodeHash.Bytes.ToArray())
         ];
 
-        if (!account.CodeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-            subTree.Add(new LeafInSubTree(4, account.CodeSize.ToLittleEndian()));
         return subTree.ToArray();
+    }
+
+    public static byte[] AccountBasicDataToBytes(this Account account)
+    {
+        byte[] basicData = new byte[32];
+
+        byte[] version = account.Version.ToLittleEndian();
+        Array.Copy(version, 0, basicData, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
+
+        byte[] nonce = account.Nonce.ToLittleEndian();
+        Array.Copy(nonce, 0, basicData, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
+
+        byte[] codeSize = account.CodeSize.ToLittleEndian();
+        Array.Copy(codeSize, 0, basicData, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
+
+        byte[] balance = account.Balance.ToLittleEndian();
+        Array.Copy(balance, 0, basicData, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
+
+        return basicData;
     }
 }
