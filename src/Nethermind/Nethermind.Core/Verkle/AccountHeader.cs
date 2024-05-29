@@ -9,11 +9,18 @@ namespace Nethermind.Core.Verkle;
 
 public readonly struct AccountHeader
 {
-    public const int Version = 0;
-    public const int Balance = 1;
-    public const int Nonce = 2;
-    public const int CodeHash = 3;
-    public const int CodeSize = 4;
+    public const int CodeHash = 1;
+    public const int BalanceDataLeafKey = 0;
+
+    public const int VersionOffset = 0;
+    public const int NonceOffset = 4;
+    public const int CodeSizeOffset = 12;
+    public const int BalanceOffset = 16;
+
+    public const int VersionBytesLength = 1;
+    public const int NonceBytesLength = 8;
+    public const int CodeSizeBytesLength = 4;
+    public const int BalanceBytesLength = 16;
 
     private const int MainStorageOffsetExponent = 8 * 31;
     private const int MainStorageOffsetBase = 1;
