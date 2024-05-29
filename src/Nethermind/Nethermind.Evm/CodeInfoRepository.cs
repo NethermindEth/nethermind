@@ -37,19 +37,25 @@ public class CodeInfoRepository : ICodeInfoRepository
             }
         }
 
-        public CodeInfo Get(in ValueHash256 codeHash)
+        public CodeInfo? Get(in ValueHash256 codeHash)
         {
-            var cache = _caches[GetCacheIndex(codeHash)];
+            LruCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
         public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
         {
-            var cache = _caches[GetCacheIndex(codeHash)];
+            LruCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
+
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
+        {
+            codeInfo = Get(codeHash);
+            return codeInfo is not null;
+        }
     }
 
 
@@ -93,7 +99,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _precompiles[codeSource];
         }
 
-        CodeInfo cachedCodeInfo = null;
+        CodeInfo? cachedCodeInfo = null;
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
@@ -131,7 +137,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
     {
-        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
+        if (!_codeCache.TryGet(codeHash, out CodeInfo? codeInfo))
         {
             codeInfo = new(initCode.ToArray());
 
