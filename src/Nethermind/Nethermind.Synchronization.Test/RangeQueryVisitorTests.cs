@@ -31,6 +31,8 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Org.BouncyCastle.Utilities;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -135,6 +137,68 @@ public class RangeQueryVisitorTests
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
         leafCollector.Leafs.Count.Should().Be(3);
     }
+
+
+    [Test]
+    public void RangeFetchPartialLimit_FarProof()
+    {
+
+        string[] paths =
+        [
+            "0x1110000000000000000000000000000000000000000000000000000000000000",
+            "0x1120000000000000000000000000000000000000000000000000000000000000",
+            "0x1130000000000000000000000000000000000000000000000000000000000000",
+            // Query here 0x114...
+            "0x1210000000000000000000000000000000000000000000000000000000000000",
+            "0x1220000000000000000000000000000000000000000000000000000000000000",
+            "0x1230000000000000000000000000000000000000000000000000000000000000",
+            // Until here 0x1235..
+            "0x1310000000000000000000000000000000000000000000000000000000000000",
+            "0x1320000000000000000000000000000000000000000000000000000000000000",
+        ];
+
+        var stateTree = new StateTree();
+        var random = new Random(0);
+        foreach (var path in paths)
+        {
+            stateTree.Set(new Hash256(path), TestItem.GenerateRandomAccount(random));
+        }
+        stateTree.Commit(0);
+
+        var startHash = new Hash256("0x1140000000000000000000000000000000000000000000000000000000000000");
+        var limitHash = new Hash256("0x1235000000000000000000000000000000000000000000000000000000000000");
+
+        RlpCollector leafCollector = new();
+        using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
+        stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
+
+        leafCollector.Leafs.Count.Should().Be(4);
+
+        using ArrayPoolList<byte[]> proofs = visitor.GetProofs();
+        proofs.Count.Should().Be(6); // Need to make sure `0x11` is included
+
+        var proofHashes = proofs.Select((rlp) => Keccak.Compute(rlp)).ToHashSet();
+        foreach (Hash256 proofHash in proofHashes)
+        {
+            Console.Out.WriteLine(proofHash);
+        }
+
+        string[] proofHashStrs =
+        [
+            "0x35811c17fd5e33e75276677e27e3fe39653403a4d0df4a2f94af40ac265a4a6f",
+            "0xfd6d9e748837908d14fca3ddf76d06c3f74196543f3d05d8fa0b6d6726037f51",
+            "0xde44831292ba34a2a31566004549c1681dbe3a4042f265be60a9fff3643a3112",
+            "0x665b6b070a219250b89d36feeb07ae350bae619e8660598f9ec98176b19c5d07",
+            "0x07b17db6a32be868e9940568db8b1011c7679e642c2db0237a5a7ebdaadb0e6e",
+            "0xfbd8c8f3cd78599b87fd3ab0cfe127c5b2d488cb913aeec5b80230668fed45c8"
+        ];
+
+        foreach (var proofHashStr in proofHashStrs)
+        {
+            proofHashes.Contains(new Hash256(Bytes.FromHexString(proofHashStr))).Should().BeTrue();
+        }
+    }
+
 
     [Test]
     public void StorageRangeFetchVisitor()
