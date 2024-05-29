@@ -36,7 +36,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-        private readonly Dictionary<StorageCell, byte[]> _blockCache = new(4_096);
+        private readonly Dictionary<Address, Dictionary<StorageCell, byte[]>> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
 
@@ -301,7 +301,14 @@ namespace Nethermind.State
             Db.Metrics.StorageTreeWrites++;
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
-            _blockCache[change.StorageCell] = change.Value;
+
+            ref Dictionary<StorageCell, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+            if (!exists)
+            {
+                dict = new Dictionary<StorageCell, byte[]>();
+            }
+
+            dict[change.StorageCell] = change.Value;
         }
 
         /// <summary>
@@ -343,7 +350,13 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
+            ref Dictionary<StorageCell, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+            if (!exists)
+            {
+                dict = new Dictionary<StorageCell, byte[]>();
+            }
+
+            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell, out exists);
             if (!exists)
             {
                 long priorReads = Db.Metrics.StorageTreeReads;
@@ -406,13 +419,7 @@ namespace Nethermind.State
             base.ClearStorage(address);
 
             // Bit heavy-handed, but we need to clear all the cache for that address
-            foreach (KeyValuePair<StorageCell, byte[]> pair in _blockCache)
-            {
-                if (pair.Key.Address == address)
-                {
-                    _blockCache[pair.Key] = StorageTree.EmptyBytes;
-                }
-            }
+            _blockCache.Remove(address);
 
             // here it is important to make sure that we will not reuse the same tree when the contract is revived
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
