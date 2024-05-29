@@ -52,7 +52,7 @@ namespace Nethermind.State
         }
 
         public bool HasStateForRoot(Hash256 stateRoot) => _factory.HasRoot(stateRoot);
-        public IScopedStateReader ForStateRoot(Hash256 stateRoot) => new ScopedStateReader(factory.GetReadOnly(stateRoot));
+        public IScopedStateReader ForStateRoot(Hash256? stateRoot) => new ScopedStateReader(factory.GetReadOnly(stateRoot));
 
         private class ScopedStateReader(IReadOnlyState state) : IScopedStateReader
         {

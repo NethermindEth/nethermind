@@ -23,9 +23,9 @@ namespace Nethermind.State
         /// <summary>
         /// Opens a state reader for the given state root.
         /// </summary>
-        /// <param name="stateRoot">The state root to build the scoped reader for.</param>
+        /// <param name="stateRoot">The state root to build the scoped reader for or null if the latest should be used.</param>
         /// <returns>The scoped state reader.</returns>
-        IScopedStateReader ForStateRoot(Hash256 stateRoot);
+        IScopedStateReader ForStateRoot(Hash256? stateRoot = null);
     }
 
     /// <summary>

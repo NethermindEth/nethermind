@@ -57,7 +57,7 @@ public interface IStateFactory : IAsyncDisposable
 {
     IState Get(Hash256 stateRoot);
 
-    IReadOnlyState GetReadOnly(Hash256 stateRoot);
+    IReadOnlyState GetReadOnly(Hash256? stateRoot);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
