@@ -36,7 +36,7 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 64;
+        const int expectedInputLength = BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)
         {
             return (Array.Empty<byte>(), false);
@@ -47,7 +47,11 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
         try
         {
             G1 res = new();
-            res.map_to(inputData[16..64].ToArray());
+            if (!BlsExtensions.ValidFp(inputData.Span))
+            {
+                throw new Exception();
+            }
+            res.map_to(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray());
             result = (res.Encode(), true);
         }
         catch (Exception)

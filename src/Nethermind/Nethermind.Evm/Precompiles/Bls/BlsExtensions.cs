@@ -18,7 +18,7 @@ public static class BlsParams
     public const int LenG1Trimmed = 2 * LenFpTrimmed;
     public const int LenG2 = 4 * LenFp;
     public const int LenG2Trimmed = 4 * LenFpTrimmed;
-    public static readonly byte[] BaseFieldModulus = [0x1a,0x01,0x11,0xea,0x39,0x7f,0xe6,0x9a,0x4b,0x1b,0xa7,0xb6,0x43,0x4b,0xac,0xd7,0x64,0x77,0x4b,0x84,0xf3,0x85,0x12,0xbf,0x67,0x30,0xd2,0xa0,0xf6,0xb0,0xf6,0x24,0x1e,0xab,0xff,0xfe,0xb1,0x53,0xff,0xff,0xb9,0xfe,0xff,0xff,0xff,0xff,0xaa,0xab];
+    public static readonly byte[] BaseFieldOrder = [0x1a,0x01,0x11,0xea,0x39,0x7f,0xe6,0x9a,0x4b,0x1b,0xa7,0xb6,0x43,0x4b,0xac,0xd7,0x64,0x77,0x4b,0x84,0xf3,0x85,0x12,0xbf,0x67,0x30,0xd2,0xa0,0xf6,0xb0,0xf6,0x24,0x1e,0xab,0xff,0xfe,0xb1,0x53,0xff,0xff,0xb9,0xfe,0xff,0xff,0xff,0xff,0xaa,0xab];
 }
 
 public static class BlsExtensions
@@ -30,16 +30,7 @@ public static class BlsExtensions
             throw new Exception();
         }
 
-        // check that padding bytes are zeroes
-        for (int i = 0; i < BlsParams.LenFpPad; i++)
-        {
-            if (untrimmed.Span[i] != 0 || untrimmed.Span[BlsParams.LenFp + i] != 0)
-            {
-                throw new Exception();
-            }
-        }
-
-        if (!ValidFp(untrimmed.Span[BlsParams.LenFpPad..BlsParams.LenFp]) || !ValidFp(untrimmed.Span[(BlsParams.LenFp + BlsParams.LenFpPad)..]))
+        if (!ValidFp(untrimmed.Span[..BlsParams.LenFp]) || !ValidFp(untrimmed.Span[BlsParams.LenFp..]))
         {
             throw new Exception();
         }
@@ -92,23 +83,10 @@ public static class BlsExtensions
             throw new Exception();
         }
 
-        // check that padding bytes are zeroes
-        for (int i = 0; i < BlsParams.LenFpPad; i++)
-        {
-            if (untrimmed.Span[i] != 0 ||
-                untrimmed.Span[BlsParams.LenFp + i] != 0 ||
-                untrimmed.Span[(2 * BlsParams.LenFp) + i] != 0 ||
-                untrimmed.Span[(3 * BlsParams.LenFp) + i] != 0
-                )
-            {
-                throw new Exception();
-            }
-        }
-
-        if (!ValidFp(untrimmed.Span[BlsParams.LenFpPad..BlsParams.LenFp]) ||
-            !ValidFp(untrimmed.Span[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)]) ||
-            !ValidFp(untrimmed.Span[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)]) ||
-            !ValidFp(untrimmed.Span[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]))
+        if (!ValidFp(untrimmed.Span[..BlsParams.LenFp]) ||
+            !ValidFp(untrimmed.Span[BlsParams.LenFp..(2 * BlsParams.LenFp)]) ||
+            !ValidFp(untrimmed.Span[(2 * BlsParams.LenFp)..(3 * BlsParams.LenFp)]) ||
+            !ValidFp(untrimmed.Span[(3 * BlsParams.LenFp)..]))
         {
             throw new Exception();
         }
@@ -162,15 +140,30 @@ public static class BlsExtensions
         return untrimmed;
     }
 
-    private static bool ValidFp(ReadOnlySpan<byte> fp)
+    public static bool ValidFp(ReadOnlySpan<byte> fp)
     {
-        for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
+        if (fp.Length != BlsParams.LenFp)
         {
-            if (fp[i] > BlsParams.BaseFieldModulus[i])
+            return false;
+        }
+
+        // check that padding bytes are zeroes
+        for (int i = 0; i < BlsParams.LenFpPad; i++)
+        {
+            if (fp[i] != 0)
             {
                 return false;
             }
-            else if (fp[i] < BlsParams.BaseFieldModulus[i])
+        }
+
+        // check that fp < base field order
+        for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
+        {
+            if (fp[i + BlsParams.LenFpTrimmed] > BlsParams.BaseFieldOrder[i])
+            {
+                return false;
+            }
+            else if (fp[i + BlsParams.LenFpTrimmed] < BlsParams.BaseFieldOrder[i])
             {
                 return true;
             }
