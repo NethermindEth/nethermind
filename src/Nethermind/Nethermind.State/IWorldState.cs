@@ -108,4 +108,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
+
+    /// <summary>
+    /// PreBlockCache related
+    /// </summary>
+    bool SupportPreBlockCache => false;
+    bool IsCacheDirty => false;
+    void ClearCache() { }
 }
