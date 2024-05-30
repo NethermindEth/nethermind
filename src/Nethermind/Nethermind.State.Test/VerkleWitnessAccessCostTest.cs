@@ -37,11 +37,8 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 10
-                           + GasCostOf.WitnessBranchRead * 2
-                           + GasCostOf.WitnessChunkWrite * 2
-                           + GasCostOf.WitnessBranchWrite * 1
-                           + GasCostOf.WitnessChunkFill * 2;
+        long expectedGas = GasCostOf.WitnessChunkRead * 4
+                           + GasCostOf.WitnessBranchRead * 2;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, false, ref expectedGas);
 
@@ -54,11 +51,11 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 10
+        long expectedGas = GasCostOf.WitnessChunkRead * 4
                            + GasCostOf.WitnessBranchRead * 2
-                           + GasCostOf.WitnessChunkWrite * 3
-                           + GasCostOf.WitnessBranchWrite * 2
-                           + GasCostOf.WitnessChunkFill * 3;
+                           + GasCostOf.WitnessChunkWrite * 1
+                           + GasCostOf.WitnessBranchWrite * 1
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true, ref expectedGas);
 
@@ -71,11 +68,8 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
-                           + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 2
-                           + GasCostOf.WitnessBranchWrite * 1
-                           + GasCostOf.WitnessChunkFill * 2;
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
+                           + GasCostOf.WitnessBranchRead * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, null, true, ref expectedGas);
 
@@ -90,11 +84,8 @@ public class VerkleWitnessAccessCostTest
 
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
-                           + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 2
-                           + GasCostOf.WitnessBranchWrite * 1
-                           + GasCostOf.WitnessChunkFill * 1;
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
+                           + GasCostOf.WitnessBranchRead * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, null, false, ref expectedGas);
 
@@ -105,15 +96,14 @@ public class VerkleWitnessAccessCostTest
     [Test]
     public void TestAccessForTransactionWithOneValueIsPresentAndDestinationAndTransferValue()
     {
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939502"), VerkleTestUtils.EmptyArray);
+        _verkleTree.Insert(new Hash256("0x3257fdb4ff15d2aac92e0dc30c7a25b45052aea7e1843f992bf450c51c031000"), VerkleTestUtils.EmptyArray);
 
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 10
+        long expectedGas = GasCostOf.WitnessChunkRead * 4
                            + GasCostOf.WitnessBranchRead * 2
-                           + GasCostOf.WitnessChunkWrite * 3
-                           + GasCostOf.WitnessBranchWrite * 2
-                           + GasCostOf.WitnessChunkFill * 2;
+                           + GasCostOf.WitnessChunkWrite * 1
+                           + GasCostOf.WitnessBranchWrite * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true, ref expectedGas);
 
@@ -126,11 +116,11 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 2
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 2
+                           + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1
-                           + GasCostOf.WitnessChunkFill * 2;
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForContractCreationInit(TestItem.AddressA, false, ref expectedGas);
 
@@ -141,14 +131,13 @@ public class VerkleWitnessAccessCostTest
     [Test]
     public void TestAccessForContractCreationInitWithAllValueIsPresent()
     {
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939502"), VerkleTestUtils.EmptyArray);
         _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939500"), VerkleTestUtils.EmptyArray);
 
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 2
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 2
+                           + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1;
 
         bool result = witness.AccessForContractCreationInit(TestItem.AddressA, false, ref expectedGas);
@@ -162,11 +151,11 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 3
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 3
+                           + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1
-                           + GasCostOf.WitnessChunkFill * 3;
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForContractCreationInit(TestItem.AddressA, true, ref expectedGas);
 
@@ -177,15 +166,13 @@ public class VerkleWitnessAccessCostTest
     [Test]
     public void TestAccessForContractCreationInitWithValueTransferAndWithAllValueIsPresent()
     {
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939502"), VerkleTestUtils.EmptyArray);
         _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939500"), VerkleTestUtils.EmptyArray);
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939501"), VerkleTestUtils.EmptyArray);
 
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 3
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 3
+                           + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1;
 
         bool result = witness.AccessForContractCreationInit(TestItem.AddressA, true, ref expectedGas);
@@ -199,11 +186,11 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 5
+                           + GasCostOf.WitnessChunkWrite * 2
                            + GasCostOf.WitnessBranchWrite * 1
-                           + GasCostOf.WitnessChunkFill * 5;
+                           + GasCostOf.WitnessChunkFill * 2;
 
         bool result = witness.AccessForContractCreated(TestItem.AddressA, ref expectedGas);
 
@@ -215,16 +202,13 @@ public class VerkleWitnessAccessCostTest
     public void TestAccessForContractCreatedWithAllValueIsPresent()
     {
         _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939500"), VerkleTestUtils.EmptyArray);
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939502"), VerkleTestUtils.EmptyArray);
         _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939501"), VerkleTestUtils.EmptyArray);
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939503"), VerkleTestUtils.EmptyArray);
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939504"), VerkleTestUtils.EmptyArray);
 
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead * 1
-                           + GasCostOf.WitnessChunkWrite * 5
+                           + GasCostOf.WitnessChunkWrite * 2
                            + GasCostOf.WitnessBranchWrite * 1;
 
         bool result = witness.AccessForContractCreated(TestItem.AddressA, ref expectedGas);
@@ -238,7 +222,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead * 1;
 
         bool result = witness.AccessForGasBeneficiary(TestItem.AddressA, ref expectedGas);
@@ -252,7 +236,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 2
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1;
 
         bool result = witness.AccessForCodeOpCodes(TestItem.AddressA, ref expectedGas);
@@ -294,7 +278,7 @@ public class VerkleWitnessAccessCostTest
     [Test]
     public void TestAccessForBalanceWithWriteAndAllValueIsPresent()
     {
-        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939501"), VerkleTestUtils.EmptyArray);
+        _verkleTree.Insert(new Hash256("0x701a7bfd49d69fa6f316ea3f6b694a263bd4fa07a00e0e30e0891536ad939500"), VerkleTestUtils.EmptyArray);
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
         long expectedGas = GasCostOf.WitnessChunkRead
@@ -473,7 +457,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead;
 
         bool result = witness.AccessForAbsentAccount(TestItem.AddressA, ref expectedGas);
@@ -487,7 +471,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead;
 
         bool result = witness.AccessCompleteAccount(TestItem.AddressA, ref expectedGas);
@@ -501,11 +485,11 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead
-                           + GasCostOf.WitnessChunkWrite * 5
+                           + GasCostOf.WitnessChunkWrite * 2
                            + GasCostOf.WitnessBranchWrite
-                           + GasCostOf.WitnessChunkFill * 5;
+                           + GasCostOf.WitnessChunkFill * 2;
 
         bool result = witness.AccessCompleteAccount(TestItem.AddressA, ref expectedGas, true);
 
@@ -524,9 +508,9 @@ public class VerkleWitnessAccessCostTest
 
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 5
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead
-                           + GasCostOf.WitnessChunkWrite * 5
+                           + GasCostOf.WitnessChunkWrite * 2
                            + GasCostOf.WitnessBranchWrite;
 
         bool result = witness.AccessCompleteAccount(TestItem.AddressA, ref expectedGas, true);
@@ -540,7 +524,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 6
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead * 2
                            + GasCostOf.WitnessChunkWrite * 2
                            + GasCostOf.WitnessBranchWrite * 2
@@ -557,8 +541,8 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 4
-                           + GasCostOf.WitnessBranchRead * 2;
+        long expectedGas = GasCostOf.WitnessChunkRead
+                           + GasCostOf.WitnessBranchRead;
 
         bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, true, false, ref expectedGas);
 
@@ -571,7 +555,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 4
+        long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead * 2
                            + GasCostOf.WitnessChunkWrite * 2
                            + GasCostOf.WitnessBranchWrite * 2
@@ -588,8 +572,8 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 4
-                           + GasCostOf.WitnessBranchRead * 2;
+        long expectedGas = GasCostOf.WitnessChunkRead
+                           + GasCostOf.WitnessBranchRead;
 
         bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, true, true, ref expectedGas);
 
@@ -602,7 +586,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 4
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1
                            + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1
@@ -619,7 +603,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 3
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1;
 
         bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, true, false, ref expectedGas);
@@ -633,7 +617,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 3
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1
                            + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1
@@ -650,7 +634,7 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 3
+        long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1;
 
         bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, true, true, ref expectedGas);
