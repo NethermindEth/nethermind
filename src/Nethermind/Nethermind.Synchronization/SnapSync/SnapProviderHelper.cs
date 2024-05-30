@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -31,7 +32,8 @@ namespace Nethermind.Synchronization.SnapSync
         )
         {
             // TODO: Check the accounts boundaries and sorting
-
+            if (accounts.Count == 0)
+                throw new ArgumentException("Cannot be empty.", nameof(accounts));
             ValueHash256 lastHash = accounts[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
