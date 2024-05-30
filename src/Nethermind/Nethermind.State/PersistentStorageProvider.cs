@@ -344,14 +344,16 @@ namespace Nethermind.State
             return value;
         }
 
-        public void WarmUpEmpty(in StorageCell storageCell)
+        public void WarmUp(in StorageCell storageCell, bool isEmpty)
         {
-            _preBlockCache[storageCell] = Array.Empty<byte>();
-        }
-
-        public void WarmUp(in StorageCell storageCell)
-        {
-            LoadFromTree(in storageCell);
+            if (isEmpty)
+            {
+                _preBlockCache[storageCell] = Array.Empty<byte>();
+            }
+            else
+            {
+                LoadFromTree(in storageCell);
+            }
         }
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
