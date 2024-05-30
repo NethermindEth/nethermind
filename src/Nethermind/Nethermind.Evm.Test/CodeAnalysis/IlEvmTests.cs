@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -102,11 +103,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     var address = receipts.TxReceipts[0].ContractAddress;
             */
 
-            for(int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++) {
+            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++)
+            {
                 ExecuteBlock(new NullBlockTracer(), bytecode);
             }
 
-            Assert.Greater(pattern.CallCount, 0);   
+            Assert.Greater(pattern.CallCount, 0);
         }
 
         [Test]
@@ -126,7 +128,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 try
                 {
                     ILCompiler.CompileSegment(name, [opcode], []);
-                } catch (NotSupportedException nse) {
+                }
+                catch (NotSupportedException nse)
+                {
                     notYetImplemented.Add((instruction, nse));
                 }
                 catch (Exception)
@@ -139,7 +143,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
 
-        public static IEnumerable<(int,byte[])> GetBytecodes()
+        public static IEnumerable<(int, byte[])> GetBytecodes()
         {
             yield return (-1, Prepare.EvmCode
                     .Done);
@@ -239,12 +243,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ProgramCounter = 0,
                 EvmException = EvmExceptionType.None,
                 StopExecution = false,
-                StackHead = 0
+                StackHead = 0,
+                Memory = new EvmPooledMemory()
             };
-            var memory = new EvmPooledMemory();
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.Method(ref iLEvmState, ref memory, ctx.Data);
+            ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, ctx.Data);
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 

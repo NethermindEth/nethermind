@@ -39,15 +39,15 @@ internal static class IlAnalyzer
     private static Dictionary<byte[], InstructionChunk> Patterns = new Dictionary<byte[], InstructionChunk>(new ByteArrayComparer());
     public static Dictionary<byte[], InstructionChunk> AddPattern(byte[] pattern, InstructionChunk chunk)
     {
-        lock(Patterns)
+        lock (Patterns)
         {
             Patterns[pattern] = chunk;
         }
         return Patterns;
     }
-    public static T GetPatternHandler<T> (byte[] pattern) where T : InstructionChunk
+    public static T GetPatternHandler<T>(byte[] pattern) where T : InstructionChunk
     {
-        return (T) Patterns[pattern];
+        return (T)Patterns[pattern];
     }
 
 
@@ -140,7 +140,7 @@ internal static class IlAnalyzer
             return patternFound.ToFrozenDictionary();
         }
 
-        switch(mode)
+        switch (mode)
         {
             case IlInfo.ILMode.PatternMatching:
                 codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode));

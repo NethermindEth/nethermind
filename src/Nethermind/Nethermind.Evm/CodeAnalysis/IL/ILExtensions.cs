@@ -28,9 +28,9 @@ static class EmitExtensions
         where TResult : struct
     {
         Span<TResult> result = Span<TResult>.Empty;
-        fixed(TOriginal* ptr = original)
+        fixed (TOriginal* ptr = original)
         {
-            result = new Span<TResult>(ptr, original.Length * sizeof(TOriginal) /  sizeof(TResult));
+            result = new Span<TResult>(ptr, original.Length * sizeof(TOriginal) / sizeof(TResult));
         }
         return result;
     }
@@ -38,10 +38,11 @@ static class EmitExtensions
 
     public static void PrintLocal<T>(this Emit<T> il, Local local)
     {
-        if(local.LocalType.IsValueType)
+        if (local.LocalType.IsValueType)
         {
             il.LoadLocalAddress(local);
-        } else
+        }
+        else
         {
             il.LoadLocal(local);
         }
@@ -58,7 +59,7 @@ static class EmitExtensions
     public static MethodInfo GetPropertyInfo(Type typeInstance, string name, bool getSetter, out PropertyInfo propInfo)
     {
         propInfo = typeInstance.GetProperty(name);
-        return getSetter? propInfo.GetSetMethod() : propInfo.GetGetMethod();
+        return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
 
     public static void Load<T>(this Emit<T> il, Local local, Local idx)

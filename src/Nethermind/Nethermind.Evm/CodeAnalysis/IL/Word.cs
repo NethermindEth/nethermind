@@ -57,7 +57,8 @@ internal struct Word
     {
         get
         {
-            fixed(byte* ptr = _buffer) {
+            fixed (byte* ptr = _buffer)
+            {
                 return new ValueHash256(new Span<byte>(ptr, 32));
             }
         }

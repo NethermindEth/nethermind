@@ -19,12 +19,15 @@ using MathGmp.Native;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using System.Drawing;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState state, ref EvmPooledMemory memory, byte[][] immediatesData);
-    public class SegmentExecutionCtx {
+    public delegate void ExecuteSegment(ref ILEvmState state, ISpecProvider spec, byte[][] immediatesData);
+    public class SegmentExecutionCtx
+    {
         public ExecuteSegment Method;
         public byte[][] Data;
     }
@@ -131,6 +134,14 @@ internal class ILCompiler
                 case Instruction.INVALID:
                     method.Branch(labels[EvmExceptionType.InvalidCode]);
                     break;
+                case Instruction.CHAINID:
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadArgument(1);
+                    method.LoadField(GetFieldInfo(typeof(ISpecProvider), nameof(ISpecProvider.ChainId)));
+                    method.StoreField(Word.Ulong0Field);
+                    method.StackPush(head);
+                    break;
                 case Instruction.NOT:
                     method.Load(stack, head);
                     method.Call(Word.GetUInt256);
@@ -233,17 +244,14 @@ internal class ILCompiler
                 case Instruction.ADD:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
-
                 case Instruction.SUB:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
-
                 case Instruction.MUL:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
-
                 case Instruction.MOD:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, 
+                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
                         (il, postInstructionLabel, locals) =>
                         {
                             Label label = il.DefineLabel();
@@ -260,7 +268,6 @@ internal class ILCompiler
                             il.MarkLabel(label);
                         }, uint256A, uint256B);
                     break;
-
                 case Instruction.DIV:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!,
                         (il, postInstructionLabel, locals) =>
@@ -279,11 +286,47 @@ internal class ILCompiler
                             il.MarkLabel(label);
                         }, uint256A, uint256B);
                     break;
+                case Instruction.ADDMOD:
+                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!,
+                        (il, postInstructionLabel, locals) =>
+                        {
+                            Label label = il.DefineLabel();
+
+                            il.LoadLocal(locals[2]);
+                            il.LoadConstant(0);
+                            il.CompareEqual();
+
+                            il.BranchIfFalse(label);
+
+                            il.LoadConstant(0);
+                            il.Branch(postInstructionLabel);
+
+                            il.MarkLabel(label);
+                        }, uint256A, uint256B);
+                    break;
+                case Instruction.MULMOD:
+                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!,
+                        (il, postInstructionLabel, locals) =>
+                        {
+                            Label label = il.DefineLabel();
+
+                            il.LoadLocal(locals[2]);
+                            il.LoadConstant(0);
+                            il.CompareEqual();
+
+                            il.BranchIfFalse(label);
+
+                            il.LoadConstant(0);
+                            il.Branch(postInstructionLabel);
+
+                            il.MarkLabel(label);
+                        }, uint256A, uint256B);
+                    break;
                 case Instruction.SHL:
-                    EmitShiftUInt256Method(method, uint256R, (stack, head), isLeft:true, null, uint256A, uint256B);
+                    EmitShiftUInt256Method(method, uint256R, (stack, head), isLeft: true, null, uint256A, uint256B);
                     break;
                 case Instruction.SHR:
-                    EmitShiftUInt256Method(method, uint256R, (stack, head), isLeft:false, null, uint256A, uint256B);
+                    EmitShiftUInt256Method(method, uint256R, (stack, head), isLeft: false, null, uint256A, uint256B);
                     break;
                 case Instruction.AND:
                     EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.And), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
@@ -507,7 +550,8 @@ internal class ILCompiler
                     method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                     method.BranchIfTrue(endOfOpcode);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256C);
@@ -566,7 +610,8 @@ internal class ILCompiler
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
 
-                    method.LoadArgumentAddress(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
                     method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Int0)));
                     method.StackPush(head);
@@ -580,7 +625,8 @@ internal class ILCompiler
                     method.StoreLocal(uint256B);
                     method.StackPop(head, 2);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadLocalAddress(uint256A);
                     method.LoadConstant(Word.Size);
@@ -590,7 +636,8 @@ internal class ILCompiler
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
                     method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256B);
                     method.LoadConstant(Word.Size);
@@ -1032,7 +1079,7 @@ internal class ILCompiler
 
         il.LoadLocalAddress(locals[0]);
         il.LoadConstant(Word.Size * sizeof(byte));
-        il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int)}));
+        il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfTrue(skipPop);
 
         il.LoadLocalAddress(locals[0]);
@@ -1131,6 +1178,43 @@ internal class ILCompiler
         customHandling?.Invoke(il, label, locals);
 
         // invoke op  on the uint256
+        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(uint256R);
+        il.Call(operation);
+
+        // skip the main handling
+        il.MarkLabel(label);
+
+        // push the result to the stack
+        il.CleanWord(stack.span, stack.idx);
+        il.Load(stack.span, stack.idx);
+        il.LoadLocal(uint256R); // stack: word*, uint256
+        il.Call(Word.SetUInt256);
+        il.StackPush(stack.idx, 1);
+    }
+
+    private static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, params Local[] locals)
+    {
+        Label label = il.DefineLabel("SkipHandlingBinaryOp");
+
+        // we the two uint256 from the stack
+        il.StackLoadPrevious(stack.span, stack.idx, 1);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[0]);
+        il.StackLoadPrevious(stack.span, stack.idx, 2);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[1]);
+        il.StackLoadPrevious(stack.span, stack.idx, 3);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[2]);
+        il.StackPop(stack.idx, 3);
+
+        // incase of custom handling, we branch to the label
+        customHandling?.Invoke(il, label, locals);
+
+        // invoke op  on the uint256
+        il.LoadLocalAddress(locals[2]);
         il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(locals[0]);
         il.LoadLocalAddress(uint256R);

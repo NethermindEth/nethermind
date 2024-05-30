@@ -28,6 +28,6 @@ internal ref struct ILEvmState
     public bool StopExecution;
     public int StackHead;
     public Span<byte> Stack;
-    public ref EvmPooledMemory memory;
-    public ReadOnlyMemory<byte> ReturnBuffer; 
+    public ref EvmPooledMemory Memory;
+    public ReadOnlyMemory<byte> ReturnBuffer;
 }
