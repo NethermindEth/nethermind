@@ -134,7 +134,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 }
             }
 
-            Assert.That(notYetImplemented.Count, Is.EqualTo(0));
+            string missingOpcodes = String.Join("; ", notYetImplemented.Select(op => op.Item1.ToString()));
+            Assert.That(notYetImplemented.Count == 0, $"{notYetImplemented.Count} opcodes missing: [{missingOpcodes}]");
         }
 
 

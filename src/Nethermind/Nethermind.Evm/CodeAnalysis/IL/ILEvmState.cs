@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal ref struct ILEvmState
 {
+    public byte[] MachineCode;
     // static arguments
     public BlockHeader Header;
     public ExecutionEnvironment Env;
@@ -27,4 +28,6 @@ internal ref struct ILEvmState
     public bool StopExecution;
     public int StackHead;
     public Span<byte> Stack;
+    public ref EvmPooledMemory memory;
+    public ReadOnlyMemory<byte> ReturnBuffer; 
 }

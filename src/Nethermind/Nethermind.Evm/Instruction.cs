@@ -387,6 +387,7 @@ namespace Nethermind.Evm
             Instruction.EXTCODESIZE or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH => true,
             Instruction.SELFDESTRUCT => true,
             Instruction.BALANCE => true,
+            Instruction.SELFBALANCE => true,
             _ =>  false,
         };
 

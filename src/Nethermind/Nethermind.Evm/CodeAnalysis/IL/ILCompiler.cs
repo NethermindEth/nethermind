@@ -384,7 +384,7 @@ internal class ILCompiler
                 // is pushing to stack happening correctly
                 case Instruction.CODESIZE:
                     method.CleanWord(stack, head);
-                    method.LoadLocal(stack);
+                    method.Load(stack, head);
                     method.LoadConstant(code.Length);
                     method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.UInt0)));
                     method.StackPush(head);
@@ -478,12 +478,66 @@ internal class ILCompiler
                     method.StackPush(head);
                     break;
 
+                case Instruction.CALLDATACOPY:
+
+                    Label endOfOpcode = method.DefineLabel($"endOf{op.Operation}");
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackLoadPrevious(stack, head, 3);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256C);
+                    method.StackPop(head, 3);
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling)));
+                    method.LoadConstant(GasCostOf.Memory);
+                    method.Multiply();
+                    method.LoadConstant(GasCostOf.VeryLow);
+                    method.Add();
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
+                    method.BranchIfTrue(endOfOpcode);
+
+                    method.LoadArgument(1);
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
+                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
+                    method.LoadLocalAddress(uint256B);
+                    method.LoadLocal(uint256C);
+                    method.Call(typeof(UInt256).GetMethod("op_Explicit", new[] { typeof(int) }));
+                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod(nameof(ReadOnlySpan<byte>.Slice), [typeof(UInt256).MakeByRefType(), typeof(int)]));
+                    method.StoreLocal(localReadonOnlySpan);
+
+                    method.LoadArgument(1);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(localReadonOnlySpan);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
+
+                    method.MarkLabel(endOfOpcode);
+                    break;
+
                 case Instruction.CALLDATALOAD:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(ExecutionEnvironment.InputData)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
                     method.StackLoadPrevious(stack, head, 1);
                     method.LoadConstant(Word.Size);
                     method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), BindingFlags.Static | BindingFlags.Public));
@@ -502,7 +556,7 @@ internal class ILCompiler
                     method.Load(stack, head);
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(ExecutionEnvironment.InputData)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                     method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Int0)));
                     method.StackPush(head);
@@ -725,6 +779,126 @@ internal class ILCompiler
                     method.StackPush(head);
 
                     method.MarkLabel(endOfInstructionImpl);
+                    break;
+                case Instruction.CODECOPY:
+                    endOfOpcode = method.DefineLabel($"endOf{op.Operation}");
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackLoadPrevious(stack, head, 3);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256C);
+                    method.StackPop(head, 3);
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling)));
+                    method.LoadConstant(GasCostOf.Memory);
+                    method.Multiply();
+                    method.LoadConstant(GasCostOf.VeryLow);
+                    method.Add();
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
+                    method.BranchIfTrue(endOfOpcode);
+
+                    method.LoadArgument(1);
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.MachineCode)));
+                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
+                    method.LoadLocalAddress(uint256B);
+                    method.LoadLocal(uint256C);
+                    method.Call(typeof(UInt256).GetMethod("op_Explicit", new[] { typeof(int) }));
+                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod(nameof(ReadOnlySpan<byte>.Slice), [typeof(UInt256).MakeByRefType(), typeof(int)]));
+                    method.StoreLocal(localReadonOnlySpan);
+
+                    method.LoadArgument(1);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(localReadonOnlySpan);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
+
+                    method.MarkLabel(endOfOpcode);
+                    break;
+                case Instruction.GAS:
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadLocal(gasAvailable);
+                    method.StoreField(Word.Ulong0Field);
+                    method.StackPush(head);
+                    break;
+                case Instruction.RETURNDATASIZE:
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
+                    method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
+                    method.StoreField(Word.Int0Field);
+                    method.StackPush(head);
+                    break;
+                case Instruction.RETURNDATACOPY:
+                    endOfOpcode = method.DefineLabel($"endOf{op.Operation}");
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackLoadPrevious(stack, head, 3);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256C);
+                    method.StackPop(head, 3);
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling)));
+                    method.LoadConstant(GasCostOf.Memory);
+                    method.Multiply();
+                    method.LoadConstant(GasCostOf.VeryLow);
+                    method.Add();
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    // Note : check if c + b > returnData.Size
+
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
+                    method.BranchIfTrue(endOfOpcode);
+
+                    method.LoadArgument(1);
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
+                    method.Call(GetPropertyInfo(typeof(ReadOnlyMemory<byte>), nameof(ReadOnlyMemory<byte>.Span), false, out _));
+                    method.LoadLocalAddress(uint256B);
+                    method.LoadLocal(uint256C);
+                    method.Call(typeof(UInt256).GetMethod("op_Explicit", new[] { typeof(int) }));
+                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod(nameof(ReadOnlySpan<byte>.Slice), [typeof(UInt256).MakeByRefType(), typeof(int)]));
+                    method.StoreLocal(localReadonOnlySpan);
+
+                    method.LoadArgument(1);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(localReadonOnlySpan);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
+
+                    method.MarkLabel(endOfOpcode);
                     break;
                 default:
                     throw new NotSupportedException();
