@@ -87,8 +87,8 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
-            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
-            using IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(_stateProvider.StateRoot);
+            IReadOnlyTxProcessorSource processorSource = _readOnlyTxProcessingEnvFactory.Create();
+            using IReadOnlyTxProcessingScope scope = processorSource.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
@@ -188,8 +188,8 @@ namespace Nethermind.AccountAbstraction.Executor
         [Todo("Refactor once BlockchainBridge is separated")]
         public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
-            using IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(header.StateRoot!);
+            IReadOnlyTxProcessorSource txProcessorSource = _readOnlyTxProcessingEnvFactory.Create();
+            using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(

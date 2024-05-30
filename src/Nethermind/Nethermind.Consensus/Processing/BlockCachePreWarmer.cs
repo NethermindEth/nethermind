@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
-    private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
+    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
@@ -71,7 +71,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                ReadOnlyTxProcessingEnv env = _envPool.Get();
+                IReadOnlyTxProcessorSource env = _envPool.Get();
                 try
                 {
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
@@ -81,7 +81,6 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 }
                 finally
                 {
-                    env.Reset();
                     _envPool.Return(env);
                 }
             }
@@ -93,7 +92,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 Transaction tx = block.Transactions[i];
-                ReadOnlyTxProcessingEnv env = _envPool.Get();
+                IReadOnlyTxProcessorSource env = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
                 try
                 {
@@ -113,16 +112,15 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 finally
                 {
                     _systemTransactionPool.Return(systemTransaction);
-                    env.Reset();
                     _envPool.Return(env);
                 }
             });
         }
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<ReadOnlyTxProcessingEnv>
+    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public ReadOnlyTxProcessingEnv Create() => envFactory.Create();
-        public bool Return(ReadOnlyTxProcessingEnv obj) => true;
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create();
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 }
