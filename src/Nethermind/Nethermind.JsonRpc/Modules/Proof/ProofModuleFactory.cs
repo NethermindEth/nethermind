@@ -10,8 +10,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -48,13 +50,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _worldStateManager, _blockTree, _specProvider, _logManager);
 
-            RpcBlockTransactionsExecutor traceExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+
+            RpcBlockTransactionsExecutor traceExecutor = new(scope.TransactionProcessor, scope.WorldState);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager, traceExecutor);
 
             Tracer tracer = new(
-                txProcessingEnv.StateProvider,
+                scope.WorldState,
                 chainProcessingEnv.ChainProcessor,
                 chainProcessingEnv.ChainProcessor);
 
