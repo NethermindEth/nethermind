@@ -45,8 +45,8 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
         try
         {
-            G2? x = BlsExtensions.G2FromUntrimmed(inputData[..BlsParams.LenG2]);
-            G2? y = BlsExtensions.G2FromUntrimmed(inputData[BlsParams.LenG2..]);
+            G2? x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2]);
+            G2? y = BlsExtensions.DecodeG2(inputData[BlsParams.LenG2..]);
 
             if (!x.HasValue)
             {
@@ -60,22 +60,8 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
                 return (inputData[..BlsParams.LenG2], true);
             }
 
-            if (x.Value.on_curve() && y.Value.on_curve())
-            {
-                G2 res = x.Value.add(y.Value);
-                if (res.is_inf())
-                {
-                    result = (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-                }
-                else
-                {
-                    result = (res.ToBytesUntrimmed(), true);
-                }
-            }
-            else
-            {
-                result = (Array.Empty<byte>(), false);
-            }
+            G2 res = x.Value.add(y.Value);
+            result = (res.Encode(), true);
         }
         catch (Exception)
         {

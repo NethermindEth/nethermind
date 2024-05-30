@@ -47,14 +47,7 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
         {
             G2 res = new();
             res.map_to(inputData[16..64].ToArray(), inputData[(64+16)..].ToArray());
-            if (res.is_inf())
-            {
-                result = (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-            }
-            else
-            {
-                result = (res.ToBytesUntrimmed(), true);
-            }
+            result = (res.Encode(), true);
         }
         catch (Exception)
         {

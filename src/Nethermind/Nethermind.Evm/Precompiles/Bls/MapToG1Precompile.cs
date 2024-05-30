@@ -48,14 +48,7 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
         {
             G1 res = new();
             res.map_to(inputData[16..64].ToArray());
-            if (res.is_inf())
-            {
-                result = (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
-            }
-            else
-            {
-                result = (res.ToBytesUntrimmed(), true);
-            }
+            result = (res.Encode(), true);
         }
         catch (Exception)
         {

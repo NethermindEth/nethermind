@@ -45,7 +45,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
         try
         {
-            G2? x = BlsExtensions.G2FromUntrimmed(inputData[..BlsParams.LenG2]);
+            G2? x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2]);
 
             if (!x.HasValue)
             {
@@ -53,29 +53,15 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
-            if (x.Value.on_curve() && x.Value.in_group())
-            {
-                byte[] scalar = inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray();
+            byte[] scalar = inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray();
 
-                if (scalar.All(x => x == 0))
-                {
-                    return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-                }
-
-                G2 res = x.Value.mult(scalar);
-                if (res.is_inf())
-                {
-                    result = (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-                }
-                else
-                {
-                    result = (res.ToBytesUntrimmed(), true);
-                }
-            }
-            else
+            if (scalar.All(x => x == 0))
             {
-                result = (Array.Empty<byte>(), false);
+                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
+
+            G2 res = x.Value.mult(scalar);
+            result = (res.Encode(), true);
         }
         catch (Exception)
         {

@@ -45,8 +45,8 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
         try
         {
-            G1? x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
-            G1? y = BlsExtensions.G1FromUntrimmed(inputData[BlsParams.LenG1..]);
+            G1? x = BlsExtensions.DecodeG1(inputData[..BlsParams.LenG1]);
+            G1? y = BlsExtensions.DecodeG1(inputData[BlsParams.LenG1..]);
 
             if (!x.HasValue)
             {
@@ -60,22 +60,8 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
                 return (inputData[..BlsParams.LenG1], true);
             }
 
-            if (x.Value.on_curve() && y.Value.on_curve())
-            {
-                G1 res = x.Value.add(y.Value);
-                if (res.is_inf())
-                {
-                    result = (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
-                }
-                else
-                {
-                    result = (res.ToBytesUntrimmed(), true);
-                }
-            }
-            else
-            {
-                result = (Array.Empty<byte>(), false);
-            }
+            G1 res = x.Value.add(y.Value);
+            result = (res.Encode(), true);
         }
         catch (Exception)
         {

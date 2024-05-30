@@ -62,25 +62,18 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             for (int i = 0; i < points.Length; i++)
             {
                 int offset = i * ItemSize;
-                G1? p = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
+                G1? p = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)]);
                 points[i] = p!.Value;
                 scalars[i] = new(inputData[(offset + BlsParams.LenG1)..(offset + BlsParams.LenG1 + 32)].ToArray());
 
-                if (!points[i].in_group() || !points[i].on_curve())
+                if (!points[i].in_group())
                 {
                     return (Array.Empty<byte>(), false);
                 }
             }
             G1 res = new();
             res.multi_mult(points, scalars);
-            if (res.is_inf())
-            {
-                result = (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
-            }
-            else
-            {
-                result = (res.ToBytesUntrimmed(), true);
-            }
+            result = (res.Encode(), true);
         }
         catch (Exception)
         {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-
+using System.Linq;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 
@@ -22,7 +22,7 @@ public static class BlsParams
 
 public static class BlsExtensions
 {
-    public static G1? G1FromUntrimmed(in ReadOnlyMemory<byte> untrimmed)
+    public static G1? DecodeG1(in ReadOnlyMemory<byte> untrimmed)
     {
         if (untrimmed.Length != BlsParams.LenG1)
         {
@@ -55,11 +55,22 @@ public static class BlsExtensions
         byte[] trimmed = new byte[BlsParams.LenG1Trimmed];
         untrimmed[BlsParams.LenFpPad..BlsParams.LenFp].CopyTo(trimmed);
         untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[BlsParams.LenFpTrimmed..]);
-        return new(trimmed);
+
+        G1 x = new(trimmed);
+        if (!x.on_curve())
+        {
+            throw new Exception();
+        }
+        return x;
     }
 
-    public static byte[] ToBytesUntrimmed(this G1 p)
+    public static byte[] Encode(this G1 p)
     {
+        if (p.is_inf())
+        {
+            return Enumerable.Repeat<byte>(0, 128).ToArray();
+        }
+
         byte[] untrimmed = new byte[BlsParams.LenG1];
         Span<byte> trimmed = p.serialize();
         trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
@@ -67,7 +78,7 @@ public static class BlsExtensions
         return untrimmed;
     }
 
-    public static G2? G2FromUntrimmed(in ReadOnlyMemory<byte> untrimmed)
+    public static G2? DecodeG2(in ReadOnlyMemory<byte> untrimmed)
     {
         if (untrimmed.Length != BlsParams.LenG2)
         {
@@ -110,11 +121,22 @@ public static class BlsExtensions
         untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory());
         untrimmed[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 3)..]);
         untrimmed[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 2)..]);
-        return new(trimmed);
+
+        G2 x = new(trimmed);
+        if (!x.on_curve())
+        {
+            throw new Exception();
+        }
+        return x;
     }
 
-    public static byte[] ToBytesUntrimmed(this G2 p)
+    public static byte[] Encode(this G2 p)
     {
+        if (p.is_inf())
+        {
+            return Enumerable.Repeat<byte>(0, 256).ToArray();
+        }
+
         byte[] untrimmed = new byte[BlsParams.LenG2];
         Span<byte> trimmed = p.serialize();
         trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
