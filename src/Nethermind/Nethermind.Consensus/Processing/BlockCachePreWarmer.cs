@@ -25,7 +25,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, CancellationToken cancellationToken = default)
     {
-        if (targetWorldState is not null && targetWorldState.SupportPreBlockCache)
+        if (targetWorldState is not null)
         {
             if (targetWorldState.IsCacheDirty)
             {
