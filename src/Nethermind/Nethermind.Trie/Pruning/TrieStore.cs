@@ -108,8 +108,11 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new();
-            private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache = new();
+            private static readonly int _concurrencyLevel = HashHelpers.GetPrime(Environment.ProcessorCount * 4);
+            private static readonly int _initialBuckets = HashHelpers.GetPrime(Math.Max(31, Environment.ProcessorCount * 16));
+
+            private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new(_concurrencyLevel, _initialBuckets);
+            private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache = new(_concurrencyLevel, _initialBuckets);
 
             public bool IsNodeCached(in Key key)
             {
@@ -276,7 +279,7 @@ namespace Nethermind.Trie.Pruning
 
         // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
         // If null, disable removing key.
-        private LruCache<HashAndTinyPath, ValueHash256>? _pastPathHash;
+        private LruCacheLowObject<HashAndTinyPath, ValueHash256>? _pastPathHash;
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
@@ -787,33 +790,48 @@ namespace Nethermind.Trie.Pruning
                 return true;
             }
 
-            using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+            ActionBlock<INodeStorage.WriteBatch> actionBlock =
+                new ActionBlock<INodeStorage.WriteBatch>((batch) => batch.Dispose());
 
-            void DoAct(KeyValuePair<HashAndTinyPath, Hash256> keyValuePair)
+            INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+            try
             {
-                HashAndTinyPath key = keyValuePair.Key;
-                if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
+                int round = 0;
+                foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
                 {
-                    TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
-                    Hash256? hash = key.addr == default ? null : key.addr.ToCommitment();
-                    if (CanRemove(hash, key.path, fullPath, prevHash, keyValuePair.Value))
+                    HashAndTinyPath key = keyValuePair.Key;
+                    if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
                     {
-                        Metrics.RemovedNodeCount++;
-                        writeBatch.Remove(hash, fullPath, prevHash);
+                        TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
+                        if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
+                        {
+                            Metrics.RemovedNodeCount++;
+                            writeBatch.Set(key.addr, fullPath, prevHash, default, WriteFlags.DisableWAL);
+                            round++;
+                        }
+                    }
+
+                    // Batches of 1000
+                    if (round > 1000)
+                    {
+                        actionBlock.Post(writeBatch);
+                        writeBatch = _nodeStorage.StartWriteBatch();
+                        round = 0;
                     }
                 }
             }
-
-            ActionBlock<KeyValuePair<HashAndTinyPath, Hash256>> actionBlock =
-                new ActionBlock<KeyValuePair<HashAndTinyPath, Hash256>>(DoAct);
-
-            foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
+            catch (Exception ex)
             {
-                actionBlock.Post(keyValuePair);
+                _logger.Error($"Failed to remove past keys. {ex}");
+            }
+            finally
+            {
+                writeBatch.Dispose();
             }
 
             actionBlock.Complete();
             actionBlock.Completion.Wait();
+            _nodeStorage.Compact();
         }
 
         /// <summary>
@@ -1324,14 +1342,14 @@ namespace Nethermind.Trie.Pruning
         [StructLayout(LayoutKind.Auto)]
         private readonly struct HashAndTinyPath(Hash256? hash, in TinyTreePath path) : IEquatable<HashAndTinyPath>
         {
-            public readonly ValueHash256 addr = hash ?? default;
+            public readonly Hash256? addr = hash;
             public readonly TinyTreePath path = path;
 
-            public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(other.path);
+            public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(in other.path);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
-                var addressHash = addr.GetHashCode();
+                var addressHash = addr?.GetHashCode() ?? 1;
                 return path.GetHashCode() ^ addressHash;
             }
         }
@@ -1339,17 +1357,143 @@ namespace Nethermind.Trie.Pruning
         [StructLayout(LayoutKind.Auto)]
         private readonly struct HashAndTinyPathAndHash(Hash256? hash, in TinyTreePath path, in ValueHash256 valueHash) : IEquatable<HashAndTinyPathAndHash>
         {
-            public readonly ValueHash256 hash = hash ?? default;
+            public readonly Hash256? hash = hash;
             public readonly TinyTreePath path = path;
             public readonly ValueHash256 valueHash = valueHash;
 
-            public bool Equals(HashAndTinyPathAndHash other) => hash.Equals(in other.hash) && path.Equals(in other.path) && valueHash.Equals(in other.valueHash);
+            public bool Equals(HashAndTinyPathAndHash other) => hash == other.hash && path.Equals(in other.path) && valueHash.Equals(in other.valueHash);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
-                var hashHash = hash.GetHashCode();
+                var hashHash = hash?.GetHashCode() ?? 1;
                 return valueHash.GetChainedHashCode((uint)path.GetHashCode()) ^ hashHash;
             }
+        }
+
+        internal static class HashHelpers
+        {
+            private const int HashPrime = 101;
+
+            private static bool IsPrime(int candidate)
+            {
+                if ((candidate & 1) != 0)
+                {
+                    int limit = (int)Math.Sqrt(candidate);
+                    for (int divisor = 3; divisor <= limit; divisor += 2)
+                    {
+                        if ((candidate % divisor) == 0)
+                            return false;
+                    }
+                    return true;
+                }
+                return candidate == 2;
+            }
+
+            public static int GetPrime(int min)
+            {
+                foreach (int prime in Primes)
+                {
+                    if (prime >= min)
+                        return prime;
+                }
+
+                // Outside of our predefined table. Compute the hard way.
+                for (int i = (min | 1); i < int.MaxValue; i += 2)
+                {
+                    if (IsPrime(i) && ((i - 1) % HashPrime != 0))
+                        return i;
+                }
+                return min;
+            }
+
+            // Table of prime numbers to use as hash table sizes.
+            // A typical resize algorithm would pick the smallest prime number in this array
+            // that is larger than twice the previous capacity.
+            // Suppose our Hashtable currently has capacity x and enough elements are added
+            // such that a resize needs to occur. Resizing first computes 2x then finds the
+            // first prime in the table greater than 2x, i.e. if primes are ordered
+            // p_1, p_2, ..., p_i, ..., it finds p_n such that p_n-1 < 2x < p_n.
+            // Doubling is important for preserving the asymptotic complexity of the
+            // hashtable operations such as add.  Having a prime guarantees that double
+            // hashing does not lead to infinite loops.  IE, your hash function will be
+            // h1(key) + i*h2(key), 0 <= i < size.  h2 and the size must be relatively prime.
+            // We prefer the low computation costs of higher prime numbers over the increased
+            // memory allocation of a fixed prime number i.e. when right sizing a HashSet.
+            private static ReadOnlySpan<int> Primes =>
+            [
+                3,
+                7,
+                11,
+                17,
+                23,
+                29,
+                37,
+                47,
+                59,
+                71,
+                89,
+                107,
+                131,
+                163,
+                197,
+                239,
+                293,
+                353,
+                431,
+                521,
+                631,
+                761,
+                919,
+                1103,
+                1327,
+                1597,
+                1931,
+                2333,
+                2801,
+                3371,
+                4049,
+                4861,
+                5839,
+                7013,
+                8419,
+                10103,
+                12143,
+                14591,
+                17519,
+                21023,
+                25229,
+                30293,
+                36353,
+                43627,
+                52361,
+                62851,
+                75431,
+                90523,
+                108631,
+                130363,
+                156437,
+                187751,
+                225307,
+                270371,
+                324449,
+                389357,
+                467237,
+                560689,
+                672827,
+                807403,
+                968897,
+                1162687,
+                1395263,
+                1674319,
+                2009191,
+                2411033,
+                2893249,
+                3471899,
+                4166287,
+                4999559,
+                5999471,
+                7199369
+            ];
         }
     }
 }
