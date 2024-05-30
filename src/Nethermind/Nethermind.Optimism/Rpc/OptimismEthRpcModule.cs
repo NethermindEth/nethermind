@@ -28,7 +28,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Optimism;
 
-public class OptimismEthRpcModule : EthRpcModule<OptimismReceiptForRpc>, IOptimismEthRpcModule
+public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 {
     private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly IAccountStateProvider _accountStateProvider;
@@ -77,7 +77,7 @@ public class OptimismEthRpcModule : EthRpcModule<OptimismReceiptForRpc>, IOptimi
         _opConfigHelper = opConfigHelper;
     }
 
-    public override ResultWrapper<OptimismReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    public new ResultWrapper<OptimismReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         static ResultWrapper<OptimismReceiptForRpc[]?> GetBlockReceipts(IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider, IOPConfigHelper opConfigHelper)
         {
@@ -93,13 +93,12 @@ public class OptimismEthRpcModule : EthRpcModule<OptimismReceiptForRpc>, IOptimi
 
             L1BlockGasInfo l1BlockGasInfo = new(block, opConfigHelper.IsRegolith(block!.Header));
 
-            IEnumerable<OptimismReceiptForRpc> result = receipts
+            OptimismReceiptForRpc[]? result = [.. receipts
                 .Zip(block.Transactions, (r, t) =>
                 {
                     return new OptimismReceiptForRpc(t.Hash!, r, t.GetGasInfo(isEip1559Enabled, block.Header), l1BlockGasInfo.GetTxGasInfo(t), receipts.GetBlockLogFirstIndex(r.Index));
-                });
-            OptimismReceiptForRpc[]? resultAsArray = result.ToArray();
-            return ResultWrapper<OptimismReceiptForRpc[]?>.Success(resultAsArray);
+                })];
+            return ResultWrapper<OptimismReceiptForRpc[]?>.Success(result);
         }
 
         return GetBlockReceipts(_receiptFinder, blockParameter, _blockFinder, _specProvider, _opConfigHelper);
@@ -139,7 +138,7 @@ public class OptimismEthRpcModule : EthRpcModule<OptimismReceiptForRpc>, IOptimi
         return ResultWrapper<Hash256>.Success(result);
     }
 
-    public override ResultWrapper<OptimismReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
+    public new ResultWrapper<OptimismReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
