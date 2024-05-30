@@ -65,20 +65,4 @@ namespace Nethermind.Consensus.Processing
             return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
         }
     }
-
-    public class ReadOnlyTxProcessingScope(
-        ITransactionProcessor transactionProcessor,
-        IWorldState worldState,
-        Hash256 originalStateRoot
-    ) : IReadOnlyTxProcessingScope
-    {
-        public void Dispose()
-        {
-            worldState.StateRoot = originalStateRoot;
-            worldState.Reset();
-        }
-
-        public ITransactionProcessor TransactionProcessor => transactionProcessor;
-        public IWorldState WorldState => worldState;
-    }
 }
