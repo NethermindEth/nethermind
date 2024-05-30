@@ -159,11 +159,11 @@ public static class BlsExtensions
         // check that fp < base field order
         for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
         {
-            if (fp[i + BlsParams.LenFpTrimmed] > BlsParams.BaseFieldOrder[i])
+            if (fp[BlsParams.LenFpPad + i] > BlsParams.BaseFieldOrder[i])
             {
                 return false;
             }
-            else if (fp[i + BlsParams.LenFpTrimmed] < BlsParams.BaseFieldOrder[i])
+            else if (fp[BlsParams.LenFpPad + i] < BlsParams.BaseFieldOrder[i])
             {
                 return true;
             }

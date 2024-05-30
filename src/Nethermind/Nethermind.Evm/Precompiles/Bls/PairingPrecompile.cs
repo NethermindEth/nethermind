@@ -46,12 +46,18 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
             for (int i = 0; i < inputData.Length / PairSize; i++)
             {
                 int offset = i * PairSize;
-                G1? x = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)])!.Value;
+                G1? x = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)]);
                 G2? y = BlsExtensions.DecodeG2(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)]);
 
-                if (!x.Value.in_group() || !y.Value.in_group())
+                if ((x.HasValue && !x.Value.in_group()) || (y.HasValue && !y.Value.in_group()))
                 {
-                    return (Array.Empty<byte>(), false);
+                    throw new Exception();
+                }
+
+                // x == inf || y == inf -> e(x, y) = 1
+                if (!x.HasValue || !y.HasValue)
+                {
+                    continue;
                 }
 
                 acc.mul(new GT(y.Value, x.Value));
