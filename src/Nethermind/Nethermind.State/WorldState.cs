@@ -116,10 +116,10 @@ namespace Nethermind.State
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
-                    _stateProvider.WarmUp(address);
+                    bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage));
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
                     }
                 }
             }
