@@ -13,6 +13,8 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -74,7 +76,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     }
 
     protected override BlockProcessor CreateBlockProcessor(
-        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+        IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -86,12 +88,12 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             blockValidator,
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-            readOnlyTxProcessingEnv.StateProvider,
+            readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
-            new BlockhashStore(_blockTree, specProvider, readOnlyTxProcessingEnv.StateProvider),
+            new BlockhashStore(_blockTree, specProvider, readOnlyTxProcessingEnv.WorldState),
             logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
-            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));
+            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }
 }

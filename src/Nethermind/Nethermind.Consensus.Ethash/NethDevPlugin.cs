@@ -13,7 +13,9 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -70,11 +72,13 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
 
+            IReadOnlyTxProcessingScope scope = producerEnv.Build(Keccak.EmptyTreeHash);
+
             BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.BlockTree, getFromApi.SpecProvider, producerEnv.StateProvider),
