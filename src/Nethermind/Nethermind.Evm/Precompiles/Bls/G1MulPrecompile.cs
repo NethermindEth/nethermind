@@ -52,6 +52,11 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
             }
 
+            if (!x.Value.in_group())
+            {
+                throw new Exception();
+            }
+
             byte[] scalar = inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray();
 
             if (scalar.All(x => x == 0))
