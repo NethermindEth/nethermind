@@ -22,15 +22,60 @@ public class Metrics
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
-    public static long Calls { get; set; }
+    public static long Calls
+    {
+        get
+        {
+            long total = 0;
+            foreach (var value in _calls.Values)
+            {
+                total += value;
+            }
+            return total;
+        }
+    }
+    private static ThreadLocal<long> _calls = new(trackAllValues: true);
+    [Description("Number of calls to other contracts on thread.")]
+    public static long ThreadLocalCalls => _calls.Value;
+    public static void IncrementCalls() => _calls.Value++;
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
-    public static long SloadOpcode { get; set; }
+    public static long SloadOpcode
+    {
+        get
+        {
+            long total = 0;
+            foreach (var value in _sLoadOpcode.Values)
+            {
+                total += value;
+            }
+            return total;
+        }
+    }
+    private static ThreadLocal<long> _sLoadOpcode = new(trackAllValues: true);
+    [Description("Number of SLOAD opcodes executed on thread.")]
+    public static long ThreadLocalSLoadOpcode => _sLoadOpcode.Value;
+    public static void IncrementSLoadOpcode() => _sLoadOpcode.Value++;
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
-    public static long SstoreOpcode { get; set; }
+    public static long SstoreOpcode
+    {
+        get
+        {
+            long total = 0;
+            foreach (var value in _sStoreOpcode.Values)
+            {
+                total += value;
+            }
+            return total;
+        }
+    }
+    private static ThreadLocal<long> _sStoreOpcode = new(trackAllValues: true);
+    [Description("Number of SSTORE opcodes executed on thread.")]
+    public static long ThreadLocalSStoreOpcode => _sStoreOpcode.Value;
+    public static void IncrementSStoreOpcode() => _sStoreOpcode.Value++;
 
     [Description("Number of TLOAD opcodes executed.")]
     public static long TloadOpcode { get; set; }
@@ -73,15 +118,59 @@ public class Metrics
 
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
-    public static long EmptyCalls { get; set; }
+    public static long EmptyCalls
+    {
+        get
+        {
+            long total = 0;
+            foreach (var value in _emptyCalls.Values)
+            {
+                total += value;
+            }
+            return total;
+        }
+    }
+    private static ThreadLocal<long> _emptyCalls = new(trackAllValues: true);
+    [Description("Number of calls made to addresses without code on thread.")]
+    public static long ThreadLocalEmptyCalls => _emptyCalls.Value;
+    public static void IncrementEmptyCalls() => _emptyCalls.Value++;
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
-    public static long Creates { get; set; }
-    private static long _contractsAnalysed;
+    public static long Creates
+    {
+        get
+        {
+            long total = 0;
+            foreach (var value in _creates.Values)
+            {
+                total += value;
+            }
+            return total;
+        }
+    }
+    private static ThreadLocal<long> _creates = new(trackAllValues: true);
+    [Description("Number of contract create calls on thread.")]
+    public static long ThreadLocalCreates => _creates.Value;
+    public static void IncrementCreates() => _creates.Value++;
+
     [Description("Number of contracts' code analysed for jump destinations.")]
-    public static long ContractsAnalysed => _contractsAnalysed;
-    public static void IncrementContractsAnalysed() => Interlocked.Increment(ref _contractsAnalysed);
+    public static long ContractsAnalysed
+    {
+        get
+        {
+            long total = 0;
+            foreach (var value in _contractsAnalysed.Values)
+            {
+                total += value;
+            }
+            return total;
+        }
+    }
+    private static ThreadLocal<long> _contractsAnalysed = new(trackAllValues: true);
+    [Description("Number of contracts' code analysed for jump destinations on thread.")]
+    public static long ThreadLocalContractsAnalysed => _contractsAnalysed.Value;
+    public static void IncrementContractsAnalysed() => _contractsAnalysed.Value++;
 
     internal static long Transactions { get; set; }
     internal static float AveGasPrice { get; set; }

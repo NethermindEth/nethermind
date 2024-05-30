@@ -3,7 +3,9 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Core;
+using System.Numerics;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -57,6 +59,35 @@ namespace Nethermind.Synchronization.FastSync
         private NodeKey? _key = null;
         public NodeKey Key => _key ??= new(Address, Path, Hash);
 
-        public record NodeKey(Hash256? Address, TreePath? Path, Hash256 Hash);
+        [StructLayout(LayoutKind.Auto)]
+        public readonly struct NodeKey(Hash256? address, TreePath? path, Hash256 hash) : IEquatable<NodeKey>
+        {
+            private readonly ValueHash256 Address = address ?? default;
+            private readonly TreePath? Path = path ?? default;
+            private readonly ValueHash256 Hash = hash;
+
+            public readonly bool Equals(NodeKey other)
+                => Address == other.Address && Path == other.Path && Hash == other.Hash;
+
+            public override bool Equals(object obj)
+                => obj is NodeKey && Equals((NodeKey)obj);
+
+            public override int GetHashCode()
+            {
+                uint hash0 = (uint)hash.GetHashCode();
+                ulong hash1 = ((ulong)(uint)(address?.GetHashCode() ?? 1) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
+                return (int)BitOperations.Crc32C(hash0, hash1);
+            }
+
+            public static bool operator ==(in NodeKey left, in NodeKey right)
+            {
+                return left.Equals(right);
+            }
+
+            public static bool operator !=(in NodeKey left, in NodeKey right)
+            {
+                return !(left == right);
+            }
+        }
     }
 }
