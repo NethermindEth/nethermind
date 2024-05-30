@@ -145,14 +145,15 @@ public class DiscoveryApp : IDiscoveryApp
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
         }
 
-        _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.LocalIp!), _networkConfig.DiscoveryPort)
+        IPAddress ip = IPAddress.Parse(_networkConfig.LocalIp!);
+        _bindingTask = bootstrap.BindAsync(ip, _networkConfig.DiscoveryPort)
             .ContinueWith(
                 t
                     =>
                 {
                     if (t.IsFaulted)
                     {
-                        _logger.Error("Error when establishing discovery connection", t.Exception);
+                        _logger.Error($"Error when establishing discovery connection on Address: {ip}({_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort})", t.Exception);
                     }
 
                     return _channel = t.Result;

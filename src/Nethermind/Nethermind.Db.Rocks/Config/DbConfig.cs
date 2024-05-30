@@ -201,7 +201,7 @@ public class DbConfig : IDbConfig
     public int? StateDbBloomFilterBitsPerKey { get; set; } = 15;
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
     public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
-    public bool StateDbEnableFileWarmer { get; set; }
+    public bool StateDbEnableFileWarmer { get; set; } = false;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

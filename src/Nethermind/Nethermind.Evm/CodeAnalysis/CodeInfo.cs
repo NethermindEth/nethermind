@@ -47,6 +47,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public bool IsPrecompile => Precompile is not null;
+        public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer) && !IsPrecompile;
 
         /// <summary>
         /// Gets information whether this code info has IL-EVM optimizations ready.

@@ -10,6 +10,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -52,6 +53,7 @@ public class InitializeStateDb : IStep
         ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
+        IBlocksConfig blockConfig = getApi.Config<IBlocksConfig>();
 
         _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
 
@@ -74,7 +76,7 @@ public class InitializeStateDb : IStep
 
         if (pruningConfig.PruningBoundary < 64)
         {
-            if (_logger.IsWarn) _logger.Warn($"Prunig boundary must be at least 64. Setting to 64.");
+            if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
             pruningConfig.PruningBoundary = 64;
         }
 
@@ -96,6 +98,12 @@ public class InitializeStateDb : IStep
                 PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
                 getApi.DisposeStack.Push(triggerPersistenceStrategy);
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+            }
+
+            if ((_api.NodeStorageFactory.CurrentKeyScheme != INodeStorage.KeyScheme.Hash || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.HalfPath)
+                && pruningConfig.CacheMb > 2000)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than 2000MB is not recommended as it may cause long memory pruning time which affect attestation.");
             }
 
             pruningStrategy = Prune
@@ -128,15 +136,25 @@ public class InitializeStateDb : IStep
         // TODO: Needed by node serving. Probably should use `StateReader` instead.
         setApi.TrieStore = trieStore;
 
+        ITrieStore mainWorldTrieStore = trieStore;
+        PreBlockCaches? preBlockCaches = null;
+        if (blockConfig.PreWarmStateOnBlockProcessing)
+        {
+            preBlockCaches = new PreBlockCaches();
+            mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
+        }
+
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
-                trieStore,
+                mainWorldTrieStore,
                 codeDb,
-                getApi.LogManager)
+                getApi.LogManager,
+                preBlockCaches)
             : new WorldState(
-                trieStore,
+                mainWorldTrieStore,
                 codeDb,
-                getApi.LogManager);
+                getApi.LogManager,
+                preBlockCaches);
 
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
@@ -148,7 +166,7 @@ public class InitializeStateDb : IStep
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
-        getApi.DisposeStack.Push(trieStore);
+        getApi.DisposeStack.Push(mainWorldTrieStore);
 
         setApi.WorldState = stateManager.GlobalWorldState;
         setApi.StateReader = stateManager.GlobalStateReader;
