@@ -16,9 +16,19 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
+        protected readonly ILogManager _logManager;
         public IStateReader StateReader { get; }
-        public IWorldState StateProvider { get; }
-        public ITransactionProcessor TransactionProcessor { get; set; }
+        protected IWorldState StateProvider { get; }
+
+        protected ITransactionProcessor? _transactionProcessor;
+        protected ITransactionProcessor TransactionProcessor
+        {
+            get
+            {
+                return _transactionProcessor ??= CreateTransactionProcessor();
+            }
+        }
+
         public IBlockTree BlockTree { get; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }
@@ -50,7 +60,12 @@ namespace Nethermind.Consensus.Processing
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
+            _logManager = logManager;
+        }
+
+        protected virtual TransactionProcessor CreateTransactionProcessor()
+        {
+            return new TransactionProcessor(SpecProvider, StateProvider, Machine, _logManager);
         }
 
         public void Reset()

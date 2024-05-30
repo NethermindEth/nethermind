@@ -13,7 +13,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -54,15 +53,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     }
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
-        ReadOnlyBlockTree readOnlyBlockTree)
-    {
-        ReadOnlyTxProcessingEnv result = new(worldStateManager,
-            readOnlyBlockTree, _specProvider, _logManager);
-        result.TransactionProcessor =
-            new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);
-
-        return result;
-    }
+        ReadOnlyBlockTree readOnlyBlockTree) =>
+        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _l1CostHelper, _specHelper, _logManager);
 
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
         ReadOnlyTxProcessingEnv processingEnv,
@@ -96,4 +88,30 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
             new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }
+}
+
+public class OptimismReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnv
+{
+    private readonly IL1CostHelper _l1CostHelper;
+    private readonly OPSpecHelper _specHelper;
+
+    public OptimismReadOnlyTxProcessingEnv(
+        IWorldStateManager worldStateManager,
+        IBlockTree blockTree,
+        ISpecProvider specProvider,
+        IL1CostHelper l1CostHelper,
+        OPSpecHelper specHelper,
+        ILogManager logManager
+    ) : base(
+        worldStateManager,
+        blockTree,
+        specProvider,
+        logManager
+    )
+    {
+        _l1CostHelper = l1CostHelper;
+        _specHelper = specHelper;
+    }
+
+    protected override TransactionProcessor CreateTransactionProcessor() => new OptimismTransactionProcessor(SpecProvider, StateProvider, Machine, _logManager, _l1CostHelper, _specHelper);
 }
