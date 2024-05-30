@@ -242,9 +242,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 GasAvailable = 1000000,
                 ProgramCounter = 0,
                 EvmException = EvmExceptionType.None,
-                StopExecution = false,
-                StackHead = 0,
-                Memory = new EvmPooledMemory()
+                ShouldReturn = false,
+                ShouldRevert = false,
+                ShouldStop   = false,
+                StackHead    = 0,
+                Memory       = new EvmPooledMemory(),
+                MachineCode = testcase.bytecode
             };
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);

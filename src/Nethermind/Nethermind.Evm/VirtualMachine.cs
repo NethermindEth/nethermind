@@ -850,12 +850,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         SkipInit(out UInt256 c);
         SkipInit(out UInt256 result);
         SkipInit(out StorageCell storageCell);
-        object returnData;
+        object returnData = null;
 
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
         bool shouldStop = false;
+        bool shouldReturn = false;
         while ((uint)programCounter < codeLength)
         {
 #if DEBUG
@@ -863,10 +864,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while ((ilInfo?.TryExecute(vmState, _specProvider, blkCtx.Header, ref programCounter, ref gasAvailable, ref stack, out shouldStop))
+            while ((ilInfo?.TryExecute(vmState, _specProvider, blkCtx.Header, ref programCounter, ref gasAvailable, ref stack, out shouldStop, out shouldReturn, out isRevert, out returnData))
                    .GetValueOrDefault(false))
             {
-                if (shouldStop) goto EmptyReturn;
+                if (shouldReturn || isRevert) goto DataReturn;
+                if (shouldStop is true) goto EmptyReturn;
             }
 
             Instruction instruction = (Instruction)code[programCounter];

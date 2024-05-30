@@ -25,7 +25,9 @@ internal ref struct ILEvmState
     public ushort ProgramCounter;
     public long GasAvailable;
     // in case STOP is executed
-    public bool StopExecution;
+    public bool ShouldStop;
+    public bool ShouldRevert;
+    public bool ShouldReturn;
     public int StackHead;
     public Span<byte> Stack;
     public ref EvmPooledMemory Memory;

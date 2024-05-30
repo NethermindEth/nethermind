@@ -43,10 +43,12 @@ internal class ILCompiler
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
 
         using Local address = method.DeclareLocal(typeof(Address));
+
         using Local uint256A = method.DeclareLocal(typeof(UInt256));
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
         using Local uint256C = method.DeclareLocal(typeof(UInt256));
         using Local uint256R = method.DeclareLocal(typeof(UInt256));
+
         using Local localReadonOnlySpan = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
         using Local localSpan = method.DeclareLocal(typeof(Span<byte>));
         using Local uint64A = method.DeclareLocal(typeof(ulong));
@@ -128,7 +130,7 @@ internal class ILCompiler
                 case Instruction.STOP:
                     method.LoadArgument(0);
                     method.LoadConstant(true);
-                    method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.StopExecution)));
+                    method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldStop)));
                     method.Branch(ret);
                     break;
                 case Instruction.INVALID:
@@ -260,6 +262,22 @@ internal class ILCompiler
                             il.LoadConstant(0);
                             il.CompareEqual();
 
+                            il.BranchIfFalse(label);
+
+                            il.LoadConstant(0);
+                            il.Branch(postInstructionLabel);
+
+                            il.MarkLabel(label);
+                        }, uint256A, uint256B);
+                    break;
+                case Instruction.SMOD:
+                    EmitBinaryInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
+                        (il, postInstructionLabel, locals) =>
+                        {
+                            Label label = il.DefineLabel();
+
+                            il.LoadLocal(locals[1]);
+                            il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZeroOrOne), false, out _));
                             il.BranchIfFalse(label);
 
                             il.LoadConstant(0);
@@ -947,6 +965,47 @@ internal class ILCompiler
 
                     method.MarkLabel(endOfOpcode);
                     break;
+
+                case Instruction.RETURN or Instruction.REVERT:
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackPop(head, 2);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256B);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadArgument(0);
+                    method.Duplicate();
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256B);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
+                    method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
+
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+
+                    method.LoadArgument(0);
+                    method.LoadConstant(true);
+                    switch(op.Operation)
+                    {
+                        case Instruction.REVERT:
+                            method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldRevert)));
+                            break;
+                        case Instruction.RETURN:
+                            method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldReturn)));
+                            break;
+                    }
+
+                    break;
                 default:
                     throw new NotSupportedException();
             }
@@ -1181,6 +1240,42 @@ internal class ILCompiler
         il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(locals[0]);
         il.LoadLocalAddress(uint256R);
+        il.Call(operation);
+
+        // skip the main handling
+        il.MarkLabel(label);
+
+        // push the result to the stack
+        il.CleanWord(stack.span, stack.idx);
+        il.Load(stack.span, stack.idx);
+        il.LoadLocal(uint256R); // stack: word*, uint256
+        il.Call(Word.SetUInt256);
+        il.StackPush(stack.idx, 1);
+    }
+
+    private static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, params Local[] locals)
+    {
+        Label label = il.DefineLabel("SkipHandlingBinaryOp");
+
+        // we the two uint256 from the stack
+        il.StackLoadPrevious(stack.span, stack.idx, 1);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[0]);
+        il.StackLoadPrevious(stack.span, stack.idx, 2);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[1]);
+        il.StackPop(stack.idx, 2);
+
+        // incase of custom handling, we branch to the label
+        customHandling?.Invoke(il, label, locals);
+
+        // invoke op  on the uint256
+        il.LoadLocalAddress(locals[1]);
+        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
+        il.LoadLocalAddress(locals[0]);
+        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
+        il.LoadLocalAddress(uint256R);
+        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(operation);
 
         // skip the main handling

@@ -9,6 +9,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.IL;
 
@@ -17,6 +18,12 @@ namespace Nethermind.Evm.IL;
 /// </summary>
 static class EmitExtensions
 {
+    public static MethodInfo GetAsMethodInfo<TOriginal, TResult>() where TResult : struct
+    {
+        MethodInfo method = typeof(Unsafe).GetMethod(nameof(Unsafe.As));
+        return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
+    }
+
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
     public unsafe static MethodInfo GetCastMethodInfo<TOriginal, TResult>() where TResult : struct
     {
