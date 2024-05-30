@@ -74,7 +74,7 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
         }
         catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

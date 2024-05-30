@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 using G2 = Nethermind.Crypto.Bls.P2;
 using Scalar = Nethermind.Crypto.Bls.Scalar;
@@ -45,35 +45,43 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
-        // for (int i = 0; i < (inputData.Length / ItemSize); i++)
-        // {
-        //     int offset = i * ItemSize;
-        //     if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
-        //     {
-        //         return (Array.Empty<byte>(), false);
-        //     }
-        // }
-
         (byte[], bool) result;
 
         try
         {
-            G2[] points = new G2[inputData.Length / ItemSize];
-            Scalar[] scalars = new Scalar[inputData.Length / ItemSize];
-            for (int i = 0; i < points.Length; i++)
+            List<G2> points = [];
+            List<Scalar> scalars = [];
+            for (int i = 0; i < inputData.Length / ItemSize; i++)
             {
                 int offset = i * ItemSize;
                 G2? p = BlsExtensions.DecodeG2(inputData[offset..(offset + BlsParams.LenG2)]);
-                points[i] = p!.Value;
-                scalars[i] = new(inputData[(offset + BlsParams.LenG2)..(offset + BlsParams.LenG2 + 32)].ToArray());
+                if (!p.HasValue)
+                {
+                    continue;
+                }
 
-                if (!points[i].in_group())
+                byte[] scalar = inputData[(offset + BlsParams.LenG2)..(offset + BlsParams.LenG2 + 32)].ToArray();
+                if (scalar.All(x => x == 0))
+                {
+                    continue;
+                }
+
+                if (!p.Value.in_group())
                 {
                     return (Array.Empty<byte>(), false);
                 }
+
+                points.Add(p.Value);
+                scalars.Add(new(scalar));
             }
+
+            if (points.Count == 0)
+            {
+                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
+            }
+
             G2 res = new();
-            res.multi_mult(points, scalars);
+            res.multi_mult(points.ToArray(), scalars.ToArray());
             result = (res.Encode(), true);
         }
         catch (Exception)

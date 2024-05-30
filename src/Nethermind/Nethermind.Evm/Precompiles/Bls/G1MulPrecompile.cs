@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Json;
 using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
@@ -69,7 +68,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
         }
         catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

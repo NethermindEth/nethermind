@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -55,7 +54,7 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
         }
         catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

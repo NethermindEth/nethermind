@@ -70,7 +70,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
         }
         catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;
