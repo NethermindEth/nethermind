@@ -56,7 +56,7 @@ namespace Nethermind.Core
         /// </summary>
         public bool PreferWriteByArray => false;
         void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.ToArray(), flags);
-        void Remove(ReadOnlySpan<byte> key) => Set(key, null);
+        void Remove(ReadOnlySpan<byte> key, WriteFlags flags = WriteFlags.None) => Set(key, null, flags);
     }
 
     [Flags]

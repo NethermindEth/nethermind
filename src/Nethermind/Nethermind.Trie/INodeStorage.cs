@@ -44,6 +44,6 @@ public interface INodeStorage
     public interface WriteBatch : IDisposable
     {
         void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags);
-        void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak);
+        void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, WriteFlags writeFlags = WriteFlags.None);
     }
 }

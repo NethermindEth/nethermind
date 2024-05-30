@@ -103,7 +103,7 @@ public class ColumnDb : IDb
         {
             if (value is null)
             {
-                _underlyingWriteBatch.Delete(key, _columnDb._columnFamily);
+                _underlyingWriteBatch.Delete(key, _columnDb._columnFamily, flags);
             }
             else
             {

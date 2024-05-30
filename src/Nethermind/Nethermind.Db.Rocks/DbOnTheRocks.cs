@@ -974,13 +974,13 @@ public class DbOnTheRocks : IDb, ITunableDb
         _db.DangerousReleaseMemory(span);
     }
 
-    public void Remove(ReadOnlySpan<byte> key)
+    public void Remove(ReadOnlySpan<byte> key, WriteFlags flags)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         try
         {
-            _db.Remove(key, null, WriteOptions);
+            _db.Remove(key, null, WriteFlagsToWriteOptions(flags));
         }
         catch (RocksDbSharpException e)
         {
@@ -1260,10 +1260,11 @@ public class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
-        public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
+        public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
         {
             ObjectDisposedException.ThrowIf(_isDisposed, this);
 
+            _writeFlags = flags;
             _rocksBatch.Delete(key, cf);
         }
 

@@ -799,7 +799,7 @@ namespace Nethermind.Trie.Pruning
                     if (CanRemove(hash, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
                         Metrics.RemovedNodeCount++;
-                        writeBatch.Remove(hash, fullPath, prevHash);
+                        writeBatch.Remove(hash, fullPath, prevHash, WriteFlags.DisableWAL);
                     }
                 }
             }
