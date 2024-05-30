@@ -51,7 +51,15 @@ namespace Nethermind.Mev.Execution
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager);
+                scope,
+                Always.Valid,
+                _recoveryStep,
+                NoBlockRewards.Instance,
+                new InMemoryReceiptStorage(),
+                _specProvider,
+                _blockTree,
+                _worldStateManager.GlobalStateReader,
+                _logManager);
 
             return CreateTracer(scope, chainProcessingEnv);
         }

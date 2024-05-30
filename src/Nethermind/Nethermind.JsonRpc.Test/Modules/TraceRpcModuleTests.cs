@@ -62,13 +62,16 @@ public class TraceRpcModuleTests
             RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
             BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor,
                 scope.WorldState);
+
             ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor) => new(
-                txProcessingEnv,
+                scope,
                 Always.Valid,
                 Blockchain.BlockPreprocessorStep,
                 rewardCalculator,
                 Blockchain.ReceiptStorage,
                 Blockchain.SpecProvider,
+                Blockchain.BlockTree,
+                Blockchain.StateReader,
                 Blockchain.LogManager,
                 transactionsExecutor);
 

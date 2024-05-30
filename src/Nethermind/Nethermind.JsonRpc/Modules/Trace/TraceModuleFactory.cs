@@ -71,12 +71,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
 
             ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor) => new(
-                txProcessingEnv,
+                scope,
                 Always.Valid,
                 _recoveryStep,
                 rewardCalculator,
                 _receiptStorage,
                 _specProvider,
+                _blockTree,
+                _worldStateManager.GlobalStateReader,
                 _logManager,
                 transactionsExecutor);
 

@@ -55,7 +55,16 @@ namespace Nethermind.JsonRpc.Modules.Proof
             RpcBlockTransactionsExecutor traceExecutor = new(scope.TransactionProcessor, scope.WorldState);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager, traceExecutor);
+                scope,
+                Always.Valid,
+                _recoveryStep,
+                NoBlockRewards.Instance,
+                new InMemoryReceiptStorage(),
+                _specProvider,
+                _blockTree,
+                _worldStateManager.GlobalStateReader,
+                _logManager,
+                traceExecutor);
 
             Tracer tracer = new(
                 scope.WorldState,

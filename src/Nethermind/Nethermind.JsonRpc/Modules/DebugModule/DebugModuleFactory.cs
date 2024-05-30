@@ -90,12 +90,14 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
         BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, scope.WorldState);
         ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-            txEnv,
+            scope,
             _blockValidator,
             _recoveryStep,
             _rewardCalculatorSource.Get(scope.TransactionProcessor),
             _receiptStorage,
             _specProvider,
+            _blockTree,
+            _worldStateManager.GlobalStateReader,
             _logManager,
             transactionsExecutor);
 
