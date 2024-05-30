@@ -109,11 +109,11 @@ namespace Nethermind.Consensus.Clique
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
-                producerEnv.StateProvider,
+                scope.WorldState,
                 NullReceiptStorage.Instance,
-                new BlockhashStore(getFromApi.BlockTree, getFromApi.SpecProvider, producerEnv.StateProvider),
+                new BlockhashStore(getFromApi.BlockTree, getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
                 readOnlyBlockTree,
@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.Clique
                 BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                producerEnv.StateProvider,
+                scope.WorldState,
                 producerChainProcessor);
 
             ITxFilterPipeline txFilterPipeline =
@@ -145,7 +145,7 @@ namespace Nethermind.Consensus.Clique
             CliqueBlockProducer blockProducer = new(
                 additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
-                producerEnv.StateProvider,
+                scope.WorldState,
                 getFromApi.Timestamper,
                 getFromApi.CryptoRandom,
                 _snapshotManager!,
