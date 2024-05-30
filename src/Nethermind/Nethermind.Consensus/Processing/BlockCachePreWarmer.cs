@@ -74,9 +74,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 ReadOnlyTxProcessingEnv env = _envPool.Get();
                 try
                 {
-                    using IReadOnlyTransactionProcessor transactionProcessor = env.Build(stateRoot);
+                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                     Parallel.For(0, block.Withdrawals.Length, parallelOptions,
-                        i => env.StateProvider.WarmUp(block.Withdrawals[i].Address)
+                        i => scope.WorldState.WarmUp(block.Withdrawals[i].Address)
                     );
                 }
                 finally
@@ -98,12 +98,12 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 try
                 {
                     tx.CopyTo(systemTransaction);
-                    using IReadOnlyTransactionProcessor transactionProcessor = env.Build(stateRoot);
+                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                     if (spec.UseTxAccessLists)
                     {
                         env.StateProvider.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
+                    TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
                 }
                 catch (Exception ex)

@@ -168,7 +168,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
-            using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(header.StateRoot!);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -177,7 +177,7 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
+            GasEstimator gasEstimator = new(scope.TransactionProcessor, _processingEnv.StateProvider,
                 _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
@@ -235,7 +235,7 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
 
             Hash256 stateRoot = blockHeader.StateRoot!;
-            using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(stateRoot);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot);
 
             if (transaction.Nonce == 0)
             {
@@ -277,7 +277,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return transactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
         }
 
         public ulong GetChainId()

@@ -53,11 +53,32 @@ namespace Nethermind.Consensus.Processing
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
-
         public void Reset()
         {
             StateProvider.Reset();
         }
+
+        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        {
+            Hash256 originalStateRoot = StateProvider.StateRoot;
+            StateProvider.StateRoot = stateRoot;
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+        }
+    }
+
+    public class ReadOnlyTxProcessingScope(
+        ITransactionProcessor transactionProcessor,
+        IWorldState worldState,
+        Hash256 originalStateRoot
+    ) : IReadOnlyTxProcessingScope
+    {
+        public void Dispose()
+        {
+            worldState.StateRoot = originalStateRoot;
+            worldState.Reset();
+        }
+
+        public ITransactionProcessor TransactionProcessor => transactionProcessor;
+        public IWorldState WorldState => worldState;
     }
 }
