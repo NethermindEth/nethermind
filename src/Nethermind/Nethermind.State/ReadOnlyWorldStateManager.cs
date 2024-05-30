@@ -36,13 +36,23 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public IWorldState CreateResettableWorldState(PreBlockCaches? sharedHashes = null) =>
-        new WorldState(sharedHashes is not null
-                ? new PreCachedTrieStore(_readOnlyTrieStore, sharedHashes.RlpCache)
-                : _readOnlyTrieStore,
+    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
+    {
+        if (forWarmup != null)
+        {
+            PreBlockCaches preBlockCaches = (forWarmup as IPreBlockCaches)!.Caches;
+            return new WorldState(
+                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
+                _codeDb,
+                _logManager,
+                preBlockCaches);
+        }
+
+        return new WorldState(
+            _readOnlyTrieStore,
             _codeDb,
-            _logManager,
-            sharedHashes);
+            _logManager);
+    }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {

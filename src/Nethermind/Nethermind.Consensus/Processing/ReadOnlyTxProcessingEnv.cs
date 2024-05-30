@@ -38,13 +38,13 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager,
-            PreBlockCaches? preBlockCaches = null)
+            IWorldState? worldStateToWarmUp = null)
         {
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
             SpecProvider = specProvider;
             StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState(preBlockCaches);
+            StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
