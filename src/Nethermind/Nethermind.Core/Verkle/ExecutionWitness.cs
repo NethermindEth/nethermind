@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using FastEnumUtility;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Proofs;
@@ -18,6 +18,7 @@ public class ExecutionWitness
     public Hash256? StateRoot { get; set; }
     public StemStateDiff[] StateDiff { get; }
     public WitnessVerkleProof? VerkleProof { get; }
+    public SpanConcurrentDictionary<byte, byte[]?>? LeafStore { get; set; }
 
     public ExecutionWitness()
     {

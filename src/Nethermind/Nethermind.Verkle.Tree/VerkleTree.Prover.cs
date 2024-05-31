@@ -76,6 +76,8 @@ public partial class VerkleTree
                 suffixDiffs.NewValue = Get(key);
             });
         });
+
+        executionWitness.LeafStore = _treeCache.LeafTable;
     }
 
     public VerkleProof CreateVerkleProof(byte[][] keys, out Banderwagon rootPoint)
