@@ -8,7 +8,6 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -55,7 +54,6 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         BasicJsonRpcClient? sequencerJsonRpcClient = _config.SequencerUrl is null
             ? null
             : new(new Uri(_config.SequencerUrl), _api.EthereumJsonSerializer, _api.LogManager);
-        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
 
         ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
         TxSealer sealer = new(txSigner, _api.Timestamper);
