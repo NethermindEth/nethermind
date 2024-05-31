@@ -355,6 +355,14 @@ public partial class BlockProcessor : IBlockProcessor
         }
         else
         {
+            if (!block.IsGenesis)
+            {
+                var verkleWorldState = worldState as VerkleWorldState;
+                ExecutionWitness? witness = block.Body.ExecutionWitness;
+                verkleWorldState?.UpdateWithPostStateValues(witness);
+                block.Body.ExecutionWitness = witness;
+            }
+
             worldState.Commit(spec);
         }
 
