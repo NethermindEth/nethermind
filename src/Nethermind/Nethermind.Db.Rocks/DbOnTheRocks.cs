@@ -704,7 +704,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
 
-        if (dbConfig.AdditionalRocksDbOptions != null)
+        if (dbConfig.AdditionalRocksDbOptions is not null)
         {
             IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
             _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
