@@ -4,6 +4,8 @@
 using System;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa.Withdrawals;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -14,7 +16,7 @@ using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.Rpc;
 
 public class RegisterOptimismRpcModules : RegisterRpcModules
 {
@@ -86,5 +88,34 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
 
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
             _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+    }
+
+    protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.WorldState);
+        StepDependencyException.ThrowIfNull(_api.L1CostHelper);
+        StepDependencyException.ThrowIfNull(_api.SpecHelper);
+
+        OptimismTraceModuleFactory traceModuleFactory = new(
+            _api.WorldStateManager,
+            _api.BlockTree,
+            _jsonRpcConfig,
+            _api.BlockPreprocessor,
+            _api.RewardCalculatorSource,
+            _api.ReceiptStorage,
+            _api.SpecProvider,
+            _api.PoSSwitcher,
+            _api.LogManager,
+            _api.L1CostHelper,
+            _api.SpecHelper,
+            new Create2DeployerContractRewriter(_api.SpecHelper, _api.SpecProvider, _api.BlockTree),
+            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
+
+        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
     }
 }
