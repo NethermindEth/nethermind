@@ -23,6 +23,7 @@ public class PreBlockCaches
         StorageCache.Clear();
         StateCache.Clear();
         RlpCache.Clear();
+        PrecompileCache.Clear();
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
