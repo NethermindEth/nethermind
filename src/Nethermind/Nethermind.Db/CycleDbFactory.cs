@@ -11,9 +11,17 @@ public class CycleDbFactory(IDbFactory dbFactory, params string[] cycleDbs) : ID
     public IDb CreateDb(DbSettings dbSettings)
     {
         IDb db = dbFactory.CreateDb(dbSettings);
-        return cycleDbs.Contains(dbSettings.DbName, StringComparer.InvariantCultureIgnoreCase)
-            ? new CycleDb(db, dbSettings, dbFactory)
-            : db;
+
+        for (var index = 0; index < cycleDbs.Length; index++)
+        {
+            var cycleDb = cycleDbs[index];
+            if (dbSettings.DbName.StartsWith(cycleDb, StringComparison.InvariantCultureIgnoreCase))
+            {
+                return new CycleDb(db, dbSettings, dbFactory);
+            }
+        }
+
+        return db;
     }
 
     public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum =>
