@@ -74,7 +74,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
+                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, false)}");
             }
         }
 

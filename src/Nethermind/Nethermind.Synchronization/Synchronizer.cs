@@ -49,6 +49,7 @@ namespace Nethermind.Synchronization
         protected readonly ILogManager _logManager;
         protected readonly ISyncReport _syncReport;
         protected readonly IPivot _pivot;
+        protected readonly IStateFactory _stateFactory;
 
         protected CancellationTokenSource? _syncCancellation = new();
 
@@ -132,13 +133,14 @@ namespace Nethermind.Synchronization
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(_stateReader));
+            _stateFactory = stateFactory ?? throw new ArgumentNullException(nameof(stateFactory));
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
             ProgressTracker progressTracker = new(
                 blockTree,
                 new MemDb(), // TODO: replace with proper state
-                stateFactory,
+                _stateFactory,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
             SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
@@ -275,7 +277,7 @@ namespace Nethermind.Synchronization
         private void StartStateSyncComponents()
         {
             //TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, null, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _stateFactory, null, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,

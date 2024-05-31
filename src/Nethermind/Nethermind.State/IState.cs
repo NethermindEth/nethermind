@@ -61,7 +61,9 @@ public interface IRawState : IReadOnlyState
     void SetStorage(ValueHash256 accountHash, ValueHash256 storageSlotHash, ReadOnlySpan<byte> encodedValue);
     void SetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
     void Commit(bool ensureHash);
+    ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength);
     void Finalize(uint blockNumber);
+    string DumpTrie();
     ValueHash256 RefreshRootHash();
     ValueHash256 RecalculateStorageRoot(ValueHash256 accountHash);
     public void Discard();
@@ -77,6 +79,7 @@ public interface IStateFactory : IAsyncDisposable
     IReadOnlyState GetReadOnly(Hash256 stateRoot);
 
     public IRawState GetRaw();
+    public IRawState GetRaw(ValueHash256 rootHash);
 
     bool HasRoot(Hash256 stateRoot);
 

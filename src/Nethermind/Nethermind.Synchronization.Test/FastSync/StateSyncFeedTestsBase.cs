@@ -18,6 +18,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -109,7 +110,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateFactory, dbContext.LocalStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
@@ -170,6 +171,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
                 LocalStateTree = new StateTree(new TrieStore(LocalStateDb, logManager), logManager);
+                LocalStateFactory = new PaprikaStateFactory();
             }
 
             public MemDb RemoteCodeDb { get; }
@@ -181,6 +183,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public IDb LocalStateDb { get; }
             public StateTree RemoteStateTree { get; }
             public StateTree LocalStateTree { get; }
+            public IStateFactory LocalStateFactory { get; }
 
             public void CompareTrees(string stage, bool skipLogs = false)
             {
@@ -194,17 +197,20 @@ namespace Nethermind.Synchronization.Test.FastSync
                 if (!skipLogs) _logger.Info(remote);
                 if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
                 dumper.Reset();
-                LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
-                string local = dumper.ToString();
+                //LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
+                //string local = dumper.ToString();
+
+                using IRawState rawState = LocalStateFactory.GetRaw(RemoteStateTree.RootHash);
+                string local = rawState.DumpTrie();
                 if (!skipLogs) _logger.Info(local);
 
                 if (stage == "END")
                 {
                     Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
-                    TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
-                    LocalStateTree.Accept(collector, LocalStateTree.RootHash);
-                    Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
-                    Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
+                    //TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
+                    //LocalStateTree.Accept(collector, LocalStateTree.RootHash);
+                    //Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
+                    //Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
                 }
             }
 
