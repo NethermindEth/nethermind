@@ -18,7 +18,7 @@ namespace Nethermind.Db
         /// <returns>A wrapped db.</returns>
         public static IDb WithEOACompressed(this IDb @this) => new EOACompressingDb(@this);
 
-        private class EOACompressingDb : IDb, ITunableDb
+        private class EOACompressingDb : IDb, ITunableDb, ICycleDb
         {
             private readonly IDb _wrapped;
 
@@ -132,6 +132,14 @@ namespace Nethermind.Db
 
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
                 _wrapped.GetAllValues(ordered).Select(Decompress);
+
+            void ICycleDb.Cycle()
+            {
+                if (_wrapped is ICycleDb cycleDb)
+                {
+                    cycleDb.Cycle();
+                }
+            }
 
             public void Remove(ReadOnlySpan<byte> key) => _wrapped.Remove(key);
 

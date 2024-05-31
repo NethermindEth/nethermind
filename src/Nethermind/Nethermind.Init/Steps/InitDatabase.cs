@@ -87,7 +87,7 @@ namespace Nethermind.Init.Steps
                     break;
                 default:
                     _api.DbProvider = new DbProvider();
-                    _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
+                    _api.DbFactory = new CycleDbFactory(new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath), DbNames.State);
                     break;
             }
 

@@ -20,7 +20,7 @@ namespace Nethermind.Db.FullPruning
     /// When <see cref="IPruningContext"/> returned in <see cref="TryStartPruning"/> is <see cref="IDisposable.Dispose"/>d it will delete the pruning DB if the pruning was not successful.
     /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organised.
     /// </remarks>
-    public class FullPruningDb : IDb, IFullPruningDb, ITunableDb
+    public class FullPruningDb : IDb, IFullPruningDb, ITunableDb, ICycleDb
     {
         private readonly DbSettings _settings;
         private readonly IDbFactory _dbFactory;
@@ -38,10 +38,10 @@ namespace Nethermind.Db.FullPruning
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
-            _currentDb = CreateDb(_settings).WithEOACompressed();
+            _currentDb = CreateDb(_settings);
         }
 
-        private IDb CreateDb(DbSettings settings) => _dbFactory.CreateDb(settings);
+        private IDb CreateDb(DbSettings settings) => _dbFactory.CreateDb(settings).WithEOACompressed();
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
@@ -129,6 +129,14 @@ namespace Nethermind.Db.FullPruning
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _currentDb.GetAllKeys(ordered);
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _currentDb.GetAllValues(ordered);
+
+        void ICycleDb.Cycle()
+        {
+            if (_currentDb is ICycleDb cycleDb)
+            {
+                cycleDb.Cycle();
+            }
+        }
 
         // we need to remove from both DB's
         public void Remove(ReadOnlySpan<byte> key)

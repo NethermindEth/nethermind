@@ -194,6 +194,11 @@ public class NodeStorage : INodeStorage
 
     public void Compact()
     {
+        if (_keyValueStore is ICycleDb cycleDb)
+        {
+            cycleDb.Cycle();
+        }
+
         if (_keyValueStore is IDb db)
         {
             db.Compact();
