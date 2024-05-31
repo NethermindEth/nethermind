@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -196,7 +197,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
-            IRawState rawState = progressTracker.GetSyncState();
+            //IRawState rawState = progressTracker.GetSyncState();
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
@@ -209,8 +210,6 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
 
-            rawState.Get(TestItem.Tree.AccountsWithPaths[4].Path);
-
             //Assert.That(db.Keys.Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
@@ -222,8 +221,61 @@ namespace Nethermind.Synchronization.Test.SnapSync
             //Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             //Assert.IsFalse(db.KeyExists(rootHash));
 
-            //IRawState rawState = progressTracker.GetSyncState();
-            rawState.Finalize(200);
+            IRawState rawState = progressTracker.GetNewRawState();
+            rawState.Finalize(1);
+
+            var state = stateFactory.Get(rootHash);
+            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
+            {
+                Account a = state.Get(item.Path);
+                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
+                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
+            }
+        }
+
+        private struct Range
+        {
+            public int start;
+            public int end;
+        };
+
+        [Test]
+        public void RecreateAccountStateFromMultipleRange_MT()
+        {
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+
+            // output state
+            MemDb db = new();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
+            var addAccountRange = (Object o) =>
+            {
+                Range r = (Range)o;
+                byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[r.start].Path.Bytes);
+                byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[r.end].Path.Bytes);
+
+                var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[r.start].Path,
+                    TestItem.Tree.AccountsWithPaths[r.start..(r.end + 1)], firstProof!.Concat(lastProof!).ToArray());
+
+                Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            };
+
+            var t1 = new Task(addAccountRange, new Range() {start = 0, end = 1});
+            var t2 = new Task(addAccountRange, new Range() { start = 2, end = 3 });
+            var t3 = new Task(addAccountRange, new Range() { start = 4, end = 5 });
+
+            t1.Start();
+            t2.Start();
+            t3.Start();
+
+            Task.WaitAll(new[] { t1, t2, t3 });
+
+            IRawState rawState = progressTracker.GetNewRawState();
+            rawState.Finalize(1);
 
             var state = stateFactory.Get(rootHash);
             foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
@@ -250,7 +302,6 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
-            IRawState rawState = progressTracker.GetSyncState();
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
@@ -269,6 +320,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
 
+            IRawState rawState = progressTracker.GetSyncState();
             rawState.Finalize(1);
 
             var state = stateFactory.Get(newRootHash);
@@ -296,7 +348,6 @@ namespace Nethermind.Synchronization.Test.SnapSync
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-            IRawState rawState = progressTracker.GetSyncState();
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
@@ -318,6 +369,13 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
 
+            //re-add changed account to simulate healing
+            firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes, newPivotTree);
+            var resultHeal = snapProvider.AddAccountRange(1, rootHashNew, Keccak.Zero, new[] {new PathWithAccount(TestItem.Tree.AccountAddress0, TestItem.Tree.Account10)}, firstProof);
+
+            Assert.That(resultHeal, Is.EqualTo(AddRangeResult.OK));
+
+            IRawState rawState = progressTracker.GetSyncState();
             rawState.Finalize(1);
 
             var state = stateFactory.Get(rootHashNew);
