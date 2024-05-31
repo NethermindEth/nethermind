@@ -103,7 +103,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
-            return _precompiles[codeSource];
+            return _localPrecompiles[codeSource];
         }
 
         CodeInfo? cachedCodeInfo = null;
