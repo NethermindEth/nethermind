@@ -72,7 +72,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     public void Insert(Hash256 key, in ReadOnlySpan<byte> value)
     {
-        ReadOnlySpan<byte> stem = key.Bytes.Slice(0, 31);
+        ReadOnlySpan<byte> stem = key.Bytes[..31];
         var present = _leafUpdateCache.TryGetValue(stem, out LeafUpdateDelta leafUpdateDelta);
         if (!present) leafUpdateDelta = new LeafUpdateDelta();
         leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(key, value.ToArray()), key.Bytes[31]);
@@ -86,7 +86,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
         Span<byte> key = new byte[32];
         stem.CopyTo(key);
-        foreach ((var index, var value) in leafIndexValueMap)
+        foreach (var (index, value) in leafIndexValueMap)
         {
             key[31] = index;
             leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(new Hash256(key.ToArray()), value), key[31]);
@@ -234,6 +234,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     private void SetInternalNode(in ReadOnlySpan<byte> nodeKey, InternalNode node, bool replace = true)
     {
+        // TODO: get from the tree not just the cache
         if (replace || !_treeCache.InternalTable.TryGetValue(nodeKey, out InternalNode? prevNode))
         {
             _treeCache.SetInternalNode(nodeKey, node);
