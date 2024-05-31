@@ -656,9 +656,9 @@ namespace Nethermind.State
             };
         }
 
-        public void WarmUp(Address address)
+        public bool WarmUp(Address address)
         {
-            GetState(address);
+            return GetState(address) is not null;
         }
 
         private Account? GetState(Address address)
