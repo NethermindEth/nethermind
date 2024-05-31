@@ -104,11 +104,11 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset()
+        public void Reset(bool resizeCollections = false)
         {
-            _stateProvider.Reset();
-            _persistentStorageProvider.Reset();
-            _transientStorageProvider.Reset();
+            _stateProvider.Reset(resizeCollections);
+            _persistentStorageProvider.Reset(resizeCollections);
+            _transientStorageProvider.Reset(resizeCollections);
         }
         public void WarmUp(AccessList? accessList)
         {
@@ -116,10 +116,10 @@ namespace Nethermind.State
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
-                    _stateProvider.WarmUp(address);
+                    bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage));
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
                     }
                 }
             }

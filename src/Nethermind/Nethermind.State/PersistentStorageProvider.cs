@@ -59,7 +59,7 @@ namespace Nethermind.State
             _loadFromTree = storageCell =>
             {
                 StorageTree tree = GetOrCreateStorage(storageCell.Address);
-                Db.Metrics.StorageTreeReads++;
+                Db.Metrics.IncrementStorageTreeReads();
                 return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
             };
         }
@@ -69,11 +69,11 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public override void Reset()
+        public override void Reset(bool resizeCollections = true)
         {
             base.Reset();
             _blockCache.Clear();
-            _storages.Reset();
+            _storages.Reset(resizeCollections);
             _originalValues.Clear();
             _committedThisRound.Clear();
             _toUpdateRoots.Clear();
@@ -344,9 +344,16 @@ namespace Nethermind.State
             return value;
         }
 
-        public void WarmUp(in StorageCell storageCell)
+        public void WarmUp(in StorageCell storageCell, bool isEmpty)
         {
-            LoadFromTree(in storageCell);
+            if (isEmpty)
+            {
+                _preBlockCache[storageCell] = Array.Empty<byte>();
+            }
+            else
+            {
+                LoadFromTree(in storageCell);
+            }
         }
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
@@ -360,21 +367,21 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell.Index, out exists);
             if (!exists)
             {
-                long priorReads = Db.Metrics.StorageTreeReads;
+                long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
                 value = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
                     : _loadFromTree(storageCell);
 
-                if (Db.Metrics.StorageTreeReads == priorReads)
+                if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
                     // Read from Concurrent Cache
-                    Db.Metrics.StorageTreeCache++;
+                    Db.Metrics.IncrementStorageTreeCache();
                 }
             }
             else
             {
-                Db.Metrics.StorageTreeCache++;
+                Db.Metrics.IncrementStorageTreeCache();
             }
 
             if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
