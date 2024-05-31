@@ -813,8 +813,8 @@ namespace Nethermind.Trie.Pruning
                         }
                     }
 
-                    // Batches of 1000
-                    if (round > 1000)
+                    // Batches of 256
+                    if (round > 256)
                     {
                         actionBlock.Post(writeBatch);
                         writeBatch = _nodeStorage.StartWriteBatch();
