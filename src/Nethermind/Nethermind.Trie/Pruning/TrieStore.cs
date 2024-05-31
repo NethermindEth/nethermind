@@ -284,7 +284,7 @@ namespace Nethermind.Trie.Pruning
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
-        private ConcurrentDictionary<HashAndTinyPathAndHash, long> _persistedLastSeens = new();
+        private NonBlocking.ConcurrentDictionary<HashAndTinyPathAndHash, long> _persistedLastSeens = new();
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -1263,7 +1263,7 @@ namespace Nethermind.Trie.Pruning
                     PruneCache();
                     KeyValuePair<DirtyNodesCache.Key, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
 
-                    ConcurrentDictionary<DirtyNodesCache.Key, bool> wasPersisted = new();
+                    NonBlocking.ConcurrentDictionary<DirtyNodesCache.Key, bool> wasPersisted = new();
                     void PersistNode(TrieNode n, Hash256? address, TreePath path)
                     {
                         if (n.Keccak is null) return;
