@@ -336,7 +336,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _beaconSync,
                     _api.LogManager,
                     TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                    _api.Config<IReceiptConfig>().StoreReceipts),
+                    _api.Config<IReceiptConfig>().StoreReceipts,
+                    processStateless: _api.Config<IInitConfig>().StatelessProcessingEnabled),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
                     _blockFinalizationManager,
