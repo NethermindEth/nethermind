@@ -13,10 +13,10 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handler
 {
-    private const int MaxCount = 1024;
+    protected const int MaxCount = 1024;
 
-    private readonly IBlockTree _blockTree;
-    private readonly ILogger _logger;
+    protected readonly IBlockTree _blockTree;
+    protected readonly ILogger _logger;
 
     public GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, ILogManager logManager)
     {

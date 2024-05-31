@@ -14,9 +14,9 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>
 {
-    private const int MaxCount = 1024;
-    private readonly IBlockTree _blockTree;
-    private readonly ILogger _logger;
+    protected const int MaxCount = 1024;
+    protected readonly IBlockTree _blockTree;
+    protected readonly ILogger _logger;
 
     public GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, ILogManager logManager)
     {
@@ -44,7 +44,7 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Hash256>, IEn
         {
             Block? block = _blockTree.FindBlock(blockHashes[i]);
 
-            yield return (block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals));
+            yield return block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals);
         }
 
         yield break;
