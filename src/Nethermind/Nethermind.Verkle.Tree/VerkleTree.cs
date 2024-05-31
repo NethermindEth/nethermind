@@ -7,7 +7,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Fields.FrEElement;
@@ -234,17 +233,19 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     private void SetInternalNode(in ReadOnlySpan<byte> nodeKey, InternalNode node, bool replace = true)
     {
-        // TODO: get from the tree not just the cache
-        if (replace || !_treeCache.InternalTable.TryGetValue(nodeKey, out InternalNode? prevNode))
+        InternalNode? prevNode = GetInternalNode(nodeKey);
+        if (replace || prevNode is null)
         {
             _treeCache.SetInternalNode(nodeKey, node);
+            return;
         }
-        else
-        {
-            prevNode!.C1 ??= node.C1;
-            prevNode.C2 ??= node.C2;
-            _treeCache.SetInternalNode(nodeKey, prevNode);
-        }
+
+        prevNode!.C1 ??= node.C1;
+        prevNode.C2 ??= node.C2;
+
+        node.C1 ??= prevNode.C1;
+        node.C2 ??= prevNode.C2;
+        _treeCache.SetInternalNode(nodeKey, prevNode);
     }
 
     public void Reset()

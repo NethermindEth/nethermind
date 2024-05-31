@@ -16,6 +16,7 @@ using Nethermind.Verkle.Fields.FrEElement;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeNodes;
 using Nethermind.Verkle.Tree.Utils;
+using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Verkle.Tree;
 
@@ -123,6 +124,18 @@ public partial class VerkleTree
         }
     }
 
+    public void HealThyTree(long blockNumber, ExecutionWitness? execWitness, UpdateHint? updateHint, Banderwagon root)
+    {
+        InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(root));
+        SetInternalNode(Array.Empty<byte>(), rootNode);
+
+        AddStatelessInternalNodes(updateHint.Value);
+
+        foreach (StemStateDiff stemStateDiff in execWitness.StateDiff)
+            InsertStemBatchStateless(stemStateDiff.Stem, stemStateDiff.SuffixDiffs);
+    }
+
+
     public bool InsertIntoStatelessTree(ExecutionWitness? execWitness, Banderwagon root, bool skipRoot = false)
     {
         // when witness or proof is null that means there is no access values and just save the root
@@ -152,7 +165,7 @@ public partial class VerkleTree
             InsertStemBatchStateless(stemStateDiff.Stem, stemStateDiff.SuffixDiffs);
 
         // TODO: is it okay that we dont support commit for stateless execution
-        CommitTree(0);
+        // CommitTree(0);
         return true;
     }
 
@@ -173,12 +186,14 @@ public partial class VerkleTree
 
             InternalNode stemNode;
             Span<byte> pathOfStem;
+            bool shouldReplace = false;
             switch (extStatus)
             {
                 case ExtPresent.None:
                     stemNode = VerkleNodes.CreateStatelessStemNode(stem, new Commitment(), new Commitment(),
                         new Commitment(), true);
                     pathOfStem = pathList.ToArray();
+                    shouldReplace = true;
                     break;
                 case ExtPresent.DifferentStem:
                     Stem otherStem = hint.DifferentStemNoProof[pathList.ToArray()];
@@ -196,6 +211,12 @@ public partial class VerkleTree
                     pathList[^1] = 3;
                     if (hint.CommByPath.TryGetValue(pathList.AsSpan(), out Banderwagon c2B)) c2 = new Commitment(c2B);
 
+                    // The data we get with witness is not always complete; when it comes to stem nodes, we don't always
+                    // get c1 and c2 both.
+                    // If we have both, then we should replace the node, if not, then we should check the db if
+                    // we have the missing commitment in the database
+                    shouldReplace = c1 is not null && c2 is not null;
+
                     stemNode = VerkleNodes.CreateStatelessStemNode(stem, c1, c2, internalCommitment, false);
                     pathOfStem = new byte[pathList.Count - 1];
                     pathList.AsSpan()[..(pathList.Count - 1)].CopyTo(pathOfStem);
@@ -204,7 +225,7 @@ public partial class VerkleTree
                     throw new ArgumentOutOfRangeException();
             }
 
-            SetInternalNode(pathOfStem, stemNode, extStatus != ExtPresent.DifferentStem);
+            SetInternalNode(pathOfStem, stemNode, shouldReplace);
         }
     }
 
