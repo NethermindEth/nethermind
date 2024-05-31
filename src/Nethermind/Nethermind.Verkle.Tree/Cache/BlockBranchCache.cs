@@ -27,6 +27,7 @@ public sealed class BlockBranchNode(SortedVerkleMemoryDb? stateDiff, Hash256 sta
     public BlockBranchNode? ParentNode;
 }
 
+// TODO: use IPooledObjectPolicy to deal with node allocations/cleaning for the cache also can be use for the database
 public class BlockBranchCache(int cacheSize)
 {
     private readonly SpanDictionary<byte, BlockBranchNode> _stateRootToNodeMapping = new(Bytes.SpanEqualityComparer);
