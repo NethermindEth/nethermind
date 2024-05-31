@@ -34,10 +34,11 @@ public class PaprikaStateFactory : IStateFactory
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
     private uint _lastFinalized;
     private readonly ComputeMerkleBehavior _merkleBehaviour;
+    private readonly ReaderWriterLockSlim _commitLock = new();
 
     public PaprikaStateFactory()
     {
-        _db = PagedDb.NativeMemoryDb(64 * 1024);
+        _db = PagedDb.NativeMemoryDb(128 * 1024);
         _merkleBehaviour = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
         _blockchain = new Blockchain(_db, _merkleBehaviour);
         _blockchain.Flushed += (_, flushed) =>
@@ -71,6 +72,7 @@ public class PaprikaStateFactory : IStateFactory
 
     public IState Get(Hash256 stateRoot) => new State(_blockchain.StartNew(Convert(stateRoot)), this);
     public Nethermind.State.IRawState GetRaw() => new RawState(_blockchain.StartRaw(), this);
+    public Nethermind.State.IRawState GetRaw(ValueHash256 rootHash) => new RawState(_blockchain.StartRaw(Convert(rootHash)), this);
 
     public IReadOnlyState GetReadOnly(Hash256 stateRoot) =>
         new ReadOnlyState(_blockchain.StartReadOnly(Convert(stateRoot)));
@@ -123,6 +125,16 @@ public class PaprikaStateFactory : IStateFactory
     {
         // TODO: more
         // _blockchain.Finalize(Convert(finalizedStateRoot));
+    }
+
+    public void AquireRawStateCommitLock()
+    {
+        _commitLock.EnterWriteLock();
+    }
+
+    public void ReleaseRawStateCommitLock()
+    {
+        _commitLock.ExitWriteLock();
     }
 
     class ReadOnlyState(IReadOnlyWorldState wrapped) : IReadOnlyState
@@ -435,12 +447,39 @@ public class PaprikaStateFactory : IStateFactory
 
         public void Commit(bool ensureHash)
         {
-            _wrapped.Commit(ensureHash);
+            try
+            {
+                _factory.AquireRawStateCommitLock();
+                _wrapped.Commit(ensureHash);
+            }
+            finally
+            {
+                _factory.ReleaseRawStateCommitLock();
+            }
+        }
+
+        public ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength)
+        {
+            NibblePath nibblePath = NibblePath.FromKey(path).SliceTo(pathLength);
+            return Convert(_wrapped.GetHash(nibblePath));
         }
 
         public void Finalize(uint blockNumber)
         {
-            _wrapped.Finalize(blockNumber);
+            try
+            {
+                _factory.AquireRawStateCommitLock();
+                _wrapped.Finalize(blockNumber);
+            }
+            finally
+            {
+                _factory.ReleaseRawStateCommitLock();
+            }
+        }
+
+        public string DumpTrie()
+        {
+            return _wrapped.DumpTrie();
         }
 
         public ValueHash256 RefreshRootHash()

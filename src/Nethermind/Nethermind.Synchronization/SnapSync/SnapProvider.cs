@@ -73,16 +73,17 @@ namespace Nethermind.Synchronization.SnapSync
         {
             //ITrieStore store = _trieStorePool.Get();
             ITrieStore store = NullTrieStore.Instance;
-            _progressTracker.AquireRawStateLock();
+            //_progressTracker.AquireRawStateLock();
             try
             {
                 StateTree tree = new(store, _logManager);
 
-
                 ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
+                using IRawState rawState = _progressTracker.GetNewRawState();
+
                 (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
-                    SnapProviderHelper.AddAccountRange(_progressTracker.GetSyncState(), blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
+                    SnapProviderHelper.AddAccountRange(rawState, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -108,7 +109,7 @@ namespace Nethermind.Synchronization.SnapSync
             finally
             {
                 //_trieStorePool.Return(store);
-                _progressTracker.ReleaseRawStateLock();
+                //_progressTracker.ReleaseRawStateLock();
             }
         }
 
@@ -170,10 +171,11 @@ namespace Nethermind.Synchronization.SnapSync
             //ITrieStore store = _trieStorePool.Get();
             ITrieStore store = NullTrieStore.Instance;
             StorageTree tree = new(store, _logManager);
-            _progressTracker.AquireRawStateLock();
+            //_progressTracker.AquireRawStateLock();
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(_progressTracker.GetSyncState(), pathWithAccount, blockNumber, startingHash, slots, expectedRootHash, proofs);
+                using IRawState rawState = _progressTracker.GetNewRawState();
+                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(rawState, pathWithAccount, blockNumber, startingHash, slots, expectedRootHash, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -206,7 +208,7 @@ namespace Nethermind.Synchronization.SnapSync
             finally
             {
                 //_trieStorePool.Return(store);
-                _progressTracker.ReleaseRawStateLock();
+                //_progressTracker.ReleaseRawStateLock();
             }
         }
 

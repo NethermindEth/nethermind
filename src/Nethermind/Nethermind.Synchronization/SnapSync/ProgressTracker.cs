@@ -139,6 +139,11 @@ namespace Nethermind.Synchronization.SnapSync
             return _rawState ??= _stateFactory.GetRaw();
         }
 
+        public IRawState GetNewRawState()
+        {
+            return _stateFactory.GetRaw();
+        }
+
         public void AquireRawStateLock()
         {
             _commitLock.EnterWriteLock();
