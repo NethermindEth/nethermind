@@ -29,6 +29,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
+        IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> executionGetPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler executionGetPayloadBodiesByRangeV2Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         ISpecProvider specProvider,
@@ -44,6 +46,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
         _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
+        _executionGetPayloadBodiesByHashV2Handler = executionGetPayloadBodiesByHashV2Handler;
+        _executionGetPayloadBodiesByRangeV2Handler = executionGetPayloadBodiesByRangeV2Handler;
         _transitionConfigurationHandler = transitionConfigurationHandler;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;
