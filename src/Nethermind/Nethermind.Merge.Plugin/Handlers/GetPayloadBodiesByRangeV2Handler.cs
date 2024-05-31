@@ -56,9 +56,11 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
                     else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                     {
                         withdrawalRequests = (WithdrawalRequest[])withdrawalRequests.Append(request as WithdrawalRequest);
-                    } else {
+                    }
+                    else
+                    {
                         var error = $"Unknown request type {request.Type}";
-                        if(_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
+                        if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
                     }
                 }
                 yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);

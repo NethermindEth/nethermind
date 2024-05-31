@@ -8,7 +8,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class ExecutionPayloadBodyV2Result: ExecutionPayloadBodyV1Result
+public class ExecutionPayloadBodyV2Result : ExecutionPayloadBodyV1Result
 {
     public ExecutionPayloadBodyV2Result(
         IList<Transaction> transactions,
