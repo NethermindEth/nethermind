@@ -55,7 +55,7 @@ namespace Nethermind.Core
         /// is preferable. Unless you plan to reuse the array somehow (pool), then you'd just use span.
         /// </summary>
         public bool PreferWriteByArray => false;
-        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.ToArray(), flags);
+        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.IsNull() ? null : value.ToArray(), flags);
         void Remove(ReadOnlySpan<byte> key) => Set(key, null);
     }
 
