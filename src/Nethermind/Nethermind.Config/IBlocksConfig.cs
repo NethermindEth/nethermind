@@ -34,7 +34,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
-    [ConfigItem(Description = "Try to pre-warm the state when processing blocks. Can lead to 2x speedup in main loop block processing.", DefaultValue = "true")]
+    [ConfigItem(Description = "Try to pre-warm the state when processing blocks. Can lead to 2x speedup in main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
     byte[] GetExtraDataBytes();
