@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,7 +8,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db;
 
-public class CycleDb(IDb? db, DbSettings settings, IDbFactory dbFactory) : ICycleDb
+public class CycleDb(IDb? db, DbSettings settings, IDbFactory dbFactory) : ICycleDb, ITunableDb
 {
     private readonly ReaderWriterLockSlim _lock = new();
 
@@ -229,6 +229,14 @@ public class CycleDb(IDb? db, DbSettings settings, IDbFactory dbFactory) : ICycl
         finally
         {
             _lock.ExitReadLock();
+        }
+    }
+
+    public void Tune(ITunableDb.TuneType type)
+    {
+        if (db is ITunableDb tunableDb)
+        {
+            tunableDb.Tune(type);
         }
     }
 }
