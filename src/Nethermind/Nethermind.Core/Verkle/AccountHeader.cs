@@ -90,7 +90,7 @@ public readonly struct AccountHeader
 
     public static byte[] BasicDataToValue(byte[] basicDataLeafVal, int offset, int size)
     {
-        byte[] accountValueBytes = new byte[size];
+        byte[] accountValueBytes = new byte[32];
         Array.Copy(basicDataLeafVal, offset, accountValueBytes, 0, size);
         return accountValueBytes;
     }

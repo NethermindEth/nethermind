@@ -28,6 +28,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
     {
         Span<byte> key = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
         
+        key[31] = AccountHeader.BasicDataLeafKey;
         byte[]? basicDataLeafVal = Get(key, stateRoot);
 
         if (basicDataLeafVal is null || basicDataLeafVal.Length != 32) return null;
