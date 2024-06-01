@@ -4,7 +4,8 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -33,7 +34,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 4 * BlsParams.LenFp;
+        const int expectedInputLength = 2 * BlsParams.LenG1;
         if (inputData.Length != expectedInputLength)
         {
             return (Array.Empty<byte>(), false);
@@ -41,15 +42,29 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = Pairings.BlsG1Add(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G1? x = BlsExtensions.DecodeG1(inputData[..BlsParams.LenG1]);
+            G1? y = BlsExtensions.DecodeG1(inputData[BlsParams.LenG1..]);
+
+            if (!x.HasValue)
+            {
+                // x == inf
+                return (inputData[BlsParams.LenG1..], true);
+            }
+
+            if (!y.HasValue)
+            {
+                // y == inf
+                return (inputData[..BlsParams.LenG1], true);
+            }
+
+            G1 res = x.Value.add(y.Value);
+            result = (res.Encode(), true);
         }
-        else
+        catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

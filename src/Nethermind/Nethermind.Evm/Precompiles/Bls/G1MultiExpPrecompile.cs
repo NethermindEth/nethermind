@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G1 = Nethermind.Crypto.Bls.P1;
+using Scalar = Nethermind.Crypto.Bls.Scalar;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -41,26 +45,49 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
-        for (int i = 0; i < (inputData.Length / ItemSize); i++)
-        {
-            int offset = i * ItemSize;
-            if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
-            {
-                return (Array.Empty<byte>(), false);
-            }
-        }
-
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = Pairings.BlsG1MultiExp(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            List<G1> points = [];
+            List<Scalar> scalars = [];
+            for (int i = 0; i < inputData.Length / ItemSize; i++)
+            {
+                int offset = i * ItemSize;
+                G1? p = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)]);
+
+                if (!p.HasValue)
+                {
+                    continue;
+                }
+
+                byte[] scalar = inputData[(offset + BlsParams.LenG1)..(offset + BlsParams.LenG1 + 32)].ToArray();
+                if (scalar.All(x => x == 0))
+                {
+                    continue;
+                }
+
+                if (!p.Value.in_group())
+                {
+                    return (Array.Empty<byte>(), false);
+                }
+
+                points.Add(p.Value);
+                scalars.Add(new(scalar));
+            }
+
+            if (points.Count == 0)
+            {
+                return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+            }
+
+            G1 res = new();
+            res.multi_mult(points.ToArray(), scalars.ToArray());
+            result = (res.Encode(), true);
         }
-        else
+        catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

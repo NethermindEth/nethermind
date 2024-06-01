@@ -4,7 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G1 = Nethermind.Crypto.Bls.P1;
+using G2 = Nethermind.Crypto.Bls.P2;
+using GT = Nethermind.Crypto.Bls.PT;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -37,32 +40,41 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[32];
-
-        for (int i = 0; i < (inputData.Length / PairSize); i++)
+        try
         {
-            int offset = i * PairSize;
-            if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
+            GT acc = GT.one();
+            for (int i = 0; i < inputData.Length / PairSize; i++)
             {
-                return (Array.Empty<byte>(), false);
+                int offset = i * PairSize;
+                G1? x = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)]);
+                G2? y = BlsExtensions.DecodeG2(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)]);
+
+                if ((x.HasValue && !x.Value.in_group()) || (y.HasValue && !y.Value.in_group()))
+                {
+                    throw new Exception();
+                }
+
+                // x == inf || y == inf -> e(x, y) = 1
+                if (!x.HasValue || !y.HasValue)
+                {
+                    continue;
+                }
+
+                acc.mul(new GT(y.Value, x.Value));
             }
 
-            offset += 2 * BlsParams.LenFp;
-
-            if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
+            bool verified = acc.final_exp().is_one();
+            byte[] res = new byte[32];
+            if (verified)
             {
-                return (Array.Empty<byte>(), false);
+                res[31] = 1;
             }
-        }
 
-        bool success = Pairings.BlsPairing(inputData.Span, output);
-        if (success)
-        {
-            result = (output.ToArray(), true);
+            result = (res, true);
         }
-        else
+        catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -33,7 +34,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 2 * BlsParams.LenFp + BlsParams.LenFr;
+        const int expectedInputLength = BlsParams.LenG1 + BlsParams.LenFr;
         if (inputData.Length != expectedInputLength)
         {
             return (Array.Empty<byte>(), false);
@@ -41,17 +42,33 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = SubgroupChecks.G1IsInSubGroup(inputData.Span[..(2 * BlsParams.LenFp)])
-            && Pairings.BlsG1Mul(inputData.Span, output);
+        try
+        {
+            G1? x = BlsExtensions.DecodeG1(inputData[..BlsParams.LenG1]);
+            if (!x.HasValue)
+            {
+                // x == inf
+                return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+            }
 
-        if (success)
-        {
-            result = (output.ToArray(), true);
+            if (!x.Value.in_group())
+            {
+                throw new Exception();
+            }
+
+            byte[] scalar = inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray();
+
+            if (scalar.All(x => x == 0))
+            {
+                return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+            }
+
+            G1 res = x.Value.mult(scalar);
+            result = (res.Encode(), true);
         }
-        else
+        catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

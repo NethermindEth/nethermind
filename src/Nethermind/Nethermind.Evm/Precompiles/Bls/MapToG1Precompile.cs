@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -33,7 +33,7 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 64;
+        const int expectedInputLength = BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)
         {
             return (Array.Empty<byte>(), false);
@@ -41,15 +41,19 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[128];
-        bool success = Pairings.BlsMapToG1(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G1 res = new();
+            if (!BlsExtensions.ValidFp(inputData.Span))
+            {
+                throw new Exception();
+            }
+            res.map_to(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray());
+            result = (res.Encode(), true);
         }
-        else
+        catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;

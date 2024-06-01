@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G2 = Nethermind.Crypto.Bls.P2;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -33,27 +35,42 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 4 * BlsParams.LenFp + BlsParams.LenFr;
+        const int expectedInputLength = BlsParams.LenG2 + BlsParams.LenFr;
         if (inputData.Length != expectedInputLength)
         {
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[4 * BlsParams.LenFp + BlsParams.LenFr];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        bool success = SubgroupChecks.G2IsInSubGroup(inputData.Span[..(4 * BlsParams.LenFp)])
-            && Pairings.BlsG2Mul(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G2? x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2]);
+
+            if (!x.HasValue)
+            {
+                // x == inf
+                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
+            }
+
+            if (!x.Value.in_group())
+            {
+                throw new Exception();
+            }
+
+            byte[] scalar = inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray();
+
+            if (scalar.All(x => x == 0))
+            {
+                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
+            }
+
+            G2 res = x.Value.mult(scalar);
+            result = (res.Encode(), true);
         }
-        else
+        catch (Exception)
         {
-            result = (Array.Empty<byte>(), false);
+            result = ([], false);
         }
 
         return result;
