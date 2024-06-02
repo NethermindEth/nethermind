@@ -74,7 +74,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             initialRequestSize: 4
         );
 
-        protected LruKeyCacheLowObject<ValueHash256> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        protected LruKeyCacheLowObject<ValueHash256>? _notifiedTransactions;
+        protected LruKeyCacheLowObject<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
