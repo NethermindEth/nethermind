@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
+    <PackageReference Include="Pyroscope" />
   </ItemGroup>
 
   <ItemGroup>
