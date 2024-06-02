@@ -12,6 +12,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -89,10 +90,11 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
         void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
         {
-            Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
+            Transaction[] blockTransactions = block.Transactions;
+            Parallel.For(0, blockTransactions.Length, parallelOptions, i =>
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-                Transaction tx = block.Transactions[i];
+                Transaction tx = blockTransactions[i];
                 ReadOnlyTxProcessingEnv env = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
                 try
@@ -103,6 +105,14 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                     {
                         env.StateProvider.WarmUp(tx.AccessList); // eip-2930
                     }
+
+                    for (int j = 0; j <= i; j++)
+                    {
+                        Address senderAddress = blockTransactions[j].SenderAddress!;
+                        env.StateProvider.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                        env.StateProvider.IncrementNonce(senderAddress!);
+                    }
+
                     TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
                 }
