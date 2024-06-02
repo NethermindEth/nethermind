@@ -707,8 +707,14 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
             IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
-            _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
-            Marshal.FreeHGlobal(optsPtr);
+            try
+            {
+                _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(optsPtr);
+            }
         }
 
         #endregion
