@@ -7,6 +7,9 @@ on:
 
   workflow_dispatch:
     inputs:
+      ref:
+        description: Git ref
+        required: false
       image-name:
         description: Image name
         required: true
@@ -32,6 +35,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -47,7 +52,7 @@ jobs:
           tag=$(echo "${{ github.event.inputs.tag || '$branch' }}" | sed 's/\//-/g') # replace '/' with '-'
           image_name=nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}
           build_timestamp=$(date '+%s')
-          
+
           echo "Building image with tag $tag"
 
           docker buildx build --platform=linux/amd64,linux/arm64 \
