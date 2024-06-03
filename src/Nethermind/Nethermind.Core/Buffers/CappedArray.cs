@@ -115,6 +115,7 @@ public readonly struct CappedArray<T>
     {
         return AsArraySegment(0, _length);
     }
+
     public readonly ArraySegment<T> AsArraySegment(int start, int length)
     {
         if (_array == null || start < 0 || length < 0 || start + length > _length)

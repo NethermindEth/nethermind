@@ -24,7 +24,4 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOn
 
     public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         base.TryLoadRlp(address, in path, hash, flags) ?? store.TryLoadRlp(address, in path, hash, flags);
-
-    //public override byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-    //    base.GetByHash(key, flags) ?? store.GetByHash(key, flags);
 }

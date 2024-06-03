@@ -16,9 +16,6 @@ namespace Nethermind.Facade.Simulate;
 /// <param name="readonlyBaseHeaderStore"></param>
 public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
 {
-    // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
-    public const int CacheSize = 256 + 16;
-
     private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = new();
     private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = new();
 

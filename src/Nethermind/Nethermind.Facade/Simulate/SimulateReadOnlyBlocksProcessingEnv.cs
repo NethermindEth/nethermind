@@ -21,7 +21,7 @@ using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockValidationTransactionsExecutor : BlockProcessor.BlockValidationTransactionsExecutor
+public class SimulateBlockValidationTransactionsExecutor : BlockValidationTransactionsExecutor
 {
     public SimulateBlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
     {
@@ -101,7 +101,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         return new SimulateBlockValidatorProxy(blockValidator);
     }
 
-    public IBlockProcessor GetProcessor(Hash256 stateRoot, bool validate) =>
+    public IBlockProcessor GetProcessor(bool validate) =>
         new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,

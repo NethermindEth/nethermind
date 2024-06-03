@@ -22,7 +22,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     ISpecProvider specProvider,
     ILogManager? logManager = null)
 {
-    public SimulateReadOnlyBlocksProcessingEnv Create(bool traceTransfers, bool validate)
+    public SimulateReadOnlyBlocksProcessingEnv Create(bool validate)
     {
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);

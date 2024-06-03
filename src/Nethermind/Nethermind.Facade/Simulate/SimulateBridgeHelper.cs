@@ -59,7 +59,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer tracer,
         [NotNullWhen(false)] out string? error) =>
-        TrySimulate(parent, payload, tracer, simulateProcessingEnvFactory.Create(payload.TraceTransfers, payload.Validation), out error);
+        TrySimulate(parent, payload, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
 
 
     private bool TrySimulate(
@@ -111,7 +111,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
                 suggestedBlocks[0] = currentBlock;
 
-                IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!, payload.Validation);
+                IBlockProcessor processor = env.GetProcessor(payload.Validation);
                 Block processedBlock =
                         processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
