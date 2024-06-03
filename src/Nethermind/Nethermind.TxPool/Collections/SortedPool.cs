@@ -225,34 +225,32 @@ namespace Nethermind.TxPool.Collections
 
         protected bool TryRemoveNonLocked(TKey key, bool evicted, [NotNullWhen(true)] out TValue? value, out ICollection<TValue>? bucket)
         {
-            if (_cacheMap.TryGetValue(key, out value) && value is not null)
+            if (Remove(key, out value) && value is not null)
             {
-                if (Remove(key, value))
+                TGroupKey groupMapping = MapToGroup(value);
+                if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucketSet))
                 {
-                    TGroupKey groupMapping = MapToGroup(value);
-                    if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucketSet))
+                    bucket = bucketSet;
+                    TValue? last = bucketSet.Max;
+                    if (bucketSet.Remove(value))
                     {
-                        bucket = bucketSet;
-                        TValue? last = bucketSet.Max;
-                        if (bucketSet.Remove(value!))
+                        if (bucket.Count == 0)
                         {
-                            if (bucket.Count == 0)
+                            _buckets.Remove(groupMapping);
+                            if (last is not null)
                             {
-                                _buckets.Remove(groupMapping);
-                                if (last is not null)
-                                {
-                                    _worstSortedValues.Remove(last);
-                                    UpdateWorstValue();
-                                }
+                                _worstSortedValues.Remove(last);
+                                UpdateWorstValue();
                             }
-                            else
-                            {
-                                UpdateSortedValues(bucketSet, last);
-                            }
-                            _snapshot = null;
-
-                            return true;
                         }
+                        else
+                        {
+                            UpdateSortedValues(bucketSet, last);
+                        }
+
+                        _snapshot = null;
+
+                        return true;
                     }
 
                     Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
@@ -371,16 +369,31 @@ namespace Nethermind.TxPool.Collections
 
         private bool RemoveLast(out TValue? removed)
         {
-            TKey? key = _worstValue.GetValueOrDefault().Value;
+            TryAgain:
+            KeyValuePair<TValue, TKey> worstValue = _worstValue.GetValueOrDefault();
+            TKey? key = worstValue.Value;
             if (key is not null)
             {
-                return TryRemoveNonLocked(key, true, out removed, out _);
+                if (TryRemoveNonLocked(key, true, out removed, out _))
+                {
+                    return true;
+                }
+
+                TValue value = worstValue.Key;
+                if (_worstSortedValues.Remove(value))
+                {
+                    TGroupKey groupMapping = MapToGroup(value);
+                    if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucket))
+                    {
+                        UpdateSortedValues(bucket, previousLast: default);
+                    }
+                }
+
+                goto TryAgain;
             }
-            else
-            {
-                removed = default;
-                return false;
-            }
+
+            removed = default;
+            return false;
         }
 
         /// <summary>
@@ -439,26 +452,17 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Actual removal mechanism.
         /// </summary>
-        protected virtual bool Remove(TKey key, TValue value)
+        protected virtual bool Remove(TKey key, out TValue? value)
         {
-            // Always remove from worst values; as may have been where it came from and dangling item
-            bool removed = _worstSortedValues.Remove(value);
             // Now remove from cache
-            if (_cacheMap.Remove(key))
+            if (_cacheMap.Remove(key, out value))
             {
                 UpdateIsFull();
                 _snapshot = null;
                 return true;
             }
-            else if (removed)
-            {
-                TGroupKey groupMapping = MapToGroup(value);
-                if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucket))
-                {
-                    UpdateSortedValues(bucket, previousLast: default);
-                }
-            }
 
+            value = default;
             return false;
         }
 
