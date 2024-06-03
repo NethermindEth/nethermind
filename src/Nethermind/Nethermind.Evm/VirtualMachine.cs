@@ -2708,7 +2708,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
-        if (!env.Witness.AccessForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero, ref gasAvailable))
+        if (!env.Witness.AccessForContractCreationInit(contractAddress, ref gasAvailable))
         {
             return (EvmExceptionType.OutOfGas, null);
         }

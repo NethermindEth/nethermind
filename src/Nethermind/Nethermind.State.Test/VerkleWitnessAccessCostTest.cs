@@ -122,7 +122,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, false, ref expectedGas);
+        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -140,7 +140,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1;
 
-        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, false, ref expectedGas);
+        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -157,7 +157,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, true, ref expectedGas);
+        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -175,7 +175,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessChunkWrite * 1
                            + GasCostOf.WitnessBranchWrite * 1;
 
-        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, true, ref expectedGas);
+        bool result = witness.AccessForContractCreationInit(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));

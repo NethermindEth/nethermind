@@ -29,10 +29,10 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     private readonly VerkleWorldState _verkleWorldState =
         verkleWorldState ?? throw new ArgumentNullException(nameof(verkleWorldState));
 
-    public bool AccessForContractCreationInit(Address contractAddress, bool isValueTransfer, ref long gasAvailable)
+    public bool AccessForContractCreationInit(Address contractAddress, ref long gasAvailable)
     {
         if (!AccessBasicData(contractAddress, ref gasAvailable, true)) return false;
-        // _logger.Info($"AccessForContractCreationInit: {contractAddress.Bytes.ToHexString()} {isValueTransfer} {gas}");
+        // _logger.Info($"AccessForContractCreationInit: {contractAddress.Bytes.ToHexString()} {gas}");
 
         return true;
     }
