@@ -91,10 +91,21 @@ public readonly struct AccountHeader
 
     public static Account BasicDataToAccount(in ReadOnlySpan<byte> basicData, Hash256 codeHash)
     {
+        // since values are encoded little endian - we need the full 32 bytes to decode properly
+        Span<byte> dataSpan = stackalloc byte[32];
+
         byte version = basicData[0];
-        var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength));
-        var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength));
-        var balance = new UInt256(basicData.Slice(BalanceOffset, BalanceBytesLength));
+
+        basicData.Slice(NonceOffset, NonceBytesLength).CopyTo(dataSpan[..NonceBytesLength]);
+        var nonce = new UInt256(dataSpan);
+
+        dataSpan.Clear();
+        basicData.Slice(CodeSizeOffset, CodeSizeBytesLength).CopyTo(dataSpan[..CodeSizeBytesLength]);
+        var codeSize = new UInt256(dataSpan);
+
+        dataSpan.Clear();
+        basicData.Slice(BalanceOffset, BalanceBytesLength).CopyTo(dataSpan[..BalanceBytesLength]);
+        var balance = new UInt256(dataSpan);
 
         return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
     }
