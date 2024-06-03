@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Verkle;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -278,6 +279,13 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithParentBeaconBlockRoot(Hash256? parentBeaconBlockRoot)
         {
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+            return this;
+        }
+
+        public BlockBuilder WithExecutionWitness(ExecutionWitness? witness)
+        {
+            TestObjectInternal = TestObjectInternal
+                .WithReplacedBody(TestObjectInternal.Body.WithChangedExecutionWitness(witness));
             return this;
         }
     }

@@ -26,6 +26,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         bool IsSnapGetRangesFinished();
 
+        bool IsVerkleGetRangesFinished();
 
         UInt256 ChainDifficulty { get; }
 

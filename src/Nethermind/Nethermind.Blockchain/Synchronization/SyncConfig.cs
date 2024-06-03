@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Synchronization
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
         bool ISyncConfig.FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool FastSync { get => _fastSync || SnapSync; set => _fastSync = value; }
+        public bool FastSync { get => _fastSync || SnapSync || VerkleSync ; set => _fastSync = value; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
@@ -64,9 +64,12 @@ namespace Nethermind.Blockchain.Synchronization
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
-        public bool? SnapServingEnabled { get; set; } = null;
+        public bool? SnapServingEnabled { get; set; } = false;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public bool TrieHealing { get; set; } = true;
+        public bool VerkleSync { get; set; } = false;
+        public int VerkleSyncAccountRangePartitionCount { get; set; } = 8;
+
 
         public override string ToString()
         {

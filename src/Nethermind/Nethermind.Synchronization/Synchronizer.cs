@@ -19,8 +19,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.DbTuner;
-using Nethermind.Synchronization.FastBlocks
-    ;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -28,6 +27,7 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
+using Nethermind.Synchronization.VerkleSync;
 
 namespace Nethermind.Synchronization
 {
@@ -65,6 +65,7 @@ namespace Nethermind.Synchronization
         private readonly ChainSpec _chainSpec;
 
         public ISnapProvider SnapProvider { get; }
+        protected IVerkleSyncProvider VerkleSyncProvider { get; }
 
         private HeadersSyncFeed? _headersSyncFeed;
         private HeadersSyncFeed? HeadersSyncFeed => _headersSyncFeed ??= CreateHeadersSyncFeed();
@@ -76,7 +77,9 @@ namespace Nethermind.Synchronization
         private BodiesSyncFeed? BodiesSyncFeed => _bodiesSyncFeed ??= CreateBodiesSyncFeed();
 
         private SnapSyncFeed? _snapSyncFeed;
+        private VerkleSyncFeed? _verkleSyncFeed;
         private SnapSyncFeed? SnapSyncFeed => _snapSyncFeed ??= CreateSnapSyncFeed();
+        private VerkleSyncFeed? VerkleSyncFeed => _verkleSyncFeed ??= CreateVerkleSyncFeed();
 
         private ISyncProgressResolver? _syncProgressResolver;
         public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
@@ -87,12 +90,14 @@ namespace Nethermind.Synchronization
             BodiesSyncFeed,
             ReceiptsSyncFeed,
             SnapSyncFeed,
+            VerkleSyncFeed,
             _logManager);
 
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
         private INodeStorage _nodeStorage;
-        private readonly ProgressTracker _progressTracker;
+        private readonly SnapProgressTracker _snapProgressTracker;
+        private readonly VerkleProgressTracker _verkleProgressTracker;
 
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
@@ -139,12 +144,18 @@ namespace Nethermind.Synchronization
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
-            _progressTracker = new(
+            _snapProgressTracker = new SnapProgressTracker(
                 blockTree,
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(_progressTracker, dbProvider.CodeDb, nodeStorage, logManager);
+            SnapProvider = new SnapProvider(_snapProgressTracker, dbProvider.CodeDb, nodeStorage, logManager);
+            _verkleProgressTracker= new VerkleProgressTracker(
+                blockTree,
+                dbProvider,
+                logManager,
+                _syncConfig.SnapSyncAccountRangePartitionCount);
+            VerkleSyncProvider = new VerkleSyncProvider(_verkleProgressTracker, dbProvider, logManager);
         }
 
         public virtual void Start()
@@ -165,6 +176,11 @@ namespace Nethermind.Synchronization
                 if (_syncConfig.SnapSync)
                 {
                     StartSnapSyncComponents();
+                }
+
+                if (_syncConfig.VerkleSync)
+                {
+                    StartVerkleSyncComponents();
                 }
 
                 StartStateSyncComponents();
@@ -210,11 +226,18 @@ namespace Nethermind.Synchronization
             return new SnapSyncFeed(SnapProvider, _logManager);
         }
 
+        private VerkleSyncFeed? CreateVerkleSyncFeed()
+        {
+            if (!_syncConfig.FastSync || !_syncConfig.VerkleSync) return null;
+            return new VerkleSyncFeed(VerkleSyncProvider, _logManager);
+        }
+
         private void SetupDbOptimizer()
         {
             s_dbTuner ??= new SyncDbTuner(
                 _syncConfig,
                 SnapSyncFeed,
+                VerkleSyncFeed,
                 BodiesSyncFeed,
                 ReceiptsSyncFeed,
                 _dbProvider.StateDb as ITunableDb,
@@ -313,6 +336,27 @@ namespace Nethermind.Synchronization
                 else
                 {
                     if (_logger.IsInfo) _logger.Info("State sync task completed.");
+                }
+            });
+        }
+
+        private void StartVerkleSyncComponents()
+        {
+            SyncDispatcher<VerkleSyncBatch> dispatcher = CreateDispatcher(
+                VerkleSyncFeed,
+                new VerkleSyncDownloader(_logManager),
+                new VerkleSyncAllocationStrategyFactory()
+            );
+
+            Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Verkle sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Verkle sync task completed.");
                 }
             });
         }
@@ -424,6 +468,7 @@ namespace Nethermind.Synchronization
                     _fastSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _stateSyncFeed?.FeedTask ?? Task.CompletedTask,
                     SnapSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    VerkleSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _fullSyncFeed?.FeedTask ?? Task.CompletedTask,
                     HeadersSyncFeed?.FeedTask ?? Task.CompletedTask,
                     BodiesSyncFeed?.FeedTask ?? Task.CompletedTask,
@@ -435,6 +480,7 @@ namespace Nethermind.Synchronization
             WireFeedWithModeSelector(_fastSyncFeed);
             WireFeedWithModeSelector(_stateSyncFeed);
             WireFeedWithModeSelector(SnapSyncFeed);
+            WireFeedWithModeSelector(VerkleSyncFeed);
             WireFeedWithModeSelector(_fullSyncFeed);
             WireFeedWithModeSelector(HeadersSyncFeed);
             WireFeedWithModeSelector(BodiesSyncFeed);
@@ -458,11 +504,13 @@ namespace Nethermind.Synchronization
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();
             SnapSyncFeed?.Dispose();
+            VerkleSyncFeed?.Dispose();
             _fullSyncFeed?.Dispose();
             HeadersSyncFeed?.Dispose();
             BodiesSyncFeed?.Dispose();
             ReceiptsSyncFeed?.Dispose();
-            _progressTracker.Dispose();
+            _snapProgressTracker.Dispose();
+            _verkleProgressTracker.Dispose();
         }
     }
 }

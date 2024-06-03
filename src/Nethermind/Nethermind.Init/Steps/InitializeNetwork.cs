@@ -41,6 +41,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
+using Nethermind.Synchronization.VerkleSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
@@ -170,7 +171,7 @@ public class InitializeNetwork : IStep
         _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
-            _api.TrieStore!.TrieNodeRlpStore,
+            _api.DbProvider.StateDb,
             _api.DbProvider.CodeDb,
             _api.BlockTree,
             _api.ReceiptStorage!,
@@ -187,6 +188,8 @@ public class InitializeNetwork : IStep
 
         _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
+
+        _api.VerkleSyncServer = new VerkleSyncServer(_api.VerkleTreeStore!, _api.LogManager);
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
@@ -207,6 +210,11 @@ public class InitializeNetwork : IStep
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+        }
+
+        if (_syncConfig.VerkleSync)
+        {
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Verkle, 1));
         }
 
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
@@ -514,6 +522,7 @@ public class InitializeNetwork : IStep
             _api.SyncPeerPool!,
             syncServer,
             _api.BackgroundTaskScheduler,
+            _api.VerkleSyncServer,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,

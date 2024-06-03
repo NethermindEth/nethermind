@@ -151,4 +151,23 @@ public class ColumnDb : IDb
     {
         _mainDb.DangerousReleaseMemory(span);
     }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator()
+    {
+        Iterator iterator = _mainDb.CreateIterator(true, _columnFamily);
+        return _mainDb.GetAllCore(iterator);
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start)
+    {
+        Iterator iterator = _mainDb.CreateIterator(start, true, _columnFamily);
+        return _mainDb.WrapInEnumerable(iterator);
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start, byte[] end)
+    {
+        // TODO: Do this properly?
+        return GetIterator(start)
+            .TakeWhile((kv) => kv.Key.AsSpan().SequenceCompareTo(end.AsSpan()) <= 0);
+    }
 }

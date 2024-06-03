@@ -24,6 +24,8 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using Nethermind.Verkle.Tree.History.V2;
+using Nethermind.Verkle.Tree.TreeStore;
 
 namespace Nethermind.Api
 {
@@ -98,5 +100,7 @@ namespace Nethermind.Api
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         INodeStorageFactory NodeStorageFactory { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
+        IVerkleTreeStore? VerkleTreeStore { get; set; }
+        VerkleArchiveStore? VerkleArchiveStore { get; set; }
     }
 }

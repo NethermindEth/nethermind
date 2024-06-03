@@ -216,6 +216,7 @@ namespace Nethermind.Evm.Test
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
         public bool IsTracingFees => false;
+        public bool IsTracingAccessWitness => false;
         public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public string lastmemline;
@@ -363,6 +364,10 @@ namespace Nethermind.Evm.Test
         public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
             throw new NotImplementedException();
+        }
+
+        public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys)
+        {
         }
 
         public void Dispose() { }

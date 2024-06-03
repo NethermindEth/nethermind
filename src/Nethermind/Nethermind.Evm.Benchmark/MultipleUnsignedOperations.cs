@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -87,6 +88,7 @@ public class MultipleUnsignedOperations
             value: 0,
             transferValue: 0,
             txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+            witness: new NoExecWitness(),
             inputData: default
         );
 
