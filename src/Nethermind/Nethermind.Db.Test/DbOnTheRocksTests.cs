@@ -19,6 +19,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -144,6 +145,29 @@ namespace Nethermind.Db.Test
 
             {
                 using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+            }
+        }
+
+        [TestCase("compaction_pri=kByCompensatedSize", true)]
+        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true)]
+        [TestCase("compaction_pri=kSomethingElse", false)]
+        public void CanOpenWithAdditionalConfig(string opts, bool success)
+        {
+            IDbConfig config = new DbConfig();
+            config.AdditionalRocksDbOptions = opts;
+
+            Action act = () =>
+            {
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+            };
+
+            if (success)
+            {
+                act.Should().NotThrow();
+            }
+            else
+            {
+                act.Should().Throw<RocksDbException>();
             }
         }
 
