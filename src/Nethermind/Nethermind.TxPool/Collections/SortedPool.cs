@@ -12,6 +12,7 @@ using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
+using Org.BouncyCastle.Asn1.Cms.Ecc;
 
 namespace Nethermind.TxPool.Collections
 {
@@ -227,33 +228,10 @@ namespace Nethermind.TxPool.Collections
         {
             if (Remove(key, out value) && value is not null)
             {
-                TGroupKey groupMapping = MapToGroup(value);
-                if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucketSet))
+                if (RemoveFromBucket(value, out EnhancedSortedSet<TValue>? bucketSet))
                 {
                     bucket = bucketSet;
-                    TValue? last = bucketSet.Max;
-                    if (bucketSet.Remove(value))
-                    {
-                        if (bucket.Count == 0)
-                        {
-                            _buckets.Remove(groupMapping);
-                            if (last is not null)
-                            {
-                                _worstSortedValues.Remove(last);
-                                UpdateWorstValue();
-                            }
-                        }
-                        else
-                        {
-                            UpdateSortedValues(bucketSet, last);
-                        }
-
-                        _snapshot = null;
-
-                        return true;
-                    }
-
-                    Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
+                    Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, evicted));
                 }
                 else // just for safety
                 {
@@ -264,6 +242,36 @@ namespace Nethermind.TxPool.Collections
 
             value = default;
             bucket = null;
+            return false;
+        }
+
+        private bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
+        {
+            TGroupKey groupMapping = MapToGroup(value);
+            if (_buckets.TryGetValue(groupMapping, out bucketSet))
+            {
+                TValue? last = bucketSet.Max;
+                if (bucketSet.Remove(value))
+                {
+                    if (bucketSet.Count == 0)
+                    {
+                        _buckets.Remove(groupMapping);
+                        if (last is not null)
+                        {
+                            _worstSortedValues.Remove(last);
+                            UpdateWorstValue();
+                        }
+                    }
+                    else
+                    {
+                        UpdateSortedValues(bucketSet, last);
+                    }
+
+                    _snapshot = null;
+                    return true;
+                }
+            }
+
             return false;
         }
 
@@ -385,13 +393,11 @@ namespace Nethermind.TxPool.Collections
                 }
 
                 TValue value = worstValue.Key;
-                if (_worstSortedValues.Remove(value))
+                if (value is not null)
                 {
-                    TGroupKey groupMapping = MapToGroup(value);
-                    if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucket))
+                    if (_worstSortedValues.Remove(value))
                     {
-                        bucket.Remove(value);
-                        UpdateSortedValues(bucket, previousLast: default);
+                        RemoveFromBucket(value, out _);
                     }
                 }
 
@@ -432,7 +438,7 @@ namespace Nethermind.TxPool.Collections
                 UpdateIsFull();
                 UpdateSortedValues(bucket, last);
                 _snapshot = null;
-                Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));
+                Inserted?.Invoke(this, new SortedPoolEventArgs(key, value));
             }
         }
 
