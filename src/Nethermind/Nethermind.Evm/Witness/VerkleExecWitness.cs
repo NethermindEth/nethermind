@@ -55,7 +55,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     public bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer, ref long gasAvailable)
     {
         // TODO: does not seem right - not upto spec
-        if (!AccessBasicData(originAddress, ref gasAvailable)) return false;
+        if (!AccessBasicData(originAddress, ref gasAvailable, true)) return false;
         // when you are executing a transaction, you are writing to the nonce of the origin address
         if (!AccessCodeHash(originAddress, ref gasAvailable)) return false;
 
@@ -64,7 +64,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
             // when you are executing a transaction with value transfer,
             // you are writing to the balance of the origin and destination address
             if (!AccessBasicData(destinationAddress, ref gasAvailable, isValueTransfer)) return false;
-            if (!AccessCodeHash(destinationAddress, ref gasAvailable)) return false;
         }
         // _logger.Info($"AccessForTransaction: {originAddress.Bytes.ToHexString()} {destinationAddress?.Bytes.ToHexString()} {isValueTransfer} {gasCost}");
         return true;
@@ -78,7 +77,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <returns></returns>
     public bool AccessForGasBeneficiary(Address gasBeneficiary, ref long gasAvailable)
     {
-        if (!AccessBasicData(gasBeneficiary, ref gasAvailable)) return false;
+        if (!AccessBasicData(gasBeneficiary, ref gasAvailable, true)) return false;
         if (!AccessCodeHash(gasBeneficiary, ref gasAvailable)) return false;
         // _logger.Info($"AccessCompleteAccount: {address.Bytes.ToHexString()} {isWrite} {gas}");
         return true;
@@ -91,7 +90,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         return true;
     }
 
-    public bool AccessForBalance(Address address, ref long gasAvailable, bool isWrite = false)
+    public bool AccessForBalanceOpCode(Address address, ref long gasAvailable, bool isWrite = false)
     {
         return AccessBasicData(address, ref gasAvailable, isWrite);
     }

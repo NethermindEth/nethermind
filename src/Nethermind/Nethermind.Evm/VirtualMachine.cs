@@ -616,7 +616,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.BALANCE:
                     {
                         var gasBefore = gasAvailable;
-                        result = vmState.Env.Witness.AccessForBalance(address, ref gasAvailable);
+                        result = vmState.Env.Witness.AccessForBalanceOpCode(address, ref gasAvailable);
                         witnessGasCharged = gasBefore != gasAvailable;
                         break;
                     }
@@ -637,7 +637,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (valueTransfer)
                             {
                                 gasBefore = gasAvailable;
-                                result = vmState.Env.Witness.AccessForBalance(address, ref gasAvailable);
+                                result = vmState.Env.Witness.AccessForBalanceOpCode(address, ref gasAvailable);
                                 witnessGasCharged = gasBefore != gasAvailable;
                             }
                         }

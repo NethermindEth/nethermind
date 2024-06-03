@@ -252,7 +252,7 @@ public class VerkleWitnessAccessCostTest
 
         long expectedGas = GasCostOf.WitnessChunkRead + GasCostOf.WitnessBranchRead;
 
-        bool result = witness.AccessForBalance(TestItem.AddressA, ref expectedGas);
+        bool result = witness.AccessForBalanceOpCode(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -269,7 +269,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite
                            + GasCostOf.WitnessChunkFill;
 
-        bool result = witness.AccessForBalance(TestItem.AddressA, ref expectedGas, true);
+        bool result = witness.AccessForBalanceOpCode(TestItem.AddressA, ref expectedGas, true);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -286,7 +286,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessChunkWrite
                            + GasCostOf.WitnessBranchWrite;
 
-        bool result = witness.AccessForBalance(TestItem.AddressA, ref expectedGas, true);
+        bool result = witness.AccessForBalanceOpCode(TestItem.AddressA, ref expectedGas, true);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
