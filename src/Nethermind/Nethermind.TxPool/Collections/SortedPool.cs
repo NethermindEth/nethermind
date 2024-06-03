@@ -255,6 +255,11 @@ namespace Nethermind.TxPool.Collections
 
                     Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
                 }
+                else // just for safety
+                {
+                    _worstSortedValues.Remove(value);
+                    UpdateWorstValue();
+                }
             }
 
             value = default;
