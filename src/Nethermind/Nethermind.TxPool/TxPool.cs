@@ -211,18 +211,22 @@ namespace Nethermind.TxPool
                         try
                         {
                             ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                            if (!CanUseCache(args.Block, accountChanges))
+                            if (accountChanges is not null)
                             {
-                                // Not sequential block, reset cache
-                                _accountCache.Reset();
+                                if (!CanUseCache(args.Block, accountChanges))
+                                {
+                                    // Not sequential block, reset cache
+                                    _accountCache.Reset();
+                                }
+                                else
+                                {
+                                    // Sequential block, just remove changed accounts from cache
+                                    _accountCache.RemoveAccounts(accountChanges);
+                                }
+
+                                args.Block.AccountChanges = null;
+                                accountChanges.Dispose();
                             }
-                            else
-                            {
-                                // Sequential block, just remove changed accounts from cache
-                                _accountCache.RemoveAccounts(accountChanges);
-                            }
-                            args.Block.AccountChanges = null;
-                            accountChanges?.Dispose();
 
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
@@ -241,10 +245,7 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
-                {
-                    return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
-                }
+                bool CanUseCache(Block block, ArrayPoolList<AddressAsKey> accountChanges) => block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -809,10 +810,10 @@ namespace Nethermind.TxPool
             public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
             {
                 Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
-                    (n) =>
+                    n =>
                     {
-                        var cache = _caches[n.Key];
-                        foreach (Address a in n)
+                        LruCacheLowObject<AddressAsKey, AccountStruct> cache = _caches[n.Key];
+                        foreach (AddressAsKey a in n)
                         {
                             cache.Delete(a);
                         }
