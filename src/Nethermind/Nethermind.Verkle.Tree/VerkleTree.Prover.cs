@@ -278,7 +278,7 @@ public partial class VerkleTree
 
         MultiProof proofConstructor = new(CRS.Instance, PreComputedWeights.Instance);
 
-        Transcript proverTranscript = new("vt");
+        Transcript proverTranscript = new("vt", Math.Max(12 + 99 * queries.Count, 189));
         VerkleProofStruct proof = proofConstructor.MakeMultiProof(proverTranscript, queries);
 
         return new VerkleProof

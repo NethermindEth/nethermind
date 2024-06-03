@@ -4,16 +4,21 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Synchronization.RangeSync;
 using Nethermind.Verkle.Curve;
+using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeNodes;
@@ -49,7 +54,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
     private ConcurrentQueue<byte[]> LeafsToRefresh { get; set; } = new();
 
 
-    private readonly RangeSync.Pivot _pivot;
+    private readonly Pivot _pivot;
     private readonly IVerkleTreeStore _verkleStore;
 
     public VerkleProgressTracker(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, int subTreeRangePartitionCount = 8)
@@ -57,7 +62,9 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _db = dbProvider.GetColumnDb<VerkleDbColumns>(DbNames.VerkleState).GetColumnDb(VerkleDbColumns.InternalNodes) ?? throw new ArgumentNullException(nameof(dbProvider));
         _verkleStore = new VerkleTreeStore<PersistEveryBlock>(dbProvider, logManager);
-        _pivot = new RangeSync.Pivot(blockTree, logManager);
+        _pivot = new Pivot(blockTree, logManager);
+
+        blockTree.OnUpdateMainChain += OnNewBlock;
 
         if (subTreeRangePartitionCount < 1 || subTreeRangePartitionCount > 256)
             throw new ArgumentException("SubTree range partition must be between 1 to 256.");
@@ -67,6 +74,61 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
 
         //TODO: maybe better to move to a init method instead of the constructor
         GetSyncProgress();
+    }
+
+    private readonly Dictionary<long, VerkleMemoryDb> _healingCache = new();
+
+    private void OnNewBlock(object sender, OnUpdateMainChainArgs blockEventArgs)
+    {
+        foreach (Block? block in blockEventArgs.Blocks)
+        {
+            AddToHealingCache(block);
+        }
+    }
+
+    private void OnPivotChange(object sender, PivotChangedEventArgs pivotChangedEventArgs)
+    {
+
+        var fromBlock = pivotChangedEventArgs.FromBlock;
+        var toBlock = pivotChangedEventArgs.ToBlock;
+
+        var tree = new VerkleTree(_verkleStore, LimboLogs.Instance);
+        for (long i = fromBlock; i <= toBlock; i++)
+        {
+            tree.HealThyTree(i, _healingCache[i]);
+        }
+    }
+
+    private void AddToHealingCache(Block block)
+    {
+        SpanConcurrentDictionary<byte, byte[]?>? leafs = block.ExecutionWitness?.LeafStore;
+        Console.WriteLine($"AddToHealingCache {block.Number} {block.Hash} {leafs?.Count}");
+        ExecutionWitness witness = block.ExecutionWitness!;
+        var stopwatch = Stopwatch.StartNew();
+        var verkleStore = new NullVerkleTreeStore();
+        var tree = new VerkleTree(verkleStore, LimboLogs.Instance);
+        VerkleMemoryDb cache = tree.GetStatelessStateDiffFromExecutionWitness(witness,
+            Banderwagon.FromBytes(witness.StateRoot!.BytesToArray(), subgroupCheck: false)!.Value, leafs);
+
+        // TODO: need to debug why this is not working
+        // VerkleMemoryDb? cache = tree.GetStatelessStateDiffFromExecutionWitness(witness,
+        //     Banderwagon.FromBytes(witness.StateRoot!.BytesToArray(), subgroupCheck: false)!.Value, witness.StateDiff);
+
+
+        Console.WriteLine($"Tree StateRoot: {tree.StateRoot} Block StateRoot: {block.StateRoot} ");
+        if (tree.StateRoot != block.StateRoot)
+        {
+            Console.WriteLine($"THIS IS NOT SUPPOSED TO HAPPEN: {leafs?.Count}");
+        }
+        if (_healingCache.Count >= 256)
+        {
+            // TODO: clean the cache, there can be a case when the verkle sync is stuck for some reason, we don't want
+            // to keep growing the cache, we should define a value that should be the maximum size of the cache
+        }
+        _healingCache.Add(block.Number, cache);
+        var elapsed = stopwatch.ElapsedMilliseconds;
+        stopwatch.Stop();
+        Console.WriteLine($"AddToHealingCache: Time:{elapsed} Block:{block.Number} LT:{tree._treeCache.LeafTable.Count} IT:{tree._treeCache.InternalTable.Count} CacheCount:{_healingCache.Count}");
     }
 
     private void SetupSubTreeRangePartition()
@@ -296,6 +358,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
 
     public void Dispose()
     {
+
     }
 
 

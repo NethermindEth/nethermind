@@ -43,6 +43,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Synchronization.VerkleSync;
 using Nethermind.TxPool;
+using Pivot = Nethermind.Synchronization.Pivot;
 
 namespace Nethermind.Init.Steps;
 

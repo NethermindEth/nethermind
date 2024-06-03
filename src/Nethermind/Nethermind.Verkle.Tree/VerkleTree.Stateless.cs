@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.JavaScript;
+using Microsoft.ClearScript.Util.Web;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -122,6 +123,72 @@ public partial class VerkleTree
             if (value is null) continue;
             SetLeafCache(new Hash256(keys[i]), value);
         }
+    }
+
+    public void HealThyTree(long blockNumber, VerkleMemoryDb cache)
+    {
+        foreach (KeyValuePair<byte[], InternalNode> internalNode in cache.InternalTable)
+        {
+            SetInternalNode(internalNode.Key, internalNode.Value);
+        }
+
+        foreach (KeyValuePair<byte[], byte[]> leaf in cache.LeafTable)
+        {
+            SetLeafCache(leaf.Key, leaf.Value);
+        }
+
+        CommitTree(blockNumber);
+    }
+
+    public VerkleMemoryDb GetStatelessStateDiffFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root, StemStateDiff[] stateDiff)
+    {
+        if (!CreateTreeFromExecutionWitness(execWitness, root)) throw new Exception("Proof verification failed");
+
+        foreach (StemStateDiff diff in stateDiff)
+        {
+            Stem stem = diff.Stem;
+            UpdateTreeFromStateDiff(stem.BytesAsSpan, diff.SuffixDiffs.AsEnumerable());
+        }
+
+        Commit();
+
+        return _treeCache;
+    }
+
+    public VerkleMemoryDb GetStatelessStateDiffFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root,  SpanConcurrentDictionary<byte,byte[]?> stateDiff)
+    {
+        if (!CreateTreeFromExecutionWitness(execWitness, root)) throw new Exception("Proof verification failed");
+
+        foreach (KeyValuePair<byte[], byte[]?> data in stateDiff)
+        {
+            if(data.Value is null) continue;
+            Insert((Hash256)data.Key, data.Value);
+        }
+        Commit();
+
+        return _treeCache;
+    }
+
+    private bool CreateTreeFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root)
+    {
+        if (execWitness?.VerkleProof is null)
+        {
+            SetInternalNode(Array.Empty<byte>(), new(VerkleNodeType.BranchNode, new Commitment(root)));
+            return true;
+        }
+
+        var isVerified = VerifyVerkleProof(execWitness, root, out UpdateHint? updateHint);
+        if (!isVerified) return false;
+
+        InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(root));
+        SetInternalNode(Array.Empty<byte>(), rootNode);
+
+        AddStatelessInternalNodes(updateHint.Value);
+
+        foreach (StemStateDiff stemStateDiff in execWitness.StateDiff)
+            InsertStemBatchStateless(stemStateDiff.Stem, stemStateDiff.SuffixDiffs);
+
+        return true;
     }
 
     public void HealThyTree(long blockNumber, ExecutionWitness? execWitness, UpdateHint? updateHint, Banderwagon root)

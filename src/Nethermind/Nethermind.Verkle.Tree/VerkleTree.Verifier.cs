@@ -395,7 +395,7 @@ public partial class VerkleTree
         //     Console.WriteLine($"{query.NodeCommitPoint.ToBytes().ToHexString()}:{query.ChildIndex}:{query.ChildHash.ToBytes().ToHexString()}");
         // }
 
-        Transcript proverTranscript = new("vt");
+        Transcript proverTranscript = new("vt", Math.Max(12 + 99 * queries.Count, 189));
         MultiProof proofVerifier = new(CRS.Instance, PreComputedWeights.Instance);
 
         return proofVerifier.CheckMultiProof(proverTranscript, queries.ToArray(), proof);

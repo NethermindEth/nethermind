@@ -175,6 +175,11 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
         _treeCache.SetLeaf(key.Bytes, value);
     }
 
+    private void SetLeafCache(in ReadOnlySpan<byte> key, byte[]? value)
+    {
+        _treeCache.SetLeaf(key, value);
+    }
+
     private Banderwagon UpdateLeafAndGetDelta(Hash256 key, byte[] value)
     {
         var oldValue = Get(key);
