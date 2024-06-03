@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -88,6 +89,26 @@ public readonly struct AccountHeader
         subIndex.ToBigEndian(subIndexBytes);
     }
 
+    public static Account BasicDataToAccount(in ReadOnlySpan<byte> basicData, Hash256 codeHash)
+    {
+        byte version = basicData[0];
+        var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength));
+        var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength));
+        var balance = new UInt256(basicData.Slice(BalanceOffset, BalanceBytesLength));
+
+        return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
+    }
+
+    public static AccountStruct BasicDataToAccountStruct(in ReadOnlySpan<byte> basicData, ValueHash256 codeHash)
+    {
+        byte version = basicData[0];
+        var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength));
+        var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength));
+        var balance = new UInt256(basicData.Slice(BalanceOffset, BalanceBytesLength));
+
+        return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
+    }
+
     public static byte[] BasicDataToValue(byte[] basicDataLeafVal, int offset, int size)
     {
         byte[] accountValueBytes = new byte[32];
@@ -98,18 +119,24 @@ public readonly struct AccountHeader
     public static byte[] AccountToBasicData(Account account)
     {
         byte[] basicData = new byte[32];
+        Span<byte> basicDataSpan = basicData;
 
-        byte[] version = account.Version.ToLittleEndian();
-        Array.Copy(version, 0, basicData, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
+        // TODO: should we convert balance to Uint128 and then directly decode to span
+        Span<byte> balanceBytes = stackalloc byte[32];
+        account.Balance.ToLittleEndian(balanceBytes);
+        balanceBytes[..BalanceBytesLength].CopyTo(basicDataSpan.Slice(BalanceOffset, BalanceBytesLength));
 
-        byte[] nonce = account.Nonce.ToLittleEndian();
-        Array.Copy(nonce, 0, basicData, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
+        // we know that version is just 1 byte
+        byte version = account.Version;
+        basicData[0] = version;
 
-        byte[] codeSize = account.CodeSize.ToLittleEndian();
-        Array.Copy(codeSize, 0, basicData, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
+        // we know that nonce is just 8 bytes
+        ulong nonce = account.Nonce.u0;
+        BinaryPrimitives.WriteUInt64LittleEndian(basicDataSpan.Slice(NonceOffset, NonceBytesLength), nonce);
 
-        byte[] balance = account.Balance.ToLittleEndian();
-        Array.Copy(balance, 0, basicData, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
+        // we know that codeSize is just 4 bytes
+        uint codeSize = (uint)account.CodeSize.u0;
+        BinaryPrimitives.WriteUInt32LittleEndian(basicDataSpan.Slice(CodeSizeOffset, CodeSizeBytesLength), codeSize);
 
         return basicData;
     }

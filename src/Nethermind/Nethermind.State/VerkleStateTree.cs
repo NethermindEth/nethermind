@@ -24,31 +24,37 @@ namespace Nethermind.State;
 public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager) : VerkleTree(stateStore, logManager)
 {
     [DebuggerStepThrough]
-    public AccountStruct? Get(Address address, Hash256? stateRoot = null)
+    public Account? Get(Address address, Hash256? stateRoot = null)
     {
-        Span<byte> key = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
-        
-        key[31] = AccountHeader.BasicDataLeafKey;
-        byte[]? basicDataLeafVal = Get(key, stateRoot);
+        byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
+        headerTreeKey[31] = AccountHeader.BasicDataLeafKey;
+        byte[]? basicDataLeafVal = Get(headerTreeKey);
+        if (basicDataLeafVal is null) return null;
 
-        if (basicDataLeafVal is null || basicDataLeafVal.Length != 32) return null;
+        headerTreeKey[31] = AccountHeader.CodeHash;
+        var codeHashBytes = Get(headerTreeKey);
+        Hash256 codeHash = codeHashBytes is null ? Keccak.EmptyTreeHash : new Hash256(codeHashBytes);
 
-        byte[] versionVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
-        UInt256 version = new(versionVal);
+        return AccountHeader.BasicDataToAccount(basicDataLeafVal, codeHash);
+    }
 
-        byte[] balanceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
-        UInt256 balance = new(balanceVal);
+    public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
+    {
+        byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
+        headerTreeKey[31] = AccountHeader.BasicDataLeafKey;
+        byte[]? basicDataLeafVal = Get(headerTreeKey);
+        if (basicDataLeafVal is null)
+        {
+            account = AccountStruct.TotallyEmpty;
+            return false;
+        }
 
-        byte[] nonceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
-        UInt256 nonce = new(nonceVal);
+        headerTreeKey[31] = AccountHeader.CodeHash;
+        var codeHashBytes = Get(headerTreeKey);
+        ValueHash256 codeHash = codeHashBytes is null ? Keccak.EmptyTreeHash.ValueHash256 : new ValueHash256(codeHashBytes);
 
-        key[31] = AccountHeader.CodeHash;
-        byte[]? codeHash = (Get(key, stateRoot) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
-
-        byte[] codeSizeVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
-        UInt256 codeSize = new(codeSizeVal);
-
-        return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
+        account = AccountHeader.BasicDataToAccountStruct(basicDataLeafVal, codeHash);
+        return true;
     }
 
     public void Set(Address address, Account? account)

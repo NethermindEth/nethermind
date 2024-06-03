@@ -550,28 +550,7 @@ public class VerkleWorldState : IWorldState
     protected Account? GetState(Address address)
     {
         Db.Metrics.StateTreeReads++;
-        byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
-        headerTreeKey[31] = AccountHeader.BasicDataLeafKey;
-        byte[]? basicDataLeafVal = _tree.Get(headerTreeKey);
-
-        if (basicDataLeafVal is null || basicDataLeafVal.Length != 32) return null;
-
-        byte[] versionVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
-        UInt256 version = new(versionVal);
-
-        byte[] balanceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
-        UInt256 balance = new(balanceVal);
-
-        byte[] nonceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
-        UInt256 nonce = new(nonceVal);
-
-        headerTreeKey[31] = AccountHeader.CodeHash;
-        byte[]? codeHash = (_tree.Get(headerTreeKey) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
-
-        byte[] codeSizeVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
-        UInt256 codeSize = new(codeSizeVal);
-
-        return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
+        return _tree.Get(address);
     }
 
     protected void BulkSet(Dictionary<Address, Account> accountChange)
