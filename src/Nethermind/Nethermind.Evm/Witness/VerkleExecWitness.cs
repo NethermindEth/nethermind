@@ -234,9 +234,14 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         bool wasPreviouslyNotAccessed = !_accessedLeaves.Contains(key);
         if (wasPreviouslyNotAccessed)
         {
+            Console.WriteLine("GasCostOf.WitnessChunkRead");
             requiredGas += GasCostOf.WitnessChunkRead;
             // if key is already in `_accessedLeaves`, then checking `_accessedSubtrees` will be redundant
-            if (!_accessedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchRead;
+            if (!_accessedSubtrees.Contains(subTreeStem))
+            {
+                Console.WriteLine("GasCostOf.WitnessBranchRead");
+                requiredGas += GasCostOf.WitnessBranchRead;
+            }
         }
 
         if (requiredGas > gasAvailable) return false;
@@ -253,11 +258,20 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         if (wasPreviouslyNotAccessed || !_modifiedLeaves.Contains(key))
         {
             requiredGas += GasCostOf.WitnessChunkWrite;
+            Console.WriteLine("GasCostOf.WitnessChunkWrite");
             // if key is already in `_modifiedLeaves`, then we should not check if key is present in the tree
-            if (!_verkleWorldState.ValuePresentInTree(key)) requiredGas += GasCostOf.WitnessChunkFill;
+            if (!_verkleWorldState.ValuePresentInTree(key))
+            {
+                Console.WriteLine("GasCostOf.WitnessChunkFill");
+                requiredGas += GasCostOf.WitnessChunkFill;
+            }
 
             // if key is already in `_modifiedLeaves`, then checking `_modifiedSubtrees` will be redundant
-            if (!_modifiedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchWrite;
+            if (!_modifiedSubtrees.Contains(subTreeStem))
+            {
+                Console.WriteLine("GasCostOf.WitnessBranchWrite");
+                requiredGas += GasCostOf.WitnessBranchWrite;
+            }
         }
 
         if (requiredGas > gasAvailable) return false;

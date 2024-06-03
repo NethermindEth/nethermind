@@ -37,8 +37,11 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 4
-                           + GasCostOf.WitnessBranchRead * 2;
+        long expectedGas = GasCostOf.WitnessChunkRead * 3
+                           + GasCostOf.WitnessBranchRead * 2
+                           + GasCostOf.WitnessChunkWrite * 1
+                           + GasCostOf.WitnessBranchWrite * 1
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, false, ref expectedGas);
 
@@ -51,11 +54,11 @@ public class VerkleWitnessAccessCostTest
     {
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 4
+        long expectedGas = GasCostOf.WitnessChunkRead * 3
                            + GasCostOf.WitnessBranchRead * 2
-                           + GasCostOf.WitnessChunkWrite * 1
-                           + GasCostOf.WitnessBranchWrite * 1
-                           + GasCostOf.WitnessChunkFill * 1;
+                           + GasCostOf.WitnessChunkWrite * 2
+                           + GasCostOf.WitnessBranchWrite * 2
+                           + GasCostOf.WitnessChunkFill * 2;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true, ref expectedGas);
 
@@ -69,7 +72,10 @@ public class VerkleWitnessAccessCostTest
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
         long expectedGas = GasCostOf.WitnessChunkRead * 2
-                           + GasCostOf.WitnessBranchRead * 1;
+                           + GasCostOf.WitnessBranchRead * 1
+                           + GasCostOf.WitnessChunkWrite * 1
+                           + GasCostOf.WitnessBranchWrite * 1
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, null, true, ref expectedGas);
 
@@ -85,7 +91,10 @@ public class VerkleWitnessAccessCostTest
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
         long expectedGas = GasCostOf.WitnessChunkRead * 2
-                           + GasCostOf.WitnessBranchRead * 1;
+                           + GasCostOf.WitnessBranchRead * 1
+                           + GasCostOf.WitnessChunkWrite * 1
+                           + GasCostOf.WitnessBranchWrite * 1
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, null, false, ref expectedGas);
 
@@ -100,10 +109,11 @@ public class VerkleWitnessAccessCostTest
 
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
-        long expectedGas = GasCostOf.WitnessChunkRead * 4
+        long expectedGas = GasCostOf.WitnessChunkRead * 3
                            + GasCostOf.WitnessBranchRead * 2
-                           + GasCostOf.WitnessChunkWrite * 1
-                           + GasCostOf.WitnessBranchWrite * 1;
+                           + GasCostOf.WitnessChunkWrite * 2
+                           + GasCostOf.WitnessBranchWrite * 2
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true, ref expectedGas);
 
@@ -223,7 +233,10 @@ public class VerkleWitnessAccessCostTest
         var witness = new VerkleExecWitness(NullLogManager.Instance, _verkleWorldState);
 
         long expectedGas = GasCostOf.WitnessChunkRead * 2
-                           + GasCostOf.WitnessBranchRead * 1;
+                           + GasCostOf.WitnessBranchRead * 1
+                           + GasCostOf.WitnessChunkWrite * 1
+                           + GasCostOf.WitnessBranchWrite * 1
+                           + GasCostOf.WitnessChunkFill * 1;
 
         bool result = witness.AccessForGasBeneficiary(TestItem.AddressA, ref expectedGas);
 
