@@ -369,7 +369,7 @@ namespace Nethermind.TxPool.Collections
 
         private bool RemoveLast(out TValue? removed)
         {
-            TryAgain:
+        TryAgain:
             KeyValuePair<TValue, TKey> worstValue = _worstValue.GetValueOrDefault();
             TKey? key = worstValue.Value;
             if (key is not null)
