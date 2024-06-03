@@ -21,6 +21,10 @@
 
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
+    <PackageReference Include="Microsoft.Build.Tasks.Git">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
@@ -106,25 +110,4 @@
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
 
-  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == ''">
-    <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
-      <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
-    </Exec>
-    <PropertyGroup>
-      <SourceRevisionId>$(Commit.Substring(0, 8))</SourceRevisionId>
-    </PropertyGroup>
-    <ItemGroup>
-      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-        <_Parameter1>Commit</_Parameter1>
-        <_Parameter2>$(Commit)</_Parameter2>
-      </AssemblyAttribute>
-    </ItemGroup>
-  </Target>
-
-  <Target Name="CheckBranchName" AfterTargets="BeforeBuild">
-    <Exec Command="git branch --show-current" ConsoleToMSBuild="True" StandardOutputImportance="low">
-      <Output PropertyName="BranchName" TaskParameter="ConsoleOutput" />
-    </Exec>
-    <Error Text="The current branch '$(BranchName)' should be named in lower case." Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($(BranchName), '^.*[A-Z].*$'))" />
-  </Target>
 </Project>
