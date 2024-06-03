@@ -26,7 +26,7 @@ public class DbConfig : IDbConfig
     public bool? DisableCompression { get; set; } = false;
     public bool? UseLz4 { get; set; } = false;
     public ulong? CompactionReadAhead { get; set; } = (ulong)256.KiB();
-    public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
+    public string? AdditionalRocksDbOptions { get; set; }
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public int TargetFileSizeMultiplier { get; set; } = 1;
@@ -66,7 +66,7 @@ public class DbConfig : IDbConfig
     public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
     public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)256.MiB();
-    public IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
+    public string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public uint BlocksDbWriteBufferNumber { get; set; } = 2;
@@ -78,7 +78,7 @@ public class DbConfig : IDbConfig
     public bool? BlocksDbUseDirectReads { get; set; }
     public bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlocksDbCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? BlocksDbAdditionalRocksDbOptions { get; set; }
+    public string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint HeadersDbWriteBufferNumber { get; set; } = 2;
@@ -90,7 +90,7 @@ public class DbConfig : IDbConfig
     public bool? HeadersDbUseDirectReads { get; set; }
     public bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? HeadersDbCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
+    public string? HeadersDbAdditionalRocksDbOptions { get; set; }
     public ulong? HeadersDbMaxBytesForLevelBase { get; set; } = (ulong)128.MiB();
 
     public ulong BlockNumbersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -106,7 +106,7 @@ public class DbConfig : IDbConfig
     public bool? BlockNumbersDbUseDirectReads { get; set; }
     public bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlockNumbersDbCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
+    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
     public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)16.MiB();
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)4.MiB();
@@ -119,7 +119,7 @@ public class DbConfig : IDbConfig
     public bool? BlockInfosDbUseDirectReads { get; set; }
     public bool? BlockInfosDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlockInfosDbCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? BlockInfosDbAdditionalRocksDbOptions { get; set; }
+    public string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
     public uint PendingTxsDbWriteBufferNumber { get; set; } = 4;
@@ -131,7 +131,7 @@ public class DbConfig : IDbConfig
     public bool? PendingTxsDbUseDirectReads { get; set; }
     public bool? PendingTxsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? PendingTxsDbCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? PendingTxsDbAdditionalRocksDbOptions { get; set; }
+    public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong CodeDbWriteBufferSize { get; set; } = (ulong)1.MiB();
     public uint CodeDbWriteBufferNumber { get; set; } = 2;
@@ -146,7 +146,7 @@ public class DbConfig : IDbConfig
     public bool? CodeUseDirectReads { get; set; }
     public bool? CodeUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? CodeCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? CodeDbAdditionalRocksDbOptions { get; set; }
+    public string? CodeDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint BloomDbWriteBufferNumber { get; set; } = 4;
@@ -154,7 +154,7 @@ public class DbConfig : IDbConfig
     public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? BloomDbMaxOpenFiles { get; set; }
     public long? BloomDbMaxBytesPerSec { get; set; }
-    public IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
+    public string? BloomDbAdditionalRocksDbOptions { get; set; }
 
     public ulong MetadataDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint MetadataDbWriteBufferNumber { get; set; } = 4;
@@ -166,7 +166,7 @@ public class DbConfig : IDbConfig
     public bool? MetadataUseDirectReads { get; set; }
     public bool? MetadataUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? MetadataCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? MetadataDbAdditionalRocksDbOptions { get; set; }
+    public string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
     public uint StateDbWriteBufferNumber { get; set; } = 4;
@@ -202,7 +202,7 @@ public class DbConfig : IDbConfig
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
     public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
     public bool StateDbEnableFileWarmer { get; set; } = false;
-    public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
+    public string? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
     public bool WriteAheadLogSync { get; set; } = false;

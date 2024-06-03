@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.FastSync
         public readonly struct NodeKey(Hash256? address, TreePath? path, Hash256 hash) : IEquatable<NodeKey>
         {
             private readonly ValueHash256 Address = address ?? default;
-            private readonly TreePath? Path = path ?? default;
+            private readonly TreePath? Path = path;
             private readonly ValueHash256 Hash = hash;
 
             public readonly bool Equals(NodeKey other)
