@@ -145,88 +145,96 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
         public static IEnumerable<(int, byte[])> GetBytecodes()
         {
-            yield return (-1, Prepare.EvmCode
+            int i = 0;
+            yield return (i, Prepare.EvmCode
                     .Done);
-            yield return (0, Prepare.EvmCode
+            yield return (++i, Prepare.EvmCode
                     .PushSingle(1)
                     .PushSingle(2)
                     .PushSingle(3)
                     .PushSingle(4)
                     .Done);
-            yield return (1, Prepare.EvmCode
+            yield return (++i, Prepare.EvmCode
                     .ISZERO(7)
                     .ISZERO(0)
                     .ISZERO(7)
                     .Done);
-            yield return (2, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .SUB()
                     .Done);
 
-            yield return (3, Prepare.EvmCode
+            yield return (++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
                     .Done);
 
-            yield return (4, Prepare.EvmCode
+            yield return (++i, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .PushSingle(5)
+                    .ADDMOD()
+                    .Done);
+
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .MUL()
                     .Done);
 
-            yield return (5, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .EXP()
                     .Done);
 
-            yield return (6, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .MOD()
                     .Done);
 
-            yield return (7, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .DIV()
                     .Done);
 
-            yield return (8, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .Done);
 
-            yield return (9, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .MLOAD(0)
                     .Done);
 
-            yield return (10, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .MCOPY(32, 0, 32)
                     .Done);
 
-            yield return (11, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .EQ()
                     .Done);
 
-            yield return (12, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .GT()
                     .Done);
 
-            yield return (13, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .LT()
                     .Done);
 
-            yield return (14, Prepare.EvmCode
+            yield return(++i, Prepare.EvmCode
                     .PushSingle(1)
                     .NOT()
                     .Done);
@@ -235,20 +243,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GetBytecodes))]
         public void Ensure_Evm_ILvm_Compatibility((int index, byte[] bytecode) testcase)
         {
-            ILEvmState iLEvmState = new ILEvmState
-            {
-                Stack = new byte[1024 * 32],
-                Header = BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header,
-                GasAvailable = 1000000,
-                ProgramCounter = 0,
-                EvmException = EvmExceptionType.None,
-                ShouldReturn = false,
-                ShouldRevert = false,
-                ShouldStop   = false,
-                StackHead    = 0,
-                Memory       = new EvmPooledMemory(),
-                MachineCode = testcase.bytecode
-            };
+            var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
+            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, []);
+            var envExCtx = new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Recipient, Sender, Contract, ReadOnlyMemory<byte>.Empty, txExCtx, 23, 7);
+            var stack = new byte[1024 * 32];
+            var memory = new EvmPooledMemory();
+            var returnBuffer = ReadOnlyMemory<byte>.Empty;
+            ILEvmState iLEvmState = new ILEvmState(testcase.bytecode, envExCtx, txExCtx, blkExCtx, EvmExceptionType.None, 0, 100000, false, false, false, 0, stack, ref memory, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
             ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, ctx.Data);

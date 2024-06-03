@@ -61,7 +61,7 @@ internal class IlInfo
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
     public FrozenDictionary<ushort, SegmentExecutionCtx> Segments { get; set; }
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, ISpecProvider specProvider, BlockHeader header, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
+    public bool TryExecute<TTracingInstructions>(EvmState vmState, BlockExecutionContext blkCtx, TxExecutionContext txCtx, ISpecProvider specProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         shouldReturn = false;
@@ -79,7 +79,7 @@ internal class IlInfo
                     {
                         return false;
                     }
-                    chunk.Invoke(vmState, specProvider.GetSpec(header.Number, header.Timestamp), ref programCounter, ref gasAvailable, ref stack);
+                    chunk.Invoke(vmState, specProvider.GetSpec(blkCtx.Header.Number, blkCtx.Header.Timestamp), ref programCounter, ref gasAvailable, ref stack);
                     break;
                 }
             case ILMode.SubsegmentsCompiling:
@@ -93,7 +93,9 @@ internal class IlInfo
                     {
                         GasAvailable = (int)gasAvailable,
                         Stack = vmState.DataStack,
-                        Header = header,
+                        Env = vmState.Env,
+                        BlkCtx = blkCtx,
+                        TxCtx = txCtx,
                         ProgramCounter = (ushort)programCounter,
                         Memory = ref vmState.Memory,
                     };

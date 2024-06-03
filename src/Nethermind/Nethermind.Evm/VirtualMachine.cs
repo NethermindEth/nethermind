@@ -864,7 +864,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while ((ilInfo?.TryExecute(vmState, _specProvider, blkCtx.Header, ref programCounter, ref gasAvailable, ref stack, out shouldStop, out shouldReturn, out isRevert, out returnData))
+            while ((ilInfo?.TryExecute(vmState, blkCtx, txCtx, _specProvider, ref programCounter, ref gasAvailable, ref stack, out shouldStop, out shouldReturn, out isRevert, out returnData))
                    .GetValueOrDefault(false))
             {
                 if (shouldReturn || isRevert) goto DataReturn;

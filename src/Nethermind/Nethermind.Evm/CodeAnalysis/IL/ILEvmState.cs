@@ -9,13 +9,13 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal ref struct ILEvmState
 {
     public byte[] MachineCode;
     // static arguments
-    public BlockHeader Header;
     public ExecutionEnvironment Env;
     public TxExecutionContext TxCtx;
     public BlockExecutionContext BlkCtx;
@@ -28,8 +28,29 @@ internal ref struct ILEvmState
     public bool ShouldStop;
     public bool ShouldRevert;
     public bool ShouldReturn;
+
     public int StackHead;
     public Span<byte> Stack;
+
     public ref EvmPooledMemory Memory;
-    public ReadOnlyMemory<byte> ReturnBuffer;
+
+    public ref ReadOnlyMemory<byte> ReturnBuffer;
+
+    public ILEvmState(byte[] machineCode, ExecutionEnvironment env, TxExecutionContext txCtx, BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, bool shouldStop, bool shouldRevert, bool shouldReturn, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> returnBuffer)
+    {
+        MachineCode = machineCode;
+        Env = env;
+        TxCtx = txCtx;
+        BlkCtx = blkCtx;
+        EvmException = evmException;
+        ProgramCounter = programCounter;
+        GasAvailable = gasAvailable;
+        ShouldStop = shouldStop;
+        ShouldRevert = shouldRevert;
+        ShouldReturn = shouldReturn;
+        StackHead = stackHead;
+        Stack = stack;
+        Memory = ref memory;
+        ReturnBuffer = ref returnBuffer;
+    }
 }
