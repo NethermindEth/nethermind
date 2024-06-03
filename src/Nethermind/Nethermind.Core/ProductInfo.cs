@@ -25,16 +25,14 @@ public static class ProductInfo
         OS = Platform.GetPlatformName();
         OSArchitecture = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
         Runtime = RuntimeInformation.FrameworkDescription;
+        Version = versionAttr.InformationalVersion;
 
-        var version = versionAttr.InformationalVersion;
-        var index = version.IndexOf('+', StringComparison.Ordinal);
+        var index = Version.IndexOf('+', StringComparison.Ordinal);
 
-        if (index == -1)
-            Version = version;
-        else
+        if (index != -1)
         {
-            Commit = version[(index + 1)..];
-            Version = version[..Math.Min(index + 9, version.Length - 1)];
+            Commit = Version[(index + 1)..];
+            Version = Version[..Math.Min(index + 9, Version.Length - 1)];
         }
 
         ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]}";
