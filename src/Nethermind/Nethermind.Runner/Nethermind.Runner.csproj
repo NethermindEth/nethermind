@@ -10,7 +10,7 @@
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <TieredPGO>true</TieredPGO>
     <PublishReadyToRun>true</PublishReadyToRun>
-    <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
+    <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
   </PropertyGroup>
 
   <PropertyGroup>
