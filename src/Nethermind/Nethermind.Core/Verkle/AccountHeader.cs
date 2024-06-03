@@ -120,13 +120,6 @@ public readonly struct AccountHeader
         return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
     }
 
-    public static byte[] BasicDataToValue(byte[] basicDataLeafVal, int offset, int size)
-    {
-        byte[] accountValueBytes = new byte[32];
-        Array.Copy(basicDataLeafVal, offset, accountValueBytes, 0, size);
-        return accountValueBytes;
-    }
-
     public static byte[] AccountToBasicData(Account account)
     {
         byte[] basicData = new byte[32];
