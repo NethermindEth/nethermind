@@ -390,6 +390,7 @@ namespace Nethermind.TxPool.Collections
                     TGroupKey groupMapping = MapToGroup(value);
                     if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucket))
                     {
+                        bucket.Remove(value);
                         UpdateSortedValues(bucket, previousLast: default);
                     }
                 }
