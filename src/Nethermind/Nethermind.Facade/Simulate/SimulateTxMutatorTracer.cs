@@ -22,7 +22,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
 
-    private static readonly Address Erc20Sender = new("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE");
+    private static readonly Address Erc20Sender = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
     private readonly Hash256 _txHash;
