@@ -173,6 +173,21 @@ public enum TestCase
     [TestCaseMetadata("EcMul with 32-byte coordinates and 32-byte scalar", "EcMul precompile with initial point with x, y and scalar as 32-byte values")]
     EcMul32ByteCoordinates32ByteScalar,
 
+    [TestCaseMetadata("EcPairing with empty input", "EcPairing precompile with empty input")]
+    EcPairing0Input,
+
+    // [TestCaseMetadata("EcPairing with 1 set of data", "EcPairing precompile with 1 set of valid input data (6x 32-byte value)")]
+    // EcPairing1Set,
+
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing2Sets,
+
+    // [TestCaseMetadata("EcPairing with 4 sets of data", "EcPairing precompile with 4 sets of valid input data (6x 32-byte value)")]
+    // EcPairing4Sets,
+    //
+    // [TestCaseMetadata("EcPairing with 16 sets of data", "EcPairing precompile with 16 sets of valid input data (6x 32-byte value)")]
+    // EcPairing16Sets,
+
     // [TestCaseMetadata("Modexp 1k gas, base heavy", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 440 and exponent equal 3 (0b11 - 2x 1s in binary)")]
     // Modexp1KGasBaseHeavy,
 

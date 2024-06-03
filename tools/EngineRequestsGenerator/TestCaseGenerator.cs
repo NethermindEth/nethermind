@@ -318,6 +318,12 @@ public class TestCaseGenerator
             case TestCase.EcMul32ByteCoordinates2Scalar:
             case TestCase.EcMul32ByteCoordinates32ByteScalar:
                 return EcMul.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.EcPairing0Input:
+            // case TestCase.EcPairing1Set:
+            case TestCase.EcPairing2Sets:
+            // case TestCase.EcPairing4Sets:
+            // case TestCase.EcPairing16Sets:
+                return EcPairing.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.PointEvaluationZeros:
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
