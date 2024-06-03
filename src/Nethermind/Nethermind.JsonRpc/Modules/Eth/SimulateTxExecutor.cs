@@ -73,6 +73,9 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter)
     {
+        if(!_rpcConfig.EnabledRpcSimulate)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail("Must EnableRpcSimulate JsonRpc config flag on the node", ErrorCodes.MethodNotSupported);
+
         if (call.BlockStateCalls is null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
 
@@ -111,6 +114,10 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 if (givenNumber > long.MaxValue)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
                         $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
+
+                if (givenNumber < (ulong)header.Number)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
+                        $"Block number out of order {givenNumber} is < than given base number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 long given = (long)givenNumber;
                 if (given > lastBlockNumber)

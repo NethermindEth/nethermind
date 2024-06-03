@@ -81,6 +81,11 @@ public interface IJsonRpcConfig : IConfig
     string[] EnabledModules { get; set; }
 
     [ConfigItem(
+        Description = "Enable experimental eth_simulate call (see https://github.com/ethereum/execution-apis/pull/484 for API refrence) ",
+        DefaultValue = "false")]
+    public bool EnabledRpcSimulate { get; set; }
+
+    [ConfigItem(
         Description = "An array of additional JSON-RPC URLs to listen at with protocol and JSON-RPC namespace list. For instance, `[http://localhost:8546|http;ws|eth;web3]`.",
         DefaultValue = "[]")]
     string[] AdditionalRpcUrls { get; set; }
