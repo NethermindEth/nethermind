@@ -16,7 +16,7 @@ namespace Nethermind.Verkle.Tree.TreeNodes;
 
 public class InternalNode
 {
-    private static readonly Banderwagon _initFirstElementCommitment = Committer.ScalarMul(FrE.One, 0);
+    private static readonly Banderwagon InitFirstElementCommitment = Committer.ScalarMul(FrE.One, 0);
 
     public InternalNode(VerkleNodeType nodeType)
     {
@@ -103,7 +103,7 @@ public class InternalNode
 
     private Banderwagon GetInitialCommitment()
     {
-        return _initFirstElementCommitment +
+        return InitFirstElementCommitment +
                Committer.ScalarMul(FrE.FromBytesReduced(Stem!.Bytes.Reverse().ToArray()), 1);
     }
 
