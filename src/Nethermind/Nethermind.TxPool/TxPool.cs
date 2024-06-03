@@ -211,22 +211,18 @@ namespace Nethermind.TxPool
                         try
                         {
                             ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                            if (accountChanges is not null)
+                            if (!CanUseCache(args.Block, accountChanges))
                             {
-                                if (!CanUseCache(args.Block, accountChanges))
-                                {
-                                    // Not sequential block, reset cache
-                                    _accountCache.Reset();
-                                }
-                                else
-                                {
-                                    // Sequential block, just remove changed accounts from cache
-                                    _accountCache.RemoveAccounts(accountChanges);
-                                }
-
-                                args.Block.AccountChanges = null;
-                                accountChanges.Dispose();
+                                // Not sequential block, reset cache
+                                _accountCache.Reset();
                             }
+                            else
+                            {
+                                // Sequential block, just remove changed accounts from cache
+                                _accountCache.RemoveAccounts(accountChanges);
+                            }
+                            args.Block.AccountChanges = null;
+                            accountChanges?.Dispose();
 
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
@@ -245,7 +241,10 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                bool CanUseCache(Block block, ArrayPoolList<AddressAsKey> accountChanges) => block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+                bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
+                {
+                    return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+                }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
                 if (t.IsFaulted)
