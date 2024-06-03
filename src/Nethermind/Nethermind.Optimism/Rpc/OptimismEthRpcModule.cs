@@ -90,7 +90,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             OptimismTxReceipt[] receipts = receiptFinder.Get(block).Cast<OptimismTxReceipt>().ToArray() ?? new OptimismTxReceipt[block.Transactions.Length];
             bool isEip1559Enabled = specProvider.GetSpec(block.Header).IsEip1559Enabled;
 
-            L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper.IsRegolith(block!.Header));
+            L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
             OptimismReceiptForRpc[]? result = [.. receipts
                 .Zip(block.Transactions, (r, t) =>
@@ -153,7 +153,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
         Block block = foundBlock.Object;
 
-        L1BlockGasInfo l1GasInfo = new(block, _opSpecHelper.IsRegolith(block.Header));
+        L1BlockGasInfo l1GasInfo = new(block, _opSpecHelper);
         return ResultWrapper<OptimismReceiptForRpc?>.Success(
             new(txHash, (OptimismTxReceipt)receipt, gasInfo.Value, l1GasInfo.GetTxGasInfo(block.Transactions.First(tx => tx.Hash == txHash)), logIndexStart));
     }

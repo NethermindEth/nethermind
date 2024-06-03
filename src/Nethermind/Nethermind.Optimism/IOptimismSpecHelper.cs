@@ -13,6 +13,7 @@ public interface IOptimismSpecHelper
     bool IsRegolith(BlockHeader header);
     bool IsCanyon(BlockHeader header);
     bool IsEcotone(BlockHeader header);
+    bool IsFjord(BlockHeader header);
     Address? Create2DeployerAddress { get; }
     byte[]? Create2DeployerCode { get; }
 }

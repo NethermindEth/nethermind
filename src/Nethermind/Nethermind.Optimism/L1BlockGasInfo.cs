@@ -26,14 +26,16 @@ public readonly struct L1BlockGasInfo
     private readonly UInt256 _overhead;
     private readonly UInt256 _feeScalar;
     private readonly string? _feeScalarDecimal;
+    private readonly bool _isFjord;
     private readonly bool _isEcotone;
     private readonly bool _isRegolith;
 
-    private static readonly byte[] EcotoneL1AttributesSelector = [0x44, 0x0a, 0x5e, 0x20];
+    private static readonly byte[] BedrockL1AttributesSelector = [0x01, 0x5d, 0x8e, 0xb9];
+    private readonly IOptimismSpecHelper _specHelper;
 
-    public L1BlockGasInfo(Block block, bool isRegolith)
+    public L1BlockGasInfo(Block block, IOptimismSpecHelper specHelper)
     {
-        _isRegolith = isRegolith;
+        _specHelper = specHelper;
 
         if (block is not null && block.Transactions.Length > 0)
         {
@@ -45,7 +47,9 @@ public readonly struct L1BlockGasInfo
 
             Memory<byte> data = depositTx.Data.Value;
 
-            if (_isEcotone = data[0..4].Span.SequenceEqual(EcotoneL1AttributesSelector))
+            _isFjord = _specHelper.IsFjord(block.Header);
+
+            if (_isFjord || (_isEcotone = (_specHelper.IsEcotone(block.Header) && !data[0..4].Span.SequenceEqual(BedrockL1AttributesSelector))))
             {
                 if (data.Length != 164)
                 {
@@ -59,6 +63,7 @@ public readonly struct L1BlockGasInfo
             }
             else
             {
+                _isRegolith = true;
                 if (data.Length < 4 + 32 * 8)
                 {
                     return;
@@ -80,7 +85,12 @@ public readonly struct L1BlockGasInfo
 
         if (_l1GasPrice is not null)
         {
-            if (_isEcotone)
+            if (_isFjord)
+            {
+                UInt256 fastLzSize = OPL1CostHelper.ComputeFlzCompressLen(tx);
+                l1Fee = OPL1CostHelper.ComputeL1CostFjord(fastLzSize, _l1GasPrice.Value, _l1BlobBaseFee, _l1BaseFeeScalar, _l1BlobBaseFeeScalar);
+            }
+            else if (_isEcotone)
             {
                 l1GasUsed = OPL1CostHelper.ComputeDataGas(tx, _isRegolith);
                 l1Fee = OPL1CostHelper.ComputeL1CostEcotone(l1GasUsed.Value, _l1GasPrice.Value, _l1BlobBaseFee, _l1BaseFeeScalar, _l1BlobBaseFeeScalar);
