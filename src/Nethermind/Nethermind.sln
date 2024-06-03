@@ -235,6 +235,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Optimism.Test", "Nethermind.Optimism.Test\Nethermind.Optimism.Test.csproj", "{2438958D-46EA-4A7E-B89F-29E069DA0CCA}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Signer", "Signer", "{89311B58-AF36-4956-883D-54531BC1D5A3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.ExternalSigner.Plugin", "Nethermind.ExternalSigner.Plugin\Nethermind.ExternalSigner.Plugin.csproj", "{6528010D-7DCE-4935-9785-5270FF515F3E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -629,6 +633,10 @@ Global
 		{2438958D-46EA-4A7E-B89F-29E069DA0CCA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2438958D-46EA-4A7E-B89F-29E069DA0CCA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2438958D-46EA-4A7E-B89F-29E069DA0CCA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -704,6 +712,8 @@ Global
 		{5C814313-5E5F-44E7-AF19-532ED307E88D} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{BC589124-B440-4322-93EB-A4BA2C3C934B} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{AB215B18-E0EC-4168-AB22-037AF145E093} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
+		{89311B58-AF36-4956-883D-54531BC1D5A3} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
+		{6528010D-7DCE-4935-9785-5270FF515F3E} = {89311B58-AF36-4956-883D-54531BC1D5A3}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

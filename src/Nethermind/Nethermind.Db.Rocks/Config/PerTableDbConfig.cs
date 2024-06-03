@@ -34,7 +34,7 @@ public class PerTableDbConfig
 
     public ulong WriteBufferNumber => _settings.WriteBufferNumber ?? ReadConfig<uint>(nameof(WriteBufferNumber));
 
-    public IDictionary<string, string>? AdditionalRocksDbOptions => ReadConfig<IDictionary<string, string>?>(nameof(AdditionalRocksDbOptions));
+    public string? AdditionalRocksDbOptions => ReadConfig<string?>(nameof(AdditionalRocksDbOptions));
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
     public long? MaxBytesPerSec => ReadConfig<long?>(nameof(MaxBytesPerSec));
