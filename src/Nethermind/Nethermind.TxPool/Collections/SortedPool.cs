@@ -8,11 +8,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
-using Org.BouncyCastle.Asn1.Cms.Ecc;
 
 namespace Nethermind.TxPool.Collections
 {
