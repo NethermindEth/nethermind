@@ -357,7 +357,6 @@ namespace Nethermind.TxPool.Collections
                         {
                             if (_cacheMap.Count > _capacity && _logger.IsWarn)
                                 _logger.Warn($"Capacity exceeded or failed to remove the last item from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues()}");
-                            UpdateWorstValue();
                             RemoveLast(out removed);
                         }
 
@@ -469,6 +468,13 @@ namespace Nethermind.TxPool.Collections
 
             items = Array.Empty<TValue>();
             return false;
+        }
+
+        protected bool TryGetBucketsWorstValue(TGroupKey groupKey, out TValue? item)
+        {
+            using var lockRelease = Lock.Acquire();
+
+            return TryGetBucketsWorstValueNotLocked(groupKey, out item);
         }
 
         protected bool TryGetBucketsWorstValueNotLocked(TGroupKey groupKey, out TValue? item)

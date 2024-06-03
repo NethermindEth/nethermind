@@ -44,6 +44,13 @@ namespace Nethermind.AccountAbstraction.Source
                 return false;
             }
 
+            TryGetBucketsWorstValue(op.Sender, out UserOperation? worst);
+            if (worst is not null && worst.Nonce < op.Nonce)
+            {
+                // Don't evict worst op is it is a lower than the replacement
+                return true;
+            }
+
             return !CanInsert(op.RequestId!, op);
         }
 
