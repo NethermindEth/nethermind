@@ -462,12 +462,9 @@ namespace Nethermind.TxPool
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
             TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
 
-            relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
-            tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
-                ? effectiveGasPrice
-                : worstTx.GasBottleneck;
+            tx.GasBottleneck = effectiveGasPrice;
 
-            bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
+            bool inserted = relevantPool.TryInsert(tx.Hash!, tx, ref state, _updateBucketAdded, out Transaction? removed);
 
             if (!inserted)
             {
@@ -493,7 +490,6 @@ namespace Nethermind.TxPool
                 }
             }
 
-            relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
             Metrics.PendingTransactionsAdded++;
             if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
             if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
@@ -517,7 +513,7 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
+        private void UpdateBucketWithAddedTransaction(in AccountStruct account, SortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             if (transactions.Count != 0)
             {
@@ -529,7 +525,7 @@ namespace Nethermind.TxPool
         }
 
         private void UpdateGasBottleneck(
-            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance, Transaction? lastElement, UpdateTransactionDelegate updateTx)
+            SortedSet<Transaction> transactions, long currentNonce, UInt256 balance, Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -586,7 +582,7 @@ namespace Nethermind.TxPool
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
-        private void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
+        private void UpdateBucket(in AccountStruct account, SortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             if (transactions.Count != 0)
             {

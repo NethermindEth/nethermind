@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
@@ -17,8 +16,8 @@ namespace Nethermind.TxPool.Collections
 {
     public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, AddressAsKey>
     {
-        public delegate void UpdateGroupDelegate(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx);
-        public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
+        public delegate void UpdateGroupDelegate(in AccountStruct account, SortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx);
+        public delegate void UpdateTransactionDelegate(SortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
 
         private readonly UpdateTransactionDelegate _updateTx;
         private readonly List<Transaction> _transactionsToRemove = new();
@@ -38,7 +37,26 @@ namespace Nethermind.TxPool.Collections
         protected override AddressAsKey MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
         protected override ValueHash256 GetKey(Transaction value) => value.Hash!;
 
-        protected override void UpdateGroup(AddressAsKey groupKey, EnhancedSortedSet<Transaction> bucket, Func<AddressAsKey, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
+        public virtual bool TryInsert(ValueHash256 key, Transaction tx, ref TxFilteringState state, UpdateGroupDelegate updateElements, out Transaction? removed)
+        {
+            using var lockRelease = Lock.Acquire();
+
+            TryGetBucketsWorstValueNotLocked(tx.SenderAddress!, out Transaction? worstTx);
+            if (worstTx is not null && tx.GasBottleneck > worstTx.GasBottleneck)
+            {
+                tx.GasBottleneck = worstTx.GasBottleneck;
+            }
+
+            bool inserted = TryInsertNotLocked(key, tx, out removed);
+            if (inserted && tx.Hash != removed?.Hash)
+            {
+                UpdateGroupNotLocked(tx.SenderAddress!, state.SenderAccount, updateElements);
+            }
+
+            return inserted;
+        }
+
+        protected override void UpdateGroupNotLocked(AddressAsKey groupKey, SortedSet<Transaction> bucket, Func<AddressAsKey, SortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -49,20 +67,11 @@ namespace Nethermind.TxPool.Collections
                 {
                     _transactionsToRemove.Add(tx);
                 }
-                else if (Equals(lastElement, tx))
-                {
-                    bool reAdd = _worstSortedValues.Remove(tx);
-                    change(tx);
-                    if (reAdd)
-                    {
-                        _worstSortedValues.Add(tx, tx.Hash!);
-                    }
-
-                    UpdateWorstValue();
-                }
                 else
                 {
+                    WorstValuesRemove(tx);
                     change(tx);
+                    WorstValuesAdd(tx);
                 }
             }
 
@@ -77,7 +86,7 @@ namespace Nethermind.TxPool.Collections
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
             EnsureCapacity();
-            foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+            foreach ((AddressAsKey address, SortedSet<Transaction> bucket) in _buckets)
             {
                 Debug.Assert(bucket.Count > 0);
 
@@ -86,7 +95,7 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        private void UpdateGroupNonLocked(AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, UpdateGroupDelegate updateElements)
+        private void UpdateGroupNonLocked(AccountStruct groupValue, SortedSet<Transaction> bucket, UpdateGroupDelegate updateElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -100,35 +109,24 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        private void UpdateTransaction(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement)
+        private void UpdateTransaction(SortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement)
         {
             if (changedGasBottleneck is null)
             {
                 _transactionsToRemove.Add(tx);
             }
-            else if (Equals(lastElement, tx))
-            {
-                bool reAdd = _worstSortedValues.Remove(tx);
-                tx.GasBottleneck = changedGasBottleneck;
-                if (reAdd)
-                {
-                    _worstSortedValues.Add(tx, tx.Hash!);
-                }
-
-                UpdateWorstValue();
-            }
             else
             {
+                WorstValuesRemove(tx);
                 tx.GasBottleneck = changedGasBottleneck;
+                WorstValuesAdd(tx);
             }
         }
 
-        public void UpdateGroup(Address groupKey, AccountStruct groupValue, UpdateGroupDelegate updateElements)
+        protected void UpdateGroupNotLocked(Address groupKey, in AccountStruct groupValue, UpdateGroupDelegate updateElements)
         {
-            using McsLock.Disposable lockRelease = Lock.Acquire();
-
             ArgumentNullException.ThrowIfNull(groupKey);
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
+            if (_buckets.TryGetValue(groupKey, out SortedSet<Transaction>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);
 

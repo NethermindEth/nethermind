@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections;
 
-public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
+public sealed class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 {
     private readonly ITxStorage _blobTxStorage;
     private readonly LruCache<ValueHash256, Transaction> _blobTxCache;
@@ -51,9 +51,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         stopwatch.Stop();
     }
 
-    public override bool TryInsert(ValueHash256 hash, Transaction fullBlobTx, out Transaction? removed)
+    public override bool TryInsert(ValueHash256 key, Transaction fullBlobTx, ref TxFilteringState state, UpdateGroupDelegate updateElements, out Transaction? removed)
     {
-        if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out removed))
+        if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), ref state, updateElements, out removed))
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
             _blobTxStorage.Add(fullBlobTx);
