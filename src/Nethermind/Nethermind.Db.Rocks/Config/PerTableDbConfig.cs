@@ -112,10 +112,14 @@ public class PerTableDbConfig
                     if (propertyInfo.PropertyType.CanBeAssignedNull())
                     {
                         // If its nullable check if its null first
-                        T? val = (T?)propertyInfo.GetValue(dbConfig);
-                        if (val is not null)
+                        object? valObj = propertyInfo.GetValue(dbConfig);
+                        if (valObj is not null)
                         {
-                            return val;
+                            T? val = (T?)valObj;
+                            if (val is not null)
+                            {
+                                return val;
+                            }
                         }
                     }
                     else
@@ -132,7 +136,7 @@ public class PerTableDbConfig
         }
         catch (Exception e)
         {
-            throw new InvalidDataException($"Unable to read property from DB config. Prefixes: ${prefixes}", e);
+            throw new InvalidDataException($"Unable to read property {propertyName} from DB config. Prefixes: {string.Join(",", prefixes)}", e);
         }
     }
 }

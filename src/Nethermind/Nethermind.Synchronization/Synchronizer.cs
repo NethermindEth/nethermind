@@ -222,7 +222,8 @@ namespace Nethermind.Synchronization
                 _dbProvider.StateDb as ITunableDb,
                 _dbProvider.CodeDb as ITunableDb,
                 _dbProvider.BlocksDb as ITunableDb,
-                _dbProvider.ReceiptsDb as ITunableDb);
+                _dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Blocks) as ITunableDb,
+                _dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Transactions) as ITunableDb);
         }
 
         private void StartFullSyncComponents()
