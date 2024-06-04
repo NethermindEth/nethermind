@@ -131,7 +131,7 @@ public class ShutterP2P
         Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
         if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
         {
-            if (_logger.IsWarn) _logger.Warn("Could not parse Shutter decryption keys...");
+            if (_logger.IsDebug) _logger.Debug("Could not parse Shutter decryption keys...");
             return;
         }
 
@@ -149,17 +149,17 @@ public class ShutterP2P
 
     internal bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys)
     {
-        if (_logger.IsInfo) _logger.Info($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot} #block: {_readOnlyBlockTree.Head!.Header.Number}");
+        if (_logger.IsDebug) _logger.Debug($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot} #block: {_readOnlyBlockTree.Head!.Header.Number}");
 
         if (decryptionKeys.InstanceID != InstanceID)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: instanceID {decryptionKeys.InstanceID} did not match expected value {InstanceID}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: instanceID {decryptionKeys.InstanceID} did not match expected value {InstanceID}.");
             return false;
         }
 
         if (decryptionKeys.Eon != _eonInfo.Eon)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {_eonInfo.Eon}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {_eonInfo.Eon}.");
             return false;
         }
 

@@ -76,8 +76,7 @@ public class ShutterTxSource : ITxSource
             }
         }
 
-        // todo: add to specprovider
-        ulong nextSlot = (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ChiadoSpecProvider.BeaconChainGenesisTimestamp) / 5) + 1;
+        ulong nextSlot = ChiadoSpecProvider.GetCurrentSlot() + 1;
         if (DecryptionKeys is null || DecryptionKeys.Gnosis.Slot != nextSlot)
         {
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");
@@ -88,11 +87,10 @@ public class ShutterTxSource : ITxSource
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
 
         IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys.Skip(1)).Select(x => DecryptSequencedTransaction(x.First, x.Second)).OfType<Transaction>();
-        if (_logger.IsInfo) _logger.Info($"Decrypted {transactions.Count()} Shutter transactions...");
 
         transactions.ForEach((tx) =>
         {
-            _logger.Info(tx.ToShortString());
+            if (_logger.IsInfo) _logger.Info(tx.ToShortString());
         });
 
         return transactions;
@@ -130,21 +128,22 @@ public class ShutterTxSource : ITxSource
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
     {
         IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents();
-        _logger.Info("total events: " + events.Count());
         events = events.Where(e => e.Eon == eon);
-        _logger.Info("tx pointer: " + txPointer);
-        _logger.Info("this eon: " + events.Count());
-        events = events.Skip((int)txPointer); //todo: check overflow
-        _logger.Info("after skipping: " + events.Count());
 
-        List<SequencedTransaction> txs = new List<SequencedTransaction>();
+        while (txPointer > int.MaxValue)
+        {
+            events = events.Skip(int.MaxValue);
+            txPointer -= int.MaxValue;
+        }
+        events = events.Skip((int)txPointer);
+
+        List<SequencedTransaction> txs = [];
         UInt256 totalGas = 0;
 
         foreach (ISequencerContract.TransactionSubmitted e in events)
         {
             if (totalGas + e.GasLimit > EncryptedGasLimit)
             {
-                _logger.Info("reached gas limit!");
                 break;
             }
 
@@ -156,9 +155,6 @@ public class ShutterTxSource : ITxSource
                 Identity = ShutterCrypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
             };
             txs.Add(sequencedTransaction);
-
-            _logger.Info("added tx");
-
             totalGas += e.GasLimit;
         }
 
