@@ -128,7 +128,7 @@ public class VirtualMachine : IVirtualMachine
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
-            [Secp256r1Precompile.Address] = new (Secp256r1Precompile.Instance)
+            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance)
         }.ToFrozenDictionary();
     }
 

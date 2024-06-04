@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,13 +10,13 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class Secp256r1Precompile: IPrecompile<Secp256r1Precompile>
+public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
     private const int RequiredInputLength = 160;
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
     private static readonly byte[] InvalidResult = new byte[] { 0 }.PadLeft(32);
 
-    public static readonly Secp256r1Precompile Instance = new ();
+    public static readonly Secp256r1Precompile Instance = new();
     public static Address Address { get; } = Address.FromNumber(0x100);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3450L;
