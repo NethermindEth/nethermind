@@ -249,15 +249,19 @@ internal class ShutterCrypto
         return GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
     }
 
-    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities, ReadOnlySpan<byte> signature, Address keyperAddress)
+    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<byte[]> identityPreimages, ReadOnlySpan<byte> signatureBytes, Address keyperAddress)
     {
-        Hash256 h = GenerateHash(instanceId, eon, slot, identities);
+        Hash256 hash = GenerateHash(instanceId, eon, slot, identityPreimages);
         Ecdsa ecdsa = new();
         PublicKey? expectedPubkey;
 
-        // todo: investigate bad recovery id 230
-        Signature s = new Signature(signature);
-        expectedPubkey = ecdsa.RecoverPublicKey(s, h);
+        Signature signature = new Signature(signatureBytes);
+        if (signature.RecoveryId > 3)
+        {
+            return false;
+        }
+
+        expectedPubkey = ecdsa.RecoverPublicKey(signature, hash);
 
         if (expectedPubkey is null)
         {
@@ -268,18 +272,18 @@ internal class ShutterCrypto
     }
 
     // todo: should keyperIndex and txPointer be included?
-    public static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities)
+    public static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, IEnumerable<byte[]> identityPreimages)
     {
-        Span<byte> container = stackalloc byte[40 + identities.Count() * 64];
+        Span<byte> container = stackalloc byte[40 + identityPreimages.Count() * 52];
 
         Ssz.Encode(container[..8], instanceId);
         Ssz.Encode(container[8..16], eon);
         Ssz.Encode(container[16..24], slot);
 
-        foreach ((G1 identity, int index) in identities.WithIndex())
+        foreach ((byte[] identityPreimage, int index) in identityPreimages.WithIndex())
         {
-            int offset = 24 + index * 64;
-            Ssz.Encode(container[offset..(offset + 64)], identity.compress());
+            int offset = 24 + index * 52;
+            Ssz.Encode(container[offset..(offset + 52)], identityPreimage);
         }
 
         return Keccak.Compute(container);

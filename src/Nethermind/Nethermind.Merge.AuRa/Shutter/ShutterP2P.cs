@@ -174,8 +174,7 @@ public class ShutterP2P
             Bls.P1 identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
             if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
-                _logger.Info($"dk={dk.compress().ToHexString()} ek={_eonInfo.Key.compress().ToHexString()} idPre={key.Identity.ToByteArray().ToHexString()}");
+                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
                 return false;
             }
         }
@@ -184,29 +183,28 @@ public class ShutterP2P
 
         if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: incorrect number of signer indices.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: incorrect number of signer indices.");
             return false;
         }
 
         if (decryptionKeys.Gnosis.Signatures.Count() != signerIndicesCount)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: incorrect number of signatures.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: incorrect number of signatures.");
             return false;
         }
 
         if (signerIndicesCount != (int)_eonInfo.Threshold)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
             return false;
         }
 
-        IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Skip(1).Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
+        IEnumerable<byte[]> identityPreimages = decryptionKeys.Keys.Skip(1).Select((Dto.Key key) => key.Identity.ToArray());
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
             Address keyperAddress = _eonInfo.Addresses[signerIndex];
-            // todo: enable when Shutter fixes
-            // if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, identities, signature.Span, keyperAddress))
+            // if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, identityPreimages, signature.Span, keyperAddress))
             // {
             //     if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: bad signature.");
             //     return false;

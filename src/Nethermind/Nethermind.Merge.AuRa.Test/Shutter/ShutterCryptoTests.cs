@@ -12,7 +12,6 @@ using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
-using FluentAssertions;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -176,6 +175,14 @@ class ShutterCryptoTests
         TestContext.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
 
         Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)));
+    }
+
+    [Test]
+    [TestCase(60ul, 1ul, 10422348ul, "0xcb770a9b31ac28b0c90d0357f8df7c1c1cd660be", "B684B1B441C79BC9E6A9F6454ABC849DF0FC068B9373C017AC443F3997A9D6BA433D29822BBEC4747D6A4119E022F1A5BC78495C496E22F2D8B1727746BA16B001", new string[] {})]
+    public void Can_verify_decryption_key_signatures(ulong instanceId, ulong eon, ulong slot, string keyperAddress, string sigHex, string[] identityPreimagesHex)
+    {
+        IEnumerable<byte[]> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString);
+        Assert.That(ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(instanceId, eon, slot, identityPreimages, Convert.FromHexString(sigHex), new(keyperAddress)));
     }
 
     internal static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
