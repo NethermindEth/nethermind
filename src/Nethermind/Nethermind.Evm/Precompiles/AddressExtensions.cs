@@ -36,6 +36,7 @@ public static class AddressExtensions
                 0x11 => releaseSpec.Bls381Enabled,
                 0x12 => releaseSpec.Bls381Enabled,
                 0x13 => releaseSpec.Bls381Enabled,
+                0x100 => true, // TODO clarify if should be conditional
                 _ => false
             };
     }
