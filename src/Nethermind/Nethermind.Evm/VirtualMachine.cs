@@ -1036,7 +1036,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.Exp;
 
-                        Metrics.ModExpOpcode++;
+                        Metrics.ExpOpcode++;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         bytes = stack.PopWord256();

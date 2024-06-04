@@ -7,7 +7,7 @@
 using System;
 using System.Linq;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 /// <summary>
 /// CPU information from output of the `cat /proc/info` command.
