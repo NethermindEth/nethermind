@@ -6,9 +6,9 @@
 
 using System.Globalization;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
-internal readonly struct TimeInterval
+public readonly struct TimeInterval
 {
     public static readonly TimeInterval Nanosecond = TimeUnit.Nanosecond.ToInterval(1L);
 

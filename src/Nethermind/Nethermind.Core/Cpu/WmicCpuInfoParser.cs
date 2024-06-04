@@ -6,7 +6,7 @@
 
 using System.Collections.Generic;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 internal static class WmicCpuInfoParser
 {

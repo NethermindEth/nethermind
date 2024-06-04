@@ -36,14 +36,16 @@ using System.Collections.Frozen;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-
+using System.Threading.Tasks;
 using Int256;
+
+using Nethermind.Core.Collections;
 
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
     internal static FrozenDictionary<AddressAsKey, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
-    internal static LruCache<ValueHash256, CodeInfo> CodeCache { get; } = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    internal static CodeLruCache CodeCache { get; } = new();
 
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     internal static ref readonly UInt256 P255 => ref P255Int;
@@ -141,6 +143,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult Empty => new(default, null);
+        public static object BoxedEmpty { get; } = new object();
 
         public CallResult(EvmState stateToExecute)
         {
@@ -181,6 +184,37 @@ public class VirtualMachine : IVirtualMachine
     public interface IIsTracing { }
     public readonly struct NotTracing : IIsTracing { }
     public readonly struct IsTracing : IIsTracing { }
+
+    internal sealed class CodeLruCache
+    {
+        private const int CacheCount = 16;
+        private const int CacheMax = CacheCount - 1;
+        private readonly LruCacheLowObject<ValueHash256, CodeInfo>[] _caches;
+
+        public CodeLruCache()
+        {
+            _caches = new LruCacheLowObject<ValueHash256, CodeInfo>[CacheCount];
+            for (int i = 0; i < _caches.Length; i++)
+            {
+                // Cache per nibble to reduce contention as TxPool is very parallel
+                _caches[i] = new LruCacheLowObject<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+            }
+        }
+
+        public CodeInfo Get(in ValueHash256 codeHash)
+        {
+            var cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Get(codeHash);
+        }
+
+        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        {
+            var cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Set(codeHash, codeInfo);
+        }
+
+        private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
+    }
 }
 
 internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
@@ -548,7 +582,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         else
         {
-            Db.Metrics.CodeDbCache++;
+            Db.Metrics.IncrementCodeDbCache();
         }
 
         return cachedCodeInfo;
@@ -736,7 +770,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             if (!vmState.IsTopLevel)
             {
-                Metrics.EmptyCalls++;
+                Metrics.IncrementEmptyCalls();
             }
             goto Empty;
         }
@@ -980,7 +1014,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.Exp;
 
-                        Metrics.ModExpOpcode++;
+                        Metrics.ExpOpcode++;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         bytes = stack.PopWord256();
@@ -1837,7 +1871,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
                     {
-                        Metrics.Creates++;
+                        Metrics.IncrementCreates();
                         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
 
                         if (vmState.IsStatic) goto StaticCallViolation;
@@ -1867,6 +1901,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (returnData is null)
                         {
                             break;
+                        }
+                        if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                        {
+                            // Non contract call continue rather than constructing a new frame
+                            continue;
                         }
 
                         goto DataReturn;
@@ -2146,7 +2185,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
-        Metrics.Calls++;
+        Metrics.IncrementCalls();
 
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
@@ -2186,11 +2225,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (typeof(TLogger) == typeof(IsTracing))
         {
-            _logger.Trace($"caller {caller}");
-            _logger.Trace($"code source {codeSource}");
-            _logger.Trace($"target {target}");
-            _logger.Trace($"value {callValue}");
-            _logger.Trace($"transfer value {transferValue}");
+            TraceCallDetails(codeSource, ref callValue, ref transferValue, caller, target);
         }
 
         long gasExtra = 0L;
@@ -2255,11 +2290,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
-        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
-
         Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec, env.IsSystemEnv);
 
+        if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
+        {
+            // Non contract call, no need to construct call frame can just credit balance and return gas
+            _returnDataBuffer = default;
+            stack.PushBytes(StatusCode.SuccessBytes.Span);
+            UpdateGasUp(gasLimitUl, ref gasAvailable);
+            return FastCall(spec, out returnData, in transferValue, target);
+        }
+
+        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,
@@ -2296,6 +2339,32 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             isCreateOnPreExistingAccount: false);
 
         return EvmExceptionType.None;
+
+        EvmExceptionType FastCall(IReleaseSpec spec, out object returnData, in UInt256 transferValue, Address target)
+        {
+            if (!_state.AccountExists(target))
+            {
+                _state.CreateAccount(target, transferValue);
+            }
+            else
+            {
+                _state.AddToBalance(target, transferValue, spec);
+            }
+            Metrics.IncrementEmptyCalls();
+
+            returnData = CallResult.BoxedEmpty;
+            return EvmExceptionType.None;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceCallDetails(Address codeSource, ref UInt256 callValue, ref UInt256 transferValue, Address caller, Address target)
+        {
+            _logger.Trace($"caller {caller}");
+            _logger.Trace($"code source {codeSource}");
+            _logger.Trace($"target {target}");
+            _logger.Trace($"value {callValue}");
+            _logger.Trace($"transfer value {transferValue}");
+        }
     }
 
     [SkipLocalsInit]
@@ -2563,7 +2632,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingInstructions : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        Metrics.SloadOpcode++;
+        Metrics.IncrementSLoadOpcode();
         gasAvailable -= spec.GetSLoadCost();
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
@@ -2591,7 +2660,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        Metrics.SstoreOpcode++;
+        Metrics.IncrementSStoreOpcode();
 
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset

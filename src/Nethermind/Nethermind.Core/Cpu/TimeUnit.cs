@@ -7,9 +7,9 @@
 using System;
 using System.Linq;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
-internal class TimeUnit : IEquatable<TimeUnit>
+public class TimeUnit : IEquatable<TimeUnit>
 {
     public static readonly TimeUnit Nanosecond = new TimeUnit("ns", "Nanosecond", 1L);
 

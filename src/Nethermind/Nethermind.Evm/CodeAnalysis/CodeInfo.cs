@@ -29,6 +29,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public bool IsPrecompile => Precompile is not null;
+        public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer) && !IsPrecompile;
 
         public CodeInfo(IPrecompile precompile)
         {

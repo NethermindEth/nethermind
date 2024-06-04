@@ -10,33 +10,22 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Processing;
 
-public class ReadOnlyTxProcessingEnvFactory
+public class ReadOnlyTxProcessingEnvFactory(
+    IWorldStateManager worldStateManager,
+    IReadOnlyBlockTree? readOnlyBlockTree,
+    ISpecProvider? specProvider,
+    ILogManager? logManager,
+    PreBlockCaches? preBlockCaches = null)
 {
-    private readonly IWorldStateManager _worldStateManager;
-    private readonly IReadOnlyBlockTree? _readOnlyBlockTree;
-    private readonly ISpecProvider? _specProvider;
-    private readonly ILogManager? _logManager;
-
     public ReadOnlyTxProcessingEnvFactory(
         IWorldStateManager worldStateManager,
         IBlockTree? blockTree,
         ISpecProvider? specProvider,
-        ILogManager? logManager)
-        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+        ILogManager? logManager,
+        PreBlockCaches? preBlockCaches = null)
+        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager, preBlockCaches)
     {
     }
 
-    public ReadOnlyTxProcessingEnvFactory(
-        IWorldStateManager worldStateManager,
-        IReadOnlyBlockTree? readOnlyBlockTree,
-        ISpecProvider? specProvider,
-        ILogManager? logManager)
-    {
-        _worldStateManager = worldStateManager;
-        _readOnlyBlockTree = readOnlyBlockTree;
-        _specProvider = specProvider;
-        _logManager = logManager;
-    }
-
-    public ReadOnlyTxProcessingEnv Create() => new(_worldStateManager, _readOnlyBlockTree, _specProvider, _logManager);
+    public ReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager, preBlockCaches);
 }

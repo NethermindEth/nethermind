@@ -4,9 +4,9 @@
 // Derived from https://github.com/dotnet/BenchmarkDotNet
 // Licensed under the MIT License
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
-internal class CpuInfo
+public class CpuInfo
 {
     public string ProcessorName { get; }
     public int? PhysicalProcessorCount { get; }
