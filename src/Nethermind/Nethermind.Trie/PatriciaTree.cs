@@ -228,7 +228,7 @@ namespace Nethermind.Trie
                     if (nodesToCommit.Count >= 4)
                     {
                         ClearExceptions();
-                        Parallel.For(0, nodesToCommit.Count, RuntimeInformation.ParallelOptionsPhysicalCores, i =>
+                        Parallel.For(0, nodesToCommit.Count, RuntimeInformation.ParallelOptionsLogicalCores, i =>
                         {
                             try
                             {

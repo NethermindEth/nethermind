@@ -175,7 +175,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool)
             {
                 int totalLength = 0;
-                Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCores,
+                Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     () => 0,
                     (i, _, local) =>
                     {
@@ -236,7 +236,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool)
             {
                 int totalLength = 0;
-                Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCores,
+                Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     () => 0,
                     (i, _, local) =>
                     {

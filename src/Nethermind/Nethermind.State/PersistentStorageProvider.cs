@@ -264,7 +264,7 @@ namespace Nethermind.State
             void UpdateRootHashesMultiThread()
             {
                 // We can recalculate the roots in parallel as they are all independent tries
-                Parallel.ForEach(_storages, RuntimeInformation.ParallelOptionsPhysicalCores, kvp =>
+                Parallel.ForEach(_storages, RuntimeInformation.ParallelOptionsLogicalCores, kvp =>
                 {
                     if (!_toUpdateRoots.Contains(kvp.Key))
                     {
