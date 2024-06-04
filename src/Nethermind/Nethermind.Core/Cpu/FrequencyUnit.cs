@@ -4,9 +4,9 @@
 // Derived from https://github.com/AndreyAkinshin/perfolizer
 // Licensed under the MIT License
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
-internal class FrequencyUnit
+public class FrequencyUnit
 {
     public static readonly FrequencyUnit Hz = new FrequencyUnit("Hz", "Hertz", 1L);
 

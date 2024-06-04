@@ -6,7 +6,7 @@
 
 using System;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 /// <summary>
 /// CPU information from output of the `sysctl -a` command.

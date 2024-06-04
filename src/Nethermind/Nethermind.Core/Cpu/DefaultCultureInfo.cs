@@ -6,7 +6,7 @@
 
 using System.Globalization;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 internal static class DefaultCultureInfo
 {

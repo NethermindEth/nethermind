@@ -10,7 +10,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 // we need it public to reuse it in the auto-generated dll
 // but we hide it from intellisense with following attribute

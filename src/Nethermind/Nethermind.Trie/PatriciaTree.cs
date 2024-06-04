@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -227,7 +228,7 @@ namespace Nethermind.Trie
                     if (nodesToCommit.Count >= 4)
                     {
                         ClearExceptions();
-                        Parallel.For(0, nodesToCommit.Count, i =>
+                        Parallel.For(0, nodesToCommit.Count, RuntimeInformation.ParallelOptionsLogicalCores, i =>
                         {
                             try
                             {

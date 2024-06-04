@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 internal static partial class SectionsHelper
 {
