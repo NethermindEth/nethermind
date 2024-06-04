@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
@@ -36,9 +37,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Trie;
-using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -175,10 +174,11 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.LogManager);
+                _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
 
             return new VirtualMachine(
                 blockhashProvider,
@@ -217,6 +217,7 @@ namespace Nethermind.Init.Steps
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             IWorldState worldState = _api.WorldState!;
 
@@ -227,7 +228,7 @@ namespace Nethermind.Init.Steps
                 new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage,
-                _api.WitnessCollector,
+                new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
                 _api.LogManager);
         }
 

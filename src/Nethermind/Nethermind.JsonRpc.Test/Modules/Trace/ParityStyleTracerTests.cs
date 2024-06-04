@@ -4,6 +4,7 @@
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -61,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             WorldState stateProvider = new(stateFactory, codeDb, LimboLogs.Instance);
             _stateReader = new StateReader(stateFactory, codeDb, LimboLogs.Instance);
 
-            BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, LimboLogs.Instance);
 
@@ -73,7 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(_blockTree, specProvider, stateProvider),
                 LimboLogs.Instance);
 
             RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);

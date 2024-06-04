@@ -59,6 +59,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
 
+    public bool IsTracingLogs => InnerTracer.IsTracingLogs;
+
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
     public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
@@ -191,14 +193,17 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-        => InnerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+        => InnerTracer.StartOperation(pc, opcode, gas, env);
 
     public void ReportOperationError(EvmExceptionType error)
         => InnerTracer.ReportOperationError(error);
 
     public void ReportOperationRemainingGas(long gas)
         => InnerTracer.ReportOperationRemainingGas(gas);
+
+    public void ReportLog(LogEntry log)
+        => InnerTracer.ReportLog(log);
 
     public void SetOperationStack(TraceStack stack)
         => InnerTracer.SetOperationStack(stack);
@@ -232,6 +237,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public void ReportActionError(EvmExceptionType evmExceptionType)
         => InnerTracer.ReportActionError(evmExceptionType);
+
+    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+        => InnerTracer.ReportActionRevert(gas, output);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => InnerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);

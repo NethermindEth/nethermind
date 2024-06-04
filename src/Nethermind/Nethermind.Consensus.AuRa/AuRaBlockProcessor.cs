@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Validators;
@@ -14,6 +15,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -24,12 +26,11 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProcessor : BlockProcessor
     {
         private readonly ISpecProvider _specProvider;
-        private readonly IBlockTree _blockTree;
+        private readonly IBlockFinder _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
         private readonly ContractRewriter? _contractRewriter;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
-        private IAuRaValidator? _auRaValidator;
 
         public AuRaBlockProcessor(
             ISpecProvider specProvider,
@@ -39,8 +40,9 @@ namespace Nethermind.Consensus.AuRa
             IWorldState stateProvider,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
-            IBlockTree blockTree,
+            IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
+            IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null)
@@ -51,7 +53,7 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(blockTree, specProvider, stateProvider),
                 logManager,
                 withdrawalProcessor)
         {
@@ -61,17 +63,14 @@ namespace Nethermind.Consensus.AuRa
             _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
             _contractRewriter = contractRewriter;
+            AuRaValidator = auRaValidator ?? new NullAuRaValidator();
             if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
             {
                 produceBlockTransactionsStrategy.AddingTransaction += OnAddingTransaction;
             }
         }
 
-        public IAuRaValidator AuRaValidator
-        {
-            get => _auRaValidator ?? new NullAuRaValidator();
-            set => _auRaValidator = value;
-        }
+        public IAuRaValidator AuRaValidator { get; }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {

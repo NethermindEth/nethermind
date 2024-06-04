@@ -9,22 +9,28 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Paprika;
 using Nethermind.State;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -36,7 +42,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 5000;
+        private const int TimeoutLength = 10000;
 
         private static IBlockTree? _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
@@ -69,9 +75,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             (_logger.UnderlyingLogger as ConsoleAsyncLogger)?.Flush();
         }
 
-        protected static StorageTree SetStorage(ITrieStore trieStore, byte i)
+        protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
         {
-            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
 
             remoteStorageTree.Commit(0);
@@ -110,7 +116,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateFactory, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, dbContext.LocalStateFactory, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
@@ -165,6 +171,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalDb = new TestMemDb();
                 RemoteStateDb = RemoteDb;
                 LocalStateDb = LocalDb;
+                LocalNodeStorage = new NodeStorage(LocalDb);
                 LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
@@ -181,6 +188,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
             public IDb LocalStateDb { get; }
+            public NodeStorage LocalNodeStorage { get; }
             public StateTree RemoteStateTree { get; }
             public StateTree LocalStateTree { get; }
             public IStateFactory LocalStateFactory { get; }
@@ -221,12 +229,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
         }
 
-        protected class SyncPeerMock : ISyncPeer
+        protected class SyncPeerMock : ISyncPeer, ISnapSyncPeer
         {
             public string Name => "Mock";
 
             private readonly IDb _codeDb;
-            private readonly IDb _stateDb;
+            private readonly IReadOnlyKeyValueStore _stateDb;
+            private readonly ISnapServer _snapServer;
 
             private Hash256[]? _filter;
             private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
@@ -240,18 +249,28 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Node? node = null
             )
             {
-                _stateDb = stateDb;
                 _codeDb = codeDb;
                 _executorResultFunction = executorResultFunction;
 
-                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
+                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
                 _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
+
+                ILastNStateRootTracker alwaysAvailableRootTracker = Substitute.For<ILastNStateRootTracker>();
+                alwaysAvailableRootTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
+                IReadOnlyTrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
+                    Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
+                _stateDb = trieStore.TrieNodeRlpStore;
+                _snapServer = new SnapServer(
+                    trieStore,
+                    codeDb,
+                    alwaysAvailableRootTracker,
+                    LimboLogs.Instance);
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
             public Hash256 HeadHash { get; set; } = null!;
             public string ProtocolCode { get; } = null!;
-            public byte ProtocolVersion { get; } = default;
+            public byte ProtocolVersion { get; } = 67;
             public string ClientId => "executorMock";
             public Node Node { get; }
             public long HeadNumber { get; set; }
@@ -277,7 +296,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes]!;
+                    if (_filter is null || _filter.Contains(item))
+                    {
+                        responses[i] = _codeDb[item.Bytes] ?? _stateDb[item.Bytes]!;
+                    }
 
                     i++;
                 }
@@ -292,6 +314,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
+                if (protocol == Protocol.Snap)
+                {
+                    protocolHandler = (this as T)!;
+                    return true;
+                }
                 protocolHandler = null!;
                 return false;
             }
@@ -341,6 +368,36 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
+            public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+            {
+                return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+            {
+                IOwnedReadOnlyList<PathGroup> groups = SnapProtocolHandler.GetPathGroups(request);
+                return GetTrieNodes(new GetTrieNodesRequest()
+                {
+                    RootHash = request.RootHash,
+                    AccountAndStoragePaths = groups,
+                }, token);
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+            {
+                var nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+                return Task.FromResult(nodes!);
+            }
         }
     }
 }

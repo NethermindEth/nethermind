@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
@@ -44,13 +45,13 @@ namespace Nethermind.Blockchain.Test
             IWorldState stateProvider = new WorldState(stateFactory, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
-                GoerliSpecProvider.Instance,
+                HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
+                Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -65,38 +66,6 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_store_a_witness()
-        {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-            IStateFactory stateFactory = new PaprikaStateFactory();
-
-            IWorldState stateProvider = new WorldState(stateFactory, codeDb, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
-            BlockProcessor processor = new(
-                GoerliSpecProvider.Instance,
-                TestBlockValidator.AlwaysValid,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                NullReceiptStorage.Instance,
-                witnessCollector,
-                LimboLogs.Instance);
-
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithHeader(header).TestObject;
-            _ = processor.Process(
-                Keccak.EmptyTreeHash,
-                new List<Block> { block },
-                ProcessingOptions.None,
-                NullBlockTracer.Instance);
-
-            witnessCollector.Received(1).Persist(block.Hash!);
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
         public void Recovers_state_on_cancel()
         {
             IDb stateDb = new MemDb();
@@ -106,13 +75,13 @@ namespace Nethermind.Blockchain.Test
             IWorldState stateProvider = new WorldState(stateFactory, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
-                GoerliSpecProvider.Instance,
+                HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
+                Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -42,6 +43,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Paprika;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -227,12 +229,13 @@ namespace Nethermind.Synchronization.Test
             public IWorldState StateProvider { get; set; } = null!;
 
             public DevBlockProducer? BlockProducer { get; set; }
+            public IBlockProducerRunner? BlockProducerRunner { get; set; }
             public ConsoleAsyncLogger? Logger { get; set; }
 
             public async Task StopAsync()
             {
                 await (BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
-                await (BlockProducer?.StopAsync() ?? Task.CompletedTask);
+                await (BlockProducerRunner?.StopAsync() ?? Task.CompletedTask);
                 await (PeerPool?.StopAsync() ?? Task.CompletedTask);
                 await (Synchronizer?.StopAsync() ?? Task.CompletedTask);
                 Logger?.Flush();
@@ -274,7 +277,7 @@ namespace Nethermind.Synchronization.Test
                 new TxValidator(specProvider.ChainId),
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, logManager);
 
             Always sealValidator = Always.Valid;
@@ -299,7 +302,7 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(tree, specProvider, stateProvider),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -321,7 +324,7 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
                 devState,
                 receiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(tree, specProvider, devState),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
@@ -337,11 +340,15 @@ namespace Nethermind.Synchronization.Test
                 devChainProcessor,
                 stateProvider,
                 tree,
-                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,
                 new BlocksConfig(),
                 logManager);
+
+            StandardBlockProducerRunner runner = new(
+                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
+                tree,
+                producer);
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
@@ -353,6 +360,7 @@ namespace Nethermind.Synchronization.Test
                 logManager);
             Synchronizer synchronizer = new(
                 dbProvider,
+                new NodeStorage(dbProvider.StateDb),
                 MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
@@ -379,7 +387,6 @@ namespace Nethermind.Synchronization.Test
                 syncPeerPool,
                 selector,
                 syncConfig,
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 logManager);
@@ -390,7 +397,7 @@ namespace Nethermind.Synchronization.Test
             if (index == 0)
             {
                 _genesis = Build.A.Block.Genesis.WithStateRoot(stateProvider.StateRoot).TestObject;
-                producer.Start();
+                runner.Start();
             }
 
             syncPeerPool.Start();
@@ -412,6 +419,7 @@ namespace Nethermind.Synchronization.Test
             context.SyncServer = syncServer;
             context.Tree = tree;
             context.BlockProducer = producer;
+            context.BlockProducerRunner = runner;
             context.TxPool = txPool;
             context.Logger = logger;
             return context;

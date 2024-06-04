@@ -90,7 +90,6 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             throw new SubprotocolException(errorMessage);
         }
 
-        Metrics.Eth68NewPooledTransactionHashesReceived++;
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
         AddNotifiedTransactions(message.Hashes);
@@ -113,8 +112,8 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         else
         {
             SendMessage(
-                new ArrayPoolList<byte>((byte)tx.Type),
-                new ArrayPoolList<int>(tx.GetLength()),
+                new ArrayPoolList<byte>(1) { (byte)tx.Type },
+                new ArrayPoolList<int>(1) { tx.GetLength() },
                 new ArrayPoolList<Hash256>(1) { tx.Hash }
             );
         }
@@ -166,7 +165,6 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
     private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
-        Metrics.Eth68NewPooledTransactionHashesSent++;
         Send(message);
     }
 }

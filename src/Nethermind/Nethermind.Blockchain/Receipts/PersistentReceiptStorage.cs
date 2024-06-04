@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Receipts
             return null;
         }
 
-        public TxReceipt[] Get(Block block)
+        public TxReceipt[] Get(Block block, bool recover = true)
         {
             if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
@@ -162,9 +162,12 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     receipts = _storageDecoder.Decode(in receiptsData);
 
-                    _receiptsRecovery.TryRecover(block, receipts);
+                    if (recover)
+                    {
+                        _receiptsRecovery.TryRecover(block, receipts);
+                        _receiptsCache.Set(blockHash, receipts);
+                    }
 
-                    _receiptsCache.Set(blockHash, receipts);
                     return receipts;
                 }
             }
@@ -216,11 +219,11 @@ namespace Nethermind.Blockchain.Receipts
             blockHash!.Bytes.CopyTo(output[8..]);
         }
 
-        public TxReceipt[] Get(Hash256 blockHash)
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
             Block? block = _blockTree.FindBlock(blockHash);
             if (block is null) return Array.Empty<TxReceipt>();
-            return Get(block);
+            return Get(block, recover);
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;

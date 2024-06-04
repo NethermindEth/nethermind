@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,16 +22,18 @@ using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Paprika;
 
+[SkipLocalsInit]
 public class PaprikaStateFactory : IStateFactory
 {
     private readonly ILogger _logger;
     private static readonly long _sepolia = 32.GiB();
     private static readonly long _mainnet = 256.GiB();
 
-    private static readonly TimeSpan _flushFileEvery = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan _flushFileEvery = TimeSpan.FromMinutes(10);
 
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
+    private readonly IReadOnlyWorldStateAccessor _accessor;
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
     private uint _lastFinalized;
     private readonly ComputeMerkleBehavior _merkleBehaviour;
@@ -43,6 +46,8 @@ public class PaprikaStateFactory : IStateFactory
         _blockchain = new Blockchain(_db, _merkleBehaviour);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
+
+        _accessor = _blockchain.BuildReadOnlyAccessor();
 
         _logger = LimboLogs.Instance.GetClassLogger();
     }
@@ -66,6 +71,8 @@ public class PaprikaStateFactory : IStateFactory
         {
             _logger.Error("Paprika's Flusher task failed and stopped, throwing the following exception", exception);
         };
+
+        _accessor = _blockchain.BuildReadOnlyAccessor();
     }
 
     public ComputeMerkleBehavior MerkleBehaviour => _merkleBehaviour;
@@ -74,10 +81,29 @@ public class PaprikaStateFactory : IStateFactory
     public Nethermind.State.IRawState GetRaw() => new RawState(_blockchain.StartRaw(), this);
     public Nethermind.State.IRawState GetRaw(ValueHash256 rootHash) => new RawState(_blockchain.StartRaw(Convert(rootHash)), this);
 
-    public IReadOnlyState GetReadOnly(Hash256 stateRoot) =>
-        new ReadOnlyState(_blockchain.StartReadOnly(Convert(stateRoot)));
+    public IReadOnlyState GetReadOnly(Hash256? stateRoot) =>
+        new ReadOnlyState(stateRoot != null
+            ? _blockchain.StartReadOnly(Convert(stateRoot))
+            : _blockchain.StartReadOnlyLatestFromDb());
 
-    public bool HasRoot(Hash256 stateRoot) => _blockchain.HasState(Convert(stateRoot));
+    public bool HasRoot(Hash256 stateRoot)
+    {
+        return _accessor.HasState(Convert(stateRoot));
+    }
+
+    public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account)
+    {
+        return ConvertPaprikaAccount(_accessor.GetAccount(Convert(stateRoot), Convert(address)), out account);
+    }
+
+    public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        GetKey(index, bytes);
+
+        bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(bytes), bytes);
+        return bytes.ToEvmWord();
+    }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -127,6 +153,29 @@ public class PaprikaStateFactory : IStateFactory
         // _blockchain.Finalize(Convert(finalizedStateRoot));
     }
 
+    private static bool ConvertPaprikaAccount(in PaprikaAccount retrieved, out AccountStruct account)
+    {
+        bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                      retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+        if (retrieved.Balance.IsZero &&
+            retrieved.Nonce.IsZero &&
+            hasEmptyStorageAndCode)
+        {
+            account = default;
+            return false;
+        }
+
+        if (hasEmptyStorageAndCode)
+        {
+            account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
+            return true;
+        }
+
+        account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
+            Convert(retrieved.CodeHash));
+        return true;
+    }
+
     public void AquireRawStateCommitLock()
     {
         _commitLock.EnterWriteLock();
@@ -137,50 +186,20 @@ public class PaprikaStateFactory : IStateFactory
         _commitLock.ExitWriteLock();
     }
 
+    [SkipLocalsInit]
     class ReadOnlyState(IReadOnlyWorldState wrapped) : IReadOnlyState
     {
-        public bool TryGet(Address address, out AccountStruct account)
-        {
-            PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
-            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (retrieved.Balance.IsZero &&
-                retrieved.Nonce.IsZero &&
-                hasEmptyStorageAndCode)
-            {
-                account = default;
-                return false;
-            }
-
-            if (hasEmptyStorageAndCode)
-            {
-                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
-                return true;
-            }
-
-            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
-                Convert(retrieved.CodeHash));
-            return true;
-        }
-
+        public bool TryGet(Address address, out AccountStruct account) => ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
         public Account? Get(ValueHash256 hash)
         {
-            PaprikaAccount account = wrapped.GetAccount(Convert(hash));
-            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (account.Balance.IsZero &&
-                account.Nonce.IsZero &&
-                hasEmptyStorageAndCode)
-                return null;
-
-            if (hasEmptyStorageAndCode)
-                return new Account(account.Nonce, account.Balance);
-
-            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
-                Convert(account.CodeHash));
+            PaprikaAccount paprikAccount = wrapped.GetAccount(Convert(hash));
+            if (ConvertPaprikaAccount(paprikAccount, out AccountStruct account))
+            {
+                return new Account(account.Nonce, account.Balance, new Hash256(account.StorageRoot), new Hash256(account.CodeHash));
+            }
+            return null;
         }
 
-        [SkipLocalsInit]
         public EvmWord GetStorageAt(in StorageCell cell)
         {
             Span<byte> bytes = stackalloc byte[32];
@@ -189,7 +208,6 @@ public class PaprikaStateFactory : IStateFactory
             return bytes.ToEvmWord();
         }
 
-        [SkipLocalsInit]
         public EvmWord GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
@@ -230,26 +248,7 @@ public class PaprikaStateFactory : IStateFactory
 
         public bool TryGet(Address address, out AccountStruct account)
         {
-            PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
-            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (retrieved.Balance.IsZero &&
-                retrieved.Nonce.IsZero &&
-                hasEmptyStorageAndCode)
-            {
-                account = default;
-                return false;
-            }
-
-            if (hasEmptyStorageAndCode)
-            {
-                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
-                return true;
-            }
-
-            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
-                Convert(retrieved.CodeHash));
-            return true;
+            return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
         }
 
         public Account? Get(ValueHash256 hash)

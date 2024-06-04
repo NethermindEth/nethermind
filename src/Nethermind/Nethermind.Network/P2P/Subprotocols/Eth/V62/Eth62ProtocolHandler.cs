@@ -97,7 +97,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             EnrichStatusMessage(statusMessage);
 
-            Metrics.StatusesSent++;
             Send(statusMessage);
 
             CheckProtocolInitTimeout().ContinueWith(x =>
@@ -139,8 +138,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
-
             switch (packetType)
             {
                 case Eth62MessageCode.Status:
@@ -151,7 +148,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         break;
                     }
                 case Eth62MessageCode.NewBlockHashes:
-                    Metrics.Eth62NewBlockHashesReceived++;
                     if (CanAcceptBlockGossip())
                     {
                         using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
@@ -160,7 +156,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     }
                     break;
                 case Eth62MessageCode.Transactions:
-                    Metrics.Eth62TransactionsReceived++;
                     if (CanReceiveTransactions)
                     {
                         if (_floodController.IsAllowed())
@@ -203,7 +198,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
-                    Metrics.Eth62NewBlockReceived++;
                     if (CanAcceptBlockGossip())
                     {
                         using NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
@@ -229,7 +223,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(StatusMessage status)
         {
-            Metrics.StatusesReceived++;
             if (_statusReceived)
             {
                 throw new SubprotocolException($"{nameof(StatusMessage)} has already been received in the past");

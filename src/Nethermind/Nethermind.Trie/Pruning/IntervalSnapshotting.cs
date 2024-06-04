@@ -16,5 +16,7 @@ namespace Nethermind.Trie.Pruning
         {
             return blockNumber % _snapshotInterval == 0;
         }
+
+        public bool IsFullPruning => false;
     }
 }

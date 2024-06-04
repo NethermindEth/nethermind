@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Trie.Pruning;
 using Paprika.Chain;
 using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
@@ -76,14 +77,18 @@ public interface IStateFactory : IAsyncDisposable
 {
     IState Get(Hash256 stateRoot);
 
-    IReadOnlyState GetReadOnly(Hash256 stateRoot);
+    IReadOnlyState GetReadOnly(Hash256? stateRoot);
+
+    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     public IRawState GetRaw();
     public IRawState GetRaw(ValueHash256 rootHash);
 
     bool HasRoot(Hash256 stateRoot);
 
-    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+    public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account);
+
+    public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index);
 }
 
 public interface IStateOwner

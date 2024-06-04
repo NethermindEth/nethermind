@@ -99,14 +99,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected virtual void Handle(ReceiptsMessage msg, long size)
         {
-            Metrics.Eth63ReceiptsReceived++;
             _receiptsRequests.Handle((msg.TxReceipts, size), size);
         }
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
             using var message = msg;
-            Metrics.Eth63GetNodeDataReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
@@ -130,7 +128,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected virtual void Handle(NodeDataMessage msg, int size)
         {
-            Metrics.Eth63NodeDataReceived++;
             _nodeDataRequests.Handle(msg.Data, size);
         }
 
@@ -143,8 +140,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
 
-            // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
-            // on a sample 3M blocks Goerli fast sync
+            // could use more array pooled lists (pooled memmory) here.
+            // maybe remeasure allocations on another network since goerli has been phased out.
             IOwnedReadOnlyList<byte[]> nodeData = await SendRequest(msg, token);
             return nodeData;
         }

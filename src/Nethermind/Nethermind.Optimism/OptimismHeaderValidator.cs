@@ -16,5 +16,5 @@ public class OptimismHeaderValidator : HeaderValidator
     {
     }
 
-    protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec) => true;
+    protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

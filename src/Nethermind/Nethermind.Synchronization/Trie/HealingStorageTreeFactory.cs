@@ -19,6 +19,6 @@ public class HealingStorageTreeFactory : IStorageTreeFactory
         _recovery = recovery;
     }
 
-    public StorageTree Create(Address address, ITrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager) =>
+    public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager) =>
         new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _recovery);
 }

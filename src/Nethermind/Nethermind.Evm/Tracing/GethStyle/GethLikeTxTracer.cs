@@ -66,22 +66,32 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     protected TEntry? CurrentTraceEntry { get; set; }
 
     protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
+    private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
+        bool isPostMerge = env.IsPostMerge();
         if (CurrentTraceEntry is not null)
             AddTraceEntry(CurrentTraceEntry);
 
         CurrentTraceEntry = CreateTraceEntry(opcode);
-        CurrentTraceEntry.Depth = depth;
+        CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
         CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
         CurrentTraceEntry.ProgramCounter = pc;
+        _gasCostAlreadySetForCurrentOp = false;
     }
 
     public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
 
-    public override void ReportOperationRemainingGas(long gas) => CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+    public override void ReportOperationRemainingGas(long gas)
+    {
+        if (!_gasCostAlreadySetForCurrentOp)
+        {
+            CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+            _gasCostAlreadySetForCurrentOp = true;
+        }
+    }
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
 

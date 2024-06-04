@@ -23,10 +23,12 @@ using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -56,7 +58,8 @@ namespace Nethermind.Synchronization.Test
             _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
             SyncConfig syncConfig = new();
 
-            TrieStore trieStore = new(_stateDb, LimboLogs.Instance);
+            NodeStorage nodeStorage = new NodeStorage(_stateDb);
+            TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
             BlockDownloaderFactory blockDownloaderFactory = new(
@@ -71,6 +74,7 @@ namespace Nethermind.Synchronization.Test
 
             _synchronizer = new Synchronizer(
                 dbProvider,
+                nodeStorage,
                 MainnetSpecProvider.Instance,
                 _blockTree,
                 _receiptStorage,
@@ -95,7 +99,6 @@ namespace Nethermind.Synchronization.Test
                 _pool,
                 _synchronizer.SyncModeSelector,
                 quickConfig,
-                new WitnessCollector(new MemDb(), LimboLogs.Instance),
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);

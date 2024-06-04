@@ -12,9 +12,11 @@ namespace Nethermind.AccountAbstraction.Test.Network
     [TestFixture]
     public class CalculateRequestIdTest
     {
+
         [Test]
         public void Calculates_RequestId_Correctly_No_Signature()
         {
+            //todo: find another simialr transaction on a different network like holesky as goerli is being phased out.
             //Using the following transaction as reference: https://goerli.etherscan.io/tx/0xa9236155292e30bfb43c5a758e0c906e18697cf23198f81e2a72e5322cd0acb7#eventlog
             UserOperation userOperation = new(new UserOperationRpc
             {
@@ -35,9 +37,8 @@ namespace Nethermind.AccountAbstraction.Test.Network
             });
 
             Address entryPointId = new Address("0x90f3E1105E63C877bF9587DE5388C23Cdb702c6B");
-            ulong chainId = 5;
             Hash256 idFromTransaction = new Hash256("0x9f5d37eb5cc7b0707b2898b1da01fa7aac806a18d531b17a981994bc512cbfc8");
-            userOperation.CalculateRequestId(entryPointId, chainId);
+            userOperation.CalculateRequestId(entryPointId, BlockchainIds.Goerli);
             Assert.That(userOperation.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
         }
@@ -66,10 +67,9 @@ namespace Nethermind.AccountAbstraction.Test.Network
 
 
             Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
-            ulong chainId = 5;
             Hash256 idFromTransaction2 =
                 new Hash256("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
-            userOperation2.CalculateRequestId(entryPointId, chainId);
+            userOperation2.CalculateRequestId(entryPointId, BlockchainIds.Goerli);
             Assert.That(userOperation2.RequestId!, Is.EqualTo(idFromTransaction2),
                 "Request IDs do not match.");
         }

@@ -5,7 +5,6 @@ using System.Buffers.Binary;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -118,49 +117,34 @@ public class PayloadAttributes
     private static PayloadAttributesValidationResult ValidateVersion(
         int apiVersion,
         int actualVersion,
-        int expectedVersion,
+        int timestampVersion,
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
-        if (apiVersion >= EngineApiVersions.Cancun)
+        // version calculated from parameters should match api version
+        if (actualVersion != apiVersion)
         {
-            if (actualVersion == apiVersion && expectedVersion != apiVersion)
+            // except of Shanghai api handling Paris fork
+            if (apiVersion == EngineApiVersions.Shanghai && timestampVersion < apiVersion)
             {
-                error = $"{methodName}{expectedVersion} expected";
-                return PayloadAttributesValidationResult.UnsupportedFork;
+
+                error = null;
+                return PayloadAttributesValidationResult.Success;
             }
-        }
-        else if (apiVersion == EngineApiVersions.Shanghai)
-        {
-            if (actualVersion == apiVersion && expectedVersion >= EngineApiVersions.Cancun)
-            {
-                error = $"{methodName}{expectedVersion} expected";
-                return PayloadAttributesValidationResult.UnsupportedFork;
-            }
+
+            error = $"{methodName}{apiVersion} expected";
+            return actualVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        if (actualVersion == expectedVersion)
+        // timestamp should correspond to proper api version
+        if (timestampVersion != apiVersion)
         {
-            if (apiVersion >= EngineApiVersions.Cancun)
-            {
-                if (actualVersion == apiVersion)
-                {
-                    error = null;
-                    return PayloadAttributesValidationResult.Success;
-                }
-            }
-            else
-            {
-                if (apiVersion >= actualVersion)
-                {
-                    error = null;
-                    return PayloadAttributesValidationResult.Success;
-                }
-            }
+            error = $"{methodName}{timestampVersion} expected";
+            return timestampVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.UnsupportedFork;
         }
 
-        error = $"{methodName}{expectedVersion} expected";
-        return PayloadAttributesValidationResult.InvalidParams;
+        error = null;
+        return PayloadAttributesValidationResult.Success;
     }
 
     public virtual PayloadAttributesValidationResult Validate(
@@ -170,13 +154,13 @@ public class PayloadAttributes
         ValidateVersion(
             apiVersion: apiVersion,
             actualVersion: this.GetVersion(),
-            expectedVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
+            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
                 .ExpectedEngineSpecVersion(),
             "PayloadAttributesV",
             out error);
 }
 
-public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, UnsupportedFork };
+public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, InvalidPayloadAttributes, UnsupportedFork };
 
 public static class PayloadAttributesExtensions
 {

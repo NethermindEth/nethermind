@@ -109,10 +109,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CommitTree(long blockNumber);
 
-    /// <summary>
-    /// For witness
-    /// </summary>
-    /// <param name="codeHash"></param>
-    void TouchCode(in ValueHash256 codeHash);
     void FullReset();
 }

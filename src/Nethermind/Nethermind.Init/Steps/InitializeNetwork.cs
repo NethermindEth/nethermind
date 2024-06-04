@@ -35,10 +35,8 @@ using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie.Pruning;
@@ -103,8 +101,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
-
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
@@ -146,6 +142,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
+                null!,
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
@@ -181,13 +178,10 @@ public class InitializeNetwork : IStep
             _api.SyncPeerPool,
             _api.SyncModeSelector,
             _api.Config<ISyncConfig>(),
-            _api.WitnessRepository,
             _api.GossipPolicy,
             _api.SpecProvider!,
-            _api.LogManager,
-            cht);
+            _api.LogManager);
 
-        _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
@@ -204,19 +198,11 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync)
+        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
         {
-            if (!_syncConfig.SnapServingEnabled)
-            {
-                // TODO: Should we keep snap capability even after finishing sync?
-                SnapCapabilitySwitcher snapCapabilitySwitcher =
-                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-            }
-            else
-            {
-                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-            }
+            SnapCapabilitySwitcher snapCapabilitySwitcher =
+                new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
@@ -514,7 +500,7 @@ public class InitializeNetwork : IStep
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
 
         ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServingEnabled)
+        if (_syncConfig.SnapServingEnabled == true)
         {
             // TODO: Add a proper config for the state persistence depth.
             snapServer = new SnapServer(
@@ -542,9 +528,9 @@ public class InitializeNetwork : IStep
             _api.LogManager,
             _api.TxGossipPolicy);
 
-        if (_syncConfig.WitnessProtocolEnabled)
+        if (_syncConfig.SnapServingEnabled == true)
         {
-            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         }
 
         _api.ProtocolValidator = protocolValidator;

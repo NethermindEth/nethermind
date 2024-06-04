@@ -12,6 +12,7 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -123,19 +124,18 @@ namespace Nethermind.AccountAbstraction.Test
 
                 UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, Signer, LogManager.GetClassLogger());
 
-                PostMergeBlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
-                    ITxSource? txSource = null)
+                PostMergeBlockProducer CreatePostMergeBlockProducer(ITxSource? txSource = null)
                 {
                     var blockProducerEnv = blockProducerEnvFactory.Create(txSource);
                     return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
                         LogManager, GasLimitCalculator).Create(
-                        blockProducerEnv, blockProductionTrigger);
+                        blockProducerEnv);
                 }
 
-                IBlockProducer blockProducer =
-                    CreatePostMergeBlockProducer(BlockProductionTrigger, UserOperationTxSource);
+                IBlockProducer blockProducer = CreatePostMergeBlockProducer(UserOperationTxSource);
 
-                blockProducer.BlockProduced += OnBlockProduced;
+                BlockProducerRunner = new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, blockProducer);
+                BlockProducerRunner.BlockProduced += OnBlockProduced;
 
                 return blockProducer;
             }
@@ -191,7 +191,7 @@ namespace Nethermind.AccountAbstraction.Test
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     ReceiptStorage,
-                    NullWitnessCollector.Instance,
+                    new BlockhashStore(BlockTree, SpecProvider, State),
                     LogManager);
 
                 AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));

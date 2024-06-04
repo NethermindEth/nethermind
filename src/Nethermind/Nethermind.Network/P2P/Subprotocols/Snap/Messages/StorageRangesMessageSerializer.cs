@@ -3,6 +3,7 @@
 
 using System;
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -12,13 +13,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
         private readonly Func<RlpStream, PathWithStorageSlot> _decodeSlot;
-        private readonly Func<RlpStream, PathWithStorageSlot[]> _decodeSlotArray;
+        private readonly Func<RlpStream, IOwnedReadOnlyList<PathWithStorageSlot>> _decodeSlotArray;
 
         public StorageRangesMessageSerializer()
         {
             // Capture closures once
             _decodeSlot = DecodeSlot;
-            _decodeSlotArray = s => s.DecodeArray(_decodeSlot);
+            _decodeSlotArray = s => s.DecodeArrayPoolList(_decodeSlot);
         }
 
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
@@ -44,9 +45,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 {
                     stream.StartSequence(accountSlotsLengths[i]);
 
-                    PathWithStorageSlot[] accountSlots = message.Slots[i];
+                    IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = message.Slots[i];
 
-                    for (int j = 0; j < accountSlots.Length; j++)
+                    for (int j = 0; j < accountSlots.Count; j++)
                     {
                         var slot = accountSlots[j];
 

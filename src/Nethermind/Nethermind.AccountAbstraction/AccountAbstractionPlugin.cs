@@ -33,6 +33,7 @@ using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Config;
 using Nethermind.Db;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Network.Contract.P2P;
 
 namespace Nethermind.AccountAbstraction;
@@ -349,7 +350,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         return ValueTask.CompletedTask;
     }
 
-    public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+    public Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? additionalTxSource)
     {
         if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
@@ -379,9 +380,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
                         $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
             }
 
-        IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-
-        return consensusPlugin.InitBlockProducer(trigger, UserOperationTxSource);
+        return consensusPlugin.InitBlockProducer(UserOperationTxSource);
     }
 
     public bool MevPluginEnabled => _nethermindApi.Config<IMevConfig>().Enabled;

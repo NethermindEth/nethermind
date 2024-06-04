@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
-                var stateTree = new StateTree(store, LimboLogs.Instance);
+                var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
 
                 FillStateTreeWithTestAccounts(stateTree, maxCount);
 
@@ -87,7 +87,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
-                var storageTree = new StorageTree(store, LimboLogs.Instance);
+                var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 
                 storageTree.Set(SlotsWithPaths[0].Path, SlotsWithPaths[0].SlotRlpValue, false);
                 storageTree.Set(SlotsWithPaths[1].Path, SlotsWithPaths[1].SlotRlpValue, false);
@@ -100,7 +100,7 @@ namespace Nethermind.Core.Test.Builders
 
                 var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
 
-                var stateTree = new StateTree(store, LimboLogs.Instance);
+                var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
                 stateTree.Set(AccountAddress0, account);
                 stateTree.Commit(0);
 
@@ -111,7 +111,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
-                var storageTree = new StorageTree(store, LimboLogs.Instance);
+                var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 
                 for (int i = 0; i < slotNumber; i++)
                 {

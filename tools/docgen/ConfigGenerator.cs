@@ -22,7 +22,7 @@ internal static class ConfigGenerator
             .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => t.Name);
-        
+
         File.Delete($"~{fileName}");
 
         using var readStream = new StreamReader(File.OpenRead(fileName));
