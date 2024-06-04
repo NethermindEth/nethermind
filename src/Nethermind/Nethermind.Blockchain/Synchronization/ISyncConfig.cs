@@ -123,6 +123,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = "EnableBlobFiles")]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
+    [ConfigItem(Description = "Configure the receipts database for write optimizations during sync.", DefaultValue = "WriteBias")]
+    ITunableDb.TuneType ReceiptsDbTuneDbMode { get; set; }
+
     [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
 

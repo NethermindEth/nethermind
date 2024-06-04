@@ -170,7 +170,9 @@ namespace Nethermind.Synchronization
                 StartStateSyncComponents();
             }
 
-            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default || _syncConfig.BlocksDbTuneDbMode != ITunableDb.TuneType.Default)
+            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default
+                || _syncConfig.BlocksDbTuneDbMode != ITunableDb.TuneType.Default
+                || _syncConfig.ReceiptsDbTuneDbMode != ITunableDb.TuneType.Default)
             {
                 SetupDbOptimizer();
             }
