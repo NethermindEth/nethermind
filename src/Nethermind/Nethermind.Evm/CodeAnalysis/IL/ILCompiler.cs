@@ -25,7 +25,7 @@ using Nethermind.Specs;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState state, ISpecProvider spec, byte[][] immediatesData);
+    public delegate void ExecuteSegment(ref ILEvmState state, ISpecProvider spec, IBlockhashProvider BlockhashProvider, byte[][] immediatesData);
     public class SegmentExecutionCtx
     {
         public ExecuteSegment Method;
@@ -43,6 +43,7 @@ internal class ILCompiler
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
 
         using Local address = method.DeclareLocal(typeof(Address));
+        using Local hash256 = method.DeclareLocal(typeof(Hash256));
 
         using Local uint256A = method.DeclareLocal(typeof(UInt256));
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
@@ -51,8 +52,10 @@ internal class ILCompiler
 
         using Local localReadonOnlySpan = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
         using Local localSpan = method.DeclareLocal(typeof(Span<byte>));
+        using Local localArray = method.DeclareLocal(typeof(byte[]));
         using Local uint64A = method.DeclareLocal(typeof(ulong));
         using Local uint32A = method.DeclareLocal(typeof(uint));
+        using Local int64A = method.DeclareLocal(typeof(long));
         using Local byte8A = method.DeclareLocal(typeof(byte));
         using Local buffer = method.DeclareLocal(typeof(byte*));
 
@@ -228,7 +231,7 @@ internal class ILCompiler
                     method.Load(stack, head);
 
                     // we load the span of bytes
-                    method.LoadArgument(2);
+                    method.LoadArgument(3);
                     method.LoadConstant(op.Arguments.Value);
                     method.LoadElement<byte[]>();
                     method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
@@ -1108,6 +1111,92 @@ internal class ILCompiler
                     method.StackPush(head);
 
                     method.MarkLabel(endOfOpcode);
+                    break;
+                case Instruction.BLOBHASH:
+                    Label blobVersionedHashNotFound = method.DefineLabel("BlobVersionedHashNotFoundDirectSection");
+                    endOfOpcode = method.DefineLabel("EndOfOpcodeImplementation");
+
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
+                    method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
+                    method.LoadNull();
+                    method.BranchIfEqual(blobVersionedHashNotFound);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
+                    method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
+                    method.Call(GetPropertyInfo(typeof(byte[][]), nameof(Array.Length), false, out _));
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.LoadField(Word.Int0Field);
+                    method.Duplicate();
+                    method.StoreLocal(uint32A);
+                    method.StackPop(head, 1);
+                    method.BranchIfLessOrEqual(blobVersionedHashNotFound);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
+                    method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
+                    method.LoadLocal(uint32A);
+                    method.LoadElement<Byte[]>();
+                    method.StoreLocal(localArray);
+
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadLocal(localArray);
+                    method.Call(Word.SetArray);
+                    method.Branch(endOfOpcode);
+
+                    method.MarkLabel(blobVersionedHashNotFound);
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.Call(Word.SetToZero);
+
+                    method.MarkLabel(endOfOpcode);
+                    method.StackPush(head, 1);
+                    break;
+                case Instruction.BLOCKHASH:
+                    Label blockHashReturnedNull = method.DefineLabel();
+                    Label pushToStackRegion = method.DefineLabel();
+                    
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.StackPop(head, 1);
+                    method.LoadField(Word.Ulong0Field);
+                    method.Convert<long>();
+                    method.LoadConstant(long.MaxValue);
+                    method.Call(typeof(Math).GetMethod(nameof(Math.Min), [typeof(long), typeof(long)]));
+                    method.StoreLocal(int64A);
+
+                    method.LoadArgument(2);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
+                    method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                    method.LoadLocalAddress(int64A);
+                    method.Call(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
+
+                    method.StoreLocal(hash256);
+                    method.LoadNull();
+                    method.BranchIfEqual(blockHashReturnedNull);
+                    // not equal
+                    method.LoadLocal(hash256);
+                    method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
+                    method.Call(typeof(Span<byte>).GetMethod("op_Implicit", new[] { typeof(Span<byte>) }));
+                    method.StoreLocal(localReadonOnlySpan);
+                    method.Branch(pushToStackRegion);
+                    // equal to null
+                    method.MarkLabel(blockHashReturnedNull);
+                    method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesZero32)));
+                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
+                    method.StoreLocal(localReadonOnlySpan);
+
+                    method.MarkLabel(pushToStackRegion);
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadLocalAddress(localReadonOnlySpan);
+                    method.LoadConstant(BitConverter.IsLittleEndian);
+                    method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(head);
                     break;
                 /*case Instruction.SIGNEXTEND:
                     method.StackLoadPrevious(stack, head, 1);

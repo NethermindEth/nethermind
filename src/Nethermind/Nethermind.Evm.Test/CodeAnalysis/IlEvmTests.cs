@@ -234,9 +234,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .LT()
                     .Done);
 
-            yield return(++i, Prepare.EvmCode
+            yield return (++i, Prepare.EvmCode
                     .PushSingle(1)
                     .NOT()
+                    .Done);
+
+            yield return (++i, Prepare.EvmCode
+                    .PushSingle(0)
+                    .BLOBHASH()
+                    .Done);
+
+            yield return (++i, Prepare.EvmCode
+                    .BLOCKHASH(0)
                     .Done);
         }
 
@@ -244,15 +253,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void Ensure_Evm_ILvm_Compatibility((int index, byte[] bytecode) testcase)
         {
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
-            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, []);
+            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()]);
             var envExCtx = new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Recipient, Sender, Contract, ReadOnlyMemory<byte>.Empty, txExCtx, 23, 7);
             var stack = new byte[1024 * 32];
             var memory = new EvmPooledMemory();
             var returnBuffer = ReadOnlyMemory<byte>.Empty;
-            ILEvmState iLEvmState = new ILEvmState(testcase.bytecode, envExCtx, txExCtx, blkExCtx, EvmExceptionType.None, 0, 100000, false, false, false, 0, stack, ref memory, ref returnBuffer);
+            ILEvmState iLEvmState = new ILEvmState(testcase.bytecode, ref envExCtx, ref txExCtx, ref blkExCtx, EvmExceptionType.None, 0, 100000, false, false, false, 0, stack, ref memory, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, ctx.Data);
+            ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, _blockhashProvider, ctx.Data);
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 

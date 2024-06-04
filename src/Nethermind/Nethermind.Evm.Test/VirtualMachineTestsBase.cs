@@ -31,6 +31,7 @@ public class VirtualMachineTestsBase
     protected const long DefaultBlockGasLimit = 8000000;
 
     private IEthereumEcdsa _ethereumEcdsa;
+    protected IBlockhashProvider _blockhashProvider;
     protected ITransactionProcessor _processor;
     private IDb _stateDb;
 
@@ -66,8 +67,8 @@ public class VirtualMachineTestsBase
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
-        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
+        _blockhashProvider = new TestBlockhashProvider(SpecProvider);
+        Machine = new VirtualMachine(_blockhashProvider, SpecProvider, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
     }
 

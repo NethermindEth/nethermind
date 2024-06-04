@@ -55,7 +55,7 @@ public class VirtualMachine : IVirtualMachine
 
     internal static readonly byte[] BytesZero = { 0 };
 
-    internal static readonly byte[] BytesZero32 =
+    public static readonly byte[] BytesZero32 =
     {
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -63,7 +63,7 @@ public class VirtualMachine : IVirtualMachine
         0, 0, 0, 0, 0, 0, 0, 0
     };
 
-    internal static readonly byte[] BytesMax32 =
+    public static readonly byte[] BytesMax32 =
     {
         255, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 255, 255, 255,
@@ -864,7 +864,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while ((ilInfo?.TryExecute(vmState, blkCtx, txCtx, _specProvider, ref programCounter, ref gasAvailable, ref stack, out shouldStop, out shouldReturn, out isRevert, out returnData))
+            while ((ilInfo?.TryExecute(vmState, blkCtx, txCtx, _specProvider, _blockhashProvider, ref programCounter, ref gasAvailable, ref stack, out shouldStop, out shouldReturn, out isRevert, out returnData))
                    .GetValueOrDefault(false))
             {
                 if (shouldReturn || isRevert) goto DataReturn;

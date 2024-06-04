@@ -16,9 +16,9 @@ internal ref struct ILEvmState
 {
     public byte[] MachineCode;
     // static arguments
-    public ExecutionEnvironment Env;
-    public TxExecutionContext TxCtx;
-    public BlockExecutionContext BlkCtx;
+    public ref ExecutionEnvironment Env;
+    public ref TxExecutionContext TxCtx;
+    public ref BlockExecutionContext BlkCtx;
     // in case of exceptions
     public EvmExceptionType EvmException;
     // in case of jumps crossing section boundaries
@@ -36,12 +36,12 @@ internal ref struct ILEvmState
 
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
-    public ILEvmState(byte[] machineCode, ExecutionEnvironment env, TxExecutionContext txCtx, BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, bool shouldStop, bool shouldRevert, bool shouldReturn, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> returnBuffer)
+    public ILEvmState(byte[] machineCode, ref ExecutionEnvironment env, ref TxExecutionContext txCtx, ref BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, bool shouldStop, bool shouldRevert, bool shouldReturn, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> returnBuffer)
     {
         MachineCode = machineCode;
-        Env = env;
-        TxCtx = txCtx;
-        BlkCtx = blkCtx;
+        Env = ref env;
+        TxCtx = ref txCtx;
+        BlkCtx = ref blkCtx;
         EvmException = evmException;
         ProgramCounter = programCounter;
         GasAvailable = gasAvailable;

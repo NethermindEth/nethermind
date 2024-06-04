@@ -61,7 +61,7 @@ internal class IlInfo
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
     public FrozenDictionary<ushort, SegmentExecutionCtx> Segments { get; set; }
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, BlockExecutionContext blkCtx, TxExecutionContext txCtx, ISpecProvider specProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
+    public bool TryExecute<TTracingInstructions>(EvmState vmState, BlockExecutionContext blkCtx, TxExecutionContext txCtx, ISpecProvider specProvider, IBlockhashProvider blockHashProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         shouldReturn = false;
@@ -93,16 +93,18 @@ internal class IlInfo
                     {
                         GasAvailable = (int)gasAvailable,
                         Stack = vmState.DataStack,
+                        StackHead = vmState.DataStackHead,
                         Env = vmState.Env,
-                        BlkCtx = blkCtx,
-                        TxCtx = txCtx,
+                        BlkCtx = ref blkCtx,
+                        TxCtx = ref txCtx,
                         ProgramCounter = (ushort)programCounter,
                         Memory = ref vmState.Memory,
                     };
 
-                    ctx.Method.Invoke(ref ilvmState, specProvider, ctx.Data);
+                    ctx.Method.Invoke(ref ilvmState, specProvider, blockHashProvider, ctx.Data);
                     gasAvailable = ilvmState.GasAvailable;
                     vmState.DataStack = ilvmState.Stack.ToArray();
+                    vmState.DataStackHead = ilvmState.StackHead;
                     programCounter = ilvmState.ProgramCounter;
                     shouldStop = ilvmState.ShouldStop;
                     shouldReturn = ilvmState.ShouldReturn;

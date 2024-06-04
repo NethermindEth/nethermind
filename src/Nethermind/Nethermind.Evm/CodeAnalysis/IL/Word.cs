@@ -53,6 +53,26 @@ internal struct Word
         Ulong2 = 0; Ulong3 = 0;
     }
 
+    public unsafe byte[] Array
+    {
+        get
+        {
+            byte[] array = new byte[32];
+            fixed(byte* src = _buffer, dest = array)
+            {
+                Buffer.MemoryCopy(src, dest, 32, 32);
+            }
+            return array;
+        }
+        set
+        {
+            fixed(byte* src = value, dest = _buffer)
+            {
+                Buffer.MemoryCopy(src, dest + (32 - value.Length), value.Length, value.Length);
+            }
+        }
+    }
+
     public unsafe ValueHash256 Keccak
     {
         get
@@ -155,4 +175,7 @@ internal struct Word
 
     public static readonly MethodInfo GetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.GetMethod;
     public static readonly MethodInfo SetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.SetMethod;
+
+    public static readonly MethodInfo GetArray = typeof(Word).GetProperty(nameof(Array))!.GetMethod;
+    public static readonly MethodInfo SetArray = typeof(Word).GetProperty(nameof(Array))!.SetMethod;
 }
