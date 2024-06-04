@@ -146,6 +146,18 @@ public enum TestCase
     [TestCaseMetadata("Modexp 215 gas, exp heavy", "Modexp precompile consuming 215 gas, with base and modulo byte size equal 8 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
     Modexp215GasExpHeavy,
 
+    // [TestCaseMetadata("Modexp 1k gas, base heavy", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 440 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    // Modexp1KGasBaseHeavy,
+    //
+    // [TestCaseMetadata("Modexp 1k gas, balanced", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 56 and exponent equal 2^62 - 1 (62x 1s in binary)")]
+    // Modexp1KGasBalanced,
+    //
+    // [TestCaseMetadata("Modexp 10k gas, exp heavy", "Modexp precompile consuming 10_500 gas, with base and modulo byte size equal 56 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
+    // Modexp10KGasExpHeavy,
+    //
+    // [TestCaseMetadata("Modexp 135k gas, balanced", "Modexp precompile consuming 135_000 gas, with base and modulo byte size equal 200 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
+    // Modexp135KGasBalanced,
+
     [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
     EcAddInfinities,
 
@@ -187,18 +199,6 @@ public enum TestCase
     //
     // [TestCaseMetadata("EcPairing with 16 sets of data", "EcPairing precompile with 16 sets of valid input data (6x 32-byte value)")]
     // EcPairing16Sets,
-
-    // [TestCaseMetadata("Modexp 1k gas, base heavy", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 440 and exponent equal 3 (0b11 - 2x 1s in binary)")]
-    // Modexp1KGasBaseHeavy,
-
-    // [TestCaseMetadata("Modexp 1k gas, balanced", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 56 and exponent equal 2^62 - 1 (62x 1s in binary)")]
-    // Modexp1KGasBalanced,
-    //
-    // [TestCaseMetadata("Modexp 10k gas, exp heavy", "Modexp precompile consuming 10_500 gas, with base and modulo byte size equal 56 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
-    // Modexp10KGasExpHeavy,
-    //
-    // [TestCaseMetadata("Modexp 135k gas, balanced", "Modexp precompile consuming 135_000 gas, with base and modulo byte size equal 200 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
-    // Modexp135KGasBalanced,
 
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,
