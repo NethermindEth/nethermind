@@ -78,7 +78,6 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         _preWarmer = preWarmer;
-        _beaconBlockRootHandler = new BeaconBlockRootHandler();
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
