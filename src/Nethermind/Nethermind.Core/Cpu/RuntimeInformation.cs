@@ -5,6 +5,7 @@
 // Licensed under the MIT License
 
 using System;
+using System.Threading.Tasks;
 
 namespace Nethermind.Core.Cpu;
 
@@ -32,6 +33,7 @@ public static class RuntimeInformation
     }
 
     public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount;
+    public static ParallelOptions ParallelOptionsPhysicalCores { get; } = new() { MaxDegreeOfParallelism = PhysicalCoreCount };
 
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }

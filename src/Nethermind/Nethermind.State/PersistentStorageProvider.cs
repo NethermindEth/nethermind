@@ -18,6 +18,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
+    using Nethermind.Core.Cpu;
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
@@ -263,7 +264,7 @@ namespace Nethermind.State
             void UpdateRootHashesMultiThread()
             {
                 // We can recalculate the roots in parallel as they are all independent tries
-                Parallel.ForEach(_storages, kvp =>
+                Parallel.ForEach(_storages, RuntimeInformation.ParallelOptionsPhysicalCores, kvp =>
                 {
                     if (!_toUpdateRoots.Contains(kvp.Key))
                     {
