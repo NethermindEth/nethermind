@@ -73,7 +73,7 @@ public class ShutterTxSource : ITxSource
             }
         }
 
-        ulong nextSlot = ChiadoSpecProvider.GetCurrentSlot() + 1;
+        ulong nextSlot = _specProvider.GetCurrentSlot() + 1;
         if (DecryptionKeys is null || DecryptionKeys.Gnosis.Slot != nextSlot)
         {
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");

@@ -84,5 +84,6 @@ namespace Nethermind.Core.Specs
         /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
         /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
         IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
+        ulong GetCurrentSlot();
     }
 }

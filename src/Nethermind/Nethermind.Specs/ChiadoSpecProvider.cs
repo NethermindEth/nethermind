@@ -36,7 +36,7 @@ public class ChiadoSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public static ulong GetCurrentSlot()
+    public ulong GetCurrentSlot()
     {
         return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 5;
     }

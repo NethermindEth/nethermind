@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -46,6 +47,11 @@ public class GnosisSpecProvider : ISpecProvider
 
         if (terminalTotalDifficulty is not null)
             TerminalTotalDifficulty = terminalTotalDifficulty;
+    }
+
+    public ulong GetCurrentSlot()
+    {
+        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 5;
     }
 
     public ForkActivation? MergeBlockNumber { get; private set; }

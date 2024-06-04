@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -17,6 +18,11 @@ namespace Nethermind.Specs
                 _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
+        }
+
+        public ulong GetCurrentSlot()
+        {
+            throw new NotImplementedException();
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
