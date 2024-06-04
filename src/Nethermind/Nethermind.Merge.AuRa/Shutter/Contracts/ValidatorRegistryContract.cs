@@ -52,6 +52,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return update;
     }
 
+    // todo: iterate updates once, use hash set of which validators are registered
     public bool IsRegistered(BlockHeader blockHeader, ulong validatorIndex, byte[] validatorPubKey)
     {
         UInt256 updates = GetNumUpdates(blockHeader);
@@ -81,17 +82,17 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             }
             else if (msg.Version != _auraConfig.ShutterValidatorRegistryMessageVersion)
             {
-                if (_logger.IsWarn) _logger.Warn("Registration message has wrong version (" + msg.Version + ") should be " + _auraConfig.ShutterValidatorRegistryMessageVersion);
+                if (_logger.IsDebug) _logger.Debug("Registration message has wrong version (" + msg.Version + ") should be " + _auraConfig.ShutterValidatorRegistryMessageVersion);
                 continue;
             }
             else if (msg.ChainId != _specProvider.ChainId)
             {
-                if (_logger.IsWarn) _logger.Warn("Registration message has incorrect chain ID (" + msg.ChainId + ") should be " + _specProvider.ChainId);
+                if (_logger.IsDebug) _logger.Debug("Registration message has incorrect chain ID (" + msg.ChainId + ") should be " + _specProvider.ChainId);
                 continue;
             }
             else if (msg.ContractAddress != ContractAddress)
             {
-                if (_logger.IsWarn) _logger.Warn("Registration message contains an invalid contract address (" + msg.ContractAddress + ") should be " + ContractAddress);
+                if (_logger.IsDebug) _logger.Debug("Registration message contains an invalid contract address (" + msg.ContractAddress + ") should be " + ContractAddress);
                 continue;
             }
             // todo: check signature

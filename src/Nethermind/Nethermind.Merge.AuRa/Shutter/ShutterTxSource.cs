@@ -61,18 +61,15 @@ public class ShutterTxSource : ITxSource
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
-        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(parent.StateRoot!);
-        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
-
         if (!_validatorsRegistered)
         {
-            foreach ((ulong validatorIndex, byte[] validatorPubKey) in ValidatorsInfo)
+            if (IsRegistered(parent))
             {
-                if (!validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
-                {
-                    throw new Exception("Validator " + validatorIndex + " not registered as Shutter validator.");
-                }
                 _validatorsRegistered = true;
+            }
+            else
+            {
+                return [];
             }
         }
 
@@ -94,6 +91,21 @@ public class ShutterTxSource : ITxSource
         });
 
         return transactions;
+    }
+
+    internal bool IsRegistered(BlockHeader parent)
+    {
+        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(parent.StateRoot!);
+        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
+        foreach ((ulong validatorIndex, byte[] validatorPubKey) in ValidatorsInfo)
+        {
+            if (!validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
+            {
+                if (_logger.IsError) _logger.Error("Validator " + validatorIndex + " not registered as Shutter validator.");
+                return false;
+            }
+        }
+        return true;
     }
 
     internal Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, Dto.Key decryptionKey)
