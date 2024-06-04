@@ -43,16 +43,7 @@ public class ShutterEonInfo
         BlockHeader header = _readOnlyBlockTree.Head!.Header;
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
 
-        if ((header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) > 60)
-        {
-            return false;
-        }
-
-        long bestSuggestedNumber = _readOnlyBlockTree.FindBestSuggestedHeader()?.Number ?? 0;
-        long headNumberOrZero = _readOnlyBlockTree.Head?.Number ?? 0;
-        bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
-
-        if (isSyncing)
+        if (IsSyncing(header))
         {
             return false;
         }
@@ -66,21 +57,37 @@ public class ShutterEonInfo
 
             Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
             KeyperSetContract keyperSetContract = new(readOnlyTransactionProcessor, _abiEncoder, keyperSetContractAddress);
+
             if (!keyperSetContract.IsFinalized(header))
             {
-                throw new Exception("Cannot use unfinalized keyper set contract.");
+                if (_logger.IsError) _logger.Error("Cannot use unfinalised keyper set contract.");
+                return false;
             }
+
             Threshold = keyperSetContract.GetThreshold(header);
             Addresses = keyperSetContract.GetMembers(header);
 
             KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
             byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
-
             Key = new(eonKeyBytes);
 
-            if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} key: {Convert.ToHexString(eonKeyBytes)} threshold: {Threshold} #keyperAddresses: {Addresses.Length}");
+            if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} threshold: {Threshold} #keypers: {Addresses.Length}");
         }
 
         return true;
+    }
+
+    internal bool IsSyncing(BlockHeader header)
+    {
+        if ((header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) > 60)
+        {
+            return true;
+        }
+
+        long bestSuggestedNumber = _readOnlyBlockTree.FindBestSuggestedHeader()?.Number ?? 0;
+        long headNumberOrZero = _readOnlyBlockTree.Head?.Number ?? 0;
+        bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
+
+        return isSyncing;
     }
 }

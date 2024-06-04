@@ -71,12 +71,7 @@ public class ShutterP2P
         ITopic topic = router.Subscribe("decryptionKeys");
         ConcurrentQueue<byte[]> msgQueue = new();
 
-        long msgCount = 0;
-        topic.OnMessage += (byte[] msg) =>
-        {
-            Interlocked.Increment(ref msgCount);
-            msgQueue.Enqueue(msg);
-        };
+        topic.OnMessage += msgQueue.Enqueue;
 
         MyProto proto = new();
         CancellationTokenSource ts = new();
@@ -108,7 +103,7 @@ public class ShutterP2P
                 }
                 catch (Exception e)
                 {
-                    _logger.Error("Shutter processing thread exception: " + e.Message);
+                    if (_logger.IsError) _logger.Error("Shutter processing thread exception: " + e.Message);
                 }
             }
         });
@@ -127,7 +122,6 @@ public class ShutterP2P
 
     internal void ProcessP2PMessage(byte[] msg)
     {
-
         Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
         if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
         {
@@ -162,11 +156,6 @@ public class ShutterP2P
             if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {_eonInfo.Eon}.");
             return false;
         }
-
-        // if (decryptionKeys.Keys.Count() > 1)
-        // {
-        //     _logger.Info("more than 1 key");
-        // }
 
         foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
         {
@@ -206,7 +195,7 @@ public class ShutterP2P
             Address keyperAddress = _eonInfo.Addresses[signerIndex];
             // if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, identityPreimages, signature.Span, keyperAddress))
             // {
-            //     if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: bad signature.");
+            //     if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
             //     return false;
             // }
         }
