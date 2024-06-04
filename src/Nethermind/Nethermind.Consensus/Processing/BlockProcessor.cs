@@ -244,23 +244,6 @@ public partial class BlockProcessor : IBlockProcessor
     private bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
-    private void InitEip2935History(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
-    {
-        long current = currentBlock.Number;
-        BlockHeader header = currentBlock;
-        for (var i = 0; i < Math.Min(256, current); i++)
-        {
-            // an extract check - dont think it is needed
-            if (header.IsGenesis) break;
-            _blockHashInStateHandlerHandler.AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
-            header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header is null)
-            {
-                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
-            }
-        }
-    }
-
     private void VerifyIncomingWitness(Block block)
     {
         if (!ShouldVerifyIncomingWitness || block.IsGenesis) return;
@@ -304,17 +287,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (spec.IsEip2935Enabled)
         {
-            // TODO: find a better way to handle this - no need to have this check everytime
-            //      this would just be true on the fork block
-            BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-            if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimeStamp)
-            {
-                InitEip2935History(block.Header, spec, worldState);
-            }
-            else
-            {
-                _blockHashInStateHandlerHandler.AddParentBlockHashToState(block.Header, spec, worldState, ExecutionTracer);
-            }
+            _blockHashInStateHandlerHandler.AddParentBlockHashToState(block.Header, spec, worldState, ExecutionTracer);
         }
         worldState.Commit(spec);
 
