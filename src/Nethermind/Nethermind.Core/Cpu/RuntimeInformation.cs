@@ -6,9 +6,9 @@
 
 using System;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
-internal static class RuntimeInformation
+public static class RuntimeInformation
 {
     [System.Runtime.Versioning.SupportedOSPlatformGuard("windows")]
     internal static bool IsWindows() => OperatingSystem.IsWindows(); // prefer linker-friendly OperatingSystem APIs
@@ -19,7 +19,7 @@ internal static class RuntimeInformation
     [System.Runtime.Versioning.SupportedOSPlatformGuard("macos")]
     internal static bool IsMacOS() => OperatingSystem.IsMacOS();
 
-    internal static CpuInfo? GetCpuInfo()
+    public static CpuInfo? GetCpuInfo()
     {
         if (IsWindows())
             return WmicCpuInfoProvider.WmicCpuInfo.Value;
@@ -30,6 +30,8 @@ internal static class RuntimeInformation
 
         return null;
     }
+
+    public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount;
 
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }

@@ -7,7 +7,7 @@
 using System;
 using System.Diagnostics;
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 internal class ConsoleExitHandler : IDisposable
 {
