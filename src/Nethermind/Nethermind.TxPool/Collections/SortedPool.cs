@@ -230,12 +230,12 @@ namespace Nethermind.TxPool.Collections
                 {
                     bucket = bucketSet;
                     Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, evicted));
+                    return true;
                 }
-                else // just for safety
-                {
-                    _worstSortedValues.Remove(value);
-                    UpdateWorstValue();
-                }
+
+                // just for safety
+                _worstSortedValues.Remove(value);
+                UpdateWorstValue();
             }
 
             value = default;
@@ -390,13 +390,13 @@ namespace Nethermind.TxPool.Collections
                     return true;
                 }
 
-                TValue value = worstValue.Key;
-                if (value is not null)
+                if (worstValue.Key is not null && _worstSortedValues.Remove(worstValue))
                 {
-                    if (_worstSortedValues.Remove(value))
-                    {
-                        RemoveFromBucket(value, out _);
-                    }
+                    RemoveFromBucket(worstValue.Key, out _);
+                }
+                else
+                {
+                    UpdateWorstValue();
                 }
 
                 goto TryAgain;
