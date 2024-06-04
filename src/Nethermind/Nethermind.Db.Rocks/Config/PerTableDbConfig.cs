@@ -77,7 +77,7 @@ public class PerTableDbConfig
         return ReadConfig<T>(_dbConfig, propertyName, GetPrefixes());
     }
 
-    public string[] GetPrefixes()
+    private string[] GetPrefixes()
     {
         if (_tableName.StartsWith("State"))
         {
