@@ -63,13 +63,15 @@ public static class EcPairing
             offset += 32;
         }
 
-        int jumpDestPosition = codeToDeploy.Count;
+        long jumpDestPosition = codeToDeploy.Count;
+        byte[] jumpDestBytes = jumpDestPosition.ToBigEndianByteArrayWithoutLeadingZeros();
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
+        Console.WriteLine($"jumpdest: {jumpDestPosition}");
 
         long gasLimit = 45_000 + 34_000 * (offset / 192);
         byte[] gasLimitBytes = gasLimit.ToBigEndianByteArrayWithoutLeadingZeros();
 
-        for (int i = 0; i < 1; i++)
+        for (int i = 0; i < 1000; i++)
         {
             byte[] innerOffset = offset.ToBigEndianByteArrayWithoutLeadingZeros();
 
@@ -88,9 +90,9 @@ public static class EcPairing
             codeToDeploy.Add((byte)Instruction.POP);
         }
 
-        // codeToDeploy.Add((byte)Instruction.PUSH1);
-        // codeToDeploy.Add((byte)jumpDestPosition);
-        // codeToDeploy.Add((byte)Instruction.JUMP);
+        codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)jumpDestBytes.Length - 1));
+        codeToDeploy.AddRange(jumpDestBytes);
+        codeToDeploy.Add((byte)Instruction.JUMP);
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);
         return byteCode.ToArray();
