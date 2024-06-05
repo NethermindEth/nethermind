@@ -21,6 +21,14 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 {
     public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> Handle(long start, long count)
     {
+         if (start < 1 || count < 1)
+        {
+            var error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
+
+            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV2Handler)}: ${error}");
+
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error, ErrorCodes.InvalidParams);
+        }
         if (count > MaxCount)
         {
             var error = $"The number of requested bodies must not exceed {MaxCount}";
@@ -36,7 +44,8 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 
     private IEnumerable<ExecutionPayloadBodyV2Result?> GetRequests(long start, long count)
     {
-        for (int i = 0; i < count; i++)
+        var headNumber = _blockTree.Head?.Number ?? 0;
+        for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
         {
             Block? block = _blockTree.FindBlock(start + i);
 

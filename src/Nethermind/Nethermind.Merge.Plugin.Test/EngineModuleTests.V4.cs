@@ -297,7 +297,7 @@ public partial class EngineModuleTests
             .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
         chain.BlockTree = blockTree;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -329,7 +329,7 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(GetPayloadRequestsTestCases))]
     public virtual async Task
         getPayloadBodiesByHashV2_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
-            ConsensusRequest[] requests)
+            ConsensusRequest[]? requests)
     {
 
         Deposit[]? deposits = null;
@@ -380,10 +380,10 @@ public partial class EngineModuleTests
 
     private async Task<ExecutionPayloadV4> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, ConsensusRequest[]? requests)
     {
-        ExecutionPayloadV4 executionPayload = CreateBlockRequestV4(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, requests: requests);
+        ExecutionPayloadV4 executionPayload = CreateBlockRequestV4(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD,Array.Empty<Withdrawal>(),0,0, Array.Empty<Transaction>() , parentBeaconBlockRoot: TestItem.KeccakA ,  requests: requests);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
 
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
         return executionPayload;
     }
