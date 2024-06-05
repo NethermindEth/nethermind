@@ -1632,31 +1632,32 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         Metrics.BlockhashOpcode++;
 
-                        // will be used in eip-7709
-                        // Hash256? GetBlockHashFromState(long blockNumber, long currentBlockNumber)
-                        // {
-                        //     byte[] emptyBytes = [0];
-                        //     if (blockNumber >= currentBlockNumber ||
-                        //         blockNumber + Eip2935Constants.RingBufferSize < currentBlockNumber)
-                        //     {
-                        //         return null;
-                        //     }
-                        //     var blockIndex = new UInt256((ulong)(blockNumber % Eip2935Constants.RingBufferSize));
-                        //     Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-                        //     StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-                        //     long unspentGas = 1_000_000; // we don't want to charge gas here yet
-                        //     vmState.Env.Witness.AccessForStorage(blockHashStoreCell.Address, blockHashStoreCell.Index,
-                        //         false, ref unspentGas);
-                        //     ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
-                        //     return data.SequenceEqual(emptyBytes) ? null : new Hash256(data);
-                        // }
+                        Hash256? GetBlockHashFromState(long blockNumber, long currentBlockNumber)
+                        {
+                            byte[] emptyBytes = [0];
+                            if (blockNumber >= currentBlockNumber ||
+                                blockNumber + Eip2935Constants.RingBufferSize < currentBlockNumber)
+                            {
+                                return null;
+                            }
+                            var blockIndex = new UInt256((ulong)(blockNumber % Eip2935Constants.RingBufferSize));
+                            Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+                            StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
+                            long unspentGas = 1_000_000; // we don't want to charge gas here yet
+                            vmState.Env.Witness.AccessForStorage(blockHashStoreCell.Address, blockHashStoreCell.Index,
+                                false, ref unspentGas);
+                            ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
+                            return data.SequenceEqual(emptyBytes) ? null : new Hash256(data);
+                        }
 
                         gasAvailable -= GasCostOf.BlockHash;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
-                        Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+                        Hash256 blockHash = spec.IsEip7709Enabled
+                            ? GetBlockHashFromState(number, blkCtx.Header.Number)
+                            : _blockhashProvider.GetBlockhash(blkCtx.Header, number);
 
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
