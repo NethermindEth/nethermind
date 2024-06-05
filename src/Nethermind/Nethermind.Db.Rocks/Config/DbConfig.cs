@@ -204,7 +204,7 @@ public class DbConfig : IDbConfig
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
     public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
     public bool StateDbEnableFileWarmer { get; set; } = false;
-    public double StateDbCompressibilityHint { get; set; } = 0.75;
+    public double StateDbCompressibilityHint { get; set; } = 0.45;
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
