@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -215,6 +217,17 @@ namespace Nethermind.Core.Test.Builders
                 return WithBlobVersionedHashes(blobCount);
             }
 
+            return this;
+        }
+
+        public TransactionBuilder<T> WithContractCode(TxContractCode contractCode)
+        {
+            TestObjectInternal.ContractCodes = TestObjectInternal.ContractCodes != null ? [.. TestObjectInternal.ContractCodes, contractCode] : [contractCode];
+            return this;
+        }
+        public TransactionBuilder<T> WithContractCode(IEnumerable<TxContractCode> contractCodes)
+        {
+            TestObjectInternal.ContractCodes = contractCodes.ToArray();
             return this;
         }
 

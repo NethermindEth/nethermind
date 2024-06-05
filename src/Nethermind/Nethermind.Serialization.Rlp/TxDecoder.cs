@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp.Eip2930;
+using Nethermind.Serialization.Rlp.Eip7702;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -40,6 +45,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly AccessListDecoder _accessListDecoder = new();
         private readonly bool _lazyHash;
+        private TxContractCodeDecoder _txContractCodeDecoder = new();
 
         protected TxDecoder(bool lazyHash = true)
         {
@@ -89,6 +95,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+                    break;
+                case TxType.ContractCode:
+                    DecodeContractCodeWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
                     TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
@@ -307,6 +316,18 @@ namespace Nethermind.Serialization.Rlp
             byte[][] proofs = decoderContext.DecodeByteArrays();
             transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
         }
+        private void DecodeContractCodeWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        {
+            transaction.ChainId = decoderContext.DecodeULong();
+            transaction.Nonce = decoderContext.DecodeUInt256();
+            transaction.GasPrice = decoderContext.DecodeUInt256(); // gas premium
+            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
+            transaction.GasLimit = decoderContext.DecodeLong();
+            transaction.To = decoderContext.DecodeAddress();
+            transaction.Data = decoderContext.DecodeByteArray();
+            transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
+            transaction.ContractCodes = _txContractCodeDecoder.Decode(ref decoderContext, rlpBehaviors);
+        }
 
         private static void DecodeDepositPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
@@ -318,6 +339,19 @@ namespace Nethermind.Serialization.Rlp
             transaction.GasLimit = decoderContext.DecodeLong();
             transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
             transaction.Data = decoderContext.DecodeByteArray();
+        }
+
+        private void DecodeContractCodeWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        {
+            transaction.ChainId = rlpStream.DecodeULong();
+            transaction.Nonce = rlpStream.DecodeUInt256();
+            transaction.GasPrice = rlpStream.DecodeUInt256(); // gas premium
+            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
+            transaction.GasLimit = rlpStream.DecodeLong();
+            transaction.To = rlpStream.DecodeAddress();
+            transaction.Data = rlpStream.DecodeByteArray();
+            transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
+            transaction.ContractCodes = _txContractCodeDecoder.Decode(rlpStream, rlpBehaviors);
         }
 
         private static void EncodeLegacyWithoutPayload(T item, RlpStream stream)
@@ -368,6 +402,19 @@ namespace Nethermind.Serialization.Rlp
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
             stream.Encode(item.MaxFeePerBlobGas.Value);
             stream.Encode(item.BlobVersionedHashes);
+        }
+
+        private void EncodeContractCodeWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
+        {
+            stream.Encode(item.ChainId ?? 0);
+            stream.Encode(item.Nonce);
+            stream.Encode(item.GasPrice); // gas premium
+            stream.Encode(item.DecodedMaxFeePerGas);
+            stream.Encode(item.GasLimit);
+            stream.Encode(item.To);
+            stream.Encode(item.Data);
+            _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
+            _txContractCodeDecoder.Encode(stream, item.ContractCodes, rlpBehaviors);
         }
 
         private static void EncodeDepositTxPayloadWithoutPayload(T item, RlpStream stream)
@@ -460,6 +507,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+                    break;
+                case TxType.ContractCode:
+                    DecodeContractCodeWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
                     TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
@@ -659,6 +709,9 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
+                case TxType.ContractCode:
+                    EncodeContractCodeWithoutPayload(item, stream, rlpBehaviors);
+                    break;
                 case TxType.DepositTx:
                     TxDecoder<T>.EncodeDepositTxPayloadWithoutPayload(item, stream);
                     break;
@@ -767,6 +820,19 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 
+        private int GetContractCodeLength(T item)
+        {
+            return Rlp.LengthOf(item.Nonce)
+                   + Rlp.LengthOf(item.GasPrice) // gas premium
+                   + Rlp.LengthOf(item.DecodedMaxFeePerGas)
+                   + Rlp.LengthOf(item.GasLimit)
+                   + Rlp.LengthOf(item.To)
+                   + Rlp.LengthOf(item.Data)
+                   + Rlp.LengthOf(item.ChainId ?? 0)
+                   + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None)
+                   + _txContractCodeDecoder.GetLength(item.ContractCodes, RlpBehaviors.None);
+        }
+
         private static int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
         {
             ShardBlobNetworkWrapper networkWrapper = item.NetworkWrapper as ShardBlobNetworkWrapper;
@@ -806,6 +872,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.Blob:
                     contentLength = GetShardBlobContentLength(item);
+                    break;
+                case TxType.ContractCode:
+                    contentLength = GetContractCodeLength(item);
                     break;
                 case TxType.DepositTx:
                     contentLength = TxDecoder<T>.GetDepositTxContentLength(item);

@@ -160,6 +160,8 @@ namespace Nethermind.Core
 
         public object? NetworkWrapper { get; set; }
 
+        public TxContractCode[]? ContractCodes { get; set; } // https://eips.ethereum.org/EIPS/eip-7702
+
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
@@ -262,6 +264,7 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
+                obj.ContractCodes = default;
 
                 return true;
             }
@@ -292,6 +295,7 @@ namespace Nethermind.Core
             tx.IsServiceTransaction = IsServiceTransaction;
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
+            tx.ContractCodes = ContractCodes;
         }
     }
 

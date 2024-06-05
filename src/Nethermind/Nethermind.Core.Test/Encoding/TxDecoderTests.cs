@@ -61,6 +61,13 @@ namespace Nethermind.Core.Test.Encoding
                 .WithGasPrice(0)
                 .WithChainId(1559)
                 .SignedAndResolved(), "EIP 1559 second test case");
+            yield return (Build.A.Transaction
+                .WithMaxFeePerGas(2.GWei())
+                .WithType(TxType.ContractCode)
+                .WithGasPrice(0)
+                .WithChainId(1559)
+                .WithContractCode([new TxContractCode([0x0], UInt256.Zero, UInt256.Zero, UInt256.Zero)])
+                .SignedAndResolved(), "EIP 7702 first test case");
         }
 
         public static IEnumerable<(Transaction, string)> TestCaseSource()
@@ -375,5 +382,27 @@ namespace Nethermind.Core.Test.Encoding
                 new Hash256("0x0a956694228afe4577bd94fcf8a3aa8544bbadcecfe0d66ccad8ec7ae56c025f")
             );
         }
+
+        [Test]
+        public void TxContractCodeEncodeAndDecode()
+        {
+            Transaction tx = Build.A.Transaction
+                .WithMaxFeePerGas(2.GWei())
+                .WithType(TxType.ContractCode)
+                .WithGasPrice(0)
+                .WithChainId(1559)
+                .WithContractCode(new TxContractCode([0x0], UInt256.Zero, UInt256.Zero, UInt256.Zero))
+                .WithContractCode(new TxContractCode([0x1], UInt256.MaxValue, UInt256.MaxValue, UInt256.MaxValue))
+                .SignedAndResolved().TestObject;
+            RlpStream rlpStream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
+            _txDecoder.Encode(rlpStream, tx);
+            rlpStream.Position = 0;
+            Transaction? decoded = _txDecoder.Decode(rlpStream);
+            decoded!.SenderAddress =
+                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+
+            Assert.That(tx.Hash, Is.EqualTo(decoded.CalculateHash()));
+        }
+
     }
 }
