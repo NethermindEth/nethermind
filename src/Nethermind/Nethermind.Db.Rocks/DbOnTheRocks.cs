@@ -1500,7 +1500,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
                 // Its unclear if it improve or slow down sync time. Seems to be the sweet spot.
-                ApplyOptions(GetHeavyWriteOptions((ulong)4.GiB()));
+                ApplyOptions(GetHeavyWriteOptions((ulong)2.GiB()));
                 break;
             case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // For when, you are desperate, but don't wanna disable compaction completely, because you don't want

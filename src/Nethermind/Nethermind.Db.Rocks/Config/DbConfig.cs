@@ -68,7 +68,7 @@ public class DbConfig : IDbConfig
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
     public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public double ReceiptsDbCompressibilityHint { get; set; } = 0.6;
-    public string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
+    public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public uint BlocksDbWriteBufferNumber { get; set; } = 2;
@@ -80,7 +80,7 @@ public class DbConfig : IDbConfig
     public bool? BlocksDbUseDirectReads { get; set; }
     public bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlocksDbCompactionReadAhead { get; set; }
-    public string? BlocksDbAdditionalRocksDbOptions { get; set; }
+    public string? BlocksDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint HeadersDbWriteBufferNumber { get; set; } = 2;
@@ -92,7 +92,7 @@ public class DbConfig : IDbConfig
     public bool? HeadersDbUseDirectReads { get; set; }
     public bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? HeadersDbCompactionReadAhead { get; set; }
-    public string? HeadersDbAdditionalRocksDbOptions { get; set; }
+    public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
     public ulong? HeadersDbMaxBytesForLevelBase { get; set; } = (ulong)128.MiB();
 
     public ulong BlockNumbersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -121,7 +121,7 @@ public class DbConfig : IDbConfig
     public bool? BlockInfosDbUseDirectReads { get; set; }
     public bool? BlockInfosDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlockInfosDbCompactionReadAhead { get; set; }
-    public string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
+    public string? BlockInfosDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
     public uint PendingTxsDbWriteBufferNumber { get; set; } = 4;
