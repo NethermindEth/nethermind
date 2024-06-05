@@ -158,6 +158,69 @@ public enum TestCase
     // [TestCaseMetadata("Modexp 135k gas, balanced", "Modexp precompile consuming 135_000 gas, with base and modulo byte size equal 200 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
     // Modexp135KGasBalanced,
 
+    [TestCaseMetadata("Modexp \"eip_example1\"", "Modexp precompile test case \"eip_example1\" reported as potential vulnerability")]
+    ModexpVulnerabilityExample1,
+
+    [TestCaseMetadata("Modexp \"eip_example2\"", "Modexp precompile test case \"eip_example2\" reported as potential vulnerability")]
+    ModexpVulnerabilityExample2,
+
+    [TestCaseMetadata("Modexp \"nagydani-1-square\"", "Modexp precompile test case \"nagydani-1-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani1Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-1-qube\"", "Modexp precompile test case \"nagydani-1-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani1Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-1-pow0x10001\"", "Modexp precompile test case \"nagydani-1-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani1Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-2-square\"", "Modexp precompile test case \"nagydani-2-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani2Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-2-qube\"", "Modexp precompile test case \"nagydani-2-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani2Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-2-pow0x10001\"", "Modexp precompile test case \"nagydani-2-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani2Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-3-square\"", "Modexp precompile test case \"nagydani-3-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani3Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-3-qube\"", "Modexp precompile test case \"nagydani-3-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani3Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-3-pow0x10001\"", "Modexp precompile test case \"nagydani-3-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani3Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-4-square\"", "Modexp precompile test case \"nagydani-4-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani4Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-4-qube\"", "Modexp precompile test case \"nagydani-4-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani4Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-4-pow0x10001\"", "Modexp precompile test case \"nagydani-4-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani4Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-5-square\"", "Modexp precompile test case \"nagydani-5-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani5Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-5-qube\"", "Modexp precompile test case \"nagydani-5-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani5Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-5-pow0x10001\"", "Modexp precompile test case \"nagydani-5-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani5Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"marius-1-even\"", "Modexp precompile test case \"marius-1-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityMarius1Even,
+
+    [TestCaseMetadata("Modexp \"guido-1-even\"", "Modexp precompile test case \"guido-1-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido1Even,
+
+    [TestCaseMetadata("Modexp \"guido-2-even\"", "Modexp precompile test case \"guido-2-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido2Even,
+
+    [TestCaseMetadata("Modexp \"guido-3-even\"", "Modexp precompile test case \"guido-3-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido3Even,
+
     [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
     EcAddInfinities,
 

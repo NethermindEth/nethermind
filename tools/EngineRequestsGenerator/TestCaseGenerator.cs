@@ -307,6 +307,28 @@ public class TestCaseGenerator
             // case TestCase.Modexp10KGasExpHeavy:
             // case TestCase.Modexp135KGasBalanced:
                 return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.ModexpVulnerabilityExample1:
+            case TestCase.ModexpVulnerabilityExample2:
+            case TestCase.ModexpVulnerabilityNagydani1Square:
+            case TestCase.ModexpVulnerabilityNagydani1Qube:
+            case TestCase.ModexpVulnerabilityNagydani1Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani2Square:
+            case TestCase.ModexpVulnerabilityNagydani2Qube:
+            case TestCase.ModexpVulnerabilityNagydani2Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani3Square:
+            case TestCase.ModexpVulnerabilityNagydani3Qube:
+            case TestCase.ModexpVulnerabilityNagydani3Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani4Square:
+            case TestCase.ModexpVulnerabilityNagydani4Qube:
+            case TestCase.ModexpVulnerabilityNagydani4Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani5Square:
+            case TestCase.ModexpVulnerabilityNagydani5Qube:
+            case TestCase.ModexpVulnerabilityNagydani5Pow0x10001:
+            case TestCase.ModexpVulnerabilityMarius1Even:
+            case TestCase.ModexpVulnerabilityGuido1Even:
+            case TestCase.ModexpVulnerabilityGuido2Even:
+            case TestCase.ModexpVulnerabilityGuido3Even:
+                return ModexpVulnerability.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcAddInfinities:
             case TestCase.EcAdd12:
             case TestCase.EcAdd32ByteCoordinates:
