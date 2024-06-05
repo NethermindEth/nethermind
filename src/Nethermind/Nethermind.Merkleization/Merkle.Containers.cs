@@ -73,9 +73,9 @@ namespace Nethermind.Merkleization
 
         public static void Ize(out UInt256 root, Ssz.SlotDecryptionIdentites container)
         {
-            Merkleizer merkleizer = new Merkleizer(1);
+            Merkleizer merkleizer = new Merkleizer(NextPowerOfTwoExponent(5));
             merkleizer.Feed(container.InstanceID);
-            merkleizer.Feed(container.KeyperIndex);
+            merkleizer.Feed(container.Eon);
             merkleizer.Feed(container.Slot);
             merkleizer.Feed(container.TxPointer);
             merkleizer.Feed(container.IdentityPreimages, 1024);

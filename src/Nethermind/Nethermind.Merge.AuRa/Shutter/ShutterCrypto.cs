@@ -286,6 +286,6 @@ internal class ShutterCrypto
         // Span<byte> encoded = new byte[Ssz.SlotDecryptionIdentitesLength];
         UInt256 root;
         Merkle.Ize(out root, container);
-        return new(root.ToBigEndian());
+        return new(root.ToLittleEndian());
     }
 }

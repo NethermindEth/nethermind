@@ -13,7 +13,6 @@ public partial class Ssz
     {
         public ulong InstanceID;
         public ulong Eon;
-        public ulong KeyperIndex;
         public ulong Slot;
         public ulong TxPointer;
         public List<byte[]> IdentityPreimages;
