@@ -67,7 +67,7 @@ public class DbConfig : IDbConfig
     public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
     public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)64.MiB();
-    public double ReceiptsDbCompressibilityHint { get; set; } = 0.6;
+    public double ReceiptsDbCompressibilityHint { get; set; } = 0.35;
     public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)64.MiB();
