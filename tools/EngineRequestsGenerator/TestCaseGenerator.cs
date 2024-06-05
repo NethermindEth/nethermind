@@ -328,6 +328,7 @@ public class TestCaseGenerator
             case TestCase.ModexpVulnerabilityGuido1Even:
             case TestCase.ModexpVulnerabilityGuido2Even:
             case TestCase.ModexpVulnerabilityGuido3Even:
+            case TestCase.ModexpVulnerabilityGuido4Even:
                 return ModexpVulnerability.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcAddInfinities:
             case TestCase.EcAdd12:

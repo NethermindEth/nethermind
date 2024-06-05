@@ -221,6 +221,9 @@ public enum TestCase
     [TestCaseMetadata("Modexp \"guido-3-even\"", "Modexp precompile test case \"guido-3-even\" reported as potential vulnerability")]
     ModexpVulnerabilityGuido3Even,
 
+    [TestCaseMetadata("Modexp \"guido-4-even\"", "Modexp precompile test case \"guido-4-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido4Even,
+
     [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
     EcAddInfinities,
 
