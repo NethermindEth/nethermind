@@ -9,6 +9,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -99,12 +100,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
-
-        if (_perTableDbConfig.AdditionalRocksDbOptions is not null)
-        {
-            ApplyOptions(_perTableDbConfig.AdditionalRocksDbOptions);
-        }
-
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
     }
 
@@ -708,6 +703,20 @@ public class DbOnTheRocks : IDb, ITunableDb
             options.EnableStatistics();
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
+
+        if (dbConfig.AdditionalRocksDbOptions is not null)
+        {
+            IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
+            try
+            {
+                _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(optsPtr);
+            }
+        }
+
         #endregion
 
         #region read-write options
