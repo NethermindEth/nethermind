@@ -112,10 +112,14 @@ public class PerTableDbConfig
                     if (propertyInfo.PropertyType.CanBeAssignedNull())
                     {
                         // If its nullable check if its null first
-                        T? val = (T?)propertyInfo.GetValue(dbConfig);
-                        if (val is not null)
+                        object? valObj = propertyInfo.GetValue(dbConfig);
+                        if (valObj is not null)
                         {
-                            return val;
+                            T? val = (T?)valObj;
+                            if (val is not null)
+                            {
+                                return val;
+                            }
                         }
                     }
                     else
