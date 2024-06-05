@@ -47,6 +47,7 @@
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+    <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
   </ItemGroup>
 
 </Project>

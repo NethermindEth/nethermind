@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
+using Nethermind.Merkleization;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -249,9 +250,9 @@ internal class ShutterCrypto
         return GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
     }
 
-    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<byte[]> identityPreimages, ReadOnlySpan<byte> signatureBytes, Address keyperAddress)
+    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages, ReadOnlySpan<byte> signatureBytes, Address keyperAddress)
     {
-        Hash256 hash = GenerateHash(instanceId, eon, slot, identityPreimages);
+        Hash256 hash = GenerateHash(instanceId, eon, slot, txPointer, identityPreimages);
         Ecdsa ecdsa = new();
         PublicKey? expectedPubkey;
 
@@ -271,21 +272,20 @@ internal class ShutterCrypto
         return keyperAddress == expectedPubkey.Address;
     }
 
-    // todo: should keyperIndex and txPointer be included?
-    public static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, IEnumerable<byte[]> identityPreimages)
+    public static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages)
     {
-        Span<byte> container = stackalloc byte[40 + identityPreimages.Count() * 52];
-
-        Ssz.Encode(container[..8], instanceId);
-        Ssz.Encode(container[8..16], eon);
-        Ssz.Encode(container[16..24], slot);
-
-        foreach ((byte[] identityPreimage, int index) in identityPreimages.WithIndex())
+        var container = new Ssz.SlotDecryptionIdentites()
         {
-            int offset = 24 + index * 52;
-            Ssz.Encode(container[offset..(offset + 52)], identityPreimage);
-        }
+            InstanceID = instanceId,
+            Eon = eon,
+            Slot = slot,
+            TxPointer = txPointer,
+            IdentityPreimages = identityPreimages
+        };
 
-        return Keccak.Compute(container);
+        // Span<byte> encoded = new byte[Ssz.SlotDecryptionIdentitesLength];
+        UInt256 root;
+        Merkle.Ize(out root, container);
+        return new(root.ToBigEndian());
     }
 }
