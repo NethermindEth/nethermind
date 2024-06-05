@@ -280,6 +280,11 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// Transactions that allows code for EOA temporarily
+        /// </summary>
+        bool IsEip7702Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -361,5 +366,7 @@ namespace Nethermind.Core.Specs
         public bool IsBlockHashInStateAvailable => IsEip2935Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+
+        bool UseContractCode => IsEip7702Enabled;
     }
 }

@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.ContractCode)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .WithContractCode([new TxContractCode([0x0], UInt256.Zero, UInt256.Zero, UInt256.Zero)])
+                .WithContractCode([new TxContractCode([0x0], ulong.MinValue, [0x0], [0x0])])
                 .SignedAndResolved(), "EIP 7702 first test case");
         }
 
@@ -391,8 +391,8 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.ContractCode)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .WithContractCode(new TxContractCode([0x0], UInt256.Zero, UInt256.Zero, UInt256.Zero))
-                .WithContractCode(new TxContractCode([0x1], UInt256.MaxValue, UInt256.MaxValue, UInt256.MaxValue))
+                .WithContractCode(new TxContractCode([0x0], ulong.MinValue, [0x0], [0x0]))
+                .WithContractCode(new TxContractCode([0x1], ulong.MinValue, [0xff, 0xff, 0xff], [0xff, 0xff, 0xff]))
                 .SignedAndResolved().TestObject;
             RlpStream rlpStream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, tx);

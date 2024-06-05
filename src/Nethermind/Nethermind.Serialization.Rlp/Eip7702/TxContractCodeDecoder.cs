@@ -31,10 +31,11 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
         {
             //TODO check what is valid for the fields here
             byte[] contractCode = rlpStream.DecodeByteArray();
-            UInt256 yParity = rlpStream.DecodeUInt256();
-            UInt256 r = rlpStream.DecodeUInt256();
-            UInt256 s = rlpStream.DecodeUInt256();
-            result.Add(new TxContractCode(contractCode, yParity, r, s));
+            result.Add(new TxContractCode(
+                contractCode,
+                rlpStream.DecodeULong(),
+                rlpStream.DecodeByteArray(),
+                rlpStream.DecodeByteArray()));
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -64,10 +65,11 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
         {
             //TODO check what is valid for the fields here
             byte[] contractCode = decoderContext.DecodeByteArray();
-            UInt256 yParity = decoderContext.DecodeUInt256();
-            UInt256 r = decoderContext.DecodeUInt256();
-            UInt256 s = decoderContext.DecodeUInt256();
-            result.Add(new TxContractCode(contractCode, yParity, r, s));
+            result.Add(new TxContractCode(
+                contractCode,
+                decoderContext.DecodeULong(),
+                decoderContext.DecodeByteArray(),
+                decoderContext.DecodeByteArray()));
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
