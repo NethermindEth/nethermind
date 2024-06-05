@@ -71,6 +71,7 @@ public class PerTableDbConfig
     public ulong BytesPerSync => ReadConfig<ulong>(nameof(BytesPerSync));
     public double? DataBlockIndexUtilRatio => ReadConfig<double?>(nameof(DataBlockIndexUtilRatio));
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
+    public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
 
     private T? ReadConfig<T>(string propertyName)
     {

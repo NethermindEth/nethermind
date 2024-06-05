@@ -52,6 +52,7 @@ public class DbConfig : IDbConfig
     public ulong BytesPerSync { get; set; } = 0;
     public double? DataBlockIndexUtilRatio { get; set; }
     public bool EnableFileWarmer { get; set; } = false;
+    public double CompressibilityHint { get; set; } = 1.0;
 
     public ulong BlobTransactionsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
 
@@ -66,6 +67,7 @@ public class DbConfig : IDbConfig
     public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
     public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)64.MiB();
+    public double ReceiptsDbCompressibilityHint { get; set; } = 0.6;
     public string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)64.MiB();
@@ -202,6 +204,7 @@ public class DbConfig : IDbConfig
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
     public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
     public bool StateDbEnableFileWarmer { get; set; } = false;
+    public double StateDbCompressibilityHint { get; set; } = 0.75;
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

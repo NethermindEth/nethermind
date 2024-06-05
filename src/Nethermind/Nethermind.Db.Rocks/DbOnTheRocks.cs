@@ -1609,7 +1609,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         // but no io, only cpu.
         // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
         // stalled by compaction instead of flush.
-        ulong bufferSize = (ulong)16.MiB();
+        // The buffer is not compressed unlike l0File, so to account for it, its size need to be slightly larger.
+        ulong bufferSize = (ulong)(16.MiB() / _perTableDbConfig.CompressibilityHint);
         ulong l0FileSize = bufferSize * (ulong)_perTableDbConfig.MinWriteBufferNumberToMerge;
         ulong maxBufferNumber = 8;
 
