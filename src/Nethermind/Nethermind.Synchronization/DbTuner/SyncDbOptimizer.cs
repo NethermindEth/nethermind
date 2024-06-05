@@ -14,8 +14,7 @@ public class SyncDbTuner
     private readonly ITunableDb? _stateDb;
     private readonly ITunableDb? _codeDb;
     private readonly ITunableDb? _blockDb;
-    private readonly ITunableDb? _receiptBlocksDb;
-    private readonly ITunableDb? _receiptTransactionsDb;
+    private readonly ITunableDb? _receiptDb;
 
     private readonly ITunableDb.TuneType _tuneType;
     private readonly ITunableDb.TuneType _blocksDbTuneType;
@@ -29,8 +28,7 @@ public class SyncDbTuner
         ITunableDb? stateDb,
         ITunableDb? codeDb,
         ITunableDb? blockDb,
-        ITunableDb? receiptBlocksDb,
-        ITunableDb? receiptTransactionsDb
+        ITunableDb? receiptDb
     )
     {
         // Only these three make sense as they are write heavy
@@ -54,8 +52,7 @@ public class SyncDbTuner
         _stateDb = stateDb;
         _codeDb = codeDb;
         _blockDb = blockDb;
-        _receiptBlocksDb = receiptBlocksDb;
-        _receiptTransactionsDb = receiptTransactionsDb;
+        _receiptDb = receiptDb;
 
         _tuneType = syncConfig.TuneDbMode;
         _blocksDbTuneType = syncConfig.BlocksDbTuneDbMode;
@@ -92,13 +89,11 @@ public class SyncDbTuner
     {
         if (e.NewState == SyncFeedState.Active)
         {
-            _receiptBlocksDb?.Tune(_receiptsDbTuneType);
-            _receiptTransactionsDb?.Tune(_tuneType);
+            _receiptDb?.Tune(_receiptsDbTuneType);
         }
         else if (e.NewState == SyncFeedState.Finished)
         {
-            _receiptBlocksDb?.Tune(ITunableDb.TuneType.Default);
-            _receiptTransactionsDb?.Tune(ITunableDb.TuneType.Default);
+            _receiptDb?.Tune(ITunableDb.TuneType.Default);
         }
     }
 }

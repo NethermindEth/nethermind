@@ -24,8 +24,7 @@ public class SyncDbTunerTests
     private ITunableDb _stateDb = null!;
     private ITunableDb _codeDb = null!;
     private ITunableDb _blockDb = null!;
-    private ITunableDb _receiptBlocksDb = null!;
-    private ITunableDb _receiptTransactionsDb = null!;
+    private ITunableDb _receiptDb = null!;
 
     [SetUp]
     public void Setup()
@@ -43,8 +42,7 @@ public class SyncDbTunerTests
         _stateDb = Substitute.For<ITunableDb>();
         _codeDb = Substitute.For<ITunableDb>();
         _blockDb = Substitute.For<ITunableDb>();
-        _receiptBlocksDb = Substitute.For<ITunableDb>();
-        _receiptTransactionsDb = Substitute.For<ITunableDb>();
+        _receiptDb = Substitute.For<ITunableDb>();
 
         SyncDbTuner _ = new SyncDbTuner(
             _syncConfig,
@@ -54,8 +52,7 @@ public class SyncDbTunerTests
             _stateDb,
             _codeDb,
             _blockDb,
-            _receiptBlocksDb,
-            _receiptTransactionsDb);
+            _receiptDb);
     }
 
     [TearDown]
@@ -63,8 +60,7 @@ public class SyncDbTunerTests
     {
         _blockDb?.Dispose();
         _codeDb?.Dispose();
-        _receiptBlocksDb?.Dispose();
-        _receiptTransactionsDb?.Dispose();
+        _receiptDb?.Dispose();
         _stateDb?.Dispose();
     }
 
@@ -87,15 +83,9 @@ public class SyncDbTunerTests
     }
 
     [Test]
-    public void WhenReceiptsIsOn_TriggerReceiptBlocksDbTune()
+    public void WhenReceiptsIsOn_TriggerReceiptsDbTune()
     {
-        TestFeedAndDbTune(_receiptSyncFeed, _receiptBlocksDb, _receiptsTuneType);
-    }
-
-    [Test]
-    public void WhenReceiptsIsOn_TriggerReceiptsTransactionsDbTune()
-    {
-        TestFeedAndDbTune(_receiptSyncFeed, _receiptTransactionsDb, _tuneType);
+        TestFeedAndDbTune(_receiptSyncFeed, _receiptDb, _receiptsTuneType);
     }
 
     private void TestFeedAndDbTune<T>(ISyncFeed<T> feed, ITunableDb db, ITunableDb.TuneType? tuneType = null)
