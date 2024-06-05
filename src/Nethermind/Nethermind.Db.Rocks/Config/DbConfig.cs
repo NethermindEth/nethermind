@@ -36,7 +36,7 @@ public class DbConfig : IDbConfig
     public bool AllowMmapReads { get; set; } = false;
     public bool? VerifyChecksum { get; set; } = true;
     public double MaxBytesForLevelMultiplier { get; set; } = 10;
-    public ulong? MaxCompactionBytes { get; set; } = null;
+    public ulong? MaxCompactionBytes { get; set; } = (ulong)4.GiB();
     public int MinWriteBufferNumberToMerge { get; set; } = 1;
     public ulong? RowCacheSize { get; set; } = null;
     public bool OptimizeFiltersForHits { get; set; } = true;
