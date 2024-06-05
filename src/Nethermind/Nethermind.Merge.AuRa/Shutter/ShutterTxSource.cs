@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Dynamic.Core;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -21,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Core.Collections;
-using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -83,7 +83,18 @@ public class ShutterTxSource : ITxSource
         IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, DecryptionKeys.Gnosis.TxPointer);
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
 
-        IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys.Skip(1)).Select(x => DecryptSequencedTransaction(x.First, x.Second)).OfType<Transaction>();
+        // order by identity preimage to match decryption keys
+        IEnumerable<(int, Transaction?)> unorderedTransactions = sequencedTransactions
+            .Select((x, index) => x with { Index = index })
+            .OrderBy(x => x.Identity)
+            .Zip(DecryptionKeys.Keys.Skip(1))
+            .Select(x => (x.Item1.Index, DecryptSequencedTransaction(x.Item1, x.Item2)));
+
+        // return decrypted transactions to original order
+        IEnumerable<Transaction> transactions = unorderedTransactions.AsQueryable()
+            .OrderBy("Item1")
+            .Select(x => x.Item2)
+            .OfType<Transaction>();
 
         transactions.ForEach((tx) =>
         {
@@ -159,12 +170,17 @@ public class ShutterTxSource : ITxSource
                 break;
             }
 
+            byte[] identityPreimage = new byte[52];
+            e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
+            e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
+
             SequencedTransaction sequencedTransaction = new()
             {
                 Eon = eon,
                 EncryptedTransaction = e.EncryptedTransaction,
                 GasLimit = e.GasLimit,
-                Identity = ShutterCrypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
+                Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
+                IdentityPreimage = identityPreimage
             };
             txs.Add(sequencedTransaction);
             totalGas += e.GasLimit;
@@ -175,9 +191,11 @@ public class ShutterTxSource : ITxSource
 
     internal struct SequencedTransaction
     {
+        public int Index;
         public ulong Eon;
         public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
         public G1 Identity;
+        public byte[] IdentityPreimage;
     }
 }

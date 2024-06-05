@@ -34,7 +34,7 @@ public class SepoliaSpecProvider : ISpecProvider
 
     public ulong GetCurrentSlot()
     {
-        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 5;
+        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 12;
     }
 
     public ulong NetworkId => Core.BlockchainIds.Sepolia;

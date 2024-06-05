@@ -44,11 +44,6 @@ public class GoerliSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong GetCurrentSlot()
-    {
-        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 5;
-    }
-
     public ulong NetworkId => BlockchainIds.Goerli;
     public ulong ChainId => BlockchainIds.Goerli;
     public long? DaoBlockNumber => null;

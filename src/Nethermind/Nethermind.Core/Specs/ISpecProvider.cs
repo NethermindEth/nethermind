@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -84,6 +85,11 @@ namespace Nethermind.Core.Specs
         /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
         /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
         IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
-        ulong GetCurrentSlot();
+
+        /// <summary>
+        /// Gets the current slot number.
+        /// </summary>
+        /// <returns>Slot number</returns>
+        ulong GetCurrentSlot() => throw new NotImplementedException();
     }
 }

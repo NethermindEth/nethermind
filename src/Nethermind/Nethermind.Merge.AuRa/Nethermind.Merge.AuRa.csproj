@@ -30,6 +30,7 @@
   <ItemGroup>
     <!-- <PackageReference Include="Nethermind.Libp2p" /> -->
     <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="System.Linq.Dynamic.Core" />
   </ItemGroup>
 
   <ItemGroup>

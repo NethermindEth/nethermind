@@ -21,11 +21,6 @@ namespace Nethermind.Specs
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public ulong GetCurrentSlot()
-        {
-            throw new NotImplementedException();
-        }
-        
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
