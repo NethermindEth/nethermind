@@ -9,7 +9,6 @@ ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
 
-COPY .git .git
 COPY src/Nethermind src/Nethermind
 COPY src/dotnet-libp2p src/dotnet-libp2p
 

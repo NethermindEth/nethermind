@@ -8,15 +8,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

@@ -21,6 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
+    using Nethermind.Core.Cpu;
     /// <summary>
     /// Trie store helps to manage trie commits block by block.
     /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
@@ -1275,7 +1276,7 @@ namespace Nethermind.Trie.Pruning
                             n.IsPersisted = true;
                         }
                     }
-                    Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
+                    Parallel.For(0, nodesCopy.Length, RuntimeInformation.ParallelOptionsPhysicalCores, i =>
                     {
                         if (cancellationToken.IsCancellationRequested) return;
                         DirtyNodesCache.Key key = nodesCopy[i].Key;
