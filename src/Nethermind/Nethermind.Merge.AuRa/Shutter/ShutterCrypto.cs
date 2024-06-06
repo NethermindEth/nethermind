@@ -256,11 +256,12 @@ internal class ShutterCrypto
         Ecdsa ecdsa = new();
         PublicKey? expectedPubkey;
 
-        Signature signature = new Signature(signatureBytes);
-        if (signature.RecoveryId > 3)
+        // check recovery_id
+        if (signatureBytes[64] > 3)
         {
             return false;
         }
+        Signature signature = new Signature(signatureBytes[..64], signatureBytes[64]);
 
         expectedPubkey = ecdsa.RecoverPublicKey(signature, hash);
 
