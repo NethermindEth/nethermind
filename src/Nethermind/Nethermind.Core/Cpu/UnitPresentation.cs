@@ -4,9 +4,9 @@
 // Derived from https://github.com/AndreyAkinshin/perfolizer
 // Licensed under the MIT License
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
-internal class UnitPresentation
+public class UnitPresentation
 {
     public static readonly UnitPresentation Default = new UnitPresentation(isVisible: true, 0);
 

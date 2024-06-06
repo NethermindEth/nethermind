@@ -158,7 +158,7 @@ namespace Nethermind.Crypto
 
             _mac.DoFinal(t2, 0);
 
-            if (!Arrays.ConstantTimeAreEqual(t1, t2))
+            if (!Arrays.FixedTimeEquals(t1, t2))
             {
                 throw new InvalidCipherTextException("Invalid MAC.");
             }

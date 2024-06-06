@@ -27,7 +27,7 @@ namespace Nethermind.Core.Caching
 
             _name = name;
             _maxCapacity = maxCapacity;
-            _cacheMap = new Dictionary<TKey, int>(maxCapacity);
+            _cacheMap = new Dictionary<TKey, int>(maxCapacity / 2);
             _items = new LruCacheItem[maxCapacity];
         }
 
