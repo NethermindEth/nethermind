@@ -8,7 +8,7 @@ namespace Nethermind.Evm.Witness;
 
 public interface IExecutionWitness
 {
-    bool AccessForContractCreationInit(Address contractAddress, bool isValueTransfer, ref long gasAvailable);
+    bool AccessForContractCreationInit(Address contractAddress, ref long gasAvailable);
     bool AccessForContractCreated(Address contractAddress, ref long gasAvailable);
 
     /// <summary>
@@ -30,7 +30,7 @@ public interface IExecutionWitness
     bool AccessForGasBeneficiary(Address gasBeneficiary, ref long gasAvailable);
 
     bool AccessForCodeOpCodes(Address caller, ref long gasAvailable);
-    bool AccessForBalance(Address address, ref long gasAvailable, bool isWrite = false);
+    bool AccessForBalanceOpCode(Address address, ref long gasAvailable, bool isWrite = false);
     bool AccessForCodeHash(Address address, ref long gasAvailable);
 
     /// <summary>

@@ -35,31 +35,7 @@ public class VerkleStateReader : IStateReader
         _state = new VerkleStateTree(verkleTree, logManager); ;
     }
 
-    public AccountStruct? GetAccount(Hash256 stateRoot, Address address)
-    {
-        return GetState(stateRoot, address);
-    }
-
-    public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account)
-    {
-        if (stateRoot == Keccak.EmptyTreeHash)
-        {
-            account = AccountStruct.TotallyEmpty;
-            return false;
-        }
-
-        Metrics.StateTreeReads++;
-        AccountStruct? accountX = GetAccount(stateRoot, address);
-        if (accountX is null)
-        {
-            account = AccountStruct.TotallyEmpty;
-            return false;
-        }
-
-        account = accountX.Value;
-        return true;
-
-    }
+    public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
 
     public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index) => _state.Get(address, index, stateRoot);
     public byte[]? GetCode(Hash256 codeHash)
@@ -97,15 +73,15 @@ public class VerkleStateReader : IStateReader
         return _state.HasStateForStateRoot(stateRoot);
     }
 
-    private AccountStruct? GetState(Hash256 stateRoot, Address address)
+    private bool TryGetState(Hash256 stateRoot, Address address, out AccountStruct account)
     {
-        if (stateRoot == Keccak.EmptyTreeHash || stateRoot == Hash256.Zero)
+        if (stateRoot == Keccak.EmptyTreeHash)
         {
-            return null;
+            account = AccountStruct.TotallyEmpty;
+            return false;
         }
 
         Metrics.StateTreeReads++;
-        AccountStruct? account = _state.Get(address, stateRoot);
-        return account;
+        return _state.TryGetStruct(address, out account, stateRoot);
     }
 }

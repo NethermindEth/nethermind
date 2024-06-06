@@ -24,22 +24,37 @@ namespace Nethermind.State;
 public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager) : VerkleTree(stateStore, logManager)
 {
     [DebuggerStepThrough]
-    public AccountStruct? Get(Address address, Hash256? stateRoot = null)
+    public Account? Get(Address address, Hash256? stateRoot = null)
     {
-        Span<byte> key = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
+        byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
+        headerTreeKey[31] = AccountHeader.BasicDataLeafKey;
+        byte[]? basicDataLeafVal = Get(headerTreeKey);
+        if (basicDataLeafVal is null) return null;
 
-        key[31] = AccountHeader.Version;
-        UInt256 version = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
-        key[31] = AccountHeader.Balance;
-        UInt256 balance = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
-        key[31] = AccountHeader.Nonce;
-        UInt256 nonce = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
-        key[31] = AccountHeader.CodeHash;
-        byte[]? codeHash = (Get(key, stateRoot) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
-        key[31] = AccountHeader.CodeSize;
-        UInt256 codeSize = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
+        headerTreeKey[31] = AccountHeader.CodeHash;
+        var codeHashBytes = Get(headerTreeKey);
+        Hash256 codeHash = codeHashBytes is null ? Keccak.EmptyTreeHash : new Hash256(codeHashBytes);
 
-        return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
+        return AccountHeader.BasicDataToAccount(basicDataLeafVal, codeHash);
+    }
+
+    public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
+    {
+        byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
+        headerTreeKey[31] = AccountHeader.BasicDataLeafKey;
+        byte[]? basicDataLeafVal = Get(headerTreeKey);
+        if (basicDataLeafVal is null)
+        {
+            account = AccountStruct.TotallyEmpty;
+            return false;
+        }
+
+        headerTreeKey[31] = AccountHeader.CodeHash;
+        var codeHashBytes = Get(headerTreeKey);
+        ValueHash256 codeHash = codeHashBytes is null ? Keccak.EmptyTreeHash.ValueHash256 : new ValueHash256(codeHashBytes);
+
+        account = AccountHeader.BasicDataToAccountStruct(basicDataLeafVal, codeHash);
+        return true;
     }
 
     public void Set(Address address, Account? account)
