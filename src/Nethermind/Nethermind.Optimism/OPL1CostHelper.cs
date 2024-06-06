@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -141,99 +142,110 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
         return dataGasWithOverhead * l1BaseFee * feeScalar / BasicDivisor;
     }
 
+    // Based on:
+    // https://github.com/ethereum-optimism/op-geth/blob/7c2819836018bfe0ca07c4e4955754834ffad4e0/core/types/rollup_cost.go
+    // https://github.com/Vectorized/solady/blob/5315d937d79b335c668896d7533ac603adac5315/js/solady.js
     [SkipLocalsInit]
     public static uint ComputeFlzCompressLen(Transaction tx)
     {
         byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
+        [SkipLocalsInit]
         static uint FlzCompressLen(byte[] data)
         {
             uint n = 0;
-            uint[] ht = new uint[8192];
-            uint u24(uint i) => data[i] | ((uint)data[i + 1] << 8) | ((uint)data[i + 2] << 16);
-            uint cmp(uint p, uint q, uint e)
+            uint[] ht = ArrayPool<uint>.Shared.Rent(8192);
+            try
             {
-                uint l = 0;
-                for (e -= q; l < e; l++)
+                uint u24(uint i) => data[i] | ((uint)data[i + 1] << 8) | ((uint)data[i + 2] << 16);
+                uint cmp(uint p, uint q, uint e)
                 {
-                    if (data[p + (int)l] != data[q + (int)l])
+                    uint l = 0;
+                    for (e -= q; l < e; l++)
                     {
-                        e = 0;
+                        if (data[p + (int)l] != data[q + (int)l])
+                        {
+                            e = 0;
+                        }
+                    }
+                    return l;
+                }
+                void literals(uint r)
+                {
+                    n += 0x21 * (r / 0x20);
+                    r %= 0x20;
+                    if (r != 0)
+                    {
+                        n += r + 1;
                     }
                 }
-                return l;
-            }
-            void literals(uint r)
-            {
-                n += 0x21 * (r / 0x20);
-                r %= 0x20;
-                if (r != 0)
+                void match(uint l)
                 {
-                    n += r + 1;
+                    l--;
+                    n += 3 * (l / 262);
+                    if (l % 262 >= 6)
+                    {
+                        n += 3;
+                    }
+                    else
+                    {
+                        n += 2;
+                    }
                 }
-            }
-            void match(uint l)
-            {
-                l--;
-                n += 3 * (l / 262);
-                if (l % 262 >= 6)
+                uint hash(uint v) => ((2654435769 * v) >> 19) & 0x1fff;
+                uint setNextHash(uint ip)
                 {
-                    n += 3;
+                    ht[hash(u24(ip))] = ip;
+                    return ip + 1;
                 }
-                else
+                uint a = 0;
+                uint ipLimit = (uint)data.Length - 13;
+                if (data.Length < 13)
                 {
-                    n += 2;
+                    ipLimit = 0;
                 }
-            }
-            uint hash(uint v) => ((2654435769 * v) >> 19) & 0x1fff;
-            uint setNextHash(uint ip)
-            {
-                ht[hash(u24(ip))] = ip;
-                return ip + 1;
-            }
-            uint a = 0;
-            uint ipLimit = (uint)data.Length - 13;
-            if (data.Length < 13)
-            {
-                ipLimit = 0;
-            }
-            for (uint ip = a + 2; ip < ipLimit;)
-            {
-                uint d;
-                uint r;
-                for (; ; )
+                for (uint ip = a + 2; ip < ipLimit;)
                 {
-                    uint s = u24(ip);
-                    uint h = hash(s);
-                    r = ht[h];
-                    ht[h] = ip;
-                    d = ip - r;
+                    uint d;
+                    uint r;
+                    for (; ; )
+                    {
+                        uint s = u24(ip);
+                        uint h = hash(s);
+                        r = ht[h];
+                        ht[h] = ip;
+                        d = ip - r;
+                        if (ip >= ipLimit)
+                        {
+                            break;
+                        }
+                        ip++;
+                        if (d <= 0x1fff && s == u24(r))
+                        {
+                            break;
+                        }
+                    }
                     if (ip >= ipLimit)
                     {
                         break;
                     }
-                    ip++;
-                    if (d <= 0x1fff && s == u24(r))
+                    ip--;
+                    if (ip > a)
                     {
-                        break;
+                        literals(ip - a);
                     }
+                    uint l = cmp(r + 3, ip + 3, ipLimit + 9);
+                    match(l);
+                    ip = setNextHash(setNextHash(ip + l));
+                    a = ip;
                 }
-                if (ip >= ipLimit)
-                {
-                    break;
-                }
-                ip--;
-                if (ip > a)
-                {
-                    literals(ip - a);
-                }
-                uint l = cmp(r + 3, ip + 3, ipLimit + 9);
-                match(l);
-                ip = setNextHash(setNextHash(ip + l));
-                a = ip;
+                literals((uint)data.Length - a);
+                return n;
             }
-            literals((uint)data.Length - a);
-            return n;
+            finally
+            {
+                ArrayPool<uint>.Shared.Return(ht);
+            }
         }
 
         return FlzCompressLen(encoded);
