@@ -80,10 +80,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
     public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null)
     {
-        if (writingStream is null)
-        {
-            ThrowHelper.ThrowArgumentNullException_WritingStream();
-        }
+        ArgumentNullException.ThrowIfNull(writingStream);
         InnerStream = writingStream;
         _minimumBufferSize = options?.MinimumBufferSize ?? 4096;
         _pool = options?.Pool == MemoryPool<byte>.Shared ? null : options?.Pool;
