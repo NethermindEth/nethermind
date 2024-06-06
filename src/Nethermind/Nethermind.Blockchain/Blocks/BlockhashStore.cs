@@ -24,7 +24,7 @@ public class BlockhashStore( ISpecProvider specProvider, IWorldState worldState)
         IReleaseSpec spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
-        Address eip2935Account = spec.Eip2935ContractAddress;
+        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         if (!worldState.AccountExists(eip2935Account)) return;
 
         AddParentBlockHashToState(blockHeader, eip2935Account);
