@@ -620,13 +620,13 @@ public partial class EthRpcModule(
             {
                 foreach (FilterLog log in filterLogs)
                 {
+                    if (logs.Count > _rpcConfig.MaxLogsPerResponse)
+                    {
+                        logs.Dispose();
+                        return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                    }
                     logs.Add(log);
                 }
-            }
-
-            if (logs.Count > _rpcConfig.MaxLogsPerResponse)
-            {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
             }
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
