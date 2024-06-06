@@ -473,7 +473,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
-                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, !tx.Value.IsZero, ref unspentGas))
+                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, ref unspentGas))
                     {
                         ThrowOutOfGasException();
                     }

@@ -34,8 +34,8 @@ public class VerkleTreeTests
         stateTree.Commit();
         stateTree.CommitTree(0);
 
-        AccountStruct? accountRestored = stateTree.Get(TestItem.AddressA);
-        Assert.That(accountRestored.Value.Balance, Is.EqualTo((UInt256)2));
+        stateTree.TryGetStruct(TestItem.AddressA, out AccountStruct accountRestored);
+        Assert.That(accountRestored.Balance, Is.EqualTo((UInt256)2));
     }
 
     [Test]
@@ -55,8 +55,8 @@ public class VerkleTreeTests
         stateTree.Commit();
         stateTree.CommitTree(0);
 
-        AccountStruct? accountRestored = stateTree.Get(TestItem.AddressA);
-        Assert.That(accountRestored.Value.Balance, Is.EqualTo((UInt256)2));
+        stateTree.TryGetStruct(TestItem.AddressA, out AccountStruct accountRestored);
+        Assert.That(accountRestored.Balance, Is.EqualTo((UInt256)2));
     }
 
     [Test]
