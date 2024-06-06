@@ -2720,8 +2720,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             stack.PushZero();
             return (EvmExceptionType.None, null);
         }
-
         ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
+        Address contractAddress = instruction == Instruction.CREATE
+            ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
+            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
+
+        var contractCreationInitCost =
+            env.Witness.AccessForContractCreationInit(contractAddress, !value.IsZero);
+        if (!UpdateGas(contractCreationInitCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
@@ -2733,20 +2739,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
         UInt256 maxNonce = ulong.MaxValue;
+
         if (accountNonce >= maxNonce)
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
             return (EvmExceptionType.None, null);
         }
-
-        Address contractAddress = instruction == Instruction.CREATE
-            ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
-
-        var contractCreationInitCost =
-            env.Witness.AccessForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero);
-        if (!UpdateGas(contractCreationInitCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
         if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
         // todo: === below is a new call - refactor / move
