@@ -138,7 +138,7 @@ namespace Nethermind.Clique.Test
                     new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                     stateProvider,
                     NullReceiptStorage.Instance,
-                    new BlockhashStore(blockTree, goerliSpecProvider, stateProvider),
+                    new BlockhashStore(goerliSpecProvider, stateProvider),
                     nodeLogManager);
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -157,7 +157,7 @@ namespace Nethermind.Clique.Test
                     new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
                     minerStateProvider,
                     NullReceiptStorage.Instance,
-                    new BlockhashStore(blockTree, goerliSpecProvider, minerStateProvider),
+                    new BlockhashStore(goerliSpecProvider, minerStateProvider),
                     nodeLogManager);
 
                 BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
