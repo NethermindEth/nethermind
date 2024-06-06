@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
-public partial class ReceiptDecoderTests
+public class ReceiptDecoderTests
 {
     [TestCaseSource(nameof(DepositTxReceiptsSerializationTestCases))]
     public void Test_tx_network_form_receipts_properly_encoded_for_trie(byte[] rlp, bool includesNonce, bool includesVersion, bool shouldIncludeNonceAndVersionForTxTrie)

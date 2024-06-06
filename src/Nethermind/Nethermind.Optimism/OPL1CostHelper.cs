@@ -20,23 +20,22 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
     private readonly StorageCell _overheadSlot = new(l1BlockAddr, new UInt256(5));
     private readonly StorageCell _scalarSlot = new(l1BlockAddr, new UInt256(6));
 
-    private static readonly UInt256 BasicDevider = 1_000_000;
+    private static readonly UInt256 BasicDivisor = 1_000_000;
 
     // Ecotone
     private readonly StorageCell _blobBaseFeeSlot = new(l1BlockAddr, new UInt256(7));
     private readonly StorageCell _baseFeeScalarSlot = new(l1BlockAddr, new UInt256(3));
 
     private static readonly UInt256 PrecisionMultiplier = 16;
-    private static readonly UInt256 PrecisionDevider = PrecisionMultiplier * BasicDevider;
+    private static readonly UInt256 PrecisionDivisor = PrecisionMultiplier * BasicDivisor;
 
 
     // Fjord
     private static readonly UInt256 L1CostInterceptNeg = 42_585_600;
     private static readonly UInt256 L1CostFastlzCoef = 836_500;
 
-    private static readonly UInt256 MinTransactionSize = 100;
-    private static readonly UInt256 MinTransactionSizeScaled = MinTransactionSize * 1_000_000;
-    private static readonly UInt256 FjordDevider = 100_000_000;
+    private static readonly UInt256 MinTransactionSizeScaled = 100 * 1_000_000;
+    private static readonly UInt256 FjordDivisor = 1_000_000_000_000;
 
     [SkipLocalsInit]
     public UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState)
@@ -127,19 +126,19 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
         }
 
         var estimatedSize = UInt256.Max(MinTransactionSizeScaled, fastLzCost);
-        return estimatedSize * l1FeeScaled / FjordDevider;
+        return estimatedSize * l1FeeScaled / FjordDivisor;
     }
 
     // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
     public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
     {
-        return dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDevider;
+        return dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDivisor;
     }
 
     // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
     public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar)
     {
-        return dataGasWithOverhead * l1BaseFee * feeScalar / BasicDevider;
+        return dataGasWithOverhead * l1BaseFee * feeScalar / BasicDivisor;
     }
 
     [SkipLocalsInit]
