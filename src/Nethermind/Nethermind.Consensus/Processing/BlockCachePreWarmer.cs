@@ -92,6 +92,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
             {
+                // If the transaction has already been processed or being processed, exit early
+                if (block.TransactionProcessed >= i) return;
+
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 Transaction tx = block.Transactions[i];
                 ReadOnlyTxProcessingEnv env = _envPool.Get();
