@@ -13,9 +13,9 @@ public static class AddressExtensions
     public static bool IsPrecompile(this Address address, IReleaseSpec releaseSpec)
     {
         Span<uint> data = MemoryMarshal.Cast<byte, uint>(address.Bytes.AsSpan());
-        return (data[4] & 0x0000ffff) == 0
+        return (data[4] & 0x00ffffff) == 0
             && data[3] == 0 && data[2] == 0 && data[1] == 0 && data[0] == 0
-            && ((data[4] >>> 16) & 0xff) switch
+            && (data[4] >>> 24) switch
             {
                 0x01 => true,
                 0x02 => true,
@@ -36,7 +36,6 @@ public static class AddressExtensions
                 0x11 => releaseSpec.Bls381Enabled,
                 0x12 => releaseSpec.Bls381Enabled,
                 0x13 => releaseSpec.Bls381Enabled,
-                0x100 => true, // TODO clarify if should be conditional
                 _ => false
             };
     }
