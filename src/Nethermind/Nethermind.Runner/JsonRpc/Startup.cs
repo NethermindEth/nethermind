@@ -215,7 +215,7 @@ namespace Nethermind.Runner.JsonRpc
                                     {
                                         jsonSerializer.Serialize(resultWriter, result.Response);
                                     }
-
+                                    await resultWriter.CompleteAsync();
                                     if (stream is not null)
                                     {
                                         ctx.Response.ContentLength = resultWriter.WrittenCount;
