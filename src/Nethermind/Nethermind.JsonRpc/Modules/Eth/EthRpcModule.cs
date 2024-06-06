@@ -609,8 +609,7 @@ public partial class EthRpcModule(
 
         try
         {
-            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock,
-                filter.Address, filter.Topics);
+            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
 
@@ -621,7 +620,7 @@ public partial class EthRpcModule(
                 foreach (FilterLog log in filterLogs)
                 {
                     logs.Add(log);
-                    if (logs.Count > _rpcConfig.MaxLogsPerResponse)
+                    if (_rpcConfig.MaxLogsPerResponse != 0 && logs.Count > _rpcConfig.MaxLogsPerResponse)
                     {
                         logs.Dispose();
                         return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);

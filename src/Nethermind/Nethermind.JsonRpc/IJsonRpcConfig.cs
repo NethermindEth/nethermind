@@ -108,7 +108,7 @@ public interface IJsonRpcConfig : IConfig
 
 
     [ConfigItem(
-        Description = "The max number of logs per response. For method `eth_getLogs`.",
+        Description = "The max number of logs per response. For method `eth_getLogs`. If 0 then no limit.",
         DefaultValue = "20000")]
     public int MaxLogsPerResponse { get; set; }
 
