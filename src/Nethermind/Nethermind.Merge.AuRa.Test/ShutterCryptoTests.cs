@@ -178,10 +178,18 @@ class ShutterCryptoTests
     }
 
     [Test]
-    [TestCase("", "")]
-    public void Can_verify_validator_registration_signature(string msgHex, string sigHex)
+    [TestCase(
+        "0000000000000027d806bfddbebe11f7ee8a39fc7dc24498de85c8afca0000000000000000000000000000000001",
+        "846b23860007d8d735a46364087f4fe90cfd2d129af7c593079f04186d2a71826c3ed4fefd7403eb452c4160d23c4d6c0d4f04d46333117a39aacc2c59e5384c5d5455bb6887e7979454948962afcb41e0f928c64a75001a71883f5ed7d02d81",
+        "afc199da35e82d41a92b2f06cc05377f394cdce127394a4c49bc18e90c90b4d93cb1c2c6c232d7b8fbc7573ec724c0d5"
+    )]
+    public void Can_verify_validator_registration_signature(string msgHex, string sigHex, string pkHex)
     {
-        Assert.That(true);
+        Assert.That(ShutterCrypto.CheckValidatorRegistrySignature(
+            Convert.FromHexString(pkHex),
+            Convert.FromHexString(sigHex),
+            Convert.FromHexString(msgHex)
+        ));
     }
 
     [Test]

@@ -273,6 +273,16 @@ internal class ShutterCrypto
         return keyperAddress == expectedPubkey.Address;
     }
 
+    public static bool CheckValidatorRegistrySignature(in byte[] pkBytes, in byte[] sigBytes, in byte[] msgBytes)
+    {
+        BlsSigner.PublicKey pk = new() { Bytes = pkBytes };
+        BlsSigner.Signature sig = new() { Bytes = sigBytes };
+
+        Hash256 h = Keccak.Compute(msgBytes);
+
+        return BlsSigner.Verify(pk, sig, h.Bytes);
+    }
+
     public static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages)
     {
         var container = new Ssz.SlotDecryptionIdentites()

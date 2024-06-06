@@ -8,7 +8,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Consensus.AuRa.Config;
@@ -65,15 +64,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
                 continue;
             }
 
-            BlsSigner.PublicKey pk = new()
-            {
-                Bytes = validatorPubKey
-            };
-            BlsSigner.Signature sig = new()
-            {
-                Bytes = update.Signature
-            };
-
             // todo: check if nonce is correct
 
             if (!msg.IsRegistration)
@@ -95,12 +85,11 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
                 if (_logger.IsDebug) _logger.Debug("Registration message contains an invalid contract address (" + msg.ContractAddress + ") should be " + ContractAddress);
                 continue;
             }
-            // todo: check signature
-            // else if (!BlsSigner.Verify(pk, sig, update.Message))
-            // {
-            //     if (_logger.IsWarn) _logger.Warn("Registration message has invalid signature.");
-            //     continue;
-            // }
+            else if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorPubKey, update.Signature, update.Message))
+            {
+                if (_logger.IsDebug) _logger.Warn("Registration message has invalid signature.");
+                continue;
+            }
 
             return true;
         }
