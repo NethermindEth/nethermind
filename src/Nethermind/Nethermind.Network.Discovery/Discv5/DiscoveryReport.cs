@@ -10,21 +10,22 @@ internal class DiscoveryReport
     int RecentlyChecked = 0;
     int TotalChecked = 0;
 
-    public DiscoveryReport(IDiscv5Protocol discv5Protocol, ILogManager? logManager, CancellationToken token)
+    public DiscoveryReport(IDiscv5Protocol discv5Protocol, ILogManager logManager, CancellationToken token)
     {
-        if (logManager is not null)
+        ILogger logger = logManager.GetClassLogger<DiscoveryReport>();
+        if (!logger.IsInfo)
         {
-
-            ILogger logger = logManager.GetClassLogger<DiscoveryReport>();
-            _ = Task.Run(async () =>
-            {
-                while (!token.IsCancellationRequested)
-                {
-                    if (logger.IsDebug) logger.Debug($"Nodes checked: {Interlocked.Exchange(ref RecentlyChecked, 0)}, in total {TotalChecked}. Kademlia table state: {discv5Protocol.GetActiveNodes.Count()} active nodes, {discv5Protocol.GetAllNodes.Count()} all nodes.");
-                    await Task.Delay(10_000);
-                }
-            }, token);
+            return;
         }
+
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                logger.Debug($"Nodes checked: {Interlocked.Exchange(ref RecentlyChecked, 0)}, in total {TotalChecked}. Kademlia table state: {discv5Protocol.GetActiveNodes.Count()} active nodes, {discv5Protocol.GetAllNodes.Count()} all nodes.");
+                await Task.Delay(10_000);
+            }
+        }, token);
     }
 
     public void NodeFound()
