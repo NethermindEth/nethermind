@@ -30,7 +30,7 @@ public interface IExecutionWitness
     bool AccessForGasBeneficiary(Address gasBeneficiary);
 
     bool AccessForCodeOpCodes(Address caller, ref long gasAvailable);
-    bool AccessForBalanceOpCode(Address address, ref long gasAvailable, bool isWrite = false);
+    bool AccessForBalanceOpCode(Address address, ref long gasAvailable);
     bool AccessForCodeHash(Address address, ref long gasAvailable);
 
     /// <summary>
@@ -45,7 +45,7 @@ public interface IExecutionWitness
     bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable);
     bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable);
 
-    bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable);
+    bool AccessForCodeProgramCounter(Address address, int programCounter, ref long gasAvailable);
     bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable);
 
     /// <summary>

@@ -21,13 +21,13 @@ public class NoExecWitness : IExecutionWitness
 
     public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable) => true;
 
-    public bool AccessForBalanceOpCode(Address address, ref long gasAvailable, bool isWrite = false) => true;
+    public bool AccessForBalanceOpCode(Address address, ref long gasAvailable) => true;
 
     public bool AccessForCodeHash(Address address, ref long gasAvailable) => true;
 
     public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable) => true;
     public bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable) => true;
-    public bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable) =>
+    public bool AccessForCodeProgramCounter(Address address, int programCounter, ref long gasAvailable) =>
         true;
 
     public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable) => true;

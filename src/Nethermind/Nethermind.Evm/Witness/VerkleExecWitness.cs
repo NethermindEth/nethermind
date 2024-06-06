@@ -53,9 +53,9 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         return true;
     }
 
-    public bool AccessForBalanceOpCode(Address address, ref long gasAvailable, bool isWrite = false)
+    public bool AccessForBalanceOpCode(Address address, ref long gasAvailable)
     {
-        return AccessBasicData(address, ref gasAvailable, isWrite);
+        return AccessBasicData(address, ref gasAvailable, false);
     }
 
     public bool AccessForCodeHash(Address address, ref long gasAvailable)
@@ -85,9 +85,9 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         return AccessForStorage(address, key, false, ref gasAvailable);
     }
 
-    public bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable)
+    public bool AccessForCodeProgramCounter(Address address, int programCounter, ref long gasAvailable)
     {
-        return AccessCodeChunk(address, CalculateCodeChunkIdFromPc(programCounter), isWrite, ref gasAvailable);
+        return AccessCodeChunk(address, CalculateCodeChunkIdFromPc(programCounter), false, ref gasAvailable);
     }
 
     public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable)

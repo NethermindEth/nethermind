@@ -632,18 +632,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             var gasBefore = gasAvailable;
                             result = vmState.Env.Witness.AccessForCodeOpCodes(address, ref gasAvailable);
                             witnessGasCharged = gasBefore != gasAvailable;
-                            if (!result) break;
-
-                            if (valueTransfer)
-                            {
-                                gasBefore = gasAvailable;
-                                result = vmState.Env.Witness.AccessForBalanceOpCode(address, ref gasAvailable);
-                                witnessGasCharged = gasBefore != gasAvailable;
-                            }
-                        }
-                        else
-                        {
-                            witnessGasCharged = true;
                         }
 
                         break;
@@ -677,7 +665,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
             else if (vmState.IsCold(address) && !address.IsPrecompile(spec))
             {
-                // after verkle is enabled we don't charge cold cost as it is replaced by verkle access costs
+                // after verkle is enabled, we don't charge cold cost as it is replaced by verkle access costs
                 result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
                 vmState.WarmUp(address);
             }
@@ -922,7 +910,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (!vmState.IsContractDeployment)
             {
-                if (!env.Witness.AccessForCodeProgramCounter(vmState.To, programCounter, false, ref gasAvailable))
+                if (!env.Witness.AccessForCodeProgramCounter(vmState.To, programCounter, ref gasAvailable))
                 {
                     goto OutOfGas;
                 }
@@ -1910,7 +1898,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (!vmState.IsContractDeployment && programCounterInt % 31 == 0)
                             {
                                 if (!env.Witness.AccessForCodeProgramCounter(vmState.To,
-                                        programCounterInt + 1, false, ref gasAvailable))
+                                        programCounterInt + 1, ref gasAvailable))
                                 {
                                     goto OutOfGas;
                                 }
