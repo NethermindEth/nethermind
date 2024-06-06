@@ -188,16 +188,16 @@ public class ShutterP2P
             return false;
         }
 
-        IEnumerable<byte[]> identityPreimages = decryptionKeys.Keys.Skip(1).Select((Dto.Key key) => key.Identity.ToArray());
+        List<byte[]> identityPreimages = decryptionKeys.Keys.Skip(1).Select((Dto.Key key) => key.Identity.ToArray()).ToList();
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
             Address keyperAddress = _eonInfo.Addresses[signerIndex];
-            // if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, identityPreimages, signature.Span, keyperAddress))
-            // {
-            //     if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
-            //     return false;
-            // }
+            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
+                return false;
+            }
         }
 
         return true;
