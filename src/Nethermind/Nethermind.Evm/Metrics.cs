@@ -86,8 +86,8 @@ public class Metrics
     [Description("Number of MCOPY opcodes executed.")]
     public static long MCopyOpcode { get; set; }
 
-    [Description("Number of MODEXP precompiles executed.")]
-    public static long ModExpOpcode { get; set; }
+    [Description("Number of EXP opcodes executed.")]
+    public static long ExpOpcode { get; set; }
 
     [Description("Number of BLOCKHASH opcodes executed.")]
     public static long BlockhashOpcode { get; set; }

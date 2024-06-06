@@ -4,7 +4,7 @@
 // Derived from https://github.com/dotnet/BenchmarkDotNet
 // Licensed under the MIT License
 
-namespace Nethermind.Init.Cpu;
+namespace Nethermind.Core.Cpu;
 
 internal static class ProcCpuInfoKeyNames
 {
