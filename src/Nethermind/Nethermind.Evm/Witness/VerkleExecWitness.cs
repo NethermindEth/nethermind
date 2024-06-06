@@ -44,44 +44,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         return gas;
     }
 
-    /// <summary>
-    ///     When you are starting to execute a transaction.
-    /// </summary>
-    /// <param name="originAddress"></param>
-    /// <param name="destinationAddress"></param>
-    /// <param name="isValueTransfer"></param>
-    /// <param name="gasAvailable"></param>
-    /// <returns></returns>
-    public bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer, ref long gasAvailable)
-    {
-        // TODO: does not seem right - not upto spec
-        if (!AccessBasicData(originAddress, ref gasAvailable, true)) return false;
-        // when you are executing a transaction, you are writing to the nonce of the origin address
-        if (!AccessCodeHash(originAddress, ref gasAvailable)) return false;
 
-        if (destinationAddress is not null)
-        {
-            // when you are executing a transaction with value transfer,
-            // you are writing to the balance of the origin and destination address
-            if (!AccessBasicData(destinationAddress, ref gasAvailable, isValueTransfer)) return false;
-        }
-        // _logger.Info($"AccessForTransaction: {originAddress.Bytes.ToHexString()} {destinationAddress?.Bytes.ToHexString()} {isValueTransfer} {gasCost}");
-        return true;
-    }
-
-    /// <summary>
-    ///     Call for the gas beneficiary.
-    /// </summary>
-    /// <param name="gasBeneficiary"></param>
-    /// <param name="gasAvailable"></param>
-    /// <returns></returns>
-    public bool AccessForGasBeneficiary(Address gasBeneficiary, ref long gasAvailable)
-    {
-        if (!AccessBasicData(gasBeneficiary, ref gasAvailable, true)) return false;
-        if (!AccessCodeHash(gasBeneficiary, ref gasAvailable)) return false;
-        // _logger.Info($"AccessCompleteAccount: {address.Bytes.ToHexString()} {isWrite} {gas}");
-        return true;
-    }
 
     public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable)
     {
@@ -115,6 +78,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         var gas = AccessKey(AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, key), ref gasAvailable, isWrite);
         // _logger.Info($"AccessStorage: {address.Bytes.ToHexString()} {key.ToBigEndian().ToHexString()} {isWrite} {gas}");
         return gas;
+    }
+
+    public bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable)
+    {
+        return AccessForStorage(address, key, false, ref gasAvailable);
     }
 
     public bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable)
@@ -218,6 +186,57 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     private bool AccessCodeHash(Address address, ref long gasAvailable, bool isWrite = false)
     {
         return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.CodeHash, ref gasAvailable, isWrite);
+    }
+
+    /// <summary>
+    ///     Call for the gas beneficiary.
+    /// </summary>
+    /// <param name="gasBeneficiary"></param>
+    /// <param name="gasAvailable"></param>
+    /// <returns></returns>
+    public bool AccessForGasBeneficiary(Address gasBeneficiary)
+    {
+        long fakeGas = 1_000_000;
+        return AccessCompleteAccount(gasBeneficiary, ref fakeGas);
+    }
+
+    public bool AccessAccountForWithdrawal(Address address)
+    {
+        long fakeGas = 1_000_000;
+        return AccessCompleteAccount(address, ref fakeGas);
+    }
+
+    public bool AccessForBlockhashInsertionWitness(Address address, UInt256 key)
+    {
+        long fakeGas = 1_000_000;
+        AccessCompleteAccount(address, ref fakeGas);
+        AccessForStorage(address, key, true, ref fakeGas);
+        return true;
+    }
+
+    /// <summary>
+    ///     When you are starting to execute a transaction.
+    /// </summary>
+    /// <param name="originAddress"></param>
+    /// <param name="destinationAddress"></param>
+    /// <param name="isValueTransfer"></param>
+    /// <param name="gasAvailable"></param>
+    /// <returns></returns>
+    public bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer)
+    {
+        long fakeGas = 1_000_000;
+        if (!AccessBasicData(originAddress, ref fakeGas, true)) return false;
+        // when you are executing a transaction, you are writing to the nonce of the origin address
+        if (!AccessCodeHash(originAddress, ref fakeGas)) return false;
+
+        if (destinationAddress is not null)
+        {
+            // when you are executing a transaction with value transfer,
+            // you are writing to the balance of the origin and destination address
+            if (!AccessBasicData(destinationAddress, ref fakeGas, isValueTransfer)) return false;
+        }
+        // _logger.Info($"AccessForTransaction: {originAddress.Bytes.ToHexString()} {destinationAddress?.Bytes.ToHexString()} {isValueTransfer} {gasCost}");
+        return true;
     }
 
     private bool AccessAccountSubTree(Address address, UInt256 treeIndex, byte subIndex, ref long gasAvailable, bool isWrite = false)

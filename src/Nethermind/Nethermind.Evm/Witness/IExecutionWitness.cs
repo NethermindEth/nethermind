@@ -19,7 +19,7 @@ public interface IExecutionWitness
     /// <param name="isValueTransfer"></param>
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer, ref long gasAvailable);
+    bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer);
 
     /// <summary>
     ///     Call for the gas beneficiary.
@@ -27,7 +27,7 @@ public interface IExecutionWitness
     /// <param name="gasBeneficiary"></param>
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    bool AccessForGasBeneficiary(Address gasBeneficiary, ref long gasAvailable);
+    bool AccessForGasBeneficiary(Address gasBeneficiary);
 
     bool AccessForCodeOpCodes(Address caller, ref long gasAvailable);
     bool AccessForBalanceOpCode(Address address, ref long gasAvailable, bool isWrite = false);
@@ -43,6 +43,7 @@ public interface IExecutionWitness
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
     bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable);
+    bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable);
 
     bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable);
     bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable);
@@ -67,6 +68,8 @@ public interface IExecutionWitness
     /// <param name="isWrite"></param>
     /// <returns></returns>
     bool AccessCompleteAccount(Address address, ref long gasAvailable, bool isWrite = false);
+    bool AccessAccountForWithdrawal(Address address);
+    bool AccessForBlockhashInsertionWitness(Address address, UInt256 key);
 
     bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable);
     byte[][] GetAccessedKeys();

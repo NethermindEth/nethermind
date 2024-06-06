@@ -43,7 +43,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, false, ref expectedGas);
+        bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, false);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -60,7 +60,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 2
                            + GasCostOf.WitnessChunkFill * 2;
 
-        bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true, ref expectedGas);
+        bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -77,7 +77,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForTransaction(TestItem.AddressA, null, true, ref expectedGas);
+        bool result = witness.AccessForTransaction(TestItem.AddressA, null, true);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -96,7 +96,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForTransaction(TestItem.AddressA, null, false, ref expectedGas);
+        bool result = witness.AccessForTransaction(TestItem.AddressA, null, false);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -115,7 +115,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 2
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true, ref expectedGas);
+        bool result = witness.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -238,7 +238,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForGasBeneficiary(TestItem.AddressA, ref expectedGas);
+        bool result = witness.AccessForGasBeneficiary(TestItem.AddressA);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));

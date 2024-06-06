@@ -15,9 +15,9 @@ public class NoExecWitness : IExecutionWitness
     public bool AccessForContractCreated(Address contractAddress, ref long gasAvailable) => true;
 
     public bool AccessForTransaction(Address originAddress, Address? destinationAddress,
-        bool isValueTransfer, ref long gasAvailable) => true;
+        bool isValueTransfer) => true;
 
-    public bool AccessForGasBeneficiary(Address gasBeneficiary, ref long gasAvailable) => true;
+    public bool AccessForGasBeneficiary(Address gasBeneficiary) => true;
 
     public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable) => true;
 
@@ -26,7 +26,7 @@ public class NoExecWitness : IExecutionWitness
     public bool AccessForCodeHash(Address address, ref long gasAvailable) => true;
 
     public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable) => true;
-
+    public bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable) => true;
     public bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable) =>
         true;
 
@@ -37,7 +37,8 @@ public class NoExecWitness : IExecutionWitness
     public bool AccessForAbsentAccount(Address address, ref long gasAvailable) => true;
 
     public bool AccessCompleteAccount(Address address, ref long gasAvailable, bool isWrite = false) => true;
-
+    public bool AccessAccountForWithdrawal(Address address) => true;
+    public bool AccessForBlockhashInsertionWitness(Address address, UInt256 key) => true;
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero,
         bool inheritorExist, ref long gasAvailable) => true;
     public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();

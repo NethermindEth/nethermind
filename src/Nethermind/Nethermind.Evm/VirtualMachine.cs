@@ -1643,9 +1643,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             var blockIndex = new UInt256((ulong)(blockNumber % Eip2935Constants.RingBufferSize));
                             Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
                             StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-                            long unspentGas = 1_000_000; // we don't want to charge gas here yet
-                            vmState.Env.Witness.AccessForStorage(blockHashStoreCell.Address, blockHashStoreCell.Index,
-                                false, ref unspentGas);
+                            vmState.Env.Witness.AccessForBlockHashOpCode(blockHashStoreCell.Address,
+                                blockHashStoreCell.Index,
+                                ref gasAvailable);
                             ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
                             return data.SequenceEqual(emptyBytes) ? null : new Hash256(data);
                         }
