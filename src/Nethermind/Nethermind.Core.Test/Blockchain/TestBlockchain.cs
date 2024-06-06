@@ -362,7 +362,7 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
             State,
             ReceiptStorage,
-            new BlockhashStore(BlockTree, SpecProvider, State),
+            new BlockhashStore(SpecProvider, State),
             LogManager);
 
     public async Task WaitForNewHead()

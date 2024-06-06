@@ -272,6 +272,11 @@ namespace Nethermind.Core.Specs
         /// Save historical block hashes in state
         /// </summary>
         bool IsEip2935Enabled { get; }
+
+        /// <summary>
+        /// Fetch blockHashes from the state for BLOCKHASH opCode
+        /// </summary>
+        bool IsEip7709Enabled { get; }
         Address Eip2935ContractAddress { get; }
 
         /// <summary>
@@ -358,7 +363,7 @@ namespace Nethermind.Core.Specs
         public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => IsEip2935Enabled;
+        public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
