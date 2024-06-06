@@ -42,6 +42,7 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header);
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
                 }
