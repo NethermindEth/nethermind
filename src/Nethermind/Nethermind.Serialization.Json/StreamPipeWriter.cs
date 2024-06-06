@@ -18,7 +18,8 @@ namespace Nethermind.Serialization.Json;
 
 public interface ICountingBufferWriter : IBufferWriter<byte>
 {
-    public long WrittenCount { get; }
+    long WrittenCount { get; }
+    ValueTask CompleteAsync(Exception? exception = null);
 }
 
 public sealed class CountingPipeWriter : ICountingBufferWriter
@@ -42,6 +43,12 @@ public sealed class CountingPipeWriter : ICountingBufferWriter
     public Memory<byte> GetMemory(int sizeHint = 0) => _writer.GetMemory(sizeHint);
 
     public Span<byte> GetSpan(int sizeHint = 0) => _writer.GetSpan(sizeHint);
+
+    public ValueTask CompleteAsync(Exception? exception = null)
+    {
+        return _writer.CompleteAsync();
+    }
+
 }
 
 public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
