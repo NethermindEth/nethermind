@@ -146,58 +146,54 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        bool validBehindHead = false;
-
         if (!blockInfo.WasProcessed)
         {
             if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
-                validBehindHead = true;
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            }
+
+            BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
+            if (blockParent is null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header. sync.");
+
+                StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!.Header, requestStr);
+
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            if (_beaconPivot.ShouldForceStartNewSync)
+            {
+                if (_logger.IsInfo) _logger.Info("Force starting new sync.");
+
+                StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!.Header, requestStr);
+
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            if (blockInfo is { IsBeaconMainChain: false, IsBeaconInfo: true })
+            {
+                ReorgBeaconChainDuringSync(newHeadBlock!, blockInfo);
+            }
+
+            int processingQueueCount = _processingQueue.Count;
+            if (processingQueueCount == 0)
+            {
+                _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
+                _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                _mergeSyncController.StopBeaconModeControl();
+
+                if (_logger.IsInfo) _logger.Info($"Syncing beacon headers, Request: {requestStr}");
             }
             else
             {
-                BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
-                if (blockParent is null)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header. sync.");
-
-                    StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!.Header, requestStr);
-
-                    return ForkchoiceUpdatedV1Result.Syncing;
-                }
-
-                if (_beaconPivot.ShouldForceStartNewSync)
-                {
-                    if (_logger.IsInfo) _logger.Info("Force starting new sync.");
-
-                    StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!.Header, requestStr);
-
-                    return ForkchoiceUpdatedV1Result.Syncing;
-                }
-
-                if (blockInfo is { IsBeaconMainChain: false, IsBeaconInfo: true })
-                {
-                    ReorgBeaconChainDuringSync(newHeadBlock!, blockInfo);
-                }
-
-                int processingQueueCount = _processingQueue.Count;
-                if (processingQueueCount == 0)
-                {
-                    _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
-                    _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-                    _mergeSyncController.StopBeaconModeControl();
-
-                    if (_logger.IsInfo) _logger.Info($"Syncing beacon headers, Request: {requestStr}");
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info($"Processing {_processingQueue.Count} blocks, Request: {requestStr}");
-                }
-
-                _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
-                return ForkchoiceUpdatedV1Result.Syncing;
+                if (_logger.IsInfo) _logger.Info($"Processing {_processingQueue.Count} blocks, Request: {requestStr}");
             }
+
+            _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
+            return ForkchoiceUpdatedV1Result.Syncing;
         }
 
         if (_logger.IsDebug) _logger.Debug($"ForkChoiceUpdate: block {newHeadBlock} was processed.");
@@ -221,11 +217,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
             return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
-        }
-
-        if (validBehindHead)
-        {
-            return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
         }
 
         Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
