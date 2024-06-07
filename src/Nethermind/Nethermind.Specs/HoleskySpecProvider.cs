@@ -35,11 +35,6 @@ public class HoleskySpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong GetCurrentSlot()
-    {
-        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - GenesisTimestamp) / 12;
-    }
-
     public ulong NetworkId => BlockchainIds.Holesky;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => null;

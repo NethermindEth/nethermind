@@ -61,11 +61,6 @@ public class MainnetSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong GetCurrentSlot()
-    {
-        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 12;
-    }
-
     public ulong NetworkId { get; } = Core.BlockchainIds.Mainnet;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => DaoBlockNumberConst;

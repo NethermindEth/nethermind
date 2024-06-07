@@ -36,11 +36,6 @@ public class ChiadoSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong GetCurrentSlot()
-    {
-        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 5;
-    }
-
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => CancunTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");

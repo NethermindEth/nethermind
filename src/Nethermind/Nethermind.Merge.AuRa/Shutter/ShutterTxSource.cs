@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Core.Collections;
+using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -73,7 +74,10 @@ public class ShutterTxSource : ITxSource
             }
         }
 
-        ulong nextSlot = ((dynamic)_specProvider).GetCurrentSlot() + 1;
+        // assume Gnosis or Chiado chain
+        ulong genesisTimestamp = (_specProvider.ChainId == BlockchainIds.Chiado) ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
+        ulong nextSlot = (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - genesisTimestamp) / 5) + 1;
+
         if (DecryptionKeys is null || DecryptionKeys.Gnosis.Slot != nextSlot)
         {
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");

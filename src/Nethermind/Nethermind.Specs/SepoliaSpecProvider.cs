@@ -32,11 +32,6 @@ public class SepoliaSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong GetCurrentSlot()
-    {
-        return ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - BeaconChainGenesisTimestamp) / 12;
-    }
-
     public ulong NetworkId => Core.BlockchainIds.Sepolia;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => null;
