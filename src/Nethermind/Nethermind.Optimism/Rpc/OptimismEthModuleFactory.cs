@@ -19,7 +19,7 @@ using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.Rpc;
 
 public class OptimismEthModuleFactory(
         IJsonRpcConfig rpcConfig,
@@ -40,7 +40,7 @@ public class OptimismEthModuleFactory(
         IAccountStateProvider accountStateProvider,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
-        IOPConfigHelper opConfigHelper
+        IOptimismSpecHelper opSpecHelper
         )
         : ModuleFactoryBase<IOptimismEthRpcModule>
 {
@@ -61,7 +61,7 @@ public class OptimismEthModuleFactory(
     private readonly ITxSealer _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
     private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
     private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-    private readonly IOPConfigHelper _opConfigHelper = opConfigHelper ?? throw new ArgumentNullException(nameof(opConfigHelper));
+    private readonly IOptimismSpecHelper _opSpecHelper = opSpecHelper ?? throw new ArgumentNullException(nameof(opSpecHelper));
 
     public override IOptimismEthRpcModule Create()
     {
@@ -84,7 +84,7 @@ public class OptimismEthModuleFactory(
             _accountStateProvider,
             _ecdsa,
             _sealer,
-            _opConfigHelper
+            _opSpecHelper
             );
     }
 }

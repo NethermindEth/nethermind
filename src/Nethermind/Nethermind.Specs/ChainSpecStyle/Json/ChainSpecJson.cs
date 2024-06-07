@@ -174,6 +174,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long BedrockBlockNumber => Params.BedrockBlockNumber;
             public ulong? CanyonTimestamp => Params.CanyonTimestamp;
             public ulong? EcotoneTimestamp => Params.EcotoneTimestamp;
+            public ulong? FjordTimestamp => Params.FjordTimestamp;
             public Address L1FeeRecipient => Params.L1FeeRecipient;
             public Address L1BlockAddress => Params.L1BlockAddress;
             public UInt256 CanyonBaseFeeChangeDenominator => Params.CanyonBaseFeeChangeDenominator;
@@ -188,6 +189,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long BedrockBlockNumber { get; set; }
             public ulong? CanyonTimestamp { get; set; }
             public ulong? EcotoneTimestamp { get; set; }
+            public ulong? FjordTimestamp { get; set; }
             public Address L1FeeRecipient { get; set; }
             public Address L1BlockAddress { get; set; }
             public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
