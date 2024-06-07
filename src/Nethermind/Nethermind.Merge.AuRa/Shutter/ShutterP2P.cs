@@ -186,7 +186,7 @@ public class ShutterP2P
             return false;
         }
 
-        List<byte[]> identityPreimages = decryptionKeys.Keys.Skip(1).Select((Dto.Key key) => key.Identity.ToArray()).ToList();
+        List<byte[]> identityPreimages = decryptionKeys.Keys.Select((Dto.Key key) => key.Identity.ToArray()).ToList();
 
         foreach (byte[] identityPreimage in identityPreimages)
         {

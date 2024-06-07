@@ -198,16 +198,15 @@ class ShutterCryptoTests
     }
 
     [Test]
-    // [TestCase(
-    //     7649174914161947266ul,
-    //     16729082666370017565ul,
-    //     8333205535599204084ul,
-    //     17223499624376311426ul,
-    //     "0x932552E9df00550E4c59fA4C233B440743e85974",
-    //     "a9358a3e475e373d4749b9bce38df386e90b5b84742d77881448a6ce0db07e3077f8652d0133488962b7543b642c1025066904fb5c4278b91be6892b86c314c400",
-    //     new string[] { "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334" },
-    //     "0x6b634098ceabca795c8c23429fc2ad390448a826342bfc72e9996add66ecd205"
-    // )]
+    [TestCase(
+        7649174914161947266ul,
+        16729082666370017565ul,
+        8333205535599204084ul,
+        17223499624376311426ul,
+        "0x932552E9df00550E4c59fA4C233B440743e85974",
+        "a9358a3e475e373d4749b9bce38df386e90b5b84742d77881448a6ce0db07e3077f8652d0133488962b7543b642c1025066904fb5c4278b91be6892b86c314c400",
+        new string[] { "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334" }
+    )]
     [TestCase(
         60ul,
         1ul,
@@ -215,13 +214,11 @@ class ShutterCryptoTests
         619ul,
         "0xcb770a9b31ac28b0c90d0357f8df7c1c1cd660be",
         "C3A9E42322917542E56FCEB963612161ECE4751E5BB4232CE030E6C1FDD8AA9B01551565037C355874858CC595FCE595368F071572F7CE6F4BDD9DEA3A7514C800",
-        new string[] { },
-        ""
+        new string[] { "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009F9078" }
     )]
-    public void Can_verify_decryption_key_signatures(ulong instanceId, ulong eon, ulong slot, ulong txPointer, string keyperAddress, string sigHex, string[] identityPreimagesHex, string expectedHash)
+    public void Can_verify_decryption_key_signatures(ulong instanceId, ulong eon, ulong slot, ulong txPointer, string keyperAddress, string sigHex, string[] identityPreimagesHex)
     {
         List<byte[]> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString).ToList();
-        // Assert.That(ShutterCrypto.GenerateHash(instanceId, eon, slot, txPointer, identityPreimages).ToString(), Is.EqualTo(expectedHash));
         Assert.That(ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(instanceId, eon, slot, txPointer, identityPreimages, Convert.FromHexString(sigHex), new(keyperAddress)));
     }
 
