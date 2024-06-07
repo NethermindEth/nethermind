@@ -350,7 +350,7 @@ namespace Nethermind.Synchronization.Test
                         Always.Valid,
                         syncConfig,
                         bestPeerStrategy,
-                        fullStateFinder,
+                        reader,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(

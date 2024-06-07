@@ -263,11 +263,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void UpdateSyncModes(SyncMode newModes, string? reason = null)
         {
-            if (_logger.IsTrace)
-            {
-                string message = $"Changing state to {newModes} | {reason}";
-                if (_logger.IsTrace) _logger.Trace(message);
-            }
+            if (_logger.IsInfo) _logger.Info($"Changing state to {newModes} | {reason}");
 
             SyncMode previous = Current;
 

@@ -21,6 +21,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -522,7 +523,7 @@ public partial class BlockDownloaderTests
                     SpecProvider,
                     BetterPeerStrategy,
                     ChainLevelHelper,
-                    Substitute.For<ISyncProgressResolver>(),
+                    Substitute.For<IStateReader>(),
                     LimboLogs.Instance);
             }
         }
@@ -530,6 +531,5 @@ public partial class BlockDownloaderTests
         private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
         protected override IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
             _peerAllocationStrategy ??= new MergeBlocksSyncPeerAllocationStrategyFactory(PosSwitcher, BeaconPivot, LimboLogs.Instance);
-
     }
 }

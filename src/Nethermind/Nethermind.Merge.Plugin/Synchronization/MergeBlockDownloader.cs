@@ -3,10 +3,12 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -16,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -36,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IFullStateFinder _fullStateFinder;
+        private readonly IStateReader _stateReader;
 
         public MergeBlockDownloader(
             IPoSSwitcher posSwitcher,
@@ -51,7 +54,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
-            IFullStateFinder fullStateFinder,
+            IStateReader stateReader,
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
@@ -66,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
-            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logger = logManager.GetClassLogger();
         }
 
@@ -128,13 +131,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
             bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
 
-            int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;
+            int blocksSynced = 0;
+
             if (_logger.IsDebug)
                 _logger.Debug(
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
-            bool HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest)
+            bool HasMoreToSync([NotNullWhen(true)] out BlockHeader[]? headers, out int headersToRequest)
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -166,6 +170,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+
+                if (shouldProcess)
+                {
+                    BlockHeader? parentHeader = _blockTree.FindHeader(headers[0].ParentHash!);
+                    if (parentHeader is not null && !_stateReader.HasStateForBlock(parentHeader))
+                    {
+                        shouldProcess = false;
+                        downloadReceipts = true;
+                    }
+                }
+
                 Block[]? blocks = null;
                 TxReceipt[]?[]? receipts = null;
                 if (_logger.IsTrace)
@@ -225,28 +240,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         throw new EthSyncException(message);
                     }
 
-                    if (shouldProcess)
-                    {
-                        // An edge case when we've got state already, but still downloading blocks before it.
-                        // We cannot process such blocks, but still we are requested to process them via blocksRequest.Options
-                        // So we'are detecting it and chaing from processing to receipts downloading
-                        bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                        bool toBeProcessedHasNoProcessedParent = currentBlock.Number > (bestProcessedBlock + 1);
-                        bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
-                        if (isFastSyncTransition)
-                        {
-                            long bestFullState = _fullStateFinder.FindBestFullState();
-                            shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
-                            if (!shouldProcess && !downloadReceipts)
-                            {
-                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
-                                downloadReceipts = true;
-                                context.SetDownloadReceipts();
-                                await RequestReceipts(bestPeer, cancellation, context);
-                                receipts = context.ReceiptsForBlocks;
-                            }
-                        }
-                    }
+                    if (_logger.IsWarn) _logger.Warn($"Syncing block: {currentBlock}, shouldProcess: {shouldProcess}");
 
                     if (downloadReceipts)
                     {
@@ -279,10 +273,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (shouldProcess == false)
                         {
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                        }
-                        else
-                        {
-                            bestProcessedBlock = currentBlock.Number;
                         }
 
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
