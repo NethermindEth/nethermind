@@ -12,52 +12,48 @@ using Nethermind.State;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable UnusedAutoPropertyAccessor.Global
-namespace Nethermind.Consensus.Processing
+namespace Nethermind.Consensus.Processing;
+
+public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
 {
-    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
+    protected readonly ISpecProvider _specProvider;
+    protected readonly ILogManager? _logManager;
+
+    public IStateReader StateReader { get; }
+    public IWorldState StateProvider { get; }
+    public ITransactionProcessor TransactionProcessor { get; set; }
+    public IBlockTree BlockTree { get; }
+
+    public ReadOnlyTxProcessingEnv(
+      IWorldStateManager? worldStateManager,
+      IReadOnlyBlockTree? readOnlyBlockTree,
+      ISpecProvider? specProvider,
+      ILogManager? logManager,
+      PreBlockCaches? preBlockCaches = null)
     {
-        public IStateReader StateReader { get; }
-        public IWorldState StateProvider { get; }
-        public ITransactionProcessor TransactionProcessor { get; set; }
-        public IBlockTree BlockTree { get; }
-        public IBlockhashProvider BlockhashProvider { get; }
-        public IVirtualMachine Machine { get; }
-        public ISpecProvider SpecProvider { get; }
+        ArgumentNullException.ThrowIfNull(worldStateManager);
+        ArgumentNullException.ThrowIfNull(readOnlyBlockTree);
+        ArgumentNullException.ThrowIfNull(specProvider);
 
-        public ReadOnlyTxProcessingEnv(
-            IWorldStateManager worldStateManager,
-            IBlockTree? blockTree,
-            ISpecProvider? specProvider,
-            ILogManager? logManager)
-            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
-        {
-        }
+        StateReader = worldStateManager.GlobalStateReader;
+        StateProvider = worldStateManager.CreateResettableWorldState(preBlockCaches);
+        BlockTree = readOnlyBlockTree;
+        _specProvider = specProvider;
+        _logManager = logManager;
+        TransactionProcessor = CreateTransactionProcessor();
+    }
 
-        public ReadOnlyTxProcessingEnv(
-            IWorldStateManager worldStateManager,
-            IReadOnlyBlockTree? readOnlyBlockTree,
-            ISpecProvider? specProvider,
-            ILogManager? logManager,
-            PreBlockCaches? preBlockCaches = null)
-        {
-            ArgumentNullException.ThrowIfNull(specProvider);
-            ArgumentNullException.ThrowIfNull(worldStateManager);
-            SpecProvider = specProvider;
-            StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState(preBlockCaches);
+    protected virtual TransactionProcessor CreateTransactionProcessor()
+    {
+        BlockhashProvider blockhashProvider = new(BlockTree, _specProvider, StateProvider, _logManager);
+        VirtualMachine virtualMachine = new(blockhashProvider, _specProvider, _logManager);
+        return new TransactionProcessor(_specProvider, StateProvider, virtualMachine, _logManager);
+    }
 
-            BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
 
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
-        }
-
-        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
-
-        public void Reset()
-        {
-            StateProvider.Reset();
-        }
+    public void Reset()
+    {
+        StateProvider.Reset();
     }
 }

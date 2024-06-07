@@ -69,7 +69,7 @@ jobs:
 
         # Output the variables
         echo "skip_docker_build=$skip_docker_build" >> $GITHUB_OUTPUT
-        echo "wait_for_docker=$wait_for_docker" >> $GITHUB_OUTPUT
+        echo "skip_wait_for_docker=$skip_wait_for_docker" >> $GITHUB_OUTPUT
 
     - name: Trigger Docker Build Action with Cleaned Ref
       if: steps.check_conditions.outputs.skip_docker_build != 'true'

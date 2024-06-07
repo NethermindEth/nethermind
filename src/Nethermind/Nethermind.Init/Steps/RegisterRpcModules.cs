@@ -81,10 +81,9 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
-        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
-
         RpcLimits.Init(_jsonRpcConfig.RequestQueueLimit);
-        rpcModuleProvider.RegisterBounded(ethModuleFactory, _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+        RegisterEthRpcModule(rpcModuleProvider);
+
 
         StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
@@ -115,18 +114,7 @@ public class RegisterRpcModules : IStep
             _api.LogManager);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
 
-        TraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager,
-            _api.BlockTree,
-            _jsonRpcConfig,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _api.PoSSwitcher,
-            _api.LogManager);
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
+        RegisterTraceRpcModule(rpcModuleProvider);
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
 
@@ -213,7 +201,7 @@ public class RegisterRpcModules : IStep
         await Task.CompletedTask;
     }
 
-    protected virtual ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
+    protected ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
     {
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
@@ -241,5 +229,40 @@ public class RegisterRpcModules : IStep
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle);
+    }
+
+    protected virtual void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
+
+        rpcModuleProvider.RegisterBounded(ethModuleFactory,
+            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+    }
+
+    protected ModuleFactoryBase<ITraceRpcModule> CreateTraceModuleFactory()
+    {
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+
+        return new TraceModuleFactory(
+            _api.WorldStateManager,
+            _api.BlockTree,
+            _jsonRpcConfig,
+            _api.BlockPreprocessor,
+            _api.RewardCalculatorSource,
+            _api.ReceiptStorage,
+            _api.SpecProvider,
+            _api.PoSSwitcher,
+            _api.LogManager);
+    }
+
+    protected virtual void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        ModuleFactoryBase<ITraceRpcModule> traceModuleFactory = CreateTraceModuleFactory();
+
+        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
     }
 }
