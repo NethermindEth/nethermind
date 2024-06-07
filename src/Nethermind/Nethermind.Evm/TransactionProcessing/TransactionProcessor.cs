@@ -257,7 +257,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     return "block gas limit exceeded";
                 }
             }
-
             return TransactionResult.Ok;
         }
 
@@ -454,6 +453,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // If sender is SystemUser subtracting value will cause InsufficientBalanceException
             if (validate || !tx.IsSystem())
                 WorldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
+            if (tx.Type == TxType.SetCode)
+            {
+                Ecdsa.RecoverAddress();
+            }
 
             try
             {

@@ -63,10 +63,10 @@ namespace Nethermind.Core.Test.Encoding
                 .SignedAndResolved(), "EIP 1559 second test case");
             yield return (Build.A.Transaction
                 .WithMaxFeePerGas(2.GWei())
-                .WithType(TxType.ContractCode)
+                .WithType(TxType.SetCode)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .WithContractCode([new TxContractCode([0x0], ulong.MinValue, [0x0], [0x0])])
+                .WithContractCode([new SetCodeAuthorization(0, TestItem.AddressF, 0, 0, [], [])])
                 .SignedAndResolved(), "EIP 7702 first test case");
         }
 
@@ -388,11 +388,11 @@ namespace Nethermind.Core.Test.Encoding
         {
             Transaction tx = Build.A.Transaction
                 .WithMaxFeePerGas(2.GWei())
-                .WithType(TxType.ContractCode)
+                .WithType(TxType.SetCode)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .WithContractCode(new TxContractCode([0x0], ulong.MinValue, [0x0], [0x0]))
-                .WithContractCode(new TxContractCode([0x1], ulong.MinValue, [0xff, 0xff, 0xff], [0xff, 0xff, 0xff]))
+                .WithContractCode(new SetCodeAuthorization(0, TestItem.AddressF, 0, ulong.MinValue, [0x0], [0x0]))
+                .WithContractCode(new SetCodeAuthorization(0, TestItem.AddressF, 0, ulong.MinValue, [0xff, 0xff, 0xff], [0xff, 0xff, 0xff]))
                 .SignedAndResolved().TestObject;
             RlpStream rlpStream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, tx);

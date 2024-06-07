@@ -532,6 +532,38 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
     }
 
+    [Test]
+    public void IsWellFormed_ContractCodeTxInCancunSpec_ReturnsFalse()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithContractCode(new SetCodeAuthorization(0, TestItem.AddressA, 0, 0, [], []))
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out _), Is.False);
+    }
+    
+    [Test]
+    public void IsWellFormed_ContractCodeTxInPragueSpec_ReturnsTrue()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithContractCode(new SetCodeAuthorization(0, TestItem.AddressA, 0, 0, [], []))
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out _), Is.True);
+    }
+
     private static byte[] MakeArray(int count, params byte[] elements) =>
         elements.Take(Math.Min(count, elements.Length))
             .Concat(new byte[Math.Max(0, count - elements.Length)])

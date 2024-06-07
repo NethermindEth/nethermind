@@ -45,7 +45,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly AccessListDecoder _accessListDecoder = new();
         private readonly bool _lazyHash;
-        private TxContractCodeDecoder _txContractCodeDecoder = new();
+        private SetCodeAuthorizationDecoder _txContractCodeDecoder = new();
 
         protected TxDecoder(bool lazyHash = true)
         {
@@ -96,7 +96,7 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
-                case TxType.ContractCode:
+                case TxType.SetCode:
                     DecodeContractCodeWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
@@ -508,7 +508,7 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
-                case TxType.ContractCode:
+                case TxType.SetCode:
                     DecodeContractCodeWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
@@ -709,7 +709,7 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
-                case TxType.ContractCode:
+                case TxType.SetCode:
                     EncodeContractCodeWithoutPayload(item, stream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
@@ -873,7 +873,7 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     contentLength = GetShardBlobContentLength(item);
                     break;
-                case TxType.ContractCode:
+                case TxType.SetCode:
                     contentLength = GetContractCodeLength(item);
                     break;
                 case TxType.DepositTx:

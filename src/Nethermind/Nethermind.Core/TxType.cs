@@ -9,7 +9,8 @@ namespace Nethermind.Core
         AccessList = 1,
         EIP1559 = 2,
         Blob = 3,
-        ContractCode = 4,
+        //TODO type has not been determined yet
+        SetCode = 4,
 
         DepositTx = 0x7E,
     }

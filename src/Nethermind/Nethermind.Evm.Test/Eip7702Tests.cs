@@ -49,8 +49,8 @@ public class Eip7702Tests : VirtualMachineTestsBase
         Signature sig = CreateContractCodeSignedMessage(signer, code);
         
         Transaction tx = Build.A.Transaction
-            .WithType(TxType.ContractCode)
-            .WithContractCode(new TxContractCode(code, sig))
+            .WithType(TxType.SetCode)
+            .WithContractCode(new SetCodeAuthorization(0, TestItem.AddressF, 0, sig))
             .WithGasLimit(40000)
             .WithGasPrice(1)
             .WithValue(0)

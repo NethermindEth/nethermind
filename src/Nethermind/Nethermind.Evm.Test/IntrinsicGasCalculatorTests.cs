@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
+using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -114,6 +116,88 @@ namespace Nethermind.Evm.Test
             Test(GrayGlacier.Instance, true);
             Test(Shanghai.Instance, true);
             Test(Cancun.Instance, true);
+        }
+        public static IEnumerable<(SetCodeAuthorization[] contractCode, long expectedCost)> SetContractCodeTestCaseSource()
+        {
+            yield return (
+                [new SetCodeAuthorization(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+                ],
+                GasCostOf.PerAuthBaseCost);
+            yield return (
+               [new SetCodeAuthorization(
+                   TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10)),
+                new SetCodeAuthorization(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+               ],
+               GasCostOf.PerAuthBaseCost * 2);
+            yield return (
+               [new SetCodeAuthorization(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10)),
+                new SetCodeAuthorization(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10)),
+                new SetCodeAuthorization(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+               ],
+               GasCostOf.PerAuthBaseCost * 3);
+        }
+        [TestCaseSource(nameof(SetContractCodeTestCaseSource))]
+        public void Calculate_TxHasSetCode_ReturnsExpectedCostOfTx((SetCodeAuthorization[] ContractCodes, long ExpectedCost) testCase)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithContractCode(testCase.ContractCodes)
+                .TestObject;
+
+            IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
+                .Should().Be(21000 + (testCase.ExpectedCost));
+        }
+
+        [Test]
+        public void Calculate_TxHasSetCodeBeforePrague_ThrowsInvalidDataException()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithContractCode(
+                new SetCodeAuthorization(
+                    0,
+                    TestItem.AddressF,
+                    0,
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+                )
+                .TestObject;
+
+            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
         }
     }
 }

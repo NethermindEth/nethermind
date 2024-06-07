@@ -11,9 +11,9 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Serialization.Rlp.Eip7702;
-public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpValueDecoder<TxContractCode[]?>
+public class SetCodeAuthorizationDecoder : IRlpStreamDecoder<SetCodeAuthorization[]?>, IRlpValueDecoder<SetCodeAuthorization[]?>
 {
-    public TxContractCode[]? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public SetCodeAuthorization[]? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
         {
@@ -25,14 +25,16 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
 
         int check = rlpStream.Position + outerLength;
 
-        List<TxContractCode> result = new List<TxContractCode>();
+        List<SetCodeAuthorization> result = new List<SetCodeAuthorization>();
 
         while (rlpStream.Position < check)
         {
             //TODO check what is valid for the fields here
             byte[] contractCode = rlpStream.DecodeByteArray();
-            result.Add(new TxContractCode(
-                contractCode,
+            result.Add(new SetCodeAuthorization(
+                rlpStream.DecodeULong(),
+                rlpStream.DecodeAddress(),
+                rlpStream.DecodeUInt256(),
                 rlpStream.DecodeULong(),
                 rlpStream.DecodeByteArray(),
                 rlpStream.DecodeByteArray()));
@@ -45,7 +47,7 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
         return result.ToArray();
     }
 
-    public TxContractCode[]? Decode(
+    public SetCodeAuthorization[]? Decode(
         ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -59,14 +61,16 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
 
         int check = decoderContext.Position + outerLength;
 
-        List<TxContractCode> result = new List<TxContractCode>();
+        List<SetCodeAuthorization> result = new List<SetCodeAuthorization>();
 
         while (decoderContext.Position < check)
         {
             //TODO check what is valid for the fields here
             byte[] contractCode = decoderContext.DecodeByteArray();
-            result.Add(new TxContractCode(
-                contractCode,
+            result.Add(new SetCodeAuthorization(
+                decoderContext.DecodeULong(),
+                decoderContext.DecodeAddress(),
+                decoderContext.DecodeUInt256(),
                 decoderContext.DecodeULong(),
                 decoderContext.DecodeByteArray(),
                 decoderContext.DecodeByteArray()));
@@ -79,7 +83,7 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
         return result.ToArray();
     }
 
-    public void Encode(RlpStream stream, TxContractCode[]? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, SetCodeAuthorization[]? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -89,23 +93,18 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
 
         int contentLength = GetContentLength(item);
         stream.StartSequence(contentLength);
-        foreach (TxContractCode contractCode in item)
+        foreach (SetCodeAuthorization contractCode in item)
         {
-            if (contractCode.ContractCode == null)
-            {
-                stream.WriteByte(Rlp.NullObjectByte);
-            }
-            else
-            {
-                stream.Encode(contractCode.ContractCode);
-            }
+            stream.Encode(contractCode.ChainId ?? throw new RlpException("Invalid tx set code format - chain id is null"));
+            stream.Encode(contractCode.CodeAddress ?? throw new RlpException("Invalid tx set code format - address is null"));
+            stream.Encode(contractCode.Nonce ?? 0);
             stream.Encode(contractCode.YParity);
             stream.Encode(contractCode.R);
             stream.Encode(contractCode.S);
         }
     }
 
-    public int GetLength(TxContractCode[]? contractCodes, RlpBehaviors rlpBehaviors)
+    public int GetLength(SetCodeAuthorization[]? contractCodes, RlpBehaviors rlpBehaviors)
     {
         if (contractCodes is null)
         {
@@ -116,12 +115,12 @@ public class TxContractCodeDecoder : IRlpStreamDecoder<TxContractCode[]?>, IRlpV
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static int GetContentLength(ReadOnlySpan<TxContractCode> contractCodes)
+    private static int GetContentLength(ReadOnlySpan<SetCodeAuthorization> contractCodes)
     {
         int total = 0;
         foreach (var code in contractCodes)
         {
-            total += Rlp.LengthOf(code.ContractCode) + Rlp.LengthOf(code.YParity) + Rlp.LengthOf(code.R) + Rlp.LengthOf(code.S);
+            total += Rlp.LengthOf(code.ChainId) + Rlp.LengthOf(code.CodeAddress) + Rlp.LengthOf(code.Nonce) + Rlp.LengthOf(code.YParity) + Rlp.LengthOf(code.R) + Rlp.LengthOf(code.S);
         }
         return total;
     }

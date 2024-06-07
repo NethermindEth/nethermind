@@ -220,12 +220,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithContractCode(TxContractCode contractCode)
+        public TransactionBuilder<T> WithContractCode(SetCodeAuthorization setContractCode)
         {
-            TestObjectInternal.ContractCodes = TestObjectInternal.ContractCodes != null ? [.. TestObjectInternal.ContractCodes, contractCode] : [contractCode];
+            TestObjectInternal.ContractCodes = TestObjectInternal.ContractCodes != null ? [.. TestObjectInternal.ContractCodes, setContractCode] : [setContractCode];
             return this;
         }
-        public TransactionBuilder<T> WithContractCode(IEnumerable<TxContractCode> contractCodes)
+        public TransactionBuilder<T> WithContractCode(IEnumerable<SetCodeAuthorization> contractCodes)
         {
             TestObjectInternal.ContractCodes = contractCodes.ToArray();
             return this;

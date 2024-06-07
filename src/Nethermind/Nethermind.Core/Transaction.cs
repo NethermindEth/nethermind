@@ -160,7 +160,7 @@ namespace Nethermind.Core
 
         public object? NetworkWrapper { get; set; }
 
-        public TxContractCode[]? ContractCodes { get; set; } // https://eips.ethereum.org/EIPS/eip-7702
+        public SetCodeAuthorization[]? ContractCodes { get; set; } // https://eips.ethereum.org/EIPS/eip-7702
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
