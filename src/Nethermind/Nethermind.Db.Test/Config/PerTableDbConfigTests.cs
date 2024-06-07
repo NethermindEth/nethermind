@@ -39,6 +39,17 @@ public class PerTableDbConfigTests
     }
 
     [Test]
+    public void When_ColumnDb_UsePerTableConfig()
+    {
+        DbConfig dbConfig = new DbConfig();
+        dbConfig.MaxOpenFiles = 2;
+        dbConfig.ReceiptsDbMaxOpenFiles = 3;
+
+        PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""), "Blocks");
+        config.MaxOpenFiles.Should().Be(3);
+    }
+
+    [Test]
     public void When_PerTableConfigIsAvailable_UsePerTableConfig()
     {
         DbConfig dbConfig = new DbConfig();
