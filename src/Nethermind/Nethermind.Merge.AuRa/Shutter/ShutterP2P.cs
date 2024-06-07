@@ -19,9 +19,6 @@ using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
-using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Core.Extensions;
-using Microsoft.Extensions.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Merge.AuRa.Shutter;
@@ -80,30 +77,31 @@ public class ShutterP2P
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         long delta = 0;
-        long oldDelta = 0;
         Task.Run(() =>
         {
             for (; ; )
             {
-                try
-                {
-                    Thread.Sleep(200);
-                    oldDelta = delta;
-                    delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+                Thread.Sleep(250);
 
-                    if (msgQueue.TryDequeue(out var msg))
+                while (msgQueue.TryDequeue(out var msg))
+                {
+                    try
                     {
-                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                         ProcessP2PMessage(msg);
                     }
-                    else if (delta > 0 && delta % (60 * 5) == 0 && delta != oldDelta)
+                    catch (Exception e)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
+                        if (_logger.IsError) _logger.Error("Could not process Shutter P2P message: " + e.Message);
                     }
+                    lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                 }
-                catch (Exception e)
+
+                long oldDelta = delta;
+                delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+
+                if (delta > 0 && delta % (60 * 5) == 0 && delta != oldDelta)
                 {
-                    if (_logger.IsError) _logger.Error("Shutter processing thread exception: " + e.Message);
+                    if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }
             }
         });
