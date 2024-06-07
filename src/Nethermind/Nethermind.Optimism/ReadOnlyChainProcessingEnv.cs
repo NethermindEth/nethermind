@@ -45,7 +45,7 @@ public class OptimismReadOnlyChainProcessingEnv(
             transactionsExecutor,
             StateProvider,
             receiptStorage,
-            new BlockhashStore(txEnv.BlockTree, specProvider, StateProvider),
+            new BlockhashStore(specProvider, StateProvider),
             logManager,
             opSpecHelper,
             contractRewriter,
