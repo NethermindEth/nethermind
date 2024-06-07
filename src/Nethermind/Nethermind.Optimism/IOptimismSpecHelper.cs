@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Optimism;
 
-public interface IOPConfigHelper
+public interface IOptimismSpecHelper
 {
     Address L1FeeReceiver { get; }
 

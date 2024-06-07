@@ -6,26 +6,14 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism;
 
-public class OPSpecHelper : IOPConfigHelper
+public class OptimismSpecHelper(OptimismParameters parameters) : IOptimismSpecHelper
 {
-    private readonly ulong _regolithTimestamp;
-    private readonly long _bedrockBlockNumber;
-    private readonly ulong? _canyonTimestamp;
-    private readonly ulong? _ecotoneTimestamp;
+    private readonly long _bedrockBlockNumber = parameters.BedrockBlockNumber;
+    private readonly ulong _regolithTimestamp = parameters.RegolithTimestamp;
+    private readonly ulong? _canyonTimestamp = parameters.CanyonTimestamp;
+    private readonly ulong? _ecotoneTimestamp = parameters.EcotoneTimestamp;
 
-    public Address L1FeeReceiver { get; init; }
-
-    public OPSpecHelper(OptimismParameters parameters)
-    {
-        _regolithTimestamp = parameters.RegolithTimestamp;
-        _bedrockBlockNumber = parameters.BedrockBlockNumber;
-        _canyonTimestamp = parameters.CanyonTimestamp;
-        _ecotoneTimestamp = parameters.EcotoneTimestamp;
-
-        L1FeeReceiver = parameters.L1FeeRecipient;
-        Create2DeployerCode = parameters.Create2DeployerCode;
-        Create2DeployerAddress = parameters.Create2DeployerAddress;
-    }
+    public Address L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
     public bool IsRegolith(BlockHeader header)
     {
@@ -47,6 +35,6 @@ public class OPSpecHelper : IOPConfigHelper
         return header.Timestamp >= _ecotoneTimestamp;
     }
 
-    public Address? Create2DeployerAddress { get; }
-    public byte[]? Create2DeployerCode { get; }
+    public Address? Create2DeployerAddress { get; } = parameters.Create2DeployerAddress;
+    public byte[]? Create2DeployerCode { get; } = parameters.Create2DeployerCode;
 }

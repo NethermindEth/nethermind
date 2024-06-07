@@ -29,7 +29,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IReceiptStorage? receiptStorage,
         IBlockhashStore? blockhashStore,
         ILogManager? logManager,
-        IOPConfigHelper opConfigHelper,
+        IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
@@ -37,7 +37,7 @@ public class OptimismBlockProcessor : BlockProcessor
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;
-        ReceiptsTracer = new OptimismBlockReceiptTracer(opConfigHelper, stateProvider);
+        ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)

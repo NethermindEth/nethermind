@@ -12,9 +12,9 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public class OPL1CostHelper(IOPConfigHelper opConfigHelper, Address l1BlockAddr) : IL1CostHelper
+public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAddr) : IL1CostHelper
 {
-    private readonly IOPConfigHelper _opConfigHelper = opConfigHelper;
+    private readonly IOptimismSpecHelper _opSpecHelper = opSpecHelper;
 
     private readonly StorageCell _l1BaseFeeSlot = new(l1BlockAddr, new UInt256(1));
     private readonly StorageCell _overheadSlot = new(l1BlockAddr, new UInt256(5));
@@ -35,15 +35,14 @@ public class OPL1CostHelper(IOPConfigHelper opConfigHelper, Address l1BlockAddr)
         if (tx.IsDeposit())
             return UInt256.Zero;
 
-        UInt256 dataGas = ComputeDataGas(tx, _opConfigHelper.IsRegolith(header));
+        UInt256 dataGas = ComputeDataGas(tx, _opSpecHelper.IsRegolith(header));
         if (dataGas.IsZero)
             return UInt256.Zero;
 
         UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
 
-        if (_opConfigHelper.IsEcotone(header))
+        if (_opSpecHelper.IsEcotone(header))
         {
-            // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
             UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
 
             ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
@@ -60,7 +59,6 @@ public class OPL1CostHelper(IOPConfigHelper opConfigHelper, Address l1BlockAddr)
         }
         else
         {
-            // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
             UInt256 overhead = new(worldState.Get(_overheadSlot), true);
             UInt256 feeScalar = new(worldState.Get(_scalarSlot), true);
 
@@ -81,11 +79,13 @@ public class OPL1CostHelper(IOPConfigHelper opConfigHelper, Address l1BlockAddr)
         return (ulong)(zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028);
     }
 
+    // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
     public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
     {
         return dataGas * (precisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / precisionDevider;
     }
 
+    // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
     public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar)
     {
         return dataGasWithOverhead * l1BaseFee * feeScalar / basicDevider;
