@@ -87,7 +87,8 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             }
             else if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorPubKey, update.Signature, update.Message))
             {
-                if (_logger.IsDebug) _logger.Warn("Registration message has invalid signature.");
+                _logger.Info($"pk: {validatorPubKey}, sig: {update.Signature}, msg: {update.Message}");
+                if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
                 continue;
             }
 
