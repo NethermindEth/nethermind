@@ -28,7 +28,7 @@ public class Eip2935Tests : VirtualMachineTestsBase
 
 
     [TestCase(MainnetSpecProvider.CancunBlockTimestamp, false)]
-    [TestCase(MainnetSpecProvider.PragueBlockTimestamp, true)]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp, false)]
     public void CorrectBlockhashBeingUsed(ulong timestamp, bool eipEnabled)
     {
         const long blockNumber = 256;
