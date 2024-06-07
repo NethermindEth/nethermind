@@ -110,6 +110,12 @@ public enum TestCase
     [TestCaseMetadata("SHA-2 precompile from 128 bytes", "SHA-2 precompile calculations based on 128-byte source data")]
     SHA2From128Bytes,
 
+    [TestCaseMetadata("SHA-2 precompile from 1024 bytes", "SHA-2 precompile calculations based on 1024-byte source data")]
+    SHA2From1024Bytes,
+
+    [TestCaseMetadata("SHA-2 precompile from 16k bytes", "SHA-2 precompile calculations based on 16_384-byte source data")]
+    SHA2From16KBytes,
+
     [TestCaseMetadata("Ripemd-160 precompile from 1 byte", "Ripemd-160 precompile calculations based on 1-byte source data")]
     RipemdFrom1Byte,
 
@@ -122,6 +128,12 @@ public enum TestCase
     [TestCaseMetadata("Ripemd-160 precompile from 128 bytes", "Ripemd-160 precompile calculations based on 128-byte source data")]
     RipemdFrom128Bytes,
 
+    [TestCaseMetadata("Ripemd-160 precompile from 1024 bytes", "Ripemd-160 precompile calculations based on 1024-byte source data")]
+    RipemdFrom1024Bytes,
+
+    [TestCaseMetadata("Ripemd-160 precompile from 16k bytes", "Ripemd-160 precompile calculations based on 16_384-byte source data")]
+    RipemdFrom16KBytes,
+
     [TestCaseMetadata("Identity precompile from 1 byte", "Identity precompile call based on 1-byte source data")]
     IdentityFrom1Byte,
 
@@ -133,6 +145,12 @@ public enum TestCase
 
     [TestCaseMetadata("Identity precompile from 128 bytes", "Identity precompile call based on 128-byte source data")]
     IdentityFrom128Bytes,
+
+    [TestCaseMetadata("Identity precompile from 1024 bytes", "Identity precompile call based on 1024-byte source data")]
+    IdentityFrom1024Bytes,
+
+    [TestCaseMetadata("Identity precompile from 16k bytes", "Identity precompile call based on 16_384-byte source data")]
+    IdentityFrom16KBytes,
 
     [TestCaseMetadata("Modexp min gas, base heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 192 and exponent equal 3 (0b11 - 2x 1s in binary)")]
     ModexpMinGasBaseHeavy,

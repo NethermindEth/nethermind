@@ -282,16 +282,22 @@ public class TestCaseGenerator
             case TestCase.SHA2From8Bytes:
             case TestCase.SHA2From32Bytes:
             case TestCase.SHA2From128Bytes:
+            case TestCase.SHA2From1024Bytes:
+            case TestCase.SHA2From16KBytes:
                 return SimplePrecompile.GetTxs(0x02, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.RipemdFrom1Byte:
             case TestCase.RipemdFrom8Bytes:
             case TestCase.RipemdFrom32Bytes:
             case TestCase.RipemdFrom128Bytes:
+            case TestCase.RipemdFrom1024Bytes:
+            case TestCase.RipemdFrom16KBytes:
                 return SimplePrecompile.GetTxs(0x03, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.IdentityFrom1Byte:
             case TestCase.IdentityFrom8Bytes:
             case TestCase.IdentityFrom32Bytes:
             case TestCase.IdentityFrom128Bytes:
+            case TestCase.IdentityFrom1024Bytes:
+            case TestCase.IdentityFrom16KBytes:
                 return SimplePrecompile.GetTxs(0x04, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Blake1Round:
             case TestCase.Blake1KRounds:
