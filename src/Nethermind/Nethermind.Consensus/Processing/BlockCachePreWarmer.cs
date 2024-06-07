@@ -72,19 +72,24 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                ReadOnlyTxProcessingEnv env = _envPool.Get();
-                try
-                {
-                    using IReadOnlyTransactionProcessor transactionProcessor = env.Build(stateRoot);
-                    Parallel.For(0, block.Withdrawals.Length, parallelOptions,
-                        i => env.StateProvider.WarmUp(block.Withdrawals[i].Address)
-                    );
-                }
-                finally
-                {
-                    env.Reset();
-                    _envPool.Return(env);
-                }
+                Parallel.For(0, block.Withdrawals.Length, parallelOptions,
+                    i =>
+                    {
+                        ReadOnlyTxProcessingEnv env = _envPool.Get();
+                        try
+                        {
+                            env.StateProvider.WarmUp(block.Withdrawals[i].Address);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal {i}", ex);
+                        }
+                        finally
+                        {
+                            env.Reset();
+                            _envPool.Return(env);
+                        }
+                    });
             }
         }
 
