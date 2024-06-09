@@ -87,7 +87,9 @@ namespace Nethermind.Blockchain
 
             private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
             {
-                IScopedStateReader current = _stateReader.ForStateRoot(e.Block.StateRoot);
+                IScopedStateReader current = !_stateReader.HasStateForRoot(e.Block.StateRoot) ?
+                                                        _stateReader.ForStateRoot() :
+                                                        _stateReader.ForStateRoot(e.Block.StateRoot);
                 IScopedStateReader? previous;
 
                 _lock.EnterWriteLock();
