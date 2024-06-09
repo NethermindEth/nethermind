@@ -99,6 +99,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
         void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
         {
+            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
             Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
             {
                 // If the transaction has already been processed or being processed, exit early
