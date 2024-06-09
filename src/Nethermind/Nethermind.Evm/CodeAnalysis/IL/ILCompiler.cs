@@ -51,9 +51,11 @@ internal class ILCompiler
         using Local uint256R = method.DeclareLocal(typeof(UInt256));
 
         using Local localReadonOnlySpan = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
+        using Local localZeroPaddedSpan = method.DeclareLocal(typeof(ZeroPaddedSpan));
         using Local localSpan = method.DeclareLocal(typeof(Span<byte>));
         using Local localArray = method.DeclareLocal(typeof(byte[]));
         using Local uint64A = method.DeclareLocal(typeof(ulong));
+
         using Local uint32A = method.DeclareLocal(typeof(uint));
         using Local int64A = method.DeclareLocal(typeof(long));
         using Local byte8A = method.DeclareLocal(typeof(byte));
@@ -85,16 +87,16 @@ internal class ILCompiler
         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
         method.StoreLocal(programCounter);
 
-        Dictionary<EvmExceptionType, Label> labels = new();
+        Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
 
         foreach (var exception in Enum.GetValues<EvmExceptionType>())
         {
-            labels.Add(exception, method.DefineLabel(exception.ToString()));
+            evmExceptionLabels.Add(exception, method.DefineLabel());
         }
 
-        Label exit = method.DefineLabel("Return"); // the label just before return
-        Label jumpTable = method.DefineLabel("Jumptable"); // jump table
-        Label ret = method.DefineLabel("return");
+        Label exit = method.DefineLabel(); // the label just before return
+        Label jumpTable = method.DefineLabel(); // jump table
+        Label ret = method.DefineLabel();
 
         Dictionary<int, Label> jumpDestinations = new();
 
@@ -102,9 +104,9 @@ internal class ILCompiler
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
 
         Dictionary<int, long> gasCost = BuildCostLookup(code);
-        for (int pc = 0; pc < code.Length; pc++)
+        for (int i = 0; i < code.Length; i++)
         {
-            OpcodeInfo op = code[pc];
+            OpcodeInfo op = code[i];
 
             // set pc
             method.LoadConstant(op.ProgramCounter);
@@ -114,7 +116,7 @@ internal class ILCompiler
             method.LoadLocal(gasAvailable);
 
             // get pc gas cost
-            method.LoadConstant(gasCost[pc]);
+            method.LoadConstant(op.Metadata?.GasCost ?? 0);
 
             // subtract the gas cost
             method.Subtract();
@@ -125,7 +127,7 @@ internal class ILCompiler
             method.LoadConstant((long)0);
 
             // if gas is not available, branch to out of gas
-            method.BranchIfLess(labels[EvmExceptionType.OutOfGas]);
+            method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
             // else emit 
             switch (op.Operation)
@@ -137,13 +139,13 @@ internal class ILCompiler
                     method.Branch(ret);
                     break;
                 case Instruction.INVALID:
-                    method.Branch(labels[EvmExceptionType.InvalidCode]);
+                    method.Branch(evmExceptionLabels[EvmExceptionType.InvalidCode]);
                     break;
                 case Instruction.CHAINID:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadArgument(1);
-                    method.LoadField(GetFieldInfo(typeof(ISpecProvider), nameof(ISpecProvider.ChainId)));
+                    method.CallVirtual(GetPropertyInfo(typeof(ISpecProvider), nameof(ISpecProvider.ChainId), false, out _));
                     method.StoreField(Word.Ulong0Field);
                     method.StackPush(head);
                     break;
@@ -162,8 +164,8 @@ internal class ILCompiler
                     break;
                 case Instruction.JUMPDEST:
                     // mark the jump destination
-                    jumpDestinations[pc] = method.DefineLabel();
-                    method.MarkLabel(jumpDestinations[pc]);
+                    jumpDestinations[op.ProgramCounter] = method.DefineLabel();
+                    method.MarkLabel(jumpDestinations[op.ProgramCounter]);
                     break;
                 case Instruction.JUMP:
                     // we jump into the jump table
@@ -173,7 +175,7 @@ internal class ILCompiler
                     // consume the jump condition
                     Label noJump = method.DefineLabel();
                     method.StackLoadPrevious(stack, head, 2);
-                    method.Call(Word.GetIsZero, null);
+                    method.Call(Word.GetIsZero);
 
                     // if the jump condition is false, we do not jump
                     method.BranchIfTrue(noJump);
@@ -309,7 +311,6 @@ internal class ILCompiler
                             il.MarkLabel(label);
                         }, uint256A, uint256B);
                     break;
-
                 case Instruction.SDIV:
                     EmitBinaryInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static)!,
                         (il, postInstructionLabel, locals) =>
@@ -350,7 +351,7 @@ internal class ILCompiler
                     EmitTrinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!,
                         (il, postInstructionLabel, locals) =>
                         {
-                            Label label = il.DefineLabel("failureCase");
+                            Label label = il.DefineLabel();
 
                             il.LoadLocalAddress(locals[2]);
                             il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZeroOrOne), false, out _));
@@ -368,7 +369,7 @@ internal class ILCompiler
                     EmitTrinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!,
                         (il, postInstructionLabel, locals) =>
                         {
-                            Label label = il.DefineLabel("failureCase");
+                            Label label = il.DefineLabel();
 
                             il.LoadLocalAddress(locals[2]);
                             il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZeroOrOne), false, out _));
@@ -525,7 +526,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Timestamp), false, out _));
-                    method.Call(Word.SetUInt256);
+                    method.StoreField(Word.Ulong0Field);
                     method.StackPush(head);
                     break;
                 case Instruction.NUMBER:
@@ -535,7 +536,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
-                    method.Call(Word.SetUInt256);
+                    method.StoreField(Word.Ulong0Field);
                     method.StackPush(head);
                     break;
                 case Instruction.GASLIMIT:
@@ -545,7 +546,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
-                    method.Call(Word.SetUInt256);
+                    method.StoreField(Word.Ulong0Field);
                     method.StackPush(head);
                     break;
                 case Instruction.CALLER:
@@ -571,7 +572,7 @@ internal class ILCompiler
                     method.Load(stack, head);
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
-                    method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin)));
+                    method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
                     method.Call(Word.SetAddress);
                     method.StackPush(head);
                     break;
@@ -580,7 +581,7 @@ internal class ILCompiler
                     method.Load(stack, head);
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(ExecutionEnvironment.Value)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
                     method.Call(Word.SetUInt256);
                     method.StackPush(head);
                     break;
@@ -588,15 +589,13 @@ internal class ILCompiler
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice)));
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
+                    method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
                     method.Call(Word.SetUInt256);
                     method.StackPush(head);
                     break;
-
                 case Instruction.CALLDATACOPY:
-
-                    Label endOfOpcode = method.DefineLabel($"endOf{op.Operation}");
+                    Label endOfOpcode = method.DefineLabel();
 
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
@@ -629,56 +628,57 @@ internal class ILCompiler
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256C);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
                     method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
-                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
                     method.LoadLocalAddress(uint256B);
                     method.LoadLocal(uint256C);
-                    method.Call(typeof(UInt256).GetMethod("op_Explicit", new[] { typeof(int) }));
-                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod(nameof(ReadOnlySpan<byte>.Slice), [typeof(UInt256).MakeByRefType(), typeof(int)]));
-                    method.StoreLocal(localReadonOnlySpan);
+                    method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+                    method.Convert<int>();
+                    method.LoadConstant((int)PadDirection.Right);
+                    method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
+                    method.StoreLocal(localZeroPaddedSpan);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(uint256A);
-                    method.LoadLocalAddress(localReadonOnlySpan);
-                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
+                    method.LoadLocalAddress(localZeroPaddedSpan);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
 
                     method.MarkLabel(endOfOpcode);
                     break;
-
                 case Instruction.CALLDATALOAD:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StackPop(head, 1);
+                    method.StoreLocal(uint256A);
+
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
                     method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
-                    method.StackLoadPrevious(stack, head, 1);
+                    
+                    method.LoadLocalAddress(uint256A);
                     method.LoadConstant(Word.Size);
-                    method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), BindingFlags.Static | BindingFlags.Public));
-                    method.Call(typeof(ZeroPaddedSpan).GetMethod(nameof(ZeroPaddedSpan.ToArray), BindingFlags.Instance | BindingFlags.Public));
-                    method.StoreLocal(localReadonOnlySpan);
-                    // we call UInt256 constructor taking a span of bytes and a bool
-                    method.LoadLocalAddress(localReadonOnlySpan);
-                    method.LoadConstant(BitConverter.IsLittleEndian);
-                    method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
-
-                    method.Call(Word.SetUInt256);
+                    method.LoadConstant((int)PadDirection.Right);
+                    method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
+                    method.LoadField(GetFieldInfo(typeof(ZeroPaddedSpan), nameof(ZeroPaddedSpan.Span)));
+                    method.Call(Word.SetSpan);
                     method.StackPush(head);
                     break;
                 case Instruction.CALLDATASIZE:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                     method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Int0)));
                     method.StackPush(head);
                     break;
-
                 case Instruction.MSIZE:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
@@ -686,7 +686,7 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
-                    method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Int0)));
+                    method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Ulong0)));
                     method.StackPush(head);
                     break;
                 case Instruction.MSTORE:
@@ -707,7 +707,7 @@ internal class ILCompiler
                     method.StoreLocal(uint256C);
                     method.LoadLocalAddress(uint256C);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -736,7 +736,7 @@ internal class ILCompiler
                     method.StoreLocal(uint256C);
                     method.LoadLocalAddress(uint256C);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -759,12 +759,9 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadLocalAddress(uint256A);
-                    method.LoadConstant(Word.Size);
-                    method.Call(typeof(UInt256).GetMethod("op_Explicit", new[] { typeof(int) }));
-                    method.StoreLocal(uint256C);
-                    method.LoadLocalAddress(uint256C);
+                    method.LoadFieldAddress(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32)));
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -816,7 +813,7 @@ internal class ILCompiler
                     method.LoadLocalAddress(uint256R);
                     method.LoadLocalAddress(uint256C);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -851,7 +848,7 @@ internal class ILCompiler
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256B);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
                     method.CleanWord(stack, head);
@@ -873,9 +870,8 @@ internal class ILCompiler
                     method.StoreLocal(buffer);
                     method.StackPop(head, 2);
 
-
-                    Label pushZeroLabel = method.DefineLabel("PushZero");
-                    Label endOfInstructionImpl = method.DefineLabel("endOfByteOpcode");
+                    Label pushZeroLabel = method.DefineLabel();
+                    Label endOfInstructionImpl = method.DefineLabel();
                     method.LoadLocalAddress(uint256A);
                     method.LoadConstant(Word.Size);
                     method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
@@ -907,7 +903,7 @@ internal class ILCompiler
                     method.MarkLabel(endOfInstructionImpl);
                     break;
                 case Instruction.CODECOPY:
-                    endOfOpcode = method.DefineLabel($"endOf{op.Operation}");
+                    endOfOpcode = method.DefineLabel();
 
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
@@ -934,12 +930,13 @@ internal class ILCompiler
                     method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                     method.BranchIfTrue(endOfOpcode);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256C);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.MachineCode)));
@@ -950,7 +947,8 @@ internal class ILCompiler
                     method.Call(typeof(ReadOnlySpan<byte>).GetMethod(nameof(ReadOnlySpan<byte>.Slice), [typeof(UInt256).MakeByRefType(), typeof(int)]));
                     method.StoreLocal(localReadonOnlySpan);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(localReadonOnlySpan);
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
@@ -974,7 +972,7 @@ internal class ILCompiler
                     method.StackPush(head);
                     break;
                 case Instruction.RETURNDATACOPY:
-                    endOfOpcode = method.DefineLabel($"endOf{op.Operation}");
+                    endOfOpcode = method.DefineLabel();
 
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
@@ -1003,12 +1001,13 @@ internal class ILCompiler
                     method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                     method.BranchIfTrue(endOfOpcode);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256C);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
@@ -1019,14 +1018,14 @@ internal class ILCompiler
                     method.Call(typeof(ReadOnlySpan<byte>).GetMethod(nameof(ReadOnlySpan<byte>.Slice), [typeof(UInt256).MakeByRefType(), typeof(int)]));
                     method.StoreLocal(localReadonOnlySpan);
 
-                    method.LoadArgument(1);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(localReadonOnlySpan);
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
 
                     method.MarkLabel(endOfOpcode);
                     break;
-
                 case Instruction.RETURN or Instruction.REVERT:
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
@@ -1042,17 +1041,16 @@ internal class ILCompiler
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256B);
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
-                    method.BranchIfFalse(labels[EvmExceptionType.OutOfGas]);
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadArgument(0);
-                    method.Duplicate();
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
+                    method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256B);
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
-                    method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
-
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    method.StoreObject<ReadOnlyMemory<byte>>();
 
                     method.LoadArgument(0);
                     method.LoadConstant(true);
@@ -1088,8 +1086,8 @@ internal class ILCompiler
                     method.StackPush(head);
                     break;
                 case Instruction.PREVRANDAO:
-                    Label isPostMergeBranch = method.DefineLabel("PostMergeRandom");
-                    endOfOpcode = method.DefineLabel("EndOfOpcodePREVRANDAO");
+                    Label isPostMergeBranch = method.DefineLabel();
+                    endOfOpcode = method.DefineLabel();
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
@@ -1113,8 +1111,8 @@ internal class ILCompiler
                     method.MarkLabel(endOfOpcode);
                     break;
                 case Instruction.BLOBHASH:
-                    Label blobVersionedHashNotFound = method.DefineLabel("BlobVersionedHashNotFoundDirectSection");
-                    endOfOpcode = method.DefineLabel("EndOfOpcodeImplementation");
+                    Label blobVersionedHashNotFound = method.DefineLabel();
+                    endOfOpcode = method.DefineLabel();
 
 
                     method.LoadArgument(0);
@@ -1172,11 +1170,12 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.LoadLocalAddress(int64A);
-                    method.Call(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
-
+                    method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
+                    method.Duplicate();
                     method.StoreLocal(hash256);
                     method.LoadNull();
                     method.BranchIfEqual(blockHashReturnedNull);
+
                     // not equal
                     method.LoadLocal(hash256);
                     method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
@@ -1184,7 +1183,9 @@ internal class ILCompiler
                     method.StoreLocal(localReadonOnlySpan);
                     method.Branch(pushToStackRegion);
                     // equal to null
+
                     method.MarkLabel(blockHashReturnedNull);
+
                     method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesZero32)));
                     method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
                     method.StoreLocal(localReadonOnlySpan);
@@ -1198,20 +1199,44 @@ internal class ILCompiler
                     method.Call(Word.SetUInt256);
                     method.StackPush(head);
                     break;
-                /*case Instruction.SIGNEXTEND:
-                    method.StackLoadPrevious(stack, head, 1);
-                    method.Call(Word.GetUInt256);
-                    method.StoreLocal(uint256A);
+                case Instruction.SIGNEXTEND:
+                    Label signIsNegative = method.DefineLabel();
+                    Label endOfOpcodeHandling = method.DefineLabel();
 
-                    method.LoadConstant(31);
-                    method.LoadLocalAddress(uint256A);
-                    method.LoadField(Word.Int0Field);
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.LoadField(Word.UInt0Field);
+                    method.StoreLocal(uint32A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetSpan);
+                    method.StoreLocal(localSpan);
+                    method.StackPop(head, 2);
+
+                    method.LoadConstant((uint)31);
+                    method.LoadLocal(uint32A);
                     method.Subtract();
-                    method.Convert<uint>();
                     method.StoreLocal(uint32A);
 
+                    method.LoadLocal(localArray);
+                    method.LoadLocal(uint32A);
+                    method.LoadElement<byte>();
+                    method.Convert<sbyte>();
+                    method.LoadConstant((sbyte)0);
+                    method.BranchIfLess(signIsNegative);
 
-                    break;*/
+                    method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesZero32)));
+                    method.Branch(endOfOpcodeHandling);
+
+                    method.MarkLabel(signIsNegative);
+                    method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesMax32)));
+
+                    method.MarkLabel(endOfOpcodeHandling);
+                    method.LoadConstant(0);
+                    method.LoadLocal(uint32A);
+                    method.Convert<int>();
+                    method.Call(typeof(MemoryExtensions).GetMethod(nameof(MemoryExtensions.AsSpan), [typeof(byte[]), typeof(int), typeof(int)]));
+                    method.LoadLocalAddress(localSpan);
+                    method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
+                    break;
                 default:
                     throw new NotSupportedException();
             }
@@ -1219,7 +1244,7 @@ internal class ILCompiler
 
         method.LoadLocal(gasAvailable);
         method.LoadConstant((long)0);
-        method.BranchIfLess(labels[EvmExceptionType.OutOfGas]);
+        method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
         // prepare ILEvmState
         // check if returnState is null
@@ -1256,35 +1281,35 @@ internal class ILCompiler
 
         // jump table
         method.MarkLabel(jumpTable);
+        method.StackLoadPrevious(stack, head, 1);
+        method.LoadField(Word.Int0Field);
+        method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
+        method.StoreLocal(jmpDestination);
         method.StackPop(head);
 
-        // emit the jump table
-
-        // load the jump destination
-        method.Load(stack, head);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(uint256A);
+        method.StackPop(head, consumeJumpCondition);
+        method.LoadConstant(0);
+        method.StoreLocal(consumeJumpCondition);
 
         // if (jumpDest > uint.MaxValue)
-        method.LoadLocalAddress(uint256B);
+
+
+
         method.LoadConstant(uint.MaxValue);
-        method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
+        method.LoadLocal(jmpDestination);
         // goto invalid address
-        method.BranchIfTrue(labels[EvmExceptionType.InvalidJumpDestination]);
+        method.BranchIfGreater(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
         // else
 
-        const int jumpFanOutLog = 7; // 128
-        const int bitMask = (1 << jumpFanOutLog) - 1;
-        Label[] jumps = new Label[jumpFanOutLog];
-        for (int i = 0; i < jumpFanOutLog; i++)
+        const int bitMask = (1 << 4) - 1; // 128
+        Label[] jumps = new Label[bitMask];
+        for (int i = 0; i < bitMask; i++)
         {
             jumps[i] = method.DefineLabel();
         }
 
         // we get first Word.Size bits of the jump destination since it is less than int.MaxValue
-        method.Load(stack, head, Word.Int0Field);
-        method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
-        method.StoreLocal(jmpDestination);
+        
 
         method.LoadLocal(jmpDestination);
         method.LoadConstant(bitMask);
@@ -1293,23 +1318,26 @@ internal class ILCompiler
         // switch on the first 7 bits
         method.Switch(jumps);
 
-        for (int i = 0; i < jumpFanOutLog; i++)
+        for (int i = 0; i < bitMask; i++)
         {
             method.MarkLabel(jumps[i]);
-
+            method.Print(jmpDestination);
             // for each destination matching the bit mask emit check for the equality
             foreach (int dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
             {
                 method.LoadLocal(jmpDestination);
                 method.LoadConstant(dest);
+                method.Duplicate();
+                method.StoreLocal(uint32A);
+                method.Print(uint32A);
                 method.BranchIfEqual(jumpDestinations[dest]);
             }
-
+            method.Print(jmpDestination);
             // each bucket ends with a jump to invalid access to do not fall through to another one
-            method.Branch(labels[EvmExceptionType.InvalidJumpDestination]);
+            method.Branch(evmExceptionLabels[EvmExceptionType.InvalidCode]);
         }
 
-        foreach (var kvp in labels)
+        foreach (var kvp in evmExceptionLabels)
         {
             method.MarkLabel(kvp.Value);
             method.LoadArgument(0);
@@ -1333,8 +1361,8 @@ internal class ILCompiler
     private static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, bool isLeft, params Local[] locals)
     {
         MethodInfo shiftOp = typeof(UInt256).GetMethod(isLeft ? nameof(UInt256.LeftShift) : nameof(UInt256.RightShift));
-        Label skipPop = il.DefineLabel("skipSecondPop");
-        Label endOfOpcode = il.DefineLabel("endOfOpcode");
+        Label skipPop = il.DefineLabel();
+        Label endOfOpcode = il.DefineLabel();
 
         // Note: Use Vector256 directoly if UInt256 does not use it internally
         // we the two uint256 from the stack
@@ -1371,9 +1399,9 @@ internal class ILCompiler
 
     private static void EmitShiftInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, params Local[] locals)
     {
-        Label skipPop = il.DefineLabel("skipSecondPop");
-        Label signIsNeg = il.DefineLabel("signIsNeg");
-        Label endOfOpcode = il.DefineLabel("endOfOpcode");
+        Label skipPop = il.DefineLabel();
+        Label signIsNeg = il.DefineLabel();
+        Label endOfOpcode = il.DefineLabel();
 
         // Note: Use Vector256 directoly if UInt256 does not use it internally
         // we the two uint256 from the stack
@@ -1485,8 +1513,8 @@ internal class ILCompiler
 
     private static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, bool isGreaterThan, params Local[] locals)
     {
-        Label endOpcodeHandling = il.DefineLabel("endOfOpcodeHandling");
-        Label pushZerohandling = il.DefineLabel("push1handling");
+        Label endOpcodeHandling = il.DefineLabel();
+        Label pushZerohandling = il.DefineLabel();
         // we the two uint256 from the stack
         il.StackLoadPrevious(stack.span, stack.idx, 1);
         il.Call(Word.GetUInt256);
@@ -1530,7 +1558,7 @@ internal class ILCompiler
 
     private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, params Local[] locals)
     {
-        Label label = il.DefineLabel("SkipHandlingBinaryOp");
+        Label label = il.DefineLabel();
 
         // we the two uint256 from the stack
         il.StackLoadPrevious(stack.span, stack.idx, 1);
@@ -1563,7 +1591,7 @@ internal class ILCompiler
 
     private static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, params Local[] locals)
     {
-        Label label = il.DefineLabel("SkipHandlingBinaryOp");
+        Label label = il.DefineLabel();
 
         // we the two uint256 from the stack
         il.StackLoadPrevious(stack.span, stack.idx, 1);
@@ -1599,7 +1627,7 @@ internal class ILCompiler
 
     private static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, params Local[] locals)
     {
-        Label label = il.DefineLabel("SkipHandlingBinaryOp");
+        Label label = il.DefineLabel();
 
         // we the two uint256 from the stack
         il.StackLoadPrevious(stack.span, stack.idx, 1);

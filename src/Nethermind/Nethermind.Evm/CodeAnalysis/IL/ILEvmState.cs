@@ -34,9 +34,10 @@ internal ref struct ILEvmState
 
     public ref EvmPooledMemory Memory;
 
+    public ref ReadOnlyMemory<byte> InputBuffer;
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
-    public ILEvmState(byte[] machineCode, ref ExecutionEnvironment env, ref TxExecutionContext txCtx, ref BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, bool shouldStop, bool shouldRevert, bool shouldReturn, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> returnBuffer)
+    public ILEvmState(byte[] machineCode, ref ExecutionEnvironment env, ref TxExecutionContext txCtx, ref BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, bool shouldStop, bool shouldRevert, bool shouldReturn, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> inputBuffer, ref ReadOnlyMemory<byte> returnBuffer)
     {
         MachineCode = machineCode;
         Env = ref env;
@@ -52,5 +53,6 @@ internal ref struct ILEvmState
         Stack = stack;
         Memory = ref memory;
         ReturnBuffer = ref returnBuffer;
+        InputBuffer = ref inputBuffer;
     }
 }

@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Trie;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -58,7 +59,7 @@ internal struct Word
         get
         {
             byte[] array = new byte[32];
-            fixed(byte* src = _buffer, dest = array)
+            fixed (byte* src = _buffer, dest = array)
             {
                 Buffer.MemoryCopy(src, dest, 32, 32);
             }
@@ -66,7 +67,25 @@ internal struct Word
         }
         set
         {
-            fixed(byte* src = value, dest = _buffer)
+            fixed (byte* src = value, dest = _buffer)
+            {
+                Buffer.MemoryCopy(src, dest + (32 - value.Length), value.Length, value.Length);
+            }
+        }
+    }
+
+    public unsafe ReadOnlySpan<byte> Span
+    {
+        get
+        {
+            fixed (byte* src = _buffer)
+            {
+                return new Span<byte>(src, 32);
+            }
+        }
+        set
+        {
+            fixed (byte* src = value, dest = _buffer)
             {
                 Buffer.MemoryCopy(src, dest + (32 - value.Length), value.Length, value.Length);
             }
@@ -178,4 +197,7 @@ internal struct Word
 
     public static readonly MethodInfo GetArray = typeof(Word).GetProperty(nameof(Array))!.GetMethod;
     public static readonly MethodInfo SetArray = typeof(Word).GetProperty(nameof(Array))!.SetMethod;
+
+    public static readonly MethodInfo GetSpan = typeof(Word).GetProperty(nameof(Span))!.GetMethod;
+    public static readonly MethodInfo SetSpan = typeof(Word).GetProperty(nameof(Span))!.SetMethod;
 }

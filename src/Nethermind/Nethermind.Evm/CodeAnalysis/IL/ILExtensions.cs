@@ -6,6 +6,7 @@ using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Sigil;
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -43,19 +44,6 @@ static class EmitExtensions
     }
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 
-    public static void PrintLocal<T>(this Emit<T> il, Local local)
-    {
-        if (local.LocalType.IsValueType)
-        {
-            il.LoadLocalAddress(local);
-        }
-        else
-        {
-            il.LoadLocal(local);
-        }
-        il.Call(local.LocalType.GetMethods().Where(m => m.Name == "ToString" && m.GetParameters().Length == 0).First(), Type.EmptyTypes);
-        il.Call(typeof(Console).GetMethod(nameof(Console.WriteLine), [typeof(string)]));
-    }
     public static FieldInfo GetFieldInfo<T>(string name) => GetFieldInfo(typeof(T), name);
     public static FieldInfo GetFieldInfo(Type TypeInstance, string name)
     {
@@ -69,6 +57,20 @@ static class EmitExtensions
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
 
+    public static void Print<T>(this Emit<T> il, Local local)
+    {
+        if(local.LocalType.IsValueType)
+        {
+            il.LoadLocalAddress(local);
+            il.Call(local.LocalType.GetMethod("ToString", []));
+        }
+        else
+        {
+            il.LoadLocal(local);
+            il.CallVirtual(local.LocalType.GetMethod("ToString", []));
+        }
+        il.Call(typeof(Debug).GetMethod(nameof(Debug.WriteLine), [typeof(string)]));
+    }
     public static void Load<T>(this Emit<T> il, Local local, Local idx)
     {
         il.LoadLocalAddress(local);
