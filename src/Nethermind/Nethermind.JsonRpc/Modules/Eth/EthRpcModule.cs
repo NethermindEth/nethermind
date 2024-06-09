@@ -654,7 +654,9 @@ public partial class EthRpcModule : IEthRpcModule
                 foreach (FilterLog log in filterLogs)
                 {
                     logs.Add(log);
-                    if (_rpcConfig.MaxLogsPerResponse != 0 && logs.Count > _rpcConfig.MaxLogsPerResponse)
+                    if (JsonRpcContext.Current.Value?.IsAuthenticated != true // not authenticated
+                        && _rpcConfig.MaxLogsPerResponse != 0                 // not unlimited
+                        && logs.Count > _rpcConfig.MaxLogsPerResponse)
                     {
                         logs.Dispose();
                         return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
