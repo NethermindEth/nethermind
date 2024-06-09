@@ -72,33 +72,30 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                ReadOnlyTxProcessingEnv env = _envPool.Get();
-                try
-                {
-                    foreach (Withdrawal withdrawal in block.Withdrawals)
+                Parallel.For(0, block.Withdrawals.Length, parallelOptions,
+                    i =>
                     {
-                        if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-
-                        env.StateProvider.WarmUp(withdrawal.Address);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawals", ex);
-                }
-                finally
-                {
-                    env.Reset();
-                    _envPool.Return(env);
-                }
+                        ReadOnlyTxProcessingEnv env = _envPool.Get();
+                        try
+                        {
+                            env.StateProvider.WarmUp(block.Withdrawals[i].Address);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal {i}", ex);
+                        }
+                        finally
+                        {
+                            env.Reset();
+                            _envPool.Return(env);
+                        }
+                    });
             }
         }
 
         void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
         {
-            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-
-            Parallel.For(0, block.Transactions.Length, parallelOptions, (i) =>
+            Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
             {
                 // If the transaction has already been processed or being processed, exit early
                 if (block.TransactionProcessed >= i) return;
