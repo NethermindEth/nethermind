@@ -47,7 +47,12 @@ public class McsLock
         {
             WaitForUnlock(node, predecessor);
         }
+        else
+        {
+            node.State = (nuint)LockState.Acquired;
+        }
 
+        Interlocked.MemoryBarrier();
         // Set current lock holder.
         _currentLockHolder = node;
 
@@ -76,16 +81,21 @@ public class McsLock
         // the next thread in line may be sleeping when lock is released.
         while (node.State != (nuint)LockState.ReadyToAcquire)
         {
-            if (sw.NextSpinWillYield)
+            if (predecessor.State == (nuint)LockState.Waiting &&
+                sw.NextSpinWillYield)
             {
+                // If not next in line (previous waiting) then wait for signal
                 WaitForSignal(node);
                 // Acquired the lock
                 break;
             }
             else
             {
+                // Otherwise spin
                 sw.SpinOnce();
             }
+
+            Interlocked.MemoryBarrier();
         }
 
         node.State = (nuint)LockState.Acquired;
@@ -175,6 +185,14 @@ public class McsLock
         }
 
         private static void SignalUnlock(ThreadNode nextNode)
+        {
+            // Signal the next node to wake up via ThreadPool to return faster
+            // If it was next in line it should be still spinning
+            // rather sleeping so not need to wake up
+            ThreadPool.UnsafeQueueUserWorkItem((node) => BackgroundSignal(node), nextNode, preferLocal: true);
+        }
+
+        private static void BackgroundSignal(ThreadNode nextNode)
         {
             lock (nextNode)
             {
