@@ -16,14 +16,11 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Merge.AuRa

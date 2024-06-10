@@ -180,7 +180,7 @@ internal class ShutterCrypto
         bytes.CopyTo(preimage.AsSpan()[1..]);
 
         // todo: change once shutter updates
-        // return new G1().hash_to(preimage);
+        // return new G1().hash_to(preimage, "SHUTTER_V01_BLS12381G1_XMD:SHA-256_SSWU_RO_");
 
         Span<byte> hash = Keccak.Compute(preimage).Bytes;
         hash.Reverse();

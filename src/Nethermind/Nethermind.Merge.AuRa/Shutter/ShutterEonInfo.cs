@@ -1,6 +1,5 @@
 using Nethermind.Blockchain;
 using System;
-using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;

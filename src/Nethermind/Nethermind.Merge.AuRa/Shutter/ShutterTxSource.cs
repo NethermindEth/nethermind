@@ -90,7 +90,7 @@ public class ShutterTxSource : ITxSource
         // order by identity preimage to match decryption keys
         IEnumerable<(int, Transaction?)> unorderedTransactions = sequencedTransactions
             .Select((x, index) => x with { Index = index })
-            .OrderBy(x => x.Identity)
+            .OrderBy(x => x.IdentityPreimage, new ByteArrayComparer())
             .Zip(DecryptionKeys.Keys.Skip(1))
             .Select(x => (x.Item1.Index, DecryptSequencedTransaction(x.Item1, x.Item2)));
 
@@ -199,5 +199,28 @@ public class ShutterTxSource : ITxSource
         public UInt256 GasLimit;
         public G1 Identity;
         public byte[] IdentityPreimage;
+    }
+
+    internal class ByteArrayComparer : IComparer<byte[]>
+    {
+        public int Compare(byte[]? x, byte[]? y)
+        {
+            if (x is null || y is null)
+            {
+                return 0;
+            }
+
+            var len = Math.Min(x!.Length, y!.Length);
+            for (int i = 0; i < len; i++)
+            {
+                var c = x[i].CompareTo(y[i]);
+                if (c != 0)
+                {
+                    return c;
+                }
+            }
+
+            return x.Length.CompareTo(y.Length);
+        }
     }
 }
