@@ -1,0 +1,211 @@
+{
+    "name": "lycan",
+    "engine": {
+        "authorityRound": {
+            "params": {
+                "stepDuration": "3",
+                "blockReward": "0x0",
+                "maximumUncleCountTransition": 0,
+                "maximumUncleCount": 0,
+                "validators": {
+                    "multi": {
+                        "0": {
+                            "list": [
+                                "0x769559CF7cd1A6959BeF27558d0453EdEA99B001",
+                                "0x1B3E635df4B13B6D92e6073243C1665E268cB002",
+                                "0x76A5e9E9B61f72F7E1c55bDd403078320c27B003",
+                                "0x4A667Fbd87e7E9C4e040D196147cd7095E65B004",
+                                "0x509FfE8FBa36BDAD0506E0DDEb2D9C5ED005B005",
+                                "0xeb92D6CCfaA630De65e0F361c19366d57457B006",
+                                "0x3c03501A64CaA28BFbd490a909524329Ed14B007",
+                                "0xac700cA729fA60ae0cE0B5C692f3bdd9EA7bB008",
+                                "0x7362f2731F136D0D9f4Be64BF01fBC3818f6B009",
+                                "0xFFbA4c5d2Eb0C662e939AC7fA851FB63080AB010",
+                                "0x88dfE86304A98879e45385A8e780b6A765c1B011",
+                                "0x4E0BD496b27f608b6b5F9b305a7144dd6e88B012",
+                                "0x19a9404CE1b1Fa679A1a41559b7d73802119B013",
+                                "0xdd34311cD3A07a046F8fa2406712c2360BEEB014",
+                                "0x536F82F56CD01bb7B5C3FD48cd8499CD2962B015",
+                                "0x26d7e1584CBa0cd76C461074e8f2E638E233B016",
+                                "0x56e3F1C3689b40BA2A8e7A704824956B9Aa0B017",
+                                "0x6593fb8020AA21Cb7ed38Bde6a365b738313B018",
+                                "0xE7125b6872e4Cc46EA78c87956A1330a9470B019",
+                                "0x95aD8e20B90BEBF743dd13203278003D21C7B020",
+                                "0xCc66107ad4073713522A33290a8b7a616765B021"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "params": {
+        "gasLimitBoundDivisor": "0x400000",
+        "maximumExtraDataSize": "0x100",
+        "minGasLimit": "0x0",
+        "networkID": "0x2D1",
+        "eip155Transition": 0,
+        "validateChainIdTransition": 0,
+        "eip140Transition": 0,
+        "eip211Transition": 0,
+        "eip214Transition": 0,
+        "eip658Transition": 0,
+        "eip150Transition": "0x0",
+        "eip160Transition": "0x0",
+        "eip161abcTransition": "0x0",
+        "eip161dTransition": "0x0",
+        "eip1040Transition": "0x0",
+        "eip98Transition": "0x7fffffffffffff"
+    },
+    "genesis": {
+        "seal": {
+            "authorityRound": {
+                "step": "0x0",
+                "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            }
+        },
+        "difficulty": "0x20000",
+        "gasLimit": "0x1C9C380"
+    },
+    "accounts": {
+        "0x0000000000000000000000000000000000000001": {
+            "balance": "1",
+            "builtin": {
+                "name": "ecrecover",
+                "pricing": {
+                    "linear": {
+                        "base": 3000,
+                        "word": 0
+                    }
+                }
+            }
+        },
+        "0x0000000000000000000000000000000000000002": {
+            "balance": "1",
+            "builtin": {
+                "name": "sha256",
+                "pricing": {
+                    "linear": {
+                        "base": 60,
+                        "word": 12
+                    }
+                }
+            }
+        },
+        "0x0000000000000000000000000000000000000003": {
+            "balance": "1",
+            "builtin": {
+                "name": "ripemd160",
+                "pricing": {
+                    "linear": {
+                        "base": 600,
+                        "word": 120
+                    }
+                }
+            }
+        },
+        "0x0000000000000000000000000000000000000004": {
+            "balance": "1",
+            "builtin": {
+                "name": "identity",
+                "pricing": {
+                    "linear": {
+                        "base": 15,
+                        "word": 3
+                    }
+                }
+            }
+        },
+        "0x0000000000000000000000000000000000000005": {
+            "builtin": {
+                "name": "modexp",
+                "activate_at": 0,
+                "pricing": {
+                    "modexp": {
+                        "divisor": 20
+                    }
+                }
+            }
+        },
+        "0x0000000000000000000000000000000000000006": {
+            "builtin": {
+                "name": "alt_bn128_add",
+                "activate_at": 0,
+                "pricing": {
+                    "linear": {
+                        "base": 500,
+                        "word": 0
+                    }
+                }
+            }
+        },
+        "0x0000000000000000000000000000000000000007": {
+            "builtin": {
+                "name": "alt_bn128_mul",
+                "activate_at": 0,
+                "pricing": {
+                    "linear": {
+                        "base": 40000,
+                        "word": 0
+                    }
+                }
+            }
+        },
+        "0x0000000000000000000000000000000000000008": {
+            "builtin": {
+                "name": "alt_bn128_pairing",
+                "activate_at": 0,
+                "pricing": {
+                    "alt_bn128_pairing": {
+                        "base": 100000,
+                        "pair": 80000
+                    }
+                }
+            }
+        },
+        "0x5635c146E65D4BfAc03bC96e6faF5752AD74DEAD": {
+            "name": "Lycan Burning",
+            "balance": "180250000000000000000000000"
+        },
+        "0x000173693cb4279ECe9C29CFa4144AD29D58f009": {
+            "name": "Public Sale",
+            "balance": "144200000000000000000000000"
+        },
+        "0x0002eb98D302dA1d238d2666878fe351b8157578": {
+            "name": "IBCO",
+            "balance": "108150000000000000000000000"
+        },
+        "0x0003F5D29295010754e42e9E1409D1636c41CBBC": {
+            "name": "Development Fund",
+            "balance": "86520000000000000000000000"
+        },
+        "0x00042C1EB54C587813E123BF5Fecdca5262766B9": {
+            "name": "Private Sale",
+            "balance": "72100000000000000000000000"
+        },
+        "0x0005E547D65568d305ca432318Bb817162Df8Fdf": {
+            "name": "Team",
+            "balance": "36050000000000000000000000"
+        },
+        "0x0006A0e2d0D903828be82E68dB7fa4E17AA0f1B5": {
+            "name": "Marketing",
+            "balance": "28840000000000000000000000"
+        },
+        "0x0007bBa2E71EFC0be70c991F96470fEB760dcD51": {
+            "name": "Foundation",
+            "balance": "28840000000000000000000000"
+        },
+        "0x0008977B783937d08C07b7cAB4Feb0581E25bBBE": {
+            "name": "Advisors",
+            "balance": "21630000000000000000000000"
+        },
+        "0x00096ab0592ecC9de6c3e45477eF2D7e3c2461aE": {
+            "name": "Staking",
+            "balance": "7210000000000000000000000"
+        },
+        "0x001052476e053EA19BC02d7ED9130e9e1AD14Be1": {
+            "name": "Reserves",
+            "balance": "7210000000000000000000000"
+        }
+    }
+}
