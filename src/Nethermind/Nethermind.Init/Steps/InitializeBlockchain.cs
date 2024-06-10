@@ -231,10 +231,10 @@ namespace Nethermind.Init.Steps
             IBlocksConfig blocksConfig = _api.Config<IBlocksConfig>();
             IWorldState worldState = _api.WorldState!;
 
-            PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, preBlockCaches), _api.SpecProvider, _api.LogManager, preBlockCaches)
+                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, worldState), _api.SpecProvider, _api.LogManager, worldState)
                 : null;
+
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
