@@ -14,7 +14,7 @@ namespace Nethermind.Core;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class BlockHeader
 {
-    public BlockHeader() { }
+    internal BlockHeader() { }
 
     public BlockHeader(
         Hash256 parentHash,

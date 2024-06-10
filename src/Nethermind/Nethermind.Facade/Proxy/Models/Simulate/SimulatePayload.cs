@@ -26,5 +26,5 @@ public class SimulatePayload<T>
     /// <summary>
     /// When true, the simulate returns Full Tx Objects
     /// </summary>
-    public bool returnFullTransactionObjects { get; set; } = false;
+    public bool ReturnFullTransactionObjects { get; set; } = false;
 }

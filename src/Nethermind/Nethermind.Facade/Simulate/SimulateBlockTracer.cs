@@ -12,7 +12,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockTracer(bool isTracingLogs, bool isIncludingFullTxData, ISpecProvider spec) : BlockTracer
+public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISpecProvider spec) : BlockTracer
 {
     private readonly List<SimulateTxMutatorTracer> _txTracers = new();
 
@@ -42,7 +42,7 @@ public class SimulateBlockTracer(bool isTracingLogs, bool isIncludingFullTxData,
 
     public override void EndBlockTrace()
     {
-        SimulateBlockResult? result = new(_currentBlock, isIncludingFullTxData, spec)
+        SimulateBlockResult? result = new(_currentBlock, includeFullTxData, spec)
         {
             Calls = _txTracers.Select(t => t.TraceResult).ToList(),
         };
