@@ -110,23 +110,8 @@ internal class ShutterCrypto
         return G2.generator().mult(r.ToLittleEndian());
     }
 
-    // helper functions
     public static IEnumerable<Bytes32> ComputeBlockKeys(Bytes32 sigma, int n)
     {
-        // suffix_length = max((n.bit_length() + 7) // 8, 1)
-        // suffixes = [n.to_bytes(suffix_length, "big")]
-        // preimages = [sigma + suffix for suffix in suffixes]
-        // keys = [hash_bytes_to_block(preimage) for preimage in preimages]
-        // return keys
-        // int bitLength = 0;
-        // for (int x = n; x > 0; x >>= 1)
-        // {
-        //     bitLength++;
-        // }
-
-        // int suffixLength = int.Max((bitLength + 7) / 8, 1);
-
-        // todo: is actual implementation correct?
         return Enumerable.Range(0, n).Select(x =>
         {
             byte[] suffix = new byte[4];

@@ -99,11 +99,11 @@ namespace Nethermind.Merge.AuRa
             if (_auraConfig!.UseShutter)
             {
                 // parse validator info file (index, pk)
-                IEnumerable<(ulong, byte[])> validatorsInfo = [];
+                Dictionary<ulong, byte[]> validatorsInfo = [];
                 try
                 {
                     JsonDocument validatorsInfoDoc = JsonDocument.Parse(File.ReadAllText(_auraConfig.ShutterValidatorInfoFile));
-                    validatorsInfo = validatorsInfoDoc.RootElement.EnumerateObject().Select((JsonProperty p) => (Convert.ToUInt64(p.Name), Convert.FromHexString(p.Value.GetString()!.Substring(2))));
+                    validatorsInfo = validatorsInfoDoc.RootElement.EnumerateObject().ToDictionary((JsonProperty p) => Convert.ToUInt64(p.Name), (JsonProperty p) => Convert.FromHexString(p.Value.GetString()!.AsSpan(2)));
                 }
                 catch (Exception e)
                 {

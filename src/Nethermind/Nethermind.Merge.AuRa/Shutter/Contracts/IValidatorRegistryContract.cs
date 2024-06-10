@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
@@ -15,7 +14,7 @@ public interface IValidatorRegistryContract
     /// </summary>
     /// <param name="message"></param>
     /// <param name="signature"></param>
-    bool IsRegistered(BlockHeader blockHeader, ulong validatorIndex, byte[] validatorPubKey);
+    bool IsRegistered(BlockHeader blockHeader, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered);
 
     /// <summary>
     /// Returns the number of previous updates to the registry.
