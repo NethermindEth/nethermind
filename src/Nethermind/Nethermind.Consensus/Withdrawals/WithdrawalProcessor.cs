@@ -42,8 +42,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
             {
                 if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGwei} GWei to account {withdrawal.Address}");
 
-                long gasAvailable = 1_000_000; // we don't want to charge gas here yet
-                witness.AccessCompleteAccount(withdrawal.Address, ref gasAvailable);
+                witness.AccessAccountForWithdrawal(withdrawal.Address);
 
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
                 if (_stateProvider.AccountExists(withdrawal.Address))
