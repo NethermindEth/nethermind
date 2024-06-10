@@ -86,8 +86,13 @@ public class McsLock
             {
                 // If not next in line (previous waiting) then wait for signal
                 WaitForSignal(node);
-                // Acquired the lock
-                break;
+                if (node.State == (nuint)LockState.ReadyToAcquire)
+                {
+                    // Acquired the lock
+                    break;
+                }
+                // Otherwise reset spinwait
+                sw.Reset();
             }
             else
             {
