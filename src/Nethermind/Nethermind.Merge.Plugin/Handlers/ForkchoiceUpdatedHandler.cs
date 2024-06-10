@@ -98,7 +98,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>?> ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
-        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
+        // if a head is unknown we are syncing
+        bool isDefinitelySyncing = newHeadBlock is null;
+        using ThreadExtensions.Disposable handle = isDefinitelySyncing ?
+            default : // Don't boost priority if we are definitely syncing
+            Thread.CurrentThread.BoostPriority();
 
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
@@ -106,7 +110,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
 
-        if (newHeadBlock is null) // if a head is unknown we are syncing
+        if (isDefinitelySyncing)
         {
             string simpleRequestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) _logger.Info($"Received {simpleRequestStr}");
@@ -134,7 +138,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
+        BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock!.Number, newHeadBlock.GetOrCalculateHash()).Info;
         BlockHeader? safeBlockHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         string requestStr = payloadAttributes is null
