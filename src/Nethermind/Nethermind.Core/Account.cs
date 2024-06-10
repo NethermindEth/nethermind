@@ -55,7 +55,7 @@ namespace Nethermind.Core
             Version = 0;
         }
 
-        public Account(in UInt256 nonce, in UInt256 balance, in UInt256 codeSize, in UInt256 version, Hash256 storageRoot, Hash256 codeHash)
+        public Account(in UInt256 nonce, in UInt256 balance, in UInt256 codeSize, byte version, Hash256 storageRoot, Hash256 codeHash)
         {
             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
@@ -102,7 +102,7 @@ namespace Nethermind.Core
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
         public UInt256 CodeSize { get; set; }
-        public UInt256 Version { get; }
+        public byte Version { get; }
         public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
         public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;

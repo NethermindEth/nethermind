@@ -36,6 +36,11 @@ public class ReadOnlyVerkleStateStore(IVerkleTreeStore verkleStateStore, VerkleM
             : verkleStateStore.GetLeaf(key, stateRoot);
     }
 
+    public bool HasLeaf(ReadOnlySpan<byte> key, Hash256? stateRoot = null)
+    {
+        return keyValueStore.HasLeaf(key) || verkleStateStore.HasLeaf(key, stateRoot);
+    }
+
     public InternalNode? GetInternalNode(ReadOnlySpan<byte> key, Hash256? stateRoot = null)
     {
         return keyValueStore.GetInternalNode(key, out InternalNode? value)

@@ -107,6 +107,15 @@ public class BlockBranchCache(int cacheSize)
         return null;
     }
 
+    public bool HasLeaf(byte[] key, Hash256 stateRoot)
+    {
+        BranchEnumerator diffs = GetEnumerator(stateRoot);
+        while (diffs.MoveNext())
+            if (diffs.Current.Data.StateDiff!.LeafTable.ContainsKey(key.ToArray()))
+                return true;
+        return false;
+    }
+
     public InternalNode? GetInternalNode(byte[] key, Hash256 stateRoot)
     {
         BranchEnumerator diffs = GetEnumerator(stateRoot);

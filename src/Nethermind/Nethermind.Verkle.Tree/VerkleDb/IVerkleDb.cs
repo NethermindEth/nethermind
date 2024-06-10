@@ -29,4 +29,5 @@ public interface IVerkleReadOnlyDb
 {
     bool GetLeaf(ReadOnlySpan<byte> key, out byte[]? value);
     bool GetInternalNode(ReadOnlySpan<byte> key, out InternalNode? value);
+    bool HasLeaf(ReadOnlySpan<byte> key);
 }
