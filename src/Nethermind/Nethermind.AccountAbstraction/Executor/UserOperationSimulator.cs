@@ -185,7 +185,7 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         [Todo("Refactor once BlockchainBridge is separated")]
-        public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             using IReadOnlyTransactionProcessor transactionProcessor = txProcessingEnv.Build(header.StateRoot!);
@@ -202,7 +202,7 @@ namespace Nethermind.AccountAbstraction.Executor
             GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, GasEstimator.DefaultErrorMargin, cancellationToken);
 
-            return new BlockchainBridge.CallOutput
+            return new CallOutput
             {
                 Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
                 GasSpent = estimate,

@@ -12,48 +12,42 @@ using Nethermind.State;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable UnusedAutoPropertyAccessor.Global
-namespace Nethermind.Consensus.Processing;
-
-public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
+namespace Nethermind.Consensus.Processing
 {
-    protected readonly ISpecProvider _specProvider;
-    protected readonly ILogManager? _logManager;
-
-    public IStateReader StateReader { get; }
-    public IWorldState StateProvider { get; }
-    public ITransactionProcessor TransactionProcessor { get; set; }
-    public IBlockTree BlockTree { get; }
-
-    public ReadOnlyTxProcessingEnv(
-      IWorldStateManager? worldStateManager,
-      IReadOnlyBlockTree? readOnlyBlockTree,
-      ISpecProvider? specProvider,
-      ILogManager? logManager,
-      IWorldState? worldStateToWarmUp = null)
+    public class ReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource
     {
-        ArgumentNullException.ThrowIfNull(worldStateManager);
-        ArgumentNullException.ThrowIfNull(readOnlyBlockTree);
-        ArgumentNullException.ThrowIfNull(specProvider);
+        public ITransactionProcessor TransactionProcessor { get; set; }
+        public IVirtualMachine Machine { get; }
 
-        StateReader = worldStateManager.GlobalStateReader;
-        StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
-        BlockTree = readOnlyBlockTree;
-        _specProvider = specProvider;
-        _logManager = logManager;
-        TransactionProcessor = CreateTransactionProcessor();
-    }
+        public ICodeInfoRepository CodeInfoRepository { get; }
+        public ReadOnlyTxProcessingEnv(
+            IWorldStateManager worldStateManager,
+            IBlockTree blockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager,
+            IWorldState? worldStateToWarmUp = null)
+            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+        {
+        }
 
-    protected virtual TransactionProcessor CreateTransactionProcessor()
-    {
-        BlockhashProvider blockhashProvider = new(BlockTree, _specProvider, StateProvider, _logManager);
-        VirtualMachine virtualMachine = new(blockhashProvider, _specProvider, _logManager);
-        return new TransactionProcessor(_specProvider, StateProvider, virtualMachine, _logManager);
-    }
+        public ReadOnlyTxProcessingEnv(
+            IWorldStateManager worldStateManager,
+            IReadOnlyBlockTree readOnlyBlockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager,
+            IWorldState? worldStateToWarmUp = null
+            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+        {
+            CodeInfoRepository = new CodeInfoRepository();
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+            TransactionProcessor = CreateTransactionProcessor();
+        }
 
-    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
+        protected virtual TransactionProcessor CreateTransactionProcessor()
+        {
+            return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
+        }
 
-    public void Reset()
-    {
-        StateProvider.Reset();
+        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
     }
 }

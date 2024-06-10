@@ -12,7 +12,7 @@ using Nethermind.Serialization.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.JsonRpc.Data
+namespace Nethermind.Facade.Eth
 {
     public struct AccessListItemForRpc : IEquatable<AccessListItemForRpc>
     {

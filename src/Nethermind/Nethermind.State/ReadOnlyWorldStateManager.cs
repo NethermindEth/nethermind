@@ -36,6 +36,8 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
+    public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
+
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;

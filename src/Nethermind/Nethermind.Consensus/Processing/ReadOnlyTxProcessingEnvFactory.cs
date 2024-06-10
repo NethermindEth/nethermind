@@ -10,18 +10,18 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingEnvFactory(
     IWorldStateManager worldStateManager,
-    IReadOnlyBlockTree? readOnlyBlockTree,
+    IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider? specProvider,
     ILogManager? logManager,
     IWorldState? worldStateToWarmUp = null)
 {
     public ReadOnlyTxProcessingEnvFactory(
         IWorldStateManager worldStateManager,
-        IBlockTree? blockTree,
+        IBlockTree blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager,
         IWorldState? worldStateToWarmUp = null)
-        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+        : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
     {
     }
 
