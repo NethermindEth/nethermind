@@ -29,14 +29,14 @@ public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
       IReadOnlyBlockTree? readOnlyBlockTree,
       ISpecProvider? specProvider,
       ILogManager? logManager,
-      PreBlockCaches? preBlockCaches = null)
+      IWorldState? worldStateToWarmUp = null)
     {
         ArgumentNullException.ThrowIfNull(worldStateManager);
         ArgumentNullException.ThrowIfNull(readOnlyBlockTree);
         ArgumentNullException.ThrowIfNull(specProvider);
 
         StateReader = worldStateManager.GlobalStateReader;
-        StateProvider = worldStateManager.CreateResettableWorldState(preBlockCaches);
+        StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
         BlockTree = readOnlyBlockTree;
         _specProvider = specProvider;
         _logManager = logManager;

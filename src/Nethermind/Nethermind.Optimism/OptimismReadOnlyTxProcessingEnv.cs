@@ -19,12 +19,12 @@ public class OptimismReadOnlyTxProcessingEnv(
       ILogManager logManager,
       IL1CostHelper l1CostHelper,
       IOptimismSpecHelper opSpecHelper,
-      PreBlockCaches? preBlockCaches = null) : ReadOnlyTxProcessingEnv(
+      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
       worldStateManager,
       readOnlyBlockTree,
       specProvider,
       logManager,
-      preBlockCaches
+      worldStateToWarmUp
      )
 {
     protected override TransactionProcessor CreateTransactionProcessor()
