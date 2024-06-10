@@ -106,6 +106,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
+
+    [ConfigItem(
+        Description = "The max number of logs per response. For method `eth_getLogs`. If 0 then no limit.",
+        DefaultValue = "20000")]
+    public int MaxLogsPerResponse { get; set; }
+
     [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:

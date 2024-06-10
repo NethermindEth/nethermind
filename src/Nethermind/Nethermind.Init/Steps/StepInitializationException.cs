@@ -18,7 +18,7 @@ namespace Nethermind.Init.Steps
         {
         }
 
-        public static void ThrowIfNull([NotNull] object? argument, [CallerArgumentExpression("argument")] string? paramName = null)
+        public static void ThrowIfNull([NotNull] object? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
         {
             if (argument is not null)
                 return;
