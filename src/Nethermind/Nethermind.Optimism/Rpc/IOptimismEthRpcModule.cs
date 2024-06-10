@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Blockchain.Find;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.Rpc;
 
 [RpcModule(ModuleType.Eth)]
 public interface IOptimismEthRpcModule : IEthRpcModule

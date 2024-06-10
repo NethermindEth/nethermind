@@ -10,7 +10,7 @@ public static class ThreadExtensions
 {
     public readonly struct Disposable : IDisposable
     {
-        private readonly Thread _thread;
+        private readonly Thread? _thread;
         private readonly ThreadPriority _previousPriority;
 
         internal Disposable(Thread thread)
@@ -22,7 +22,10 @@ public static class ThreadExtensions
 
         public void Dispose()
         {
-            _thread.Priority = _previousPriority;
+            if (_thread is not null && Thread.CurrentThread == _thread)
+            {
+                _thread.Priority = _previousPriority;
+            }
         }
     }
 
