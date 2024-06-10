@@ -31,7 +31,6 @@ namespace Nethermind.JsonRpc
         public string? IpcUnixDomainSocketPath { get; set; } = null;
 
         public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
-        public bool EnabledRpcSimulate { get; set; } = false;
         public string[] AdditionalRpcUrls { get; set; } = Array.Empty<string>();
         public long? GasCap { get; set; } = 100000000;
         public int ReportIntervalSeconds { get; set; } = 300;
