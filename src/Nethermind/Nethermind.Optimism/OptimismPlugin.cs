@@ -26,6 +26,7 @@ using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 

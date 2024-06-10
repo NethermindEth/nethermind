@@ -232,6 +232,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Lantern.Discv5.Rlp", "..\La
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Lantern.Discv5.Enr", "..\Lantern.Discv5\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj", "{8FBFEC9E-71CA-4446-8FFE-1CA42916C37B}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Signer", "Signer", "{89311B58-AF36-4956-883D-54531BC1D5A3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.ExternalSigner.Plugin", "Nethermind.ExternalSigner.Plugin\Nethermind.ExternalSigner.Plugin.csproj", "{6528010D-7DCE-4935-9785-5270FF515F3E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -638,6 +642,10 @@ Global
 		{8FBFEC9E-71CA-4446-8FFE-1CA42916C37B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8FBFEC9E-71CA-4446-8FFE-1CA42916C37B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8FBFEC9E-71CA-4446-8FFE-1CA42916C37B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6528010D-7DCE-4935-9785-5270FF515F3E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -702,6 +710,8 @@ Global
 		{2EDE2554-59C0-4E78-92F7-EB8077AA597D} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE} = {2EDE2554-59C0-4E78-92F7-EB8077AA597D}
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{89311B58-AF36-4956-883D-54531BC1D5A3} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
+		{6528010D-7DCE-4935-9785-5270FF515F3E} = {89311B58-AF36-4956-883D-54531BC1D5A3}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

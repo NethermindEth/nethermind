@@ -109,17 +109,5 @@ namespace Nethermind.Core.Caching
                                     $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
             }
         }
-
-        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
-
-        // TODO: memory size on the KeyCache will be smaller because we do not create LruCacheItems
-        public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
-        {
-            // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
-
-            const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
-            int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
-            return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
-        }
     }
 }

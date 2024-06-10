@@ -14,7 +14,7 @@
     <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
-    <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>
+    <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
     <VersionPrefix>1.27.0</VersionPrefix>
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
@@ -23,10 +23,6 @@
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>BuildTimestamp</_Parameter1>
       <_Parameter2>$(BuildTimestamp)</_Parameter2>
-    </AssemblyAttribute>
-    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(Commit)' != ''">
-      <_Parameter1>Commit</_Parameter1>
-      <_Parameter2>$(Commit)</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
 

@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -38,56 +39,39 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public abstract partial class EthRpcModule<TReceiptForRpc> : IEthRpcModule<TReceiptForRpc> where TReceiptForRpc : ReceiptForRpc
+public partial class EthRpcModule(
+    IJsonRpcConfig rpcConfig,
+    IBlockchainBridge blockchainBridge,
+    IBlockFinder blockFinder,
+    IReceiptFinder receiptFinder,
+    IStateReader stateReader,
+    ITxPool txPool,
+    ITxSender txSender,
+    IWallet wallet,
+    ILogManager logManager,
+    ISpecProvider specProvider,
+    IGasPriceOracle gasPriceOracle,
+    IEthSyncingInfo ethSyncingInfo,
+    IFeeHistoryOracle feeHistoryOracle) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
-    protected readonly IJsonRpcConfig _rpcConfig;
-    protected readonly IBlockchainBridge _blockchainBridge;
-    protected readonly IBlockFinder _blockFinder;
-    protected readonly IReceiptFinder _receiptFinder;
-    protected readonly IStateReader _stateReader;
-    protected readonly ITxPool _txPoolBridge;
-    protected readonly ITxSender _txSender;
-    protected readonly IWallet _wallet;
-    protected readonly ISpecProvider _specProvider;
-    protected readonly ILogger _logger;
-    protected readonly IGasPriceOracle _gasPriceOracle;
-    protected readonly IEthSyncingInfo _ethSyncingInfo;
+    protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
+    protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+    protected readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+    protected readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+    protected readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+    protected readonly ITxPool _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
+    protected readonly ITxSender _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
+    protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+    protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly ILogger _logger = logManager.GetClassLogger();
+    protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+    protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+    protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
 
-    protected readonly IFeeHistoryOracle _feeHistoryOracle;
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
         return blockchainBridge.HasStateForRoot(header.StateRoot!);
-    }
-
-    public EthRpcModule(
-        IJsonRpcConfig rpcConfig,
-        IBlockchainBridge blockchainBridge,
-        IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
-        IStateReader stateReader,
-        ITxPool txPool,
-        ITxSender txSender,
-        IWallet wallet,
-        ILogManager logManager,
-        ISpecProvider specProvider,
-        IGasPriceOracle gasPriceOracle,
-        IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle)
-    {
-        _logger = logManager.GetClassLogger();
-        _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
-        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-        _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
-        _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-        _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-        _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
-        _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     }
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -625,11 +609,28 @@ public abstract partial class EthRpcModule<TReceiptForRpc> : IEthRpcModule<TRece
 
         try
         {
-            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock,
-                filter.Address, filter.Topics);
+            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
+
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
+
+            using (cancellationTokenSource)
+            {
+                foreach (FilterLog log in filterLogs)
+                {
+                    logs.Add(log);
+                    if (JsonRpcContext.Current.Value?.IsAuthenticated != true // not authenticated
+                        && _rpcConfig.MaxLogsPerResponse != 0                 // not unlimited
+                        && logs.Count > _rpcConfig.MaxLogsPerResponse)
+                    {
+                        logs.Dispose();
+                        return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                    }
+                }
+            }
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
         }
         catch (ResourceNotFoundException exception)
         {
@@ -714,7 +715,21 @@ public abstract partial class EthRpcModule<TReceiptForRpc> : IEthRpcModule<TRece
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());
 
-    public abstract ResultWrapper<TReceiptForRpc[]?> eth_getBlockReceipts([JsonRpcParameter(ExampleValue = "latest")] BlockParameter blockParameter);
+    public ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
+    {
+        (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
+        if (receipt is null || gasInfo is null)
+        {
+            return ResultWrapper<ReceiptForRpc>.Success(null);
+        }
 
-    public abstract ResultWrapper<TReceiptForRpc?> eth_getTransactionReceipt([JsonRpcParameter(ExampleValue = "[\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\"]")] Hash256 txHashData);
+        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
+        return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo.Value, logIndexStart));
+    }
+
+
+    public ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    {
+        return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
+    }
 }

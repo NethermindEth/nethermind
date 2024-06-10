@@ -140,7 +140,11 @@ namespace Nethermind.JsonRpc.Modules
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
             BindingFlags methodFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
-            IEnumerable<MethodInfo> methods = type.GetMethods(methodFlags).Concat(type.GetInterfaces().SelectMany(i => i.GetMethods(methodFlags)));
+
+            IEnumerable<MethodInfo> methods = type.GetMethods(methodFlags)
+                .Concat(type.GetInterfaces().SelectMany(i => i.GetMethods(methodFlags)))
+                .DistinctBy(x => x.Name);
+
             return methods.ToDictionary(
                 x => x.Name.Trim(),
                 x =>
