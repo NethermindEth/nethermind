@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Int256;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -30,7 +30,8 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
         if (tx?.Hash is not null)
         {
             ulong txIndex = (ulong)_txTracers.Count;
-            SimulateTxMutatorTracer result = new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, txIndex);
+            SimulateTxMutatorTracer result = new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number,
+                _currentBlock.Hash, txIndex);
             _txTracers.Add(result);
             return result;
         }
@@ -40,22 +41,19 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
 
     public override void EndBlockTrace()
     {
-        SimulateBlockResult? result = new()
+        SimulateBlockResult? result = new(_currentBlock.Header)
         {
             Calls = _txTracers.Select(t => t.TraceResult).ToList(),
-            Number = (ulong)_currentBlock.Number,
-            Hash = _currentBlock.Hash!,
-            GasLimit = (ulong)_currentBlock.GasLimit,
-            GasUsed = _txTracers.Aggregate(0ul, (s, t) => s + t.TraceResult!.GasUsed ?? 0ul),
-            Timestamp = _currentBlock.Timestamp,
-            FeeRecipient = _currentBlock.Beneficiary!,
-            BaseFeePerGas = _currentBlock.BaseFeePerGas,
-            PrevRandao = _currentBlock.Header!.Random?.BytesToArray(),
-            BlobGasUsed = _currentBlock.BlobGasUsed ?? 0,
-            ExcessBlobGas = _currentBlock.ExcessBlobGas ?? 0,
-            BlobBaseFee = new BlockExecutionContext(_currentBlock.Header).BlobBaseFee ?? 0,
-            Withdrawals = _currentBlock.Withdrawals ?? Array.Empty<Withdrawal>()
+
         };
+        if (_currentBlock.Header.ExcessBlobGas is not null)
+        {
+            if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(_currentBlock.Header.ExcessBlobGas.Value,
+                    out UInt256 blobGasPricePerUnit))
+            {
+                result.BlobBaseFee = blobGasPricePerUnit;
+            }
+        }
 
         Results.Add(result);
     }

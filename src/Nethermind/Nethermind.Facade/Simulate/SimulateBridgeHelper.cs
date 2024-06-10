@@ -256,8 +256,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 transaction.DecodedMaxFeePerGas = transaction.GasPrice == 0
                     ? callHeader.BaseFeePerGas + 1
                     : transaction.GasPrice;
-                //UInt256.MultiplyOverflow((UInt256)transaction.GasLimit, transaction.MaxFeePerGas, out UInt256 maxGasFee);
-                //string err = $"insufficient sender balance for MaxFeePerGas: {callHeader.Number}, {transaction.SenderAddress} balance should be at least {maxGasFee + 1 + transaction.Value }";
             }
         }
 

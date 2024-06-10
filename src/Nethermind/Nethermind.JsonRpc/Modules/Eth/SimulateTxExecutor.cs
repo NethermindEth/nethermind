@@ -138,6 +138,10 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                                       ? header.Timestamp + secondsPerSlot.Value
                                       : lastBlockTime + secondsPerSlot.Value);
 
+                if (givenTime < header.Timestamp)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
+                        $"Block timestamp out of order {givenTime} is < than given base timestamp of {header.Timestamp}!", ErrorCodes.BlockTimestampNotIncreased);
+
                 if (givenTime > lastBlockTime)
                 {
                     lastBlockTime = givenTime;
@@ -145,7 +149,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 else
                 {
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block timestamp out of order {givenTime}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                        $"Block timestamp out of order {givenTime}!", ErrorCodes.BlockTimestampNotIncreased);
                 }
 
                 blockToSimulate.BlockOverrides.Time = givenTime;
@@ -193,8 +197,18 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
         if (results.Error is not null && (results.Error.Contains("invalid transaction")
-                                      || results.Error.Contains("InsufficientBalanceException")))
+                                      || results.Error.Contains("InsufficientBalanceException")
+                                      ))
             results.ErrorCode = ErrorCodes.InvalidTransaction;
+
+        if (results.Error is not null && results.Error.Contains("InvalidBlockException"))
+            results.ErrorCode = ErrorCodes.InvalidParams;
+
+
+        if (results.Error is not null && results.Error.Contains("below intrinsic gas"))
+            results.ErrorCode = ErrorCodes.InsufficientIntrinsicGas;
+
+
 
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)
