@@ -27,10 +27,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     {
         if (targetWorldState is not null)
         {
-            if (targetWorldState.IsCacheDirty)
+            if (targetWorldState.ClearCache())
             {
                 if (_logger.IsWarn) _logger.Warn("Cashes are not empty. Clearing them.");
-                targetWorldState.ClearCache();
             }
 
             if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)

@@ -109,6 +109,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
-    bool IsCacheDirty => false;
-    void ClearCache() { }
+    bool ClearCache() => false;
 }

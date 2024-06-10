@@ -269,10 +269,8 @@ namespace Nethermind.State
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
 
-        PreBlockCaches IPreBlockCaches.Caches => PreBlockCaches;
+        PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
 
-        public bool IsCacheDirty => PreBlockCaches.IsDirty;
-
-        public void ClearCache() => PreBlockCaches.Clear();
+        public bool ClearCache() => PreBlockCaches?.Clear() == true;
     }
 }

@@ -38,20 +38,17 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        if (forWarmup != null)
-        {
-            PreBlockCaches preBlockCaches = (forWarmup as IPreBlockCaches)!.Caches;
-            return new WorldState(
+        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
+        return preBlockCaches is not null
+            ? new WorldState(
                 new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
                 _codeDb,
                 _logManager,
-                preBlockCaches);
-        }
-
-        return new WorldState(
-            _readOnlyTrieStore,
-            _codeDb,
-            _logManager);
+                preBlockCaches)
+            : new WorldState(
+                _readOnlyTrieStore,
+                _codeDb,
+                _logManager);
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
