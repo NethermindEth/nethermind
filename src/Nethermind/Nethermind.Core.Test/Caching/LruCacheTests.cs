@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test.Caching
             ICache<Address, Account> cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]);
+                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
             }
 
             Account? account = cache.Get(_addresses[Capacity - 1]);
@@ -50,8 +50,8 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             ICache<Address, Account> cache = Create();
-            cache.Set(_addresses[0], _accounts[0]);
-            cache.Set(_addresses[0], _accounts[1]);
+            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
+            cache.Set(_addresses[0], _accounts[1]).Should().BeFalse();
             cache.Get(_addresses[0]).Should().Be(_accounts[1]);
         }
 
@@ -66,11 +66,25 @@ namespace Nethermind.Core.Test.Caching
         public void Can_clear()
         {
             ICache<Address, Account> cache = Create();
-            cache.Set(_addresses[0], _accounts[0]);
+            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
             cache.Clear();
             cache.Get(_addresses[0]).Should().BeNull();
-            cache.Set(_addresses[0], _accounts[1]);
+            cache.Set(_addresses[0], _accounts[1]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(_accounts[1]);
+        }
+
+        [Test]
+        public void Beyond_capacity_lru()
+        {
+            ICache<Address, Account> cache = Create();
+            for (int i = 0; i < Capacity * 2; i++)
+            {
+                for (int ii = 0; ii < Capacity / 2; ii++)
+                {
+                    cache.Set(_addresses[i], _accounts[i]);
+                }
+                cache.Set(_addresses[i], _accounts[i]);
+            }
         }
 
         [Test]
@@ -79,7 +93,7 @@ namespace Nethermind.Core.Test.Caching
             ICache<Address, Account> cache = Create();
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]);
+                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
             }
 
             Account? account = cache.Get(_addresses[Capacity]);
