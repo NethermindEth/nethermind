@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Xml;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;

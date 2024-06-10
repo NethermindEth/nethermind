@@ -39,24 +39,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IBlockFinder _blockFinder;
         private readonly TxDecoder _txDecoder = new();
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
-        private readonly ISpecProvider _specProvider;
         private readonly TimeSpan _cancellationTokenTimeout;
         private readonly IStateReader _stateReader;
 
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, ISpecProvider? specProvider, ILogManager? logManager, IStateReader stateReader)
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, IStateReader stateReader)
         {
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _logger = logManager.GetClassLogger();
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
+
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
 

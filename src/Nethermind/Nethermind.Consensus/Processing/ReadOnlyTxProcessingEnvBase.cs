@@ -18,6 +18,8 @@ public class ReadOnlyTxProcessingEnvBase
     public IBlockhashProvider BlockhashProvider { get; protected set; }
 
     public ISpecProvider SpecProvider { get; }
+    public ILogManager? LogManager { get; set; }
+
     protected ReadOnlyTxProcessingEnvBase(
         IWorldStateManager worldStateManager,
         IBlockTree readOnlyBlockTree,
@@ -33,7 +35,10 @@ public class ReadOnlyTxProcessingEnvBase
         StateProvider = worldStateManager.CreateResettableWorldState(preBlockCaches);
         BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
         BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+        LogManager = logManager;
     }
+
+
     public void Reset()
     {
         StateProvider.Reset();

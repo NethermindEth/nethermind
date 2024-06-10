@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -138,7 +139,7 @@ public class TxCertifierFilterTests
             AbiEncoder abiEncoder = AbiEncoder.Instance;
             ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
                 WorldStateManager,
-                BlockTree, SpecProvider,
+                BlockTree.AsReadOnly(), SpecProvider,
                 LimboLogs.Instance);
             RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);
             CertifierContract = new CertifierContract(

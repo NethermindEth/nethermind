@@ -73,7 +73,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter)
     {
-        if(!_rpcConfig.EnabledRpcSimulate)
+        if (!_rpcConfig.EnabledRpcSimulate)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail("Must EnableRpcSimulate JsonRpc config flag on the node", ErrorCodes.MethodNotSupported);
 
         if (call.BlockStateCalls is null)

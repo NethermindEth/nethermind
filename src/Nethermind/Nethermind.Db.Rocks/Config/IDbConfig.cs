@@ -53,6 +53,7 @@ public interface IDbConfig : IConfig
     ulong BytesPerSync { get; set; }
     double? DataBlockIndexUtilRatio { get; set; }
     bool EnableFileWarmer { get; set; }
+    double CompressibilityHint { get; set; }
 
     ulong BlobTransactionsDbBlockCacheSize { get; set; }
 
@@ -67,6 +68,7 @@ public interface IDbConfig : IConfig
     bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? ReceiptsDbCompactionReadAhead { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
+    double ReceiptsDbCompressibilityHint { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
@@ -203,6 +205,7 @@ public interface IDbConfig : IConfig
     int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
     double? StateDbDataBlockIndexUtilRatio { get; set; }
     bool StateDbEnableFileWarmer { get; set; }
+    double StateDbCompressibilityHint { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>

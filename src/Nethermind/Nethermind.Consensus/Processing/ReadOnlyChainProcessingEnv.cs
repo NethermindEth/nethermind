@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -41,7 +40,16 @@ namespace Nethermind.Consensus.Processing
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
                 blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
 
-            BlockProcessor = new BlockProcessor(
+            BlockProcessor = CreateBlockProcessor(txEnv, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
+
+            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            BlockProcessingQueue = _blockProcessingQueue;
+            ChainProcessor = new OneTimeChainProcessor(txEnv.StateProvider, _blockProcessingQueue);
+        }
+
+        protected virtual IBlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv txEnv, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IReceiptStorage receiptStorage, ISpecProvider specProvider, ILogManager logManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
+        {
+            return new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
@@ -50,10 +58,6 @@ namespace Nethermind.Consensus.Processing
                 receiptStorage,
                 new BlockhashStore(txEnv.BlockTree, specProvider, StateProvider),
                 logManager);
-
-            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
-            BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(txEnv.StateProvider, _blockProcessingQueue);
         }
 
         public void Dispose()

@@ -36,7 +36,7 @@ public class DbConfig : IDbConfig
     public bool AllowMmapReads { get; set; } = false;
     public bool? VerifyChecksum { get; set; } = true;
     public double MaxBytesForLevelMultiplier { get; set; } = 10;
-    public ulong? MaxCompactionBytes { get; set; } = null;
+    public ulong? MaxCompactionBytes { get; set; } = (ulong)4.GiB();
     public int MinWriteBufferNumberToMerge { get; set; } = 1;
     public ulong? RowCacheSize { get; set; } = null;
     public bool OptimizeFiltersForHits { get; set; } = true;
@@ -52,6 +52,7 @@ public class DbConfig : IDbConfig
     public ulong BytesPerSync { get; set; } = 0;
     public double? DataBlockIndexUtilRatio { get; set; }
     public bool EnableFileWarmer { get; set; } = false;
+    public double CompressibilityHint { get; set; } = 1.0;
 
     public ulong BlobTransactionsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
 
@@ -65,8 +66,9 @@ public class DbConfig : IDbConfig
     public bool? ReceiptsDbUseDirectReads { get; set; }
     public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
-    public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)256.MiB();
-    public string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
+    public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)64.MiB();
+    public double ReceiptsDbCompressibilityHint { get; set; } = 0.35;
+    public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public uint BlocksDbWriteBufferNumber { get; set; } = 2;
@@ -78,7 +80,7 @@ public class DbConfig : IDbConfig
     public bool? BlocksDbUseDirectReads { get; set; }
     public bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlocksDbCompactionReadAhead { get; set; }
-    public string? BlocksDbAdditionalRocksDbOptions { get; set; }
+    public string? BlocksDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint HeadersDbWriteBufferNumber { get; set; } = 2;
@@ -90,7 +92,7 @@ public class DbConfig : IDbConfig
     public bool? HeadersDbUseDirectReads { get; set; }
     public bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? HeadersDbCompactionReadAhead { get; set; }
-    public string? HeadersDbAdditionalRocksDbOptions { get; set; }
+    public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
     public ulong? HeadersDbMaxBytesForLevelBase { get; set; } = (ulong)128.MiB();
 
     public ulong BlockNumbersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -119,7 +121,7 @@ public class DbConfig : IDbConfig
     public bool? BlockInfosDbUseDirectReads { get; set; }
     public bool? BlockInfosDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlockInfosDbCompactionReadAhead { get; set; }
-    public string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
+    public string? BlockInfosDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
     public uint PendingTxsDbWriteBufferNumber { get; set; } = 4;
@@ -202,6 +204,7 @@ public class DbConfig : IDbConfig
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
     public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
     public bool StateDbEnableFileWarmer { get; set; } = false;
+    public double StateDbCompressibilityHint { get; set; } = 0.45;
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
