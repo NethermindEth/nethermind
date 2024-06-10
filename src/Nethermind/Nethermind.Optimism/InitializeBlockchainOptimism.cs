@@ -42,6 +42,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
+        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,

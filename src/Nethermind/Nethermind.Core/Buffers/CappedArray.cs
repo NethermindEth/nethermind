@@ -118,10 +118,6 @@ public readonly struct CappedArray<T>
 
     public readonly ArraySegment<T> AsArraySegment(int start, int length)
     {
-        if (_array == null || start < 0 || length < 0 || start + length > _length)
-        {
-            ThrowArgumentOutOfRangeException();
-        }
-        return new ArraySegment<T>(_array, start, length);
+        return new ArraySegment<T>(_array!, start, length);
     }
 }

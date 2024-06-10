@@ -100,8 +100,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
 
         SimulateOutput result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
 
-        using ArrayPoolList<byte> addressBytes = result.Items[0].Calls[0].ReturnData!
-            .SliceWithZeroPaddingEmptyOnError(12, 20);
+        using ArrayPoolList<byte> addressBytes = result.Items[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes.ToArray());
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 

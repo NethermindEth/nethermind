@@ -64,7 +64,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig() { EnabledRpcSimulate = true }, new BlocksConfig().SecondsPerSlot);
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
@@ -181,7 +181,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig() { EnabledRpcSimulate = true }, new BlocksConfig().SecondsPerSlot);
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
 
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
         Assert.IsTrue(chain.State.AccountExists(contractAddress));
@@ -189,8 +189,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        using ArrayPoolList<byte> addressBytes = result.Data[0].Calls[0].ReturnData!
-            .SliceWithZeroPaddingEmptyOnError(12, 20);
+        using ArrayPoolList<byte> addressBytes = result.Data[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes.ToArray());
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressA));
     }

@@ -19,14 +19,17 @@ public class PreBlockCaches
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache { get; } = new(Environment.ProcessorCount * 2, 4096 * 4);
     public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache { get; } = new(Environment.ProcessorCount * 2, 4096 * 4);
 
-    public bool IsDirty => !(StorageCache.IsEmpty && StateCache.IsEmpty && RlpCache.IsEmpty && PrecompileCache.IsEmpty);
-
-    public void Clear()
+    public bool Clear()
     {
-        StorageCache.Clear();
-        StateCache.Clear();
-        RlpCache.Clear();
-        PrecompileCache.Clear();
+        bool isDirty = StorageCache.Count > 0 || StateCache.Count > 0 || RlpCache.Count > 0;
+        if (isDirty)
+        {
+            StorageCache.Clear();
+            StateCache.Clear();
+            RlpCache.Clear();
+        }
+
+        return isDirty;
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
