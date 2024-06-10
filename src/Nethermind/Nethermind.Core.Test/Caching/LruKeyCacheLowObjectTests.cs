@@ -79,6 +79,20 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
+        public void Beyond_capacity_lru()
+        {
+            LruKeyCacheLowObject<AddressAsKey> cache = new(Capacity, "test");
+            for (int i = 0; i < Capacity * 2; i++)
+            {
+                for (int ii = 0; ii < Capacity / 2; ii++)
+                {
+                    cache.Set(_addresses[i]);
+                }
+                cache.Set(_addresses[i]);
+            }
+        }
+
+        [Test]
         public void Can_delete()
         {
             LruKeyCacheLowObject<AddressAsKey> cache = new(Capacity, "test");
