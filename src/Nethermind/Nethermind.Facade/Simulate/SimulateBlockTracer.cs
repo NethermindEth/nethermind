@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -11,7 +12,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
+public class SimulateBlockTracer(bool isTracingLogs, bool isIncludingFullTxData, ISpecProvider spec) : BlockTracer
 {
     private readonly List<SimulateTxMutatorTracer> _txTracers = new();
 
@@ -41,10 +42,9 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
 
     public override void EndBlockTrace()
     {
-        SimulateBlockResult? result = new(_currentBlock.Header)
+        SimulateBlockResult? result = new(_currentBlock, isIncludingFullTxData, spec)
         {
             Calls = _txTracers.Select(t => t.TraceResult).ToList(),
-
         };
         if (_currentBlock.Header.ExcessBlobGas is not null)
         {

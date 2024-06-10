@@ -25,6 +25,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
