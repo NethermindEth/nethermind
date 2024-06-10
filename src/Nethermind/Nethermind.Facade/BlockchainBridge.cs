@@ -150,7 +150,7 @@ namespace Nethermind.Facade
 
         public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
         {
-            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers);
+            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(simulateOutputTracer);
             SimulateOutput result = new();

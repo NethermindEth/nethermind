@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -39,10 +40,15 @@ public class JsonRpcServiceTests
     [SetUp]
     public void Initialize()
     {
-        Assembly jConfig = typeof(JsonRpcConfig).Assembly;
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
         _context = new JsonRpcContext(RpcEndpoint.Http);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _context?.Dispose();
     }
 
     private IJsonRpcService _jsonRpcService = null!;

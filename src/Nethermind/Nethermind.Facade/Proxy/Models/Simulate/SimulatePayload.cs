@@ -22,4 +22,9 @@ public class SimulatePayload<T>
     ///     checks. When false, multicall behaves like eth_call.
     /// </summary>
     public bool Validation { get; set; } = false;
+
+    /// <summary>
+    /// When true, the simulate returns Full Tx Objects
+    /// </summary>
+    public bool ReturnFullTransactionObjects { get; set; } = false;
 }

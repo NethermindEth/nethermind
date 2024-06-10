@@ -40,7 +40,12 @@ namespace Nethermind.Consensus.Processing
         {
             CodeInfoRepository = new CodeInfoRepository(preBlockCaches?.PrecompileCache);
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, CodeInfoRepository, logManager);
+            TransactionProcessor = CreateTransactionProcessor();
+        }
+
+        protected virtual TransactionProcessor CreateTransactionProcessor()
+        {
+            return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
         }
 
         public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);

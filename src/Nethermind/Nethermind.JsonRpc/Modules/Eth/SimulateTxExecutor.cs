@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Data;
@@ -112,6 +113,10 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
                         $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
+                if (givenNumber < (ulong)header.Number)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
+                        $"Block number out of order {givenNumber} is < than given base number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+
                 long given = (long)givenNumber;
                 if (given > lastBlockNumber)
                 {
@@ -131,6 +136,10 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                                       ? header.Timestamp + secondsPerSlot.Value
                                       : lastBlockTime + secondsPerSlot.Value);
 
+                if (givenTime < header.Timestamp)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
+                        $"Block timestamp out of order {givenTime} is < than given base timestamp of {header.Timestamp}!", ErrorCodes.BlockTimestampNotIncreased);
+
                 if (givenTime > lastBlockTime)
                 {
                     lastBlockTime = givenTime;
@@ -138,7 +147,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 else
                 {
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block timestamp out of order {givenTime}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                        $"Block timestamp out of order {givenTime}!", ErrorCodes.BlockTimestampNotIncreased);
                 }
 
                 blockToSimulate.BlockOverrides.Time = givenTime;
@@ -186,8 +195,18 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
         if (results.Error is not null && (results.Error.Contains("invalid transaction")
-                                      || results.Error.Contains("InsufficientBalanceException")))
+                                      || results.Error.Contains("InsufficientBalanceException")
+                                      ))
             results.ErrorCode = ErrorCodes.InvalidTransaction;
+
+        if (results.Error is not null && results.Error.Contains("InvalidBlockException"))
+            results.ErrorCode = ErrorCodes.InvalidParams;
+
+
+        if (results.Error is not null && results.Error.Contains("below intrinsic gas"))
+            results.ErrorCode = ErrorCodes.InsufficientIntrinsicGas;
+
+
 
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)

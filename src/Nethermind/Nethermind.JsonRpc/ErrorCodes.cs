@@ -93,9 +93,19 @@ namespace Nethermind.JsonRpc
         public const int InvalidInputBlocksOutOfOrder = -38020;
 
         /// <summary>
+        /// Invalid RPC simulate call Block timestamp in sequence did not increase
+        /// </summary>
+        public const int BlockTimestampNotIncreased = -38021;
+
+        /// <summary>
         /// Invalid RPC simulate call containing too many blocks
         /// </summary>
         public const int InvalidInputTooManyBlocks = -38026;
+
+        /// <summary>
+        /// Invalid RPC simulate call Not enough gas provided to pay for intrinsic gas for a transaction
+        /// </summary>
+        public const int InsufficientIntrinsicGas = -38013;
 
         /// <summary>
         /// Invalid RPC simulate call transaction

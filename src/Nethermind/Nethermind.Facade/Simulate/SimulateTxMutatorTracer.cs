@@ -22,7 +22,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
 
-    private static readonly Address Erc20Sender = new("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE");
+    private static readonly Address Erc20Sender = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
     private readonly Hash256 _txHash;
@@ -49,8 +49,12 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256), value);
-        _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, from.ToHash(), to.ToHash()]));
+        if (value > 0)
+        {
+            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
+                value);
+            _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, from.ToHash(), to.ToHash()]));
+        }
     }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,

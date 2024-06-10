@@ -337,6 +337,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
                 CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
                 EcotoneTimestamp = chainSpecJson.Engine.Optimism.EcotoneTimestamp,
+                FjordTimestamp = chainSpecJson.Engine.Optimism.FjordTimestamp,
+
                 L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
                 L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
                 CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,

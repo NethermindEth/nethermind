@@ -57,7 +57,7 @@ public class CappedArrayMemoryManager(CappedArray<byte>? data) : MemoryManager<b
             throw new ObjectDisposedException(nameof(CappedArrayMemoryManager));
         }
 
-        segment = new ArraySegment<byte>(_data.ToArray() ?? throw new InvalidOperationException());
+        segment = _data.AsArraySegment();
         return true;
     }
 }

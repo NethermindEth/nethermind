@@ -31,12 +31,14 @@ namespace Nethermind.JsonRpc
         public string? IpcUnixDomainSocketPath { get; set; } = null;
 
         public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
+        public bool EnabledRpcSimulate { get; set; } = false;
         public string[] AdditionalRpcUrls { get; set; } = Array.Empty<string>();
         public long? GasCap { get; set; } = 100000000;
         public int ReportIntervalSeconds { get; set; } = 300;
         public bool BufferResponses { get; set; }
         public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
         public long? MaxRequestBodySize { get; set; } = 30000000;
+        public int MaxLogsPerResponse { get; set; } = 20_000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
         public string JwtSecretFile { get; set; } = "keystore/jwt-secret";
         public bool UnsecureDevNoRpcAuthentication { get; set; }

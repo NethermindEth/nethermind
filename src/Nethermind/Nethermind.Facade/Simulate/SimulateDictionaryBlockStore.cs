@@ -58,7 +58,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     public IEnumerable<Block> GetAll()
     {
         var allBlocks = new HashSet<Block>(readonlyBaseBlockStore.GetAll());
-        foreach (Block? block in _blockDict.Values)
+        foreach (Block block in _blockDict.Values)
         {
             allBlocks.Add(block);
         }
