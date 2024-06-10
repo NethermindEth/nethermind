@@ -42,10 +42,10 @@ public class ShutterTxSource : ITxSource
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private readonly SequencerContract _sequencerContract;
     private readonly Address ValidatorRegistryContractAddress;
-    private readonly IEnumerable<(ulong, byte[])> ValidatorsInfo;
+    private readonly Dictionary<ulong, byte[]> ValidatorsInfo;
     private readonly UInt256 EncryptedGasLimit;
 
-    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, IEnumerable<(ulong, byte[])> validatorsInfo)
+    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, Dictionary<ulong, byte[]> validatorsInfo)
         : base()
     {
         _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
@@ -112,13 +112,11 @@ public class ShutterTxSource : ITxSource
     {
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(parent.StateRoot!);
         ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
-        foreach ((ulong validatorIndex, byte[] validatorPubKey) in ValidatorsInfo)
+        if (!validatorRegistryContract!.IsRegistered(parent, ValidatorsInfo, out HashSet<ulong> unregistered))
         {
-            if (!validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
-            {
-                if (_logger.IsError) _logger.Error("Validator " + validatorIndex + " not registered as Shutter validator.");
-                return false;
-            }
+            string unregisteredList = unregistered.Aggregate("", (acc, validatorIndex) => acc == "" ? validatorIndex.ToString() : (acc + ", " + validatorIndex));
+            if (_logger.IsError) _logger.Error("Validators not registered to Shutter with the following indices: [" + unregisteredList + "]");
+            return false;
         }
         return true;
     }

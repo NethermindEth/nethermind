@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using static Nethermind.Merge.AuRa.Shutter.Contracts.IValidatorRegistryContract;
+using System.Collections.Generic;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -51,26 +52,29 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return update;
     }
 
-    // todo: iterate updates once, use hash set of which validators are registered
-    public bool IsRegistered(BlockHeader blockHeader, ulong validatorIndex, byte[] validatorPubKey)
+    public bool IsRegistered(BlockHeader blockHeader, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered)
     {
+        Dictionary<ulong, ulong?> nonces = [];
+        unregistered = [];
+        foreach (var validatorInfo in validatorsInfo)
+        {
+            nonces.Add(validatorInfo.Key, null);
+            unregistered.Add(validatorInfo.Key);
+        }
+
         UInt256 updates = GetNumUpdates(blockHeader);
         for (UInt256 i = 0; i < updates; i++)
         {
             Update update = GetUpdate(blockHeader, updates - i - 1);
             Message msg = new(update.Message.AsSpan()[..46]);
-            if (msg.ValidatorIndex != validatorIndex)
+
+            // skip untracked validators
+            if (!validatorsInfo.ContainsKey(msg.ValidatorIndex))
             {
                 continue;
             }
 
-            // todo: check if nonce is correct
-
-            if (!msg.IsRegistration)
-            {
-                return false;
-            }
-            else if (msg.Version != _auraConfig.ShutterValidatorRegistryMessageVersion)
+            if (msg.Version != _auraConfig.ShutterValidatorRegistryMessageVersion)
             {
                 if (_logger.IsDebug) _logger.Debug("Registration message has wrong version (" + msg.Version + ") should be " + _auraConfig.ShutterValidatorRegistryMessageVersion);
                 continue;
@@ -85,15 +89,31 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
                 if (_logger.IsDebug) _logger.Debug("Registration message contains an invalid contract address (" + msg.ContractAddress + ") should be " + ContractAddress);
                 continue;
             }
-            else if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorPubKey, update.Signature, update.Message))
+            else if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
+            {
+                if (_logger.IsDebug) _logger.Debug("Registration message has incorrect nonce (" + msg.Nonce + ") should be " + nonces[msg.ValidatorIndex]);
+                continue;
+            }
+            else if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo[msg.ValidatorIndex], update.Signature, update.Message))
             {
                 if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
                 continue;
             }
 
-            return true;
+            // message is valid
+            nonces[msg.ValidatorIndex] = msg.Nonce;
+
+            if (msg.IsRegistration)
+            {
+                unregistered.Remove(msg.ValidatorIndex);
+            }
+            else
+            {
+                unregistered.Add(msg.ValidatorIndex);
+            }
         }
-        return false;
+
+        return unregistered.Count == 0;
     }
 
     internal class Message
