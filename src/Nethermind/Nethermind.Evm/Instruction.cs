@@ -202,6 +202,7 @@ namespace Nethermind.Evm
             new Dictionary<Instruction, OpcodeMetadata>()
             {
                 [Instruction.POP] = new(GasCostOf.Base, 0, 1, 0),
+                [Instruction.STOP] = new(0, 0, 0, 0),
                 [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
 
                 [Instruction.PUSH1] = new(GasCostOf.VeryLow, 1, 0, 1),

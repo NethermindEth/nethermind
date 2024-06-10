@@ -329,24 +329,77 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done);
 
             yield return (Instruction.JUMPI, Prepare.EvmCode
-                            .PushSingle(23)
-                            .PushSingle(1)
-                            .PushSingle(9)
-                            .JUMPI()
-                            .PushSingle(3)
-                            .JUMPDEST()
-                            .PushSingle(0)
-                            .MUL()
-                            .Done);
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .JUMPI(9)
+                    .PushSingle(3)
+                    .JUMPDEST()
+                    .PushSingle(0)
+                    .MUL()
+                    .Done);
 
             yield return (Instruction.JUMP, Prepare.EvmCode
-                            .PushSingle(23)
-                            .JUMP(7)
-                            .PushSingle(3)
-                            .JUMPDEST()
-                            .PushSingle(0)
-                            .MUL()
-                            .Done);
+                    .PushSingle(23)
+                    .JUMP(10)
+                    .JUMPDEST()
+                    .PushSingle(3)
+                    .MUL()
+                    .STOP()
+                    .JUMPDEST()
+                    .JUMP(5)
+                    .Done);
+
+            yield return (Instruction.SHL, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SHL()
+                    .Done);
+
+            yield return (Instruction.SHR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SHR()
+                    .Done);
+
+            yield return (Instruction.SAR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SAR()
+                    .Done);
+
+            yield return (Instruction.AND, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .AND()
+                    .Done);
+
+            yield return (Instruction.OR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .OR()
+                    .Done);
+
+            yield return (Instruction.XOR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .XOR()
+                    .Done);
+
+            yield return (Instruction.SLT, Prepare.EvmCode
+                    .PushData(23)
+                    .PushSingle(4)
+                    .SLT()
+                    .Done);
+
+            yield return (Instruction.SGT, Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(1)
+                    .SGT()
+                    .Done);
+
+            yield return (Instruction.BYTE, Prepare.EvmCode
+                    .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
+                    .Done);
         }
 
         [Test, TestCaseSource(nameof(GetBytecodes))]

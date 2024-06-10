@@ -19,9 +19,9 @@ namespace Nethermind.Evm.IL;
 /// </summary>
 static class EmitExtensions
 {
-    public static MethodInfo GetAsMethodInfo<TOriginal, TResult>() where TResult : struct
+    public static MethodInfo GetAsMethodInfo<TOriginal, TResult>()
     {
-        MethodInfo method = typeof(Unsafe).GetMethod(nameof(Unsafe.As));
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.As) && m.ReturnType.IsByRef);
         return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
     }
 
