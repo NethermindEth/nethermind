@@ -8,6 +8,7 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateOutput
 {
+
     public string? Error { get; set; }
     public int? ErrorCode { get; set; }
 

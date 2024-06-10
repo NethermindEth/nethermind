@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -26,9 +27,19 @@ public class OverlayWorldStateManager(
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
 
-    public IWorldState CreateResettableWorldState(PreBlockCaches? sharedHashes = null)
+    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        return new WorldState(overlayTrieStore, _codeDb, logManager, sharedHashes);
+        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
+        return preBlockCaches is not null
+            ? new WorldState(
+                new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache),
+                _codeDb,
+                logManager,
+                preBlockCaches)
+            : new WorldState(
+                overlayTrieStore,
+                _codeDb,
+                logManager);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
