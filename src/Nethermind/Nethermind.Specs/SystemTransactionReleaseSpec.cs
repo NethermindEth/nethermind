@@ -16,6 +16,7 @@ namespace Nethermind.Specs
             _spec = spec;
         }
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
+        public bool IsEip7212Enabled => _spec.IsEip7212Enabled;
 
         public string Name => "System";
 
