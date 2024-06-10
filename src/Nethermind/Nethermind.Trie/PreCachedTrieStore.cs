@@ -10,7 +10,8 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class PreCachedTrieStore(ITrieStore inner, ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
+public class PreCachedTrieStore(ITrieStore inner,
+    ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
     : ITrieStore
 {
     public void Dispose()
