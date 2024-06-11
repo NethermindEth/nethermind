@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, IWorldState? targetWorldState = null) : IBlockCachePreWarmer
 {
-    private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
+    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
@@ -75,12 +75,11 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 Parallel.For(0, block.Withdrawals.Length, parallelOptions,
                     i =>
                     {
-                        ReadOnlyTxProcessingEnv env = _envPool.Get();
-                        Hash256 stateBefore = env.StateProvider.StateRoot;
-                        env.StateProvider.StateRoot = stateRoot;
+                        IReadOnlyTxProcessorSource env = _envPool.Get();
+                        using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                         try
                         {
-                            env.StateProvider.WarmUp(block.Withdrawals[i].Address);
+                            scope.WorldState.WarmUp(block.Withdrawals[i].Address);
                         }
                         catch (Exception ex)
                         {
@@ -88,8 +87,6 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                         }
                         finally
                         {
-                            env.StateProvider.StateRoot = stateBefore;
-                            env.Reset();
                             _envPool.Return(env);
                         }
                     });
@@ -106,17 +103,17 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 Transaction tx = block.Transactions[i];
-                ReadOnlyTxProcessingEnv env = _envPool.Get();
+                IReadOnlyTxProcessorSource env = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
                 try
                 {
                     tx.CopyTo(systemTransaction);
-                    using IReadOnlyTransactionProcessor transactionProcessor = env.Build(stateRoot);
+                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                     if (spec.UseTxAccessLists)
                     {
-                        env.StateProvider.WarmUp(tx.AccessList); // eip-2930
+                        scope.WorldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
+                    TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
                 }
                 catch (Exception ex)
@@ -126,16 +123,15 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 finally
                 {
                     _systemTransactionPool.Return(systemTransaction);
-                    env.Reset();
                     _envPool.Return(env);
                 }
             });
         }
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<ReadOnlyTxProcessingEnv>
+    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public ReadOnlyTxProcessingEnv Create() => envFactory.Create();
-        public bool Return(ReadOnlyTxProcessingEnv obj) => true;
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create();
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 }

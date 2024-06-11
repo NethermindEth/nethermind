@@ -44,6 +44,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
     private readonly TransactionProcessor _transactionProcessor;
+    public IWorldState WorldState => StateProvider;
 
     public SimulateReadOnlyBlocksProcessingEnv(
         IWorldStateManager worldStateManager,
@@ -112,7 +113,4 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             NullReceiptStorage.Instance,
             new BlockhashStore(BlockTree, SpecProvider, StateProvider),
             _logManager);
-
-    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) =>
-        new ReadOnlyTransactionProcessor(_transactionProcessor, StateProvider, stateRoot);
 }

@@ -16,7 +16,17 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource
     {
-        public ITransactionProcessor TransactionProcessor { get; set; }
+        protected readonly ILogManager _logManager;
+
+        protected ITransactionProcessor? _transactionProcessor;
+        protected ITransactionProcessor TransactionProcessor
+        {
+            get
+            {
+                return _transactionProcessor ??= CreateTransactionProcessor();
+            }
+        }
+
         public IVirtualMachine Machine { get; }
 
         public ICodeInfoRepository CodeInfoRepository { get; }
@@ -40,14 +50,22 @@ namespace Nethermind.Consensus.Processing
         {
             CodeInfoRepository = new CodeInfoRepository();
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
-            TransactionProcessor = CreateTransactionProcessor();
+            BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
+            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+
+            _logManager = logManager;
         }
 
         protected virtual TransactionProcessor CreateTransactionProcessor()
         {
-            return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
+            return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
+        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        {
+            Hash256 originalStateRoot = StateProvider.StateRoot;
+            StateProvider.StateRoot = stateRoot;
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+        }
     }
 }
