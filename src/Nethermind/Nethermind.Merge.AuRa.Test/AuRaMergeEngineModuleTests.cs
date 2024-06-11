@@ -114,6 +114,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 WorldStateManager = WorldStateManager,
                 SpecProvider = SpecProvider,
                 TransactionComparerProvider = TransactionComparerProvider,
+                ReadOnlyTxProcessorSource = ReadOnlyTxProcessingSource,
                 TxPool = TxPool
             };
 

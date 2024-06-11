@@ -291,6 +291,7 @@ public class TestBlockchain : IDisposable
             TxPool,
             transactionComparerProvider,
             blocksConfig,
+            ReadOnlyTxProcessingSource,
             LogManager);
 
         BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);

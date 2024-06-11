@@ -110,6 +110,7 @@ namespace Nethermind.AccountAbstraction.Test
                     TxPool,
                     transactionComparerProvider,
                     blocksConfig,
+                    ReadOnlyTxProcessingSource,
                     LogManager)
                 {
                     TransactionsExecutorFactory =

@@ -207,6 +207,7 @@ public partial class EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
+                ReadOnlyTxProcessingSource,
                 LogManager);
 
 

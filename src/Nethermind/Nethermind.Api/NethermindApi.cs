@@ -214,7 +214,7 @@ namespace Nethermind.Api
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
-        public ReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; } = null!;
+        public IReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

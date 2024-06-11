@@ -97,6 +97,6 @@ namespace Nethermind.Api
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         INodeStorageFactory NodeStorageFactory { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
-        ReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; }
+        IReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; }
     }
 }

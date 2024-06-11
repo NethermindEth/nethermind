@@ -54,6 +54,7 @@ namespace Nethermind.Init.Steps
                 _api.TxPool!,
                 _api.TransactionComparerProvider!,
                 _api.Config<IBlocksConfig>(),
+                _api.ReadOnlyTxProcessorSource,
                 _api.LogManager);
 
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));

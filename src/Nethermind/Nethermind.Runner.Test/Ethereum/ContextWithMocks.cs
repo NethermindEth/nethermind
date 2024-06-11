@@ -119,6 +119,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 SyncProgressResolver = Substitute.For<ISyncProgressResolver>(),
                 BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
+                ReadOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>(),
                 BadBlocksStore = Substitute.For<IBlockStore>()
             };
 

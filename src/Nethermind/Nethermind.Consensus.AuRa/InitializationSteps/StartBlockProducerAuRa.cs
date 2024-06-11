@@ -224,8 +224,7 @@ public class StartBlockProducerAuRa
         BlockProducerEnv Create()
         {
             ReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree.AsReadOnly();
-
-            ReadOnlyTxProcessorSource txProcessorSource = _api.ReadOnlyTxProcessorSource;
+            IReadOnlyTxProcessorSource txProcessorSource = _api.ReadOnlyTxProcessorSource;
             IReadOnlyTxProcessingScope scope = txProcessorSource.Build(Keccak.EmptyTreeHash);
             BlockProcessor blockProcessor = CreateBlockProcessor(scope);
 
