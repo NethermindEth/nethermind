@@ -213,7 +213,7 @@ namespace Nethermind.AccountAbstraction.Test
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
                         ReadOnlyState,
-                        new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager),
+                        ReadOnlyTxProcessingSource,
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,
