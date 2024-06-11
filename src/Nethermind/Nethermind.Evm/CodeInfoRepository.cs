@@ -89,6 +89,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+
+            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
         }.ToFrozenDictionary();
     }
 
