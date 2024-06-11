@@ -152,8 +152,11 @@ public class ShutterTxSource : ITxSource
 
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
     {
+        //todo: extensions for ulong count and skip
         IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents();
+        int tmp = events.Count();
         events = events.Where(e => e.Eon == eon);
+        if (_logger.IsDebug) _logger.Debug($"Found {tmp} events in Shutter sequencer contract, {events.Count()} this eon.");
 
         while (txPointer > int.MaxValue)
         {
@@ -169,6 +172,7 @@ public class ShutterTxSource : ITxSource
         {
             if (totalGas + e.GasLimit > EncryptedGasLimit)
             {
+                if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
                 break;
             }
 

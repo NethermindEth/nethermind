@@ -68,7 +68,10 @@ public class ShutterP2P
         ITopic topic = router.Subscribe("decryptionKeys");
         ConcurrentQueue<byte[]> msgQueue = new();
 
-        topic.OnMessage += msgQueue.Enqueue;
+        topic.OnMessage += (byte[] msg) => {
+            msgQueue.Enqueue(msg);
+            if (_logger.IsDebug) _logger.Debug($"Received Shutter P2P message.");
+        };
 
         MyProto proto = new();
         CancellationTokenSource ts = new();
@@ -120,6 +123,8 @@ public class ShutterP2P
 
     internal void ProcessP2PMessage(byte[] msg)
     {
+        if (_logger.IsDebug) _logger.Debug($"Processing Shutter P2P message.");
+
         Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
         if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
         {
