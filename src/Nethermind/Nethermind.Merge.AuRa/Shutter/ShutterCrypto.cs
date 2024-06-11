@@ -71,6 +71,22 @@ internal class ShutterCrypto
             throw new Exception("Encrypted message had wrong crypto id.");
         }
 
+        // todo: change once shutter swaps to blst
+        // ReadOnlySpan<byte> c3Bytes = bytes[(1 + 96 + 32)..];
+        // List<Bytes32> c3 = [];
+        // for (int i = 0; i < c3Bytes.Length / 32; i++)
+        // {
+        //     c3.Add(new(c3Bytes[(i * 32)..((i + 1) * 32)]));
+        // }
+
+        // return new()
+        // {
+        //     VersionId = bytes[0],
+        //     c1 = new G2(bytes[1..(1 + 96)].ToArray()),
+        //     c2 = new Bytes32(bytes[(1 + 96)..(1 + 96 + 32)]),
+        //     c3 = c3
+        // };
+
         ReadOnlySpan<byte> c3Bytes = bytes[(1 + 192 + 32)..];
         List<Bytes32> c3 = [];
         for (int i = 0; i < c3Bytes.Length / 32; i++)
@@ -279,7 +295,6 @@ internal class ShutterCrypto
             IdentityPreimages = identityPreimages
         };
 
-        // Span<byte> encoded = new byte[Ssz.SlotDecryptionIdentitesLength];
         UInt256 root;
         Merkle.Ize(out root, container);
         return new(root.ToLittleEndian());

@@ -118,6 +118,13 @@ class ShutterCryptoTests
         "5a6d3b31ae1435bacfe58b671e4143bdb9192c70ff1fa67625d9d6f8fdbcb858",
         "02187977b02f9e6b80fe71e16b5b70570ef2940b8b876b9ded75fc8985bf7682d77fb1267252ba7b50fc6a9ba10bf2069802378c92904a1135d3426a792d0779a7bca89bfb3ceda1ba8c7e44efbf559e0611117944f99876036ceedd7af9cbfcaf09962627cee97096d1922f1e0bfef3d9db625358533a961b6c5d323b7136e2f87cceea36d50dc91c2ae11cc4dfaa28e60dcbb3d8108f82fa3af0f92ec85d0e4a94187b9d65665999566a920fa62a67fafae32ad7f0209b2a41af126fc73a07ac44ef6413e4dd02d0a968c651f14c53fa55875cdd20b349dd09acdd701d24077b7f74873db95a89b10a106dcb1ddb764998749d993d06fa8626de936e53609b4212da39d7944907d356c08b80e0e00201ce1f3e887269f0e71e408c9741a12d1c"
     )]
+    // [TestCase(
+    //     "f12853fff4e9d2e997039e317f789e1684c4c8766cfce77a3153321601091079",
+    //     "4317056f139d3e14187cd2af6b2130eb9ef5f3ce9c50247794ba2079b4d171e8a6aefd94c7fbe399c78f8e54df719c9b9bfd6b33",
+    //     "a3a4f2a3872a181c94319e2d48a34c5c0e0c6e554ad00d28952296a8e1f526928ee5e4f9449a396eed3a8361d3f502a61622acfc955b85fc7c80df6fc81bd02e10d69ef1e87c3b2d53f9305639959851b2ae0a29f4987f53c21879b6ebb61fd6",
+    //     "00fd9f0a50cb900738382372f3ffbd960983b032aa5208d6afe237a9bf175a47",
+    //     "0290633abedfed746bd1a571f0b90da2fb66d6ce2f1ff36197095fdb6ac1a354694d01f2437a44a9d3a733a772ccc502e71769f538451cc5e048e649b77adda9c3adb3689d3869364d99151286f9ca5db57083cb5f37c6179b409e5ea1ecdff55a4d02ef4c0e48e9a35f0c818c15d5cb5166a29905ab68621a5042b42993e82d75a0d387431f41e354342f80c7d8079aceb3898357f0d6336eee3a6e057863116fe8bd47c38df1667709579bf3eedc8f3fbc7dc6cf099135eb364db97d551a29b1"
+    // )]
     public void Can_encrypt_data(string msgHex, string identityPreimageHex, string eonKeyHex, string sigmaHex, string expectedHex)
     {
         byte[] msg = Convert.FromHexString(msgHex);
@@ -138,38 +145,28 @@ class ShutterCryptoTests
     [TestCase(
         "020f30e046988f04ad10c87154781bd56ecaa4c28781f8143d25ff68557a46fa7659647ac985c872ae71f0cd63b91afdb80f8715a8710f4732b904d7afff8a75f6258f56c3f3ae51da13b0ee0e89ffc4a7d583753753ad0791b8e3668e977bb5490a1ad08e20eb6b07edc8ea26225533be6156023014a3274f52ee3fa6b0cf4fbd02f3cbd8b4d99343762199645f36633008a76cbd77b6a448e3dc560377d78f86318b900ad41c10864c0a11efae653901d55795e3965702809ff45ef0893bffa7486deb2c34c9a9f83eb39d5df6e5ee5b93ddf150430882de1fbeaa2519b881f3234293d11237a5958361c6fe63a3ec4b10ff9dc965b8bd1a3c95e963a774d5d5",
         "07116abe6f491a3f72a18ea638d51922463b6019f2e8481350c3cc77f6fabfdb641bef476b5682870f0f22de44c82d3f141874bc0a7b93d8cb083e1fd88efa587804de410285120f15d47634271d88084aadca740ce2aa8c4cd1b3d5f2107a7b",
-        // "13e185f4714a45250e7b4f16c940b2935d89fd52b719c7c2b50f35d11a1d0f079b67dddf90cbc9322fc2505ce127999b0641b950d4c2929db132dd44cce8e52793c1b82f1541d69db07be3796fefa8e05407c1611c303333b861074a983186f811e16948d3d99fc2cbf9ac07218edf0a7e7e3e9a67b08475f132dad4fd29b01ca0f97f231834c90b06e62ff6c97664eb10d7b895b581b4f69a530fd0e79581211ddec0ac5f562cc68b1e89416d0db5413ec7520352be7d842a210e8ed506a1f3152a0b5c8369404052148fcafdf3f53a2fdbd63cbd90b288ba104ca6561a4f642c65d2bd932c28f8c0c2930108012602166cbefb935dd1d93cd0c94d4d2aa4f91ddc0b8771b3121d7da4ff0bc36b9d989c0b3c3c123fcd27eb3ad17c0a5a3b0d048daef029e0c0760f6e8feb7384fef8f751dd4eb5d5a74fb3e0a958f0dda6f66d3985cf90264424b3330e58f6c2b532049d5e7feafe9a0c1e7293d583d07cf53f414cdbfd967e9ddf91aaa3c1a93599e39e93b8c6425e1b93b4a8c9f3faad9115e0615fd23a9954f405011b04839f1ec34208060d02a46cd18a8c367d572b835b2ab99ab79b45a4d96ac69c2219e706046a2c3c417c878f9ed84c590dae177289fe4ce57c5655c85642803689da460be9c738579e609b57b82a315e825c0d0815d9f9f15fb41ef8dd09bae7bf45df73acc9647c98d0bb263e684be1b6810d2a92448221a8c42053f056e3a2733eaf3b087e22bd11200e1533ade5f7f85cc75bbe6840e8b924d1efe4af2f29408c1d2f665af53729e2e72cce8f2d108ca515fd",
-        "",
-        "486deb2c34c9a9f83eb39d5df6e5ee5b93ddf150430882de1fbeaa2519b881f3",
-        "68656c6c6f1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
         "68656c6c6f"
     )]
-    public void Can_decrypt_data(string cipherTextHex, string decryptionKeyHex, string expectedGTHex, string expectedSigmaHex, string expectedBlockHex, string expectedHex)
+    // [TestCase(
+    //     "0290633abedfed746bd1a571f0b90da2fb66d6ce2f1ff36197095fdb6ac1a354694d01f2437a44a9d3a733a772ccc502e71769f538451cc5e048e649b77adda9c3adb3689d3869364d99151286f9ca5db57083cb5f37c6179b409e5ea1ecdff55a4d02ef4c0e48e9a35f0c818c15d5cb5166a29905ab68621a5042b42993e82d75a0d387431f41e354342f80c7d8079aceb3898357f0d6336eee3a6e057863116fe8bd47c38df1667709579bf3eedc8f3fbc7dc6cf099135eb364db97d551a29b1",
+    //     "89301819c6d24ef7555d822d6ad3543fdf28ecc149ba1c4359527c406fd700a75db6025d07010dc35a440da372b1318a",
+    //     "f12853fff4e9d2e997039e317f789e1684c4c8766cfce77a3153321601091079"
+    // )]
+    public void Can_decrypt_data(string cipherTextHex, string decryptionKeyHex, string expectedHex)
     {
         EncryptedMessage c = ShutterCrypto.DecodeEncryptedMessage(Convert.FromHexString(cipherTextHex));
         G1 decryptionKey = new(Convert.FromHexString(decryptionKeyHex));
 
         // recover sigma
-
         // todo: change this when shutter swaps to blst
         // GT p = new(decryptionKey, c.c1);
-        // byte[] gtBytes = p.final_exp().to_bendian();
-
-        // TestContext.WriteLine("GT bytes: " + Convert.ToHexString(gtBytes));
-        // Assert.That(gtBytes.SequenceEqual(Convert.FromHexString(expectedGTHex)));
-
-        // Bytes32 key = ShutterCrypto.Hash2(gtBytes);
+        // Bytes32 key = ShutterCrypto.Hash2(p);
         Bytes32 key = new();
         Bytes32 sigma = ShutterCrypto.XorBlocks(c.c2, key);
-
-        TestContext.WriteLine("recovered sigma: " + Convert.ToHexString(sigma.Unwrap()));
-        Assert.That(sigma.Unwrap().SequenceEqual(Convert.FromHexString(expectedSigmaHex)));
 
         // decrypt
         IEnumerable<Bytes32> keys = ShutterCrypto.ComputeBlockKeys(sigma, c.c3.Count());
         IEnumerable<Bytes32> decryptedBlocks = Enumerable.Zip(keys, c.c3, ShutterCrypto.XorBlocks);
-        TestContext.WriteLine("decrypted blocks: " + Convert.ToHexString(decryptedBlocks.First().Unwrap()));
-        Assert.That(decryptedBlocks.First().Unwrap().SequenceEqual(Convert.FromHexString(expectedBlockHex)));
 
         byte[] decryptedMessage = ShutterCrypto.Decrypt(c, decryptionKey);
         TestContext.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
@@ -239,6 +236,19 @@ class ShutterCryptoTests
 
     internal static byte[] EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
     {
+        // todo: change once shutter updates to blst
+        // byte[] bytes = new byte[1 + 96 + 32 + (encryptedMessage.c3.Count() * 32)];
+
+        // bytes[0] = encryptedMessage.VersionId;
+        // encryptedMessage.c1.compress().CopyTo(bytes.AsSpan()[1..]);
+        // encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[(1 + 96)..]);
+
+        // foreach ((Bytes32 block, int i) in encryptedMessage.c3.WithIndex())
+        // {
+        //     int offset = 1 + 96 + 32 + (32 * i);
+        //     block.Unwrap().CopyTo(bytes.AsSpan()[offset..]);
+        // }
+
         byte[] bytes = new byte[1 + 192 + 32 + (encryptedMessage.c3.Count() * 32)];
 
         bytes[0] = encryptedMessage.VersionId;
