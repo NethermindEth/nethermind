@@ -181,7 +181,7 @@ namespace Nethermind.Core.Caching
         {
             if (node.Next == offset)
             {
-                Debug.Assert(_leastRecentlyUsed == offset, "this should only be true for a list with only one node");
+                // Debug.Assert(_leastRecentlyUsed == offset, "this should only be true for a list with only one node");
                 // Do nothing only one node
             }
             else

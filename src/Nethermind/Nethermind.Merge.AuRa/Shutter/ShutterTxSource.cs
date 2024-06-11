@@ -82,6 +82,7 @@ public class ShutterTxSource : ITxSource
         if (DecryptionKeys is null || DecryptionKeys.Gnosis.Slot != nextSlot)
         {
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");
+            if (_logger.IsDebug && DecryptionKeys is not null) _logger.Debug($"Current Shutter decryption keys stored for slot {DecryptionKeys.Gnosis.Slot}");
             return [];
         }
 
