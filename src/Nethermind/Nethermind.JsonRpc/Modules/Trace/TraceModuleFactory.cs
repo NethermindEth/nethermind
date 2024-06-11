@@ -72,7 +72,7 @@ public class TraceModuleFactory(
 
         Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.StateReader);
+        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _worldStateManager.GlobalStateReader);
     }
 
 }

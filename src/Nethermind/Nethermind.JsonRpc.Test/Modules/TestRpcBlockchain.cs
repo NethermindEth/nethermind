@@ -136,7 +136,21 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             BlocksConfig blocksConfig = new BlocksConfig();
             ReceiptFinder ??= ReceiptStorage;
-            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, blocksConfig, false);
+            Bridge ??= new BlockchainBridge(
+                processingEnv,
+                simulateProcessingEnvFactory,
+                roBlockTree,
+                WorldStateManager.GlobalStateReader,
+                TxPool,
+                ReceiptFinder,
+                filterStore,
+                filterManager,
+                EthereumEcdsa,
+                Timestamper,
+                LogFinder,
+                SpecProvider,
+                blocksConfig,
+                false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 

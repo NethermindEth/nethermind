@@ -27,8 +27,8 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public IBlockTree BlockTree { get; }
-        public IStateReader StateReader { get; }
+        protected IBlockTree BlockTree { get; }
+        protected IStateReader StateReader { get; }
 
         protected IWorldState StateProvider { get; }
         protected IVirtualMachine Machine { get; }

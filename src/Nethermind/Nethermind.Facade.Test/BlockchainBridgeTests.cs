@@ -100,6 +100,8 @@ namespace Nethermind.Facade.Test
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
                 simulateProcessingEnvFactory,
+                _blockTree,
+                readOnlyWorldStateManager.GlobalStateReader,
                 _txPool,
                 _receiptStorage,
                 _filterStore,
@@ -241,6 +243,8 @@ namespace Nethermind.Facade.Test
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
                 simulateProcessingEnv,
+                _blockTree,
+                readOnlyWorldStateManager.GlobalStateReader,
                 _txPool,
                 _receiptStorage,
                 _filterStore,

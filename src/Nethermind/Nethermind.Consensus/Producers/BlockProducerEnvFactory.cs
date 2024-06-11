@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.Producers
                     readOnlyBlockTree,
                     blockProcessor,
                     _blockPreprocessorStep,
-                    txProcessingEnv.StateReader,
+                    _worldStateManager.GlobalStateReader,
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 

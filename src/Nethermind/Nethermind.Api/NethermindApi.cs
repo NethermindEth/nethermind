@@ -96,6 +96,8 @@ namespace Nethermind.Api
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 simulateReadOnlyBlocksProcessingEnvFactory,
+                readOnlyTree,
+                WorldStateManager!.GlobalStateReader,
                 TxPool,
                 ReceiptFinder,
                 FilterStore,
