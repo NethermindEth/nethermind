@@ -224,8 +224,7 @@ public class StartBlockProducerAuRa
         BlockProducerEnv Create()
         {
             ReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree.AsReadOnly();
-            IReadOnlyTxProcessorSource txProcessorSource = _api.ReadOnlyTxProcessorSource;
-            IReadOnlyTxProcessingScope scope = txProcessorSource.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = _api.ReadOnlyTxProcessorSource.Build(Keccak.EmptyTreeHash);
             BlockProcessor blockProcessor = CreateBlockProcessor(scope);
 
             IBlockchainProcessor blockchainProcessor =
@@ -247,7 +246,6 @@ public class StartBlockProducerAuRa
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
-                ReadOnlyTxProcessorSource = _api.ReadOnlyTxProcessorSource,
             };
         }
 

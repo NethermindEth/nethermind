@@ -49,11 +49,10 @@ public class OptimismBlockProducerEnvFactory(
 {
 
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
-        IReadOnlyTxProcessorSource processorSource,
         ITxPool txPool, IBlocksConfig blocksConfig, ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource, processorSource, txPool, blocksConfig,
+        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource, txPool, blocksConfig,
             transactionComparerProvider, logManager);
 
         return new OptimismTxPoolTxSource(baseTxSource);

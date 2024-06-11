@@ -100,25 +100,22 @@ namespace Nethermind.Consensus.Producers
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(additionalTxSource, _txProcessorSource, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
-                ReadOnlyTxProcessorSource = _txProcessorSource
+                TxSource = CreateTxSourceForProducer(additionalTxSource, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
             };
         }
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,
-            IReadOnlyTxProcessorSource processorSource,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
         {
-            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processorSource, txPool, blocksConfig, transactionComparerProvider, logManager);
+            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(txPool, blocksConfig, transactionComparerProvider, logManager);
             return additionalTxSource.Then(txPoolSource);
         }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
-            IReadOnlyTxProcessorSource processorSource,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
