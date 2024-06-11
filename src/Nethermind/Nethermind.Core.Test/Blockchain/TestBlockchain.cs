@@ -8,7 +8,10 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.BeaconBlockRoot;
@@ -33,6 +36,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -123,7 +127,7 @@ public class TestBlockchain : IDisposable
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
-        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
+        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, new PreBlockCaches());
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
@@ -156,10 +160,16 @@ public class TestBlockchain : IDisposable
         WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
-        BlockTree = Builders.Build.A.BlockTree()
-            .WithSpecProvider(SpecProvider)
-            .WithoutSettingHead
-            .TestObject;
+        BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
+            new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
+            DbProvider.BlockInfosDb,
+            DbProvider.MetadataDb,
+            new BlockStore(new TestMemDb(), 100),
+            new ChainLevelInfoRepository(DbProvider.BlockInfosDb),
+            SpecProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
@@ -171,10 +181,11 @@ public class TestBlockchain : IDisposable
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-
+        CodeInfoRepository codeInfoRepository = new();
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
+
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 

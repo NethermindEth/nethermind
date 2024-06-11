@@ -11,12 +11,12 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockReceiptTracer : BlockReceiptsTracer
 {
-    private readonly IOPConfigHelper _opConfigHelper;
+    private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IWorldState _worldState;
 
-    public OptimismBlockReceiptTracer(IOPConfigHelper opConfigHelper, IWorldState worldState)
+    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldState worldState)
     {
-        _opConfigHelper = opConfigHelper;
+        _opSpecHelper = opSpecHelper;
         _worldState = worldState;
     }
 
@@ -35,7 +35,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
             {
                 depositNonce--;
             }
-            if (_opConfigHelper.IsCanyon(header))
+            if (_opSpecHelper.IsCanyon(header))
             {
                 version = 1;
             }
