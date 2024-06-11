@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -85,7 +86,7 @@ public class AuRaContractGasLimitOverrideTests
             BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                 new ReadOnlyTxProcessingEnv(
                     WorldStateManager,
-                    BlockTree, SpecProvider, LimboLogs.Instance));
+                    BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
 
             GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
             GasLimitCalculator = new AuRaContractGasLimitOverride(new[] { gasLimitContract }, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);

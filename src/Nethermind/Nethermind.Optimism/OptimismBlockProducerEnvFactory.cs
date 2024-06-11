@@ -15,46 +15,40 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
+public class OptimismBlockProducerEnvFactory(
+    IWorldStateManager worldStateManager,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculatorSource rewardCalculatorSource,
+    IReceiptStorage receiptStorage,
+    IBlockPreprocessorStep blockPreprocessorStep,
+    ITxPool txPool,
+    ITransactionComparerProvider transactionComparerProvider,
+    IBlocksConfig blocksConfig,
+    OptimismSpecHelper specHelper,
+    OPL1CostHelper l1CostHelper,
+    ILogManager logManager) : BlockProducerEnvFactory(
+        worldStateManager,
+        blockTree,
+        specProvider,
+        blockValidator,
+        rewardCalculatorSource,
+        receiptStorage,
+        blockPreprocessorStep,
+        txPool,
+        transactionComparerProvider,
+        blocksConfig,
+        logManager)
 {
-    private readonly ChainSpec _chainSpec;
-    private readonly OPSpecHelper _specHelper;
-    private readonly OPL1CostHelper _l1CostHelper;
-
-    public OptimismBlockProducerEnvFactory(
-        IWorldStateManager worldStateManager,
-        ChainSpec chainSpec,
-        IBlockTree blockTree,
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculatorSource rewardCalculatorSource,
-        IReceiptStorage receiptStorage,
-        IBlockPreprocessorStep blockPreprocessorStep,
-        ITxPool txPool,
-        ITransactionComparerProvider transactionComparerProvider,
-        IBlocksConfig blocksConfig,
-        OPSpecHelper specHelper,
-        OPL1CostHelper l1CostHelper,
-        ILogManager logManager) : base(worldStateManager,
-        blockTree, specProvider, blockValidator,
-        rewardCalculatorSource, receiptStorage, blockPreprocessorStep,
-        txPool, transactionComparerProvider, blocksConfig, logManager)
-    {
-        _specHelper = specHelper;
-        _l1CostHelper = l1CostHelper;
-        _chainSpec = chainSpec;
-        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
-    }
-
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
         ReadOnlyBlockTree readOnlyBlockTree) =>
-        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _l1CostHelper, _specHelper, _logManager);
+        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, l1CostHelper, specHelper);
 
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
         ReadOnlyTxProcessingEnv processingEnv,
@@ -84,34 +78,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             receiptStorage,
             new BlockhashStore(_blockTree, specProvider, readOnlyTxProcessingEnv.WorldState),
             logManager,
-            _specHelper,
-            new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
+            specHelper,
+            new Create2DeployerContractRewriter(specHelper, _specProvider, _blockTree),
             new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }
-}
-
-public class OptimismReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnv
-{
-    private readonly IL1CostHelper _l1CostHelper;
-    private readonly OPSpecHelper _specHelper;
-
-    public OptimismReadOnlyTxProcessingEnv(
-        IWorldStateManager worldStateManager,
-        IBlockTree blockTree,
-        ISpecProvider specProvider,
-        IL1CostHelper l1CostHelper,
-        OPSpecHelper specHelper,
-        ILogManager logManager
-    ) : base(
-        worldStateManager,
-        blockTree,
-        specProvider,
-        logManager
-    )
-    {
-        _l1CostHelper = l1CostHelper;
-        _specHelper = specHelper;
-    }
-
-    protected override TransactionProcessor CreateTransactionProcessor() => new OptimismTransactionProcessor(SpecProvider, StateProvider, Machine, _logManager, _l1CostHelper, _specHelper);
 }

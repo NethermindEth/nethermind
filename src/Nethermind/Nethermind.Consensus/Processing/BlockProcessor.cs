@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -270,8 +271,12 @@ public partial class BlockProcessor : IBlockProcessor
 
         _stateProvider.Commit(spec, commitStorageRoots: true);
 
-        // Get the accounts that have been changed
-        block.AccountChanges = _stateProvider.GetAccountChanges();
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            // Get the accounts that have been changed
+            block.AccountChanges = _stateProvider.GetAccountChanges();
+        }
+
         if (ShouldComputeStateRoot(block.Header))
         {
             _stateProvider.RecalculateStateRoot();

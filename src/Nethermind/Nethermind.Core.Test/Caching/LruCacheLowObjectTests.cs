@@ -41,7 +41,7 @@ namespace Nethermind.Core.Test.Caching
             Cache cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]);
+                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
             }
 
             Account? account = cache.Get(_addresses[Capacity - 1]);
@@ -52,8 +52,8 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             Cache cache = Create();
-            cache.Set(_addresses[0], _accounts[0]);
-            cache.Set(_addresses[0], _accounts[1]);
+            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
+            cache.Set(_addresses[0], _accounts[1]).Should().BeFalse();
             cache.Get(_addresses[0]).Should().Be(_accounts[1]);
         }
 
@@ -68,10 +68,10 @@ namespace Nethermind.Core.Test.Caching
         public void Can_clear()
         {
             Cache cache = Create();
-            cache.Set(_addresses[0], _accounts[0]);
+            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
             cache.Clear();
             cache.Get(_addresses[0]).Should().BeNull();
-            cache.Set(_addresses[0], _accounts[1]);
+            cache.Set(_addresses[0], _accounts[1]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(_accounts[1]);
         }
 
@@ -81,11 +81,25 @@ namespace Nethermind.Core.Test.Caching
             Cache cache = Create();
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]);
+                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
             }
 
             Account? account = cache.Get(_addresses[Capacity]);
             account.Should().Be(_accounts[Capacity]);
+        }
+
+        [Test]
+        public void Beyond_capacity_lru()
+        {
+            Cache cache = Create();
+            for (int i = 0; i < Capacity * 2; i++)
+            {
+                for (int ii = 0; ii < Capacity / 2; ii++)
+                {
+                    cache.Set(_addresses[i], _accounts[i]);
+                }
+                cache.Set(_addresses[i], _accounts[i]);
+            }
         }
 
         [Test]
@@ -114,7 +128,7 @@ namespace Nethermind.Core.Test.Caching
             Cache cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i], _accounts[i]);
+                cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
             }
 
             cache.Clear();
@@ -124,7 +138,7 @@ namespace Nethermind.Core.Test.Caching
             // fill again
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i], _accounts[MapForRefill(i)]);
+                cache.Set(_addresses[i], _accounts[MapForRefill(i)]).Should().BeTrue();
             }
 
             // validate
@@ -145,8 +159,10 @@ namespace Nethermind.Core.Test.Caching
 
             for (int i = 0; i < iterations; i++)
             {
-                cache.Set(i, i);
-                cache.Delete(i - itemsToKeep);
+                cache.Set(i, i).Should().BeTrue();
+                var remove = i - itemsToKeep;
+                if (remove >= 0)
+                    cache.Delete(remove).Should().BeTrue();
             }
 
             int count = 0;

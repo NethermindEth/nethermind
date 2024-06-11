@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
+using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -17,7 +18,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
+public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, IWorldState? targetWorldState = null) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
@@ -25,12 +26,11 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, CancellationToken cancellationToken = default)
     {
-        if (preBlockCaches is not null)
+        if (targetWorldState is not null)
         {
-            if (preBlockCaches.IsDirty)
+            if (targetWorldState.ClearCache())
             {
                 if (_logger.IsWarn) _logger.Warn("Cashes are not empty. Clearing them.");
-                preBlockCaches.Clear();
             }
 
             if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)
@@ -46,7 +46,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     // Parent state root is null for genesis block
     private bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
-    public void ClearCaches() => preBlockCaches?.Clear();
+    public void ClearCaches() => targetWorldState?.ClearCache();
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken)
     {
@@ -54,7 +54,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
         try
         {
-            ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
+            ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, RuntimeInformation.PhysicalCoreCount - 2), CancellationToken = cancellationToken };
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
 
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
@@ -69,27 +69,38 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
         void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
         {
+            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                IReadOnlyTxProcessorSource env = _envPool.Get();
-                try
-                {
-                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
-                    Parallel.For(0, block.Withdrawals.Length, parallelOptions,
-                        i => scope.WorldState.WarmUp(block.Withdrawals[i].Address)
-                    );
-                }
-                finally
-                {
-                    _envPool.Return(env);
-                }
+                Parallel.For(0, block.Withdrawals.Length, parallelOptions,
+                    i =>
+                    {
+                        IReadOnlyTxProcessorSource env = _envPool.Get();
+                        using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                        try
+                        {
+                            scope.WorldState.WarmUp(block.Withdrawals[i].Address);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal {i}", ex);
+                        }
+                        finally
+                        {
+                            _envPool.Return(env);
+                        }
+                    });
             }
         }
 
         void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
         {
+            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
             Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
             {
+                // If the transaction has already been processed or being processed, exit early
+                if (block.TransactionProcessed >= i) return;
+
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 Transaction tx = block.Transactions[i];
                 IReadOnlyTxProcessorSource env = _envPool.Get();
