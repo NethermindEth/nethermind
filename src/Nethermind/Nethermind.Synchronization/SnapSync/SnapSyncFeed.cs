@@ -146,8 +146,6 @@ namespace Nethermind.Synchronization.SnapSync
                 lock (_syncLock)
                 {
                     foreach (var item in _resultLog)
-                   {   
-
                     {
                         if (item.result == AddRangeResult.OK)
                         {
@@ -164,38 +162,35 @@ namespace Nethermind.Synchronization.SnapSync
 
                             if (item.peer == peer)
                             {
-                                      peerLastFailures++;
+                                peerLastFailures++;
 
-                                               if (peerLastFailures > AllowedInvalidResponses)
-                                             {  
-                                                    if (allLastFailures == peerLastFailures)
-                                                        {
-                                                                      // Update the pivot and retry with the same peer
-                                                                    _snapProvider.UpdatePivot();
-                                                                    _resultLog.Clear();
-
-                                                                    
-                                                                  _logger.Trace($"SNAP - updating pivot and retrying with peer: {peer}");
-
-                                                                // Return a result that allows retrying with the same peer
-                                                              return SyncResponseHandlingResult.OK;
-                                                        }
-                                                  else
-                                                   {
-                                                      
-                                                     _logger.Trace($"SNAP - peer to be punished: {peer}");
-                                                    return SyncResponseHandlingResult.LesserQuality;
-                                                    }
-                                             }
-
-                                    if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
+                                if (peerLastFailures > AllowedInvalidResponses)
+                                {
+                                    if (allLastFailures == peerLastFailures)
                                     {
+                                        
                                         _snapProvider.UpdatePivot();
-
                                         _resultLog.Clear();
 
-                                        break;
+                                        _logger.Trace($"SNAP - updating pivot and retrying with peer: {peer}");
+
+                                        
+                                        return SyncResponseHandlingResult.OK;
                                     }
+                                    else
+                                    {
+                                        _logger.Trace($"SNAP - peer to be punished: {peer}");
+                                        return SyncResponseHandlingResult.LesserQuality;
+                                    }
+                                }
+
+                                if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
+                                {
+                                    _snapProvider.UpdatePivot();
+
+                                    _resultLog.Clear();
+
+                                    break;
                                 }
                             }
                         }
