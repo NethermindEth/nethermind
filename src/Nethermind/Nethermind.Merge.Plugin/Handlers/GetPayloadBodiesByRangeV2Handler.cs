@@ -47,7 +47,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
         var headNumber = _blockTree.Head?.Number ?? 0;
         for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
         {
-            Block? block = _blockTree.FindBlock(start + i);
+            Block? block = _blockTree.FindBlock(i);
 
             ConsensusRequest[]? consensusRequests = block?.Requests;
 
