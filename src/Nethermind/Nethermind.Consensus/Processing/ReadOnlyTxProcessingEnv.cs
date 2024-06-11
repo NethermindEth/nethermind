@@ -14,7 +14,7 @@ using Nethermind.State;
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
-    public class ReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource
+    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
         protected readonly ILogManager _logManager;
 
@@ -27,9 +27,16 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public IVirtualMachine Machine { get; }
+        public IBlockTree BlockTree { get; }
+        public IStateReader StateReader { get; }
 
-        public ICodeInfoRepository CodeInfoRepository { get; }
+        protected IWorldState StateProvider { get; }
+        protected IVirtualMachine Machine { get; }
+        protected IBlockhashProvider BlockhashProvider { get; }
+        protected ISpecProvider SpecProvider { get; }
+        protected ILogManager? LogManager { get; }
+        protected ICodeInfoRepository CodeInfoRepository { get; }
+
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
@@ -46,12 +53,21 @@ namespace Nethermind.Consensus.Processing
             ISpecProvider? specProvider,
             ILogManager? logManager,
             IWorldState? worldStateToWarmUp = null
-            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+            )
         {
+            ArgumentNullException.ThrowIfNull(specProvider);
+            ArgumentNullException.ThrowIfNull(worldStateManager);
+
+            StateReader = worldStateManager.GlobalStateReader;
+            StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
+
             CodeInfoRepository = new CodeInfoRepository();
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+
+            SpecProvider = specProvider;
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+            LogManager = logManager;
 
             _logManager = logManager;
         }

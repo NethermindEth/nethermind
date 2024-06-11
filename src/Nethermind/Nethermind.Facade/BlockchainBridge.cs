@@ -53,7 +53,8 @@ namespace Nethermind.Facade
         private readonly IBlocksConfig _blocksConfig;
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
 
-        public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+        public BlockchainBridge(
+            ReadOnlyTxProcessingEnv processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
