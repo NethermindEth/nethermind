@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -70,7 +71,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         [NotNullWhen(false)] out string? error)
     {
         IBlockTree blockTree = env.BlockTree;
-        IWorldState stateProvider = env.StateProvider;
+        IWorldState stateProvider = env.WorldState;
         parent = GetParent(parent, payload, blockTree);
         IReleaseSpec spec = env.SpecProvider.GetSpec(parent);
 
@@ -84,7 +85,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 nonceCache.Clear();
                 BlockHeader callHeader = GetCallHeader(blockCall, parent, payload.Validation, spec); //currentSpec is still parent spec
                 spec = env.SpecProvider.GetSpec(callHeader);
-                PrepareState(callHeader, parent, blockCall, env.StateProvider, env.CodeInfoRepository, spec);
+                PrepareState(callHeader, parent, blockCall, env.WorldState, env.CodeInfoRepository, spec);
 
                 if (blockCall.BlockOverrides is { BaseFeePerGas: not null })
                 {
@@ -166,7 +167,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         out Block currentBlock,
         [NotNullWhen(false)] out string? error)
     {
-        IWorldState stateProvider = env.StateProvider;
+        IWorldState stateProvider = env.WorldState;
         Snapshot shoot = stateProvider.TakeSnapshot();
         currentBlock = new Block(callHeader);
         LinkedHashSet<Transaction> testedTxs = new();

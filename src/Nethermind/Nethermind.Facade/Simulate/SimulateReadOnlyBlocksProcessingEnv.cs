@@ -44,6 +44,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
     private readonly TransactionProcessor _transactionProcessor;
+    public IWorldState WorldState => StateProvider;
 
     public SimulateReadOnlyBlocksProcessingEnv(
         IWorldStateManager worldStateManager,
