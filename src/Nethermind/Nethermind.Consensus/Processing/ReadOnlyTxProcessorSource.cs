@@ -101,7 +101,7 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyTxProcessingScope baseScope,
             Hash256 originalStateRoot,
             ReadOnlyTxProcessorSource baseEnv
-        ): IReadOnlyTxProcessingScope
+        ) : IReadOnlyTxProcessingScope
         {
             public void Dispose()
             {
