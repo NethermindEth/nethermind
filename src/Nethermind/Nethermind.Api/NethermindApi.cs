@@ -79,7 +79,7 @@ namespace Nethermind.Api
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
                 WorldStateManager!,
                 readOnlyTree,
-                SpecProvider,
+                SpecProvider!,
                 LogManager);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =

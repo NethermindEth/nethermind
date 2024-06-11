@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -16,26 +17,15 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
+
+        private readonly ObjectPool<RecyclingTxProcessingScope> _pooledScope;
+
+        private readonly IWorldState? _worldStateToWarmUp;
+        private readonly IWorldStateManager _worldStateManager;
+
         protected readonly ILogManager _logManager;
-
-        protected ITransactionProcessor? _transactionProcessor;
-        protected ITransactionProcessor TransactionProcessor
-        {
-            get
-            {
-                return _transactionProcessor ??= CreateTransactionProcessor();
-            }
-        }
-
-        protected IBlockTree BlockTree { get; }
-        protected IStateReader StateReader { get; }
-
-        protected IWorldState StateProvider { get; }
-        protected IVirtualMachine Machine { get; }
-        protected IBlockhashProvider BlockhashProvider { get; }
-        protected ISpecProvider SpecProvider { get; }
-        protected ILogManager? LogManager { get; }
-        protected ICodeInfoRepository CodeInfoRepository { get; }
+        protected IBlockTree _blockTree;
+        protected ISpecProvider _specProvider;
 
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
@@ -50,38 +40,85 @@ namespace Nethermind.Consensus.Processing
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
-            ISpecProvider? specProvider,
-            ILogManager? logManager,
+            ISpecProvider specProvider,
+            ILogManager logManager,
             IWorldState? worldStateToWarmUp = null
             )
         {
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
-            StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
+            _worldStateManager = worldStateManager;
+            _worldStateToWarmUp = worldStateToWarmUp;
+            _pooledScope = new DefaultObjectPool<RecyclingTxProcessingScope>(new RecyclingTxProcessingScopePoolPolicy(this));
+            _specProvider = specProvider;
 
-            CodeInfoRepository = new CodeInfoRepository();
-
-            SpecProvider = specProvider;
-            BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
-            LogManager = logManager;
-
+            _blockTree = readOnlyBlockTree;
             _logManager = logManager;
         }
 
-        protected virtual TransactionProcessor CreateTransactionProcessor()
+        protected virtual ITransactionProcessor CreateTransactionProcessor(IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfo)
         {
-            return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
+            return new TransactionProcessor(_specProvider, worldState, virtualMachine, codeInfo, _logManager);
+        }
+
+        protected virtual IReadOnlyTxProcessingScope Build(IWorldState worldState)
+        {
+            BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, _specProvider, worldState, _logManager);
+            CodeInfoRepository codeInfo = new CodeInfoRepository();
+            VirtualMachine machine = new VirtualMachine(blockhashProvider, _specProvider, codeInfo, _logManager);
+            ITransactionProcessor transactionProcessor = CreateTransactionProcessor(worldState, machine, codeInfo);
+            return new ReadOnlyTxProcessingScope(transactionProcessor, worldState);
         }
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {
-            Hash256 originalStateRoot = StateProvider.StateRoot;
-            StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+            RecyclingTxProcessingScope scope = _pooledScope.Get();
+            scope.WorldState.StateRoot = stateRoot;
+            return scope;
+        }
+
+        private RecyclingTxProcessingScope NewScope()
+        {
+            IWorldState newWorldState = _worldStateManager.CreateResettableWorldState(_worldStateToWarmUp);
+            Hash256 originalStateRoot = newWorldState.StateRoot;
+            IReadOnlyTxProcessingScope baseScope = Build(newWorldState);
+            return new RecyclingTxProcessingScope(baseScope, originalStateRoot, this);
+        }
+
+        private void Return(RecyclingTxProcessingScope recyclingTxProcessingScope)
+        {
+            _pooledScope.Return(recyclingTxProcessingScope);
+        }
+
+        private class RecyclingTxProcessingScopePoolPolicy(ReadOnlyTxProcessingEnv env) : PooledObjectPolicy<RecyclingTxProcessingScope>
+        {
+            public override RecyclingTxProcessingScope Create()
+            {
+                return env.NewScope();
+            }
+
+            public override bool Return(RecyclingTxProcessingScope obj)
+            {
+                return true;
+            }
+        }
+
+        private class RecyclingTxProcessingScope(
+            IReadOnlyTxProcessingScope baseScope,
+            Hash256 originalStateRoot,
+            ReadOnlyTxProcessingEnv baseEnv
+        ): IReadOnlyTxProcessingScope
+        {
+            public void Dispose()
+            {
+                baseScope.WorldState.StateRoot = originalStateRoot;
+                baseScope.WorldState.Reset();
+                baseEnv.Return(this);
+            }
+
+            public ITransactionProcessor TransactionProcessor => baseScope.TransactionProcessor;
+            public IWorldState WorldState => baseScope.WorldState;
         }
     }
 }

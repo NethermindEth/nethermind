@@ -50,6 +50,8 @@ namespace Nethermind.Facade.Test
 
         private class TestReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnv
         {
+            private ITransactionProcessor _transactionProcessor;
+
             public TestReadOnlyTxProcessingEnv(
                 IWorldStateManager worldStateManager,
                 IBlockTree blockTree,
@@ -59,6 +61,12 @@ namespace Nethermind.Facade.Test
                 base(worldStateManager, blockTree, specProvider, logManager)
             {
                 _transactionProcessor = transactionProcessor;
+            }
+
+            protected override ITransactionProcessor CreateTransactionProcessor(IWorldState worldState, IVirtualMachine virtualMachine,
+                ICodeInfoRepository codeInfo)
+            {
+                return _transactionProcessor;
             }
         }
 

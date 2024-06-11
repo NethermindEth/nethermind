@@ -13,16 +13,15 @@ namespace Nethermind.Consensus.Test;
 public class ReadOnlyTxProcessingScopeTests
 {
     [Test]
-    public void Test_WhenDispose_ThenStateRootWillRevert()
+    public void Test_WhenDispose_ThenWorldStateWillReset()
     {
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IWorldState>(),
-            TestItem.KeccakB
+            Substitute.For<IWorldState>()
         );
 
         env.Dispose();
 
-        env.WorldState.Received().StateRoot = TestItem.KeccakB;
+        env.WorldState.Received().Reset();
     }
 }

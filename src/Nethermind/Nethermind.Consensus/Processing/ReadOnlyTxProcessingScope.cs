@@ -9,13 +9,11 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingScope(
     ITransactionProcessor transactionProcessor,
-    IWorldState worldState,
-    Hash256 originalStateRoot
+    IWorldState worldState
 ) : IReadOnlyTxProcessingScope
 {
     public void Dispose()
     {
-        worldState.StateRoot = originalStateRoot;
         worldState.Reset();
     }
 

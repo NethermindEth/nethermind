@@ -27,12 +27,8 @@ public class OptimismReadOnlyTxProcessingEnv(
       worldStateToWarmUp
      )
 {
-    protected override TransactionProcessor CreateTransactionProcessor()
+    protected override TransactionProcessor CreateTransactionProcessor(IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfo)
     {
-        ArgumentNullException.ThrowIfNull(LogManager);
-
-        BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, StateProvider, LogManager);
-        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, CodeInfoRepository, LogManager);
-        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, l1CostHelper, opSpecHelper, CodeInfoRepository);
+        return new OptimismTransactionProcessor(_specProvider, worldState, virtualMachine, _logManager, l1CostHelper, opSpecHelper, codeInfo);
     }
 }
