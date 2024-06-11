@@ -124,7 +124,6 @@ namespace Nethermind.Evm.Test
                     Instruction.RETF,
                     Instruction.JUMPF,
                     Instruction.EOFCREATE,
-                    Instruction.TXCREATE,
                     Instruction.RETURNCONTRACT,
                     Instruction.DATASIZE,
                     Instruction.DATACOPY,

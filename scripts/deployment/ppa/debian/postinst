@@ -18,7 +18,7 @@ set -e
 
 case "$1" in
   configure)
-    arch=$(uname -m)
+    arch=$(dpkg --print-architecture)
 
     if [[ "$arch" == arm* ]]; then
       url=to_be_replaced

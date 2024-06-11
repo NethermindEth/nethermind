@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.State;
@@ -27,6 +28,7 @@ public static class GethLikeNativeTracerFactory
     {
         RegisterTracer(Native4ByteTracer.FourByteTracer, (options, _, _, _) => new Native4ByteTracer(options));
         RegisterTracer(NativePrestateTracer.PrestateTracer, (options, block, transaction, worldState) => new NativePrestateTracer(worldState, options, transaction.SenderAddress, transaction.To, block.Beneficiary));
+        RegisterTracer(NativeCallTracer.CallTracer, (options, _, transaction, _) => new NativeCallTracer(transaction, options));
     }
 
     private static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)

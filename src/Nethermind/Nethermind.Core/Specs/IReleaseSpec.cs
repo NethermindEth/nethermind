@@ -177,11 +177,6 @@ namespace Nethermind.Core.Specs
         bool IsEip2200Enabled { get; }
 
         /// <summary>
-        /// Berlin subroutines -> https://github.com/ethereum/EIPs/issues/2315
-        /// </summary>
-        bool IsEip2315Enabled { get; }
-
-        /// <summary>
         /// Berlin BLS crypto precompiles
         /// </summary>
         bool IsEip2537Enabled { get; }
@@ -274,6 +269,12 @@ namespace Nethermind.Core.Specs
         Address Eip4788ContractAddress { get; }
 
         /// <summary>
+        /// Save historical block hashes in state
+        /// </summary>
+        bool IsEip2935Enabled { get; }
+        Address Eip2935ContractAddress { get; }
+
+        /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
@@ -293,7 +294,7 @@ namespace Nethermind.Core.Specs
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
@@ -335,8 +336,6 @@ namespace Nethermind.Core.Specs
 
         public bool ShiftOpcodesEnabled => IsEip145Enabled;
 
-        public bool SubroutinesEnabled => IsEip2315Enabled;
-
         public bool RevertOpcodeEnabled => IsEip140Enabled;
 
         public bool ExtCodeHashOpcodeEnabled => IsEip1052Enabled;
@@ -364,6 +363,7 @@ namespace Nethermind.Core.Specs
         public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
+        public bool IsBlockHashInStateAvailable => IsEip2935Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }

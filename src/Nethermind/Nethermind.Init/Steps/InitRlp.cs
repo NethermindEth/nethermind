@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -31,6 +32,11 @@ namespace Nethermind.Init.Steps
             if (assembly is not null)
             {
                 Rlp.RegisterDecoders(assembly);
+            }
+
+            foreach (INethermindPlugin plugin in _api.Plugins)
+            {
+                plugin.InitRlpDecoders(_api);
             }
 
             return Task.CompletedTask;

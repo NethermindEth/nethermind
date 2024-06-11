@@ -12,6 +12,7 @@ namespace Nethermind.Evm.Tracing;
 
 public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
+    private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
@@ -27,8 +28,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
     public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
-
-    private IBlockTracer _otherTracer = NullBlockTracer.Instance;
+    public bool IsTracingLogs => _currentTxTracer.IsTracingLogs;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
@@ -105,6 +105,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportOperationRemainingGas(long gas) =>
         _currentTxTracer.ReportOperationRemainingGas(gas);
 
+    public void ReportLog(LogEntry log) =>
+        _currentTxTracer.ReportLog(log);
 
     public void SetOperationMemorySize(ulong newSize) =>
         _currentTxTracer.SetOperationMemorySize(newSize);
@@ -151,7 +153,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
 
-    public void ReportActionRevert(long gasLeft, byte[] output) =>
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) =>
         _currentTxTracer.ReportActionRevert(gasLeft, output);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>

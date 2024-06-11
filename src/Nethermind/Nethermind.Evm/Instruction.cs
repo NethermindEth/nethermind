@@ -84,9 +84,6 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
-        BEGINSUB = 0x5c,
-        RETURNSUB = 0x5d,
-        JUMPSUB = 0x5e,
         MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
@@ -185,7 +182,6 @@ namespace Nethermind.Evm
         RETF = 0xe4,
         JUMPF = 0xe5,
         EOFCREATE = 0xec,
-        TXCREATE = 0xed,
         RETURNCONTRACT = 0xee,
         DATALOAD = 0xd0,
         DATALOADN = 0xd1,
@@ -234,7 +230,7 @@ namespace Nethermind.Evm
                 Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => IsEofContext,
                 Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => IsEofContext,
-                Instruction.RETURNCONTRACT or Instruction.TXCREATE or Instruction.EOFCREATE => IsEofContext,
+                Instruction.RETURNCONTRACT or Instruction.EOFCREATE => IsEofContext,
                 Instruction.DATACOPY or Instruction.DATASIZE or Instruction.DATALOAD or Instruction.DATALOADN => IsEofContext,
                 Instruction.EXTSTATICCALL or Instruction.EXTDELEGATECALL or Instruction.EXTCALL => IsEofContext,
                 Instruction.RETURNDATALOAD => IsEofContext,
@@ -345,7 +341,6 @@ namespace Nethermind.Evm
             Instruction.INVALID => (0, 0, 0),
 
             Instruction.EOFCREATE => (4, 1, 1),
-            Instruction.TXCREATE => (5, 1, 0),
             Instruction.RETURNCONTRACT => (2, 2, 1),
             Instruction.DATALOAD => (1, 1, 0),
             Instruction.DATALOADN => (0, 1, 2),
@@ -372,12 +367,6 @@ namespace Nethermind.Evm
                 Instruction.EXTSTATICCALL => "EXTSTATICCALL", // StaticCallEnabled
                 Instruction.EXTDELEGATECALL => "EXTDELEGATECALL",
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
-                Instruction.RJUMP => spec.IsEofEnabled ? "RJUMP" : "BEGINSUB",
-                Instruction.RJUMPI => spec.IsEofEnabled ? "RJUMPI" : "RETURNSUB",
-                Instruction.RJUMPV => spec.IsEofEnabled ? "RJUMPV" : "JUMPSUB",
-                Instruction.TLOAD or Instruction.BEGINSUB => spec?.TransientStorageEnabled == true ? "TLOAD" : "BEGINSUB",
-                Instruction.TSTORE or Instruction.RETURNSUB => spec?.TransientStorageEnabled == true ? "TSTORE" : "RETURNSUB",
-                Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
                 Instruction.JUMPDEST => spec.IsEofEnabled ? "NOP" : "JUMPDEST",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };

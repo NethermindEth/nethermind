@@ -152,11 +152,16 @@ internal static class EvmObjectFormat
         }
 
         internal const byte MINIMUM_HEADER_SECTION_SIZE = 3;
-        internal const byte MINIMUM_HEADER_SIZE = VERSION_OFFSET + MINIMUM_HEADER_SECTION_SIZE + MINIMUM_HEADER_SECTION_SIZE + TWO_BYTE_LENGTH + MINIMUM_HEADER_SECTION_SIZE + ONE_BYTE_LENGTH;
         internal const byte MINIMUM_TYPESECTION_SIZE = 4;
         internal const byte MINIMUM_CODESECTION_SIZE = 1;
         internal const byte MINIMUM_DATASECTION_SIZE = 0;
         internal const byte MINIMUM_CONTAINERSECTION_SIZE = 0;
+        internal const byte MINIMUM_HEADER_SIZE = VERSION_OFFSET
+                                                + MINIMUM_HEADER_SECTION_SIZE
+                                                + MINIMUM_HEADER_SECTION_SIZE + TWO_BYTE_LENGTH
+                                                + MINIMUM_HEADER_SECTION_SIZE + TWO_BYTE_LENGTH
+                                                + MINIMUM_HEADER_SECTION_SIZE
+                                                + ONE_BYTE_LENGTH;
 
         internal const byte BYTE_BIT_COUNT = 8; // indicates the length of the count immediate of jumpv
         internal const byte MINIMUMS_ACCEPTABLE_JUMPV_JUMPTABLE_LENGTH = 1; // indicates the length of the count immediate of jumpv
@@ -344,13 +349,14 @@ internal static class EvmObjectFormat
         public bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header,  ValidationStrategy strategy)
         {
             int startOffset = header.TypeSection.Start;
+            int endOffset = header.DataSection.Start;
             int calculatedCodeLength =
                     header.TypeSection.Size
                 +   header.CodeSections.Size
-                +   (strategy == ValidationStrategy.ValidateFullBody ? header.DataSection.Size : 0) 
                 +   (header.ContainerSection?.Size ?? 0);
             CompoundSectionHeader codeSections = header.CodeSections;
-            ReadOnlySpan<byte> contractBody = container[startOffset..];
+            ReadOnlySpan<byte> contractBody = container[startOffset..endOffset];
+            ReadOnlySpan<byte> dataBody = container[endOffset..];
             (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
 
             if (header.ContainerSection?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS)
@@ -363,6 +369,12 @@ internal static class EvmObjectFormat
             if (contractBody.Length != calculatedCodeLength)
             {
                 if (Logger.IsTrace) Logger.Trace("EOF : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
+                return false;
+            }
+
+            if (strategy == ValidationStrategy.ValidateFullBody && header.DataSection.Size != dataBody.Length)
+            {
+                if (Logger.IsTrace) Logger.Trace("EOF : DataSectionSize indicated in bundled header are incorrect, or DataSection is wrong");
                 return false;
             }
 

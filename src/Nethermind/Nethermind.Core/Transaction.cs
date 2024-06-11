@@ -281,6 +281,33 @@ namespace Nethermind.Core
                 return true;
             }
         }
+
+        public void CopyTo(Transaction tx)
+        {
+            tx.ChainId = ChainId;
+            tx.Type = Type;
+            tx.SourceHash = SourceHash;
+            tx.Mint = Mint;
+            tx.IsOPSystemTransaction = IsOPSystemTransaction;
+            tx.Nonce = Nonce;
+            tx.GasPrice = GasPrice;
+            tx.GasBottleneck = GasBottleneck;
+            tx.DecodedMaxFeePerGas = DecodedMaxFeePerGas;
+            tx.GasLimit = GasLimit;
+            tx.To = To;
+            tx.Value = Value;
+            tx.Data = Data;
+            tx.SenderAddress = SenderAddress;
+            tx.Signature = Signature;
+            tx.Timestamp = Timestamp;
+            tx.AccessList = AccessList;
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx.BlobVersionedHashes = BlobVersionedHashes;
+            tx.NetworkWrapper = NetworkWrapper;
+            tx.IsServiceTransaction = IsServiceTransaction;
+            tx.PoolIndex = PoolIndex;
+            tx._size = _size;
+        }
     }
 
     /// <summary>

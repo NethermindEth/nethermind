@@ -51,11 +51,6 @@ public class EofCodeInfo : ICodeInfo
             );
     }
 
-    public bool ValidateJump(int destination, bool isSubroutine)
-    {
-        throw new NotImplementedException();
-    }
-
     public EofCodeInfo(CodeInfo codeInfo, in EofHeader header)
     {
         _codeInfo = codeInfo;
