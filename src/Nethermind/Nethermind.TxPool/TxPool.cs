@@ -809,10 +809,10 @@ namespace Nethermind.TxPool
             public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
             {
                 Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
-                    (n) =>
+                    n =>
                     {
-                        var cache = _caches[n.Key];
-                        foreach (Address a in n)
+                        LruCacheLowObject<AddressAsKey, AccountStruct> cache = _caches[n.Key];
+                        foreach (AddressAsKey a in n)
                         {
                             cache.Delete(a);
                         }

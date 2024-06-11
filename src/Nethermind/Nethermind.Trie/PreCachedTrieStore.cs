@@ -10,65 +10,81 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class PreCachedTrieStore(ITrieStore inner,
-    ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
-    : ITrieStore
+public class PreCachedTrieStore : ITrieStore
 {
+    private readonly ITrieStore _inner;
+    private readonly ConcurrentDictionary<NodeKey, byte[]?> _preBlockCache;
+    private readonly Func<NodeKey, byte[]> _loadRlp;
+    private readonly Func<NodeKey, byte[]> _tryLoadRlp;
+
+    public PreCachedTrieStore(ITrieStore inner,
+        ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
+    {
+        _inner = inner;
+        _preBlockCache = preBlockCache;
+
+        // Capture the delegate once for default path to avoid the allocation of the lambda per call
+        _loadRlp = (NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
+        _tryLoadRlp = (NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
+    }
+
     public void Dispose()
     {
-        inner.Dispose();
+        _inner.Dispose();
     }
 
     public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
     {
-        inner.CommitNode(blockNumber, address, in nodeCommitInfo, writeFlags);
+        _inner.CommitNode(blockNumber, address, in nodeCommitInfo, writeFlags);
     }
 
     public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
-        inner.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
-        preBlockCache.Clear();
+        _inner.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
+        _preBlockCache.Clear();
     }
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp = preBlockCache.GetOrAdd(new(address, in path, in keccak),
-            key => inner.TryLoadRlp(key.Address, in key.Path, key.Hash));
+        byte[]? rlp = _preBlockCache.GetOrAdd(new(address, in path, in keccak),
+            key => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash));
 
         return rlp is not null;
     }
 
-    public IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null) => inner.AsReadOnly(keyValueStore);
+    public IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null) => _inner.AsReadOnly(keyValueStore);
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
-        add => inner.ReorgBoundaryReached += value;
-        remove => inner.ReorgBoundaryReached -= value;
+        add => _inner.ReorgBoundaryReached += value;
+        remove => _inner.ReorgBoundaryReached -= value;
     }
 
-    public IReadOnlyKeyValueStore TrieNodeRlpStore => inner.TrieNodeRlpStore;
+    public IReadOnlyKeyValueStore TrieNodeRlpStore => _inner.TrieNodeRlpStore;
 
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
     {
-        preBlockCache[new(address, in path, in keccak)] = rlp;
-        inner.Set(address, in path, in keccak, rlp);
+        _preBlockCache[new(address, in path, in keccak)] = rlp;
+        _inner.Set(address, in path, in keccak, rlp);
     }
 
-    public bool HasRoot(Hash256 stateRoot) => inner.HasRoot(stateRoot);
+    public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(address, in path, hash);
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        preBlockCache.GetOrAdd(new(address, in path, hash),
-            key => inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
+        _preBlockCache.GetOrAdd(new(address, in path, hash),
+            flags == ReadFlags.None ? _loadRlp :
+            key => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        preBlockCache.GetOrAdd(new(address, in path, hash),
-            key => inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
+        _preBlockCache.GetOrAdd(new(address, in path, hash),
+            flags == ReadFlags.None ? _tryLoadRlp :
+            key => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
-    public INodeStorage.KeyScheme Scheme => inner.Scheme;
+    public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 }
 
 public class NodeKey : IEquatable<NodeKey>
