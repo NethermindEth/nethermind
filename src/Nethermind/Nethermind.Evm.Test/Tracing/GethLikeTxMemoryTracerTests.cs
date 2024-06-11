@@ -278,7 +278,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             .Done;
 
         TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        TestState.InsertCode(TestItem.AddressC, createCode, Spec, false);
 
         byte[] code = Prepare.EvmCode
             .PersistData("0x2", HexZero) // just to test if storage is restored

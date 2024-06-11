@@ -19,7 +19,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
 using static Nethermind.Core.Extensions.MemoryExtensions;
-
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -350,7 +349,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Fixes eth_estimateGas.
             // If sender is SystemUser subtracting value will cause InsufficientBalanceException
             if (validate)
-                WorldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec, true);
+                WorldState.SubtractBalance(tx.SenderAddress, tx.Value, spec, true);
 
             try
             {
@@ -418,7 +417,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec, true);
 
                             unspentGas -= codeDepositGasCost;
                         }
@@ -500,7 +499,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 // If noValidation we didn't charge for gas, so do not refund
                 if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                    WorldState.AddToBalance(tx.SenderAddress, (ulong)(unspentGas + refund) * gasPrice, spec, true);
+                    WorldState.AddBalance(tx.SenderAddress, (ulong)(unspentGas + refund) * gasPrice, spec, true);
                 spentGas -= refund;
             }
 

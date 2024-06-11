@@ -149,13 +149,13 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 
 
-    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, bool isSystemTx)
     {
         CodeInfo codeInfo = new(code);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
-        state.InsertCode(codeOwner, codeHash, code, spec);
+        state.InsertCode(codeOwner, codeHash, code, spec, isSystemTx);
         _codeCache.Set(codeHash, codeInfo);
     }
 }

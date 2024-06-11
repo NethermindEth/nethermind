@@ -151,7 +151,7 @@ public class TestBlockchain : IDisposable
 
         byte[] code = Bytes.FromHexString("0xabcd");
         Hash256 codeHash = Keccak.Compute(code);
-        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+        State.InsertCode(TestItem.AddressA, codeHash, code, SpecProvider.GenesisSpec);
 
         State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
 
