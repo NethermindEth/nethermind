@@ -14,6 +14,9 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -30,7 +33,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IReceiptStorage receiptStorage,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle)
+        IFeeHistoryOracle feeHistoryOracle,
+        ulong secondsPerSlot)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
@@ -62,7 +66,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _specProvider,
                 _gasPriceOracle,
                 _ethSyncingInfo,
-                _feeHistoryOracle);
+                _feeHistoryOracle,
+                secondsPerSlot);
         }
     }
 }

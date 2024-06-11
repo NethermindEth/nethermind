@@ -123,7 +123,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
 
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
             getFromApi.WorldStateManager!,
-            getFromApi.BlockTree,
+            getFromApi.BlockTree!,
             getFromApi.SpecProvider,
             getFromApi.LogManager);
 

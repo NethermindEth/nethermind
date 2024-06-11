@@ -8,7 +8,10 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.BeaconBlockRoot;
@@ -160,11 +163,16 @@ public class TestBlockchain : IDisposable
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
-        BlockTree = Builders.Build.A.BlockTree()
-            .WithSpecProvider(SpecProvider)
-            .WithChainLevelInfoRepository(ChainLevelInfoRepository)
-            .WithoutSettingHead
-            .TestObject;
+        BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
+            new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
+            DbProvider.BlockInfosDb,
+            DbProvider.MetadataDb,
+            new BlockStore(new TestMemDb(), 100),
+            ChainLevelInfoRepository,
+            SpecProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
@@ -176,10 +184,11 @@ public class TestBlockchain : IDisposable
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-
+        CodeInfoRepository codeInfoRepository = new();
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
+
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 

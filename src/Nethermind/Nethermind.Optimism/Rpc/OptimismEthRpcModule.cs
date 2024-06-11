@@ -49,6 +49,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
+        ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
         IAccountStateProvider accountStateProvider,
@@ -67,7 +68,8 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        specProvider,
        gasPriceOracle,
        ethSyncingInfo,
-       feeHistoryOracle)
+       feeHistoryOracle,
+       secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;
         _accountStateProvider = accountStateProvider;
