@@ -21,7 +21,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 {
     public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> Handle(long start, long count)
     {
-         if (start < 1 || count < 1)
+        if (start < 1 || count < 1)
         {
             var error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
 

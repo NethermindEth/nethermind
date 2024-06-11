@@ -309,7 +309,7 @@ public partial class EngineModuleTests
 
     private static IEnumerable<IList<ConsensusRequest>> GetPayloadRequestsTestCases()
     {
-       yield return ConsensusRequestsProcessorMock.Requests;
+        yield return ConsensusRequestsProcessorMock.Requests;
     }
 
     [TestCaseSource(nameof(GetPayloadRequestsTestCases))]
@@ -414,8 +414,8 @@ public partial class EngineModuleTests
             executionPayload2.BlockHash!, executionPayload2.BlockHash!));
 
 
-         IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
-            rpc.engine_getPayloadBodiesByRangeV2(1, 3).Result.Data;
+        IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
+           rpc.engine_getPayloadBodiesByRangeV2(1, 3).Result.Data;
         ExecutionPayloadBodyV2Result?[] expected =
         {
             new (txs, Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
@@ -440,10 +440,10 @@ public partial class EngineModuleTests
 
     private async Task<ExecutionPayloadV4> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, ConsensusRequest[]? requests)
     {
-        ExecutionPayloadV4 executionPayload = CreateBlockRequestV4(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD,Array.Empty<Withdrawal>(),0,0, Array.Empty<Transaction>() , parentBeaconBlockRoot: TestItem.KeccakA ,  requests: requests);
+        ExecutionPayloadV4 executionPayload = CreateBlockRequestV4(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, Array.Empty<Withdrawal>(), 0, 0, Array.Empty<Transaction>(), parentBeaconBlockRoot: TestItem.KeccakA, requests: requests);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
 
-          executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
         return executionPayload;
     }
