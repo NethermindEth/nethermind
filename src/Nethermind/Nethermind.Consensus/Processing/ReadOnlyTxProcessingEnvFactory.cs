@@ -25,5 +25,5 @@ public class ReadOnlyTxProcessingEnvFactory(
     {
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp);
+    public ReadOnlyTxProcessorSource Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp);
 }

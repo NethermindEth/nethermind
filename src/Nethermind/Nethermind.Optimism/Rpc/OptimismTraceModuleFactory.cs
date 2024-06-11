@@ -41,8 +41,8 @@ public class OptimismTraceModuleFactory(
         poSSwitcher,
         logManager)
 {
-    protected override ReadOnlyTxProcessingEnv CreateTxProcessingEnv() =>
-        new OptimismReadOnlyTxProcessingEnv(_worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
+    protected override ReadOnlyTxProcessorSource CreateTxProcessingEnv() =>
+        new OptimismReadOnlyTxProcessorSource(_worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
 
     protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,

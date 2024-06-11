@@ -46,16 +46,16 @@ public class OptimismBlockProducerEnvFactory(
         blocksConfig,
         logManager)
 {
-    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
+    protected override ReadOnlyTxProcessorSource CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
         ReadOnlyBlockTree readOnlyBlockTree) =>
-        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, l1CostHelper, specHelper);
+        new OptimismReadOnlyTxProcessorSource(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, l1CostHelper, specHelper);
 
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
-        ReadOnlyTxProcessingEnv processingEnv,
+        ReadOnlyTxProcessorSource processorSource,
         ITxPool txPool, IBlocksConfig blocksConfig, ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource, processingEnv, txPool, blocksConfig,
+        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource, processorSource, txPool, blocksConfig,
             transactionComparerProvider, logManager);
 
         return new OptimismTxPoolTxSource(baseTxSource);

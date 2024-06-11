@@ -12,14 +12,14 @@ using System;
 
 namespace Nethermind.Optimism;
 
-public class OptimismReadOnlyTxProcessingEnv(
+public class OptimismReadOnlyTxProcessorSource(
       IWorldStateManager worldStateManager,
       IReadOnlyBlockTree readOnlyBlockTree,
       ISpecProvider specProvider,
       ILogManager logManager,
       IL1CostHelper l1CostHelper,
       IOptimismSpecHelper opSpecHelper,
-      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
+      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessorSource(
       worldStateManager,
       readOnlyBlockTree,
       specProvider,

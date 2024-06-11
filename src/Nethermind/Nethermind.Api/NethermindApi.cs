@@ -76,7 +76,7 @@ namespace Nethermind.Api
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
 
             // TODO: reuse the same trie cache here
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource = new(
                 WorldStateManager!,
                 readOnlyTree,
                 SpecProvider!,
@@ -94,7 +94,7 @@ namespace Nethermind.Api
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
-                readOnlyTxProcessingEnv,
+                readOnlyTxProcessorSource,
                 simulateReadOnlyBlocksProcessingEnvFactory,
                 readOnlyTree,
                 WorldStateManager!.GlobalStateReader,

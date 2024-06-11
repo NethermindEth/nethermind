@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
-            ReadOnlyTxProcessingEnv processingEnv = new(
+            ReadOnlyTxProcessorSource processorSource = new(
                 WorldStateManager,
                 roBlockTree,
                 SpecProvider,
@@ -137,7 +137,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlocksConfig blocksConfig = new BlocksConfig();
             ReceiptFinder ??= ReceiptStorage;
             Bridge ??= new BlockchainBridge(
-                processingEnv,
+                processorSource,
                 simulateProcessingEnvFactory,
                 roBlockTree,
                 WorldStateManager.GlobalStateReader,

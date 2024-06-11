@@ -68,10 +68,10 @@ namespace Nethermind.Consensus.Producers
         {
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 
-            ReadOnlyTxProcessingEnv txProcessingEnv =
+            ReadOnlyTxProcessorSource txProcessorSource =
                 CreateReadonlyTxProcessingEnv(_worldStateManager, readOnlyBlockTree);
 
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = txProcessorSource.Build(Keccak.EmptyTreeHash);
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(
@@ -101,28 +101,28 @@ namespace Nethermind.Consensus.Producers
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
-                ReadOnlyTxProcessingEnv = txProcessingEnv
+                TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessorSource, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
+                ReadOnlyTxProcessorSource = txProcessorSource
             };
         }
 
-        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>
+        protected virtual ReadOnlyTxProcessorSource CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>
             new(worldStateManager, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,
-            ReadOnlyTxProcessingEnv processingEnv,
+            ReadOnlyTxProcessorSource processorSource,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
         {
-            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, blocksConfig, transactionComparerProvider, logManager);
+            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processorSource, txPool, blocksConfig, transactionComparerProvider, logManager);
             return additionalTxSource.Then(txPoolSource);
         }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
-            ReadOnlyTxProcessingEnv processingEnv,
+            ReadOnlyTxProcessorSource processorSource,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,

@@ -79,7 +79,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
     public override IDebugRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txEnv = new(
+        ReadOnlyTxProcessorSource txEnv = new(
             _worldStateManager,
             _blockTree,
             _specProvider,

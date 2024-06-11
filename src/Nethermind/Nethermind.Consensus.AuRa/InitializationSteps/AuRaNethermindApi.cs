@@ -74,8 +74,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
         }
 
-        public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-            new ReadOnlyTxProcessingEnv(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
+        public ReadOnlyTxProcessorSource CreateReadOnlyTransactionProcessorSource() =>
+            new ReadOnlyTxProcessorSource(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
 
     }
 }

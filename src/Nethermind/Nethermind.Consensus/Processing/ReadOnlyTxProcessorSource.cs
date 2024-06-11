@@ -15,7 +15,7 @@ using Nethermind.State;
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
-    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
+    public class ReadOnlyTxProcessorSource : IReadOnlyTxProcessorSource
     {
 
         private readonly ObjectPool<RecyclingTxProcessingScope> _pooledScope;
@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Processing
         protected IBlockTree _blockTree;
         protected ISpecProvider _specProvider;
 
-        public ReadOnlyTxProcessingEnv(
+        public ReadOnlyTxProcessorSource(
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
             ISpecProvider? specProvider,
@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Processing
         {
         }
 
-        public ReadOnlyTxProcessingEnv(
+        public ReadOnlyTxProcessorSource(
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
@@ -91,7 +91,7 @@ namespace Nethermind.Consensus.Processing
             _pooledScope.Return(recyclingTxProcessingScope);
         }
 
-        private class RecyclingTxProcessingScopePoolPolicy(ReadOnlyTxProcessingEnv env) : PooledObjectPolicy<RecyclingTxProcessingScope>
+        private class RecyclingTxProcessingScopePoolPolicy(ReadOnlyTxProcessorSource env) : PooledObjectPolicy<RecyclingTxProcessingScope>
         {
             public override RecyclingTxProcessingScope Create()
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.Processing
         private class RecyclingTxProcessingScope(
             IReadOnlyTxProcessingScope baseScope,
             Hash256 originalStateRoot,
-            ReadOnlyTxProcessingEnv baseEnv
+            ReadOnlyTxProcessorSource baseEnv
         ): IReadOnlyTxProcessingScope
         {
             public void Dispose()

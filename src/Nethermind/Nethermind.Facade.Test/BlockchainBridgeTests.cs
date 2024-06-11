@@ -48,11 +48,11 @@ namespace Nethermind.Facade.Test
         private ISpecProvider _specProvider;
         private IDbProvider _dbProvider;
 
-        private class TestReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnv
+        private class TestReadOnlyTxProcessorSource : ReadOnlyTxProcessorSource
         {
             private ITransactionProcessor _transactionProcessor;
 
-            public TestReadOnlyTxProcessingEnv(
+            public TestReadOnlyTxProcessorSource(
                 IWorldStateManager worldStateManager,
                 IBlockTree blockTree,
                 ISpecProvider specProvider,
@@ -91,7 +91,7 @@ namespace Nethermind.Facade.Test
                 new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
 
             IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
-            ReadOnlyTxProcessingEnv processingEnv = new TestReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessorSource processorSource = new TestReadOnlyTxProcessorSource(
                 readOnlyWorldStateManager,
                 readOnlyBlockTree,
                 _specProvider,
@@ -106,7 +106,7 @@ namespace Nethermind.Facade.Test
                 LimboLogs.Instance);
 
             _blockchainBridge = new BlockchainBridge(
-                processingEnv,
+                processorSource,
                 simulateProcessingEnvFactory,
                 _blockTree,
                 readOnlyWorldStateManager.GlobalStateReader,
@@ -229,7 +229,7 @@ namespace Nethermind.Facade.Test
             IWorldStateManager readOnlyWorldStateManager =
                 new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
             IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
-            ReadOnlyTxProcessingEnv processingEnv = new(
+            ReadOnlyTxProcessorSource processorSource = new(
                 readOnlyWorldStateManager,
                 roBlockTree,
                 _specProvider,
@@ -249,7 +249,7 @@ namespace Nethermind.Facade.Test
             _blockTree.BestSuggestedBody.Returns(bestSuggested);
 
             _blockchainBridge = new BlockchainBridge(
-                processingEnv,
+                processorSource,
                 simulateProcessingEnv,
                 _blockTree,
                 readOnlyWorldStateManager.GlobalStateReader,

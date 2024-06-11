@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.Clique
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
 
-            ReadOnlyTxProcessingEnv producerEnv = new(
+            ReadOnlyTxProcessorSource producerEnv = new(
                 _nethermindApi.WorldStateManager!,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
