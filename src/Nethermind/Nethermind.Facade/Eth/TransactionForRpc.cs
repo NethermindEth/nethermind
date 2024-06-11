@@ -10,8 +10,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 
-namespace Nethermind.JsonRpc.Data;
+namespace Nethermind.Facade.Eth;
 
 public class TransactionForRpc
 {

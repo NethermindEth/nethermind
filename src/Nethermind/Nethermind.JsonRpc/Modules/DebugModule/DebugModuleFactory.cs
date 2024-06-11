@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
@@ -84,21 +85,25 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _specProvider,
             _logManager);
 
-        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
-        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);
+        IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
+
+        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
+        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, scope.WorldState);
         ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-            txEnv,
+            scope,
             _blockValidator,
             _recoveryStep,
-            _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
+            _rewardCalculatorSource.Get(scope.TransactionProcessor),
             _receiptStorage,
             _specProvider,
+            _blockTree,
+            _worldStateManager.GlobalStateReader,
             _logManager,
             transactionsExecutor);
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
-            chainProcessingEnv.StateProvider,
+            scope.WorldState,
             _receiptStorage,
             _blockTree,
             _specProvider,

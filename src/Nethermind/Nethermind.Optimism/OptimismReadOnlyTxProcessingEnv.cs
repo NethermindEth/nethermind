@@ -19,20 +19,20 @@ public class OptimismReadOnlyTxProcessingEnv(
       ILogManager logManager,
       IL1CostHelper l1CostHelper,
       IOptimismSpecHelper opSpecHelper,
-      PreBlockCaches? preBlockCaches = null) : ReadOnlyTxProcessingEnv(
+      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
       worldStateManager,
       readOnlyBlockTree,
       specProvider,
       logManager,
-      preBlockCaches
+      worldStateToWarmUp
      )
 {
     protected override TransactionProcessor CreateTransactionProcessor()
     {
-        ArgumentNullException.ThrowIfNull(_logManager);
+        ArgumentNullException.ThrowIfNull(LogManager);
 
-        BlockhashProvider blockhashProvider = new(BlockTree, _specProvider, StateProvider, _logManager);
-        VirtualMachine virtualMachine = new(blockhashProvider, _specProvider, _logManager);
-        return new OptimismTransactionProcessor(_specProvider, StateProvider, virtualMachine, _logManager, l1CostHelper, opSpecHelper);
+        BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, StateProvider, LogManager);
+        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, CodeInfoRepository, LogManager);
+        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, l1CostHelper, opSpecHelper, CodeInfoRepository);
     }
 }

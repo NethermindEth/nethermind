@@ -35,6 +35,7 @@ public class OptimismEthModuleFactory(
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
+        ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
         IAccountStateProvider accountStateProvider,
@@ -79,6 +80,7 @@ public class OptimismEthModuleFactory(
             _gasPriceOracle,
             _ethSyncingInfo,
             _feeHistoryOracle,
+            secondsPerSlot,
 
             _sequencerRpcClient,
             _accountStateProvider,
