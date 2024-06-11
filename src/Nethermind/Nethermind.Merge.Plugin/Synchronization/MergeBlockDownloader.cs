@@ -229,7 +229,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     {
                         // An edge case when we've got state already, but still downloading blocks before it.
                         // We cannot process such blocks, but still we are requested to process them via blocksRequest.Options
-                        // So we'are detecting it and chaing from processing to receipts downloading
+                        // So we'are detecting it and changing from processing to receipts downloading
                         bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                         bool toBeProcessedHasNoProcessedParent = currentBlock.Number > (bestProcessedBlock + 1);
                         bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
