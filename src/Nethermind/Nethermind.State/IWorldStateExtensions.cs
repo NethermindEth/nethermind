@@ -16,7 +16,7 @@ namespace Nethermind.State
     {
         public static void AddBalance(this IWorldState stateProvider, Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSystemTx)
         {
-            if (!isSystemTx && stateProvider.AccountExists(address))
+            if (!isSystemTx && !stateProvider.AccountExists(address))
             {
                 throw new InvalidOperationException("Updating balance of a non-existing account");
             }
@@ -25,7 +25,7 @@ namespace Nethermind.State
 
         public static void SubtractBalance(this IWorldState stateProvider, Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSystemTx)
         {
-            if (!isSystemTx && stateProvider.AccountExists(address))
+            if (!isSystemTx && !stateProvider.AccountExists(address))
             {
                 throw new InvalidOperationException("Updating balance of a non-existing account");
             }
