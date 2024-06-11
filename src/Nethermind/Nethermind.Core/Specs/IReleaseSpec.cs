@@ -279,7 +279,10 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip6780Enabled { get; }
 
-        bool IsEip7212Enabled { get; }
+        /// <summary>
+        /// Secp256r1 precompile
+        /// </summary>
+        bool IsRip7212Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

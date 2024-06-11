@@ -42,7 +42,7 @@ public static class AddressExtensions
                 },
                 0x01 => (data[4] >>> 24) switch
                 {
-                    0x00 => releaseSpec.IsEip7212Enabled,
+                    0x00 => releaseSpec.IsRip7212Enabled,
                     _ => false
                 },
                 _ => false
