@@ -111,7 +111,7 @@ namespace Nethermind.Store.Test
         public void Update_balance_on_non_existing_account_throws()
         {
             WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
-            Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
+            Assert.Throws<InvalidOperationException>(() => provider.AddBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance, false));
         }
 
         [Test]
