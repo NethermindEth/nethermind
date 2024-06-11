@@ -68,7 +68,8 @@ public class ShutterP2P
         ITopic topic = router.Subscribe("decryptionKeys");
         ConcurrentQueue<byte[]> msgQueue = new();
 
-        topic.OnMessage += (byte[] msg) => {
+        topic.OnMessage += (byte[] msg) =>
+        {
             msgQueue.Enqueue(msg);
             if (_logger.IsDebug) _logger.Debug($"Received Shutter P2P message.");
         };

@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
@@ -81,6 +82,7 @@ public class ShutterTxSource : ITxSource
         if (DecryptionKeys is null || DecryptionKeys.Gnosis.Slot != nextSlot)
         {
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");
+            if (_logger.IsDebug && DecryptionKeys is not null) _logger.Debug($"Current Shutter decryption keys stored for slot {DecryptionKeys.Gnosis.Slot}");
             return [];
         }
 
@@ -152,18 +154,12 @@ public class ShutterTxSource : ITxSource
 
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
     {
-        //todo: extensions for ulong count and skip
         IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents();
-        int tmp = events.Count();
+        long totalEvents = events.LongCount();
         events = events.Where(e => e.Eon == eon);
-        if (_logger.IsDebug) _logger.Debug($"Found {tmp} events in Shutter sequencer contract, {events.Count()} this eon.");
+        if (_logger.IsDebug) _logger.Debug($"Found {totalEvents} events in Shutter sequencer contract, {events.Count()} this eon.");
 
-        while (txPointer > int.MaxValue)
-        {
-            events = events.Skip(int.MaxValue);
-            txPointer -= int.MaxValue;
-        }
-        events = events.Skip((int)txPointer);
+        events = events.Skip(txPointer);
 
         List<SequencedTransaction> txs = [];
         UInt256 totalGas = 0;
