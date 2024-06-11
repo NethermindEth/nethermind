@@ -18,14 +18,11 @@ public class OptimismReadOnlyTxProcessorSource(
       ISpecProvider specProvider,
       ILogManager logManager,
       IL1CostHelper l1CostHelper,
-      IOptimismSpecHelper opSpecHelper,
-      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessorSource(
+      IOptimismSpecHelper opSpecHelper) : ReadOnlyTxProcessorSource(
       worldStateManager,
       readOnlyBlockTree,
       specProvider,
-      logManager,
-      worldStateToWarmUp
-     )
+      logManager)
 {
     protected override TransactionProcessor CreateTransactionProcessor(IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfo)
     {

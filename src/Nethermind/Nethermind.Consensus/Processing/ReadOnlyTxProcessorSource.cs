@@ -17,10 +17,7 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessorSource : IReadOnlyTxProcessorSource
     {
-
         private readonly ObjectPool<RecyclingTxProcessingScope> _pooledScope;
-
-        private readonly IWorldState? _worldStateToWarmUp;
         private readonly IWorldStateManager _worldStateManager;
 
         protected readonly ILogManager _logManager;
@@ -31,9 +28,8 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null)
-            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+            ILogManager? logManager)
+            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
         {
         }
 
@@ -41,15 +37,12 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
-            ILogManager logManager,
-            IWorldState? worldStateToWarmUp = null
-            )
+            ILogManager logManager)
         {
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
             _worldStateManager = worldStateManager;
-            _worldStateToWarmUp = worldStateToWarmUp;
             _pooledScope = new DefaultObjectPool<RecyclingTxProcessingScope>(new RecyclingTxProcessingScopePoolPolicy(this));
             _specProvider = specProvider;
 
@@ -80,7 +73,7 @@ namespace Nethermind.Consensus.Processing
 
         private RecyclingTxProcessingScope NewScope()
         {
-            IWorldState newWorldState = _worldStateManager.CreateResettableWorldState(_worldStateToWarmUp);
+            IWorldState newWorldState = _worldStateManager.CreateResettableWorldState();
             Hash256 originalStateRoot = newWorldState.StateRoot;
             IReadOnlyTxProcessingScope baseScope = Build(newWorldState);
             return new RecyclingTxProcessingScope(baseScope, originalStateRoot, this);
