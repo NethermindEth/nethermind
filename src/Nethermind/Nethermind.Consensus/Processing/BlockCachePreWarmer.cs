@@ -18,9 +18,11 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, IWorldState? targetWorldState = null) : IBlockCachePreWarmer
+public class BlockCachePreWarmer(IReadOnlyTxProcessorSource envFactory, ISpecProvider specProvider, ILogManager logManager, IWorldStateManager worldStateManager, IWorldState? targetWorldState = null) : IBlockCachePreWarmer
 {
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
+    private readonly ObjectPool<IReadOnlyTxProcessingScope> _envPool = new DefaultObjectPool<IReadOnlyTxProcessingScope>(
+        new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, worldStateManager, targetWorldState),
+        Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
@@ -75,8 +77,8 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 Parallel.For(0, block.Withdrawals.Length, parallelOptions,
                     i =>
                     {
-                        IReadOnlyTxProcessorSource env = _envPool.Get();
-                        using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                        IReadOnlyTxProcessingScope scope = _envPool.Get();
+                        scope.WorldState.StateRoot = stateRoot;
                         try
                         {
                             scope.WorldState.WarmUp(block.Withdrawals[i].Address);
@@ -87,7 +89,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                         }
                         finally
                         {
-                            _envPool.Return(env);
+                            _envPool.Return(scope);
                         }
                     });
             }
@@ -103,12 +105,12 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 Transaction tx = block.Transactions[i];
-                IReadOnlyTxProcessorSource env = _envPool.Get();
+                IReadOnlyTxProcessingScope scope = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
                 try
                 {
                     tx.CopyTo(systemTransaction);
-                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                    scope.WorldState.StateRoot = stateRoot;
                     if (spec.UseTxAccessLists)
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930
@@ -123,15 +125,29 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 finally
                 {
                     _systemTransactionPool.Return(systemTransaction);
-                    _envPool.Return(env);
+                    _envPool.Return(scope);
                 }
             });
         }
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(
+        IReadOnlyTxProcessorSource envFactory,
+        IWorldStateManager worldStateManager,
+        IWorldState? worldStateToWarmup
+    ) : IPooledObjectPolicy<IReadOnlyTxProcessingScope>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.Create();
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public IReadOnlyTxProcessingScope Create()
+        {
+            IWorldState readOnlyWorldState = worldStateManager.CreateResettableWorldState(forWarmup: worldStateToWarmup);
+            return envFactory.Build(readOnlyWorldState);
+        }
+
+        public bool Return(IReadOnlyTxProcessingScope obj)
+        {
+            obj.WorldState.StateRoot = Keccak.EmptyTreeHash;
+            obj.WorldState.Reset();
+            return true;
+        }
     }
 }

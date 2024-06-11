@@ -238,7 +238,7 @@ namespace Nethermind.Init.Steps
             IWorldState worldState = _api.WorldState!;
 
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, worldState), _api.SpecProvider, _api.LogManager, worldState)
+                ? new(_api.ReadOnlyTxProcessorSource, _api.SpecProvider, _api.LogManager, _api.WorldStateManager, worldState)
                 : null;
 
             return new BlockProcessor(

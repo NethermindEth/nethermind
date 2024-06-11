@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Processing
             return new TransactionProcessor(_specProvider, worldState, virtualMachine, codeInfo, _logManager);
         }
 
-        protected virtual IReadOnlyTxProcessingScope Build(IWorldState worldState)
+        public virtual IReadOnlyTxProcessingScope Build(IWorldState worldState)
         {
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, _specProvider, worldState, _logManager);
             CodeInfoRepository codeInfo = new CodeInfoRepository();
