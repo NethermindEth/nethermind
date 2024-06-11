@@ -40,6 +40,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
+    private readonly IReadOnlyTxProcessorSource _txProcessorSource;
     private readonly ILogger _logger;
 
     public DebugModuleFactory(
@@ -57,6 +58,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         ISyncModeSelector syncModeSelector,
         IBlockStore badBlockStore,
         IFileSystem fileSystem,
+        IReadOnlyTxProcessorSource txProcessorSource,
         ILogManager logManager)
     {
         _worldStateManager = worldStateManager;
@@ -74,18 +76,13 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _txProcessorSource = txProcessorSource;
         _logger = logManager.GetClassLogger();
     }
 
     public override IDebugRpcModule Create()
     {
-        ReadOnlyTxProcessorSource txEnv = new(
-            _worldStateManager,
-            _blockTree,
-            _specProvider,
-            _logManager);
-
-        IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
+        IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(Keccak.EmptyTreeHash);
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
         BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, scope.WorldState);

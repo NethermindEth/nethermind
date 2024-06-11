@@ -195,6 +195,7 @@ namespace Nethermind.Mev.Test
                     WorldStateManager,
                     BlockPreprocessorStep,
                     SpecProvider,
+                    ReadOnlyTxProcessingSource,
                     LogManager,
                     ProcessingOptions.ProducingBlock);
 

@@ -26,16 +26,19 @@ namespace Nethermind.Mev.Execution
         private readonly ProcessingOptions _processingOptions;
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly IWorldStateManager _worldStateManager;
+        private readonly IReadOnlyTxProcessorSource _txProcessorSource;
 
         public TracerFactory(
             IBlockTree blockTree,
             IWorldStateManager worldStateManager,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
+            IReadOnlyTxProcessorSource txProcessorSource,
             ILogManager logManager,
             ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _txProcessorSource = txProcessorSource;
             _processingOptions = processingOptions;
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -45,10 +48,7 @@ namespace Nethermind.Mev.Execution
 
         public ITracer Create()
         {
-            ReadOnlyTxProcessorSource txProcessorSource = new(
-                _worldStateManager, _blockTree, _specProvider, _logManager);
-
-            IReadOnlyTxProcessingScope scope = txProcessorSource.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(Keccak.EmptyTreeHash);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 scope,

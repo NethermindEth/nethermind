@@ -27,9 +27,9 @@ public class OptimismTraceModuleFactory(
     ISpecProvider specProvider,
     IPoSSwitcher poSSwitcher,
     ILogManager logManager,
-    IL1CostHelper l1CostHelper,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
+    IReadOnlyTxProcessorSource txProcessorSource,
     IWithdrawalProcessor withdrawalProcessor) : TraceModuleFactory(
         worldStateManager,
         blockTree,
@@ -39,11 +39,9 @@ public class OptimismTraceModuleFactory(
         receiptFinder,
         specProvider,
         poSSwitcher,
+        txProcessorSource,
         logManager)
 {
-    protected override ReadOnlyTxProcessorSource CreateTxProcessingEnv() =>
-        new OptimismReadOnlyTxProcessorSource(_worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
-
     protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,
                 Always.Valid,

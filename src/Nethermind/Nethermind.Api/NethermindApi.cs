@@ -75,13 +75,6 @@ namespace Nethermind.Api
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
 
-            // TODO: reuse the same trie cache here
-            ReadOnlyTxProcessorSource readOnlyTxProcessorSource = new(
-                WorldStateManager!,
-                readOnlyTree,
-                SpecProvider!,
-                LogManager);
-
             SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
                 new SimulateReadOnlyBlocksProcessingEnvFactory(
                     WorldStateManager!,
@@ -94,7 +87,7 @@ namespace Nethermind.Api
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
-                readOnlyTxProcessorSource,
+                ReadOnlyTxProcessorSource,
                 simulateReadOnlyBlocksProcessingEnvFactory,
                 readOnlyTree,
                 WorldStateManager!.GlobalStateReader,
@@ -221,6 +214,7 @@ namespace Nethermind.Api
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
+        public ReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

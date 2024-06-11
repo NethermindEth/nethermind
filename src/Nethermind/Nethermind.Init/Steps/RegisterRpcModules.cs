@@ -95,7 +95,14 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.PeerPool);
         StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
 
-        ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+        ProofModuleFactory proofModuleFactory = new(
+            _api.WorldStateManager,
+            _api.BlockTree,
+            _api.BlockPreprocessor,
+            _api.ReceiptFinder,
+            _api.SpecProvider,
+            _api.ReadOnlyTxProcessorSource,
+            _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, _jsonRpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
@@ -113,6 +120,7 @@ public class RegisterRpcModules : IStep
             _api.SyncModeSelector,
             _api.BadBlocksStore,
             _api.FileSystem,
+            _api.ReadOnlyTxProcessorSource,
             _api.LogManager);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
 
@@ -264,6 +272,7 @@ public class RegisterRpcModules : IStep
             _api.ReceiptStorage,
             _api.SpecProvider,
             _api.PoSSwitcher,
+            _api.ReadOnlyTxProcessorSource,
             _api.LogManager);
     }
 

@@ -49,8 +49,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.CreateReadOnlyTransactionProcessorSource());
-                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.CreateReadOnlyTransactionProcessorSource());
+                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.ReadOnlyTxProcessorSource);
+                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.ReadOnlyTxProcessorSource);
                 return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager), gasPriceTxFilter);
             }
 
@@ -64,8 +64,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.CreateReadOnlyTransactionProcessorSource());
-                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.CreateReadOnlyTransactionProcessorSource());
+                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.ReadOnlyTxProcessorSource);
+                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.ReadOnlyTxProcessorSource);
                 return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, api.SpecProvider, api.LogManager));
             }
 
@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     new VersionedTransactionPermissionContract(api.AbiEncoder,
                         api.ChainSpec.Parameters.TransactionPermissionContract,
                         api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
-                        api.CreateReadOnlyTransactionProcessorSource(),
+                        api.ReadOnlyTxProcessorSource,
                         api.TransactionPermissionContractVersions,
                         api.LogManager,
                         api.SpecProvider),
@@ -126,7 +126,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             TxPriorityContract? txPriorityContract = null;
             if (usesTxPriorityContract)
             {
-                txPriorityContract = new TxPriorityContract(api.AbiEncoder, txPriorityContractAddress, api.CreateReadOnlyTransactionProcessorSource());
+                txPriorityContract = new TxPriorityContract(api.AbiEncoder, txPriorityContractAddress, api.ReadOnlyTxProcessorSource);
             }
 
             return txPriorityContract;

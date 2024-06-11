@@ -104,6 +104,11 @@ namespace Nethermind.Init.Steps
 
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
+            setApi.ReadOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(
+                _api.WorldStateManager!,
+                getApi.BlockTree!.AsReadOnly(),
+                getApi.SpecProvider,
+                getApi.LogManager);
 
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
