@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices.JavaScript;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -194,7 +195,7 @@ public partial class EngineModuleTests
         last!.IsGenesis.Should().BeTrue();
 
         Block? head = chain.BlockTree.Head;
-        head!.Requests!.Length.Should().Be(consensusRequestsProcessorMock.Requests.Length);
+        head!.Requests!.Length.Should().Be(ConsensusRequestsProcessorMock.Requests.Length);
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
@@ -309,21 +310,7 @@ public partial class EngineModuleTests
 
     private static IEnumerable<IList<ConsensusRequest>> GetPayloadRequestsTestCases()
     {
-        yield return new[]
-        {
-            (ConsensusRequest)new Deposit {
-                Amount = 1,
-                Index = 1,
-                PubKey = Bytes.FromHexString("0x01"),
-                Signature = Bytes.FromHexString("0x01"),
-                WithdrawalCredentials = Bytes.FromHexString("0x01")
-            },
-            (ConsensusRequest)new WithdrawalRequest {
-                Amount = 1,
-                SourceAddress = TestItem.AddressA,
-                ValidatorPubkey = Bytes.FromHexString("0x01")
-            }
-        };
+       yield return ConsensusRequestsProcessorMock.Requests;
     }
 
     [TestCaseSource(nameof(GetPayloadRequestsTestCases))]
@@ -356,7 +343,9 @@ public partial class EngineModuleTests
             }
         }
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
+
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayloadV4 executionPayload1 = await SendNewBlockV3(rpc, chain, requests);
         Transaction[] txs = BuildTransactions(
@@ -364,7 +353,7 @@ public partial class EngineModuleTests
 
         chain.AddTransactions(txs);
 
-        ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV3(rpc, chain, true, null);
+        ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV3(rpc, chain, true, Array.Empty<Withdrawal>());
         Hash256[] blockHashes = new Hash256[]
         {
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
@@ -372,7 +361,9 @@ public partial class EngineModuleTests
         IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV2(blockHashes).Result.Data;
         ExecutionPayloadBodyV2Result?[] expected = {
-            new (Array.Empty<Transaction>(), null , deposits, withdrawalRequests)
+            new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
+            null,
+            new (txs, Array.Empty<Withdrawal>(), deposits, withdrawalRequests),
         };
 
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
@@ -383,7 +374,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 executionPayload = CreateBlockRequestV4(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD,Array.Empty<Withdrawal>(),0,0, Array.Empty<Transaction>() , parentBeaconBlockRoot: TestItem.KeccakA ,  requests: requests);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
 
-         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+          executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
         return executionPayload;
     }
@@ -434,9 +425,12 @@ public partial class EngineModuleTests
             Timestamp = timestamp,
             PrevRandao = random,
             SuggestedFeeRecipient = feeRecipient,
-            Withdrawals = withdrawals
+            ParentBeaconBlockRoot = Keccak.Zero,
+            Withdrawals = withdrawals,
         };
-        string? payloadId = rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result.Data.PayloadId;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result;
+        string? payloadId = result.Data.PayloadId;
 
         if (waitForBlockImprovement)
             await blockImprovementLock.WaitAsync(10000);

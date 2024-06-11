@@ -40,8 +40,8 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
 
             ConsensusRequest[]? consensusRequests = block?.Requests;
 
-            Deposit[]? deposits = Array.Empty<Deposit>();
-            WithdrawalRequest[]? withdrawalRequests = Array.Empty<WithdrawalRequest>();
+            List<Deposit> deposits = [];
+            List<WithdrawalRequest> withdrawalRequests = [];
 
             if (consensusRequests is not null)
             {
@@ -49,11 +49,11 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
                 {
                     if (request.Type == ConsensusRequestsType.Deposit)
                     {
-                        deposits = (Deposit[])deposits.Append(request as Deposit);
+                        deposits.Add((Deposit)request);
                     }
                     else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                     {
-                        withdrawalRequests = (WithdrawalRequest[])withdrawalRequests.Append(request as WithdrawalRequest);
+                        withdrawalRequests.Add((WithdrawalRequest)request);
                     }
                     else
                     {
@@ -63,7 +63,10 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
                 }
                 yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
             }
-            yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, null, null);
+            else
+            {
+                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, null, null);
+            }
         }
 
         yield break;
