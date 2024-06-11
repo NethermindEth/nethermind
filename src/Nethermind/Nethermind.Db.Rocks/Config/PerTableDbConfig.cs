@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using Nethermind.Core.Extensions;
@@ -12,6 +11,7 @@ namespace Nethermind.Db.Rocks.Config;
 public class PerTableDbConfig
 {
     private readonly string _tableName;
+    private readonly string? _columnName;
     private readonly IDbConfig _dbConfig;
     private readonly DbSettings _settings;
 
@@ -20,10 +20,7 @@ public class PerTableDbConfig
         _dbConfig = dbConfig;
         _settings = dbSettings;
         _tableName = _settings.DbName;
-        if (columnName is not null)
-        {
-            _tableName += columnName;
-        }
+        _columnName = columnName;
     }
 
     public bool CacheIndexAndFilterBlocks => _settings.CacheIndexAndFilterBlocks ?? ReadConfig<bool>(nameof(CacheIndexAndFilterBlocks));
@@ -74,46 +71,73 @@ public class PerTableDbConfig
     public ulong BytesPerSync => ReadConfig<ulong>(nameof(BytesPerSync));
     public double? DataBlockIndexUtilRatio => ReadConfig<double?>(nameof(DataBlockIndexUtilRatio));
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
+    public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
 
     private T? ReadConfig<T>(string propertyName)
     {
-        return ReadConfig<T>(_dbConfig, propertyName, GetPrefix());
+        return ReadConfig<T>(_dbConfig, propertyName, GetPrefixes());
     }
 
-    private string GetPrefix()
+    private string[] GetPrefixes()
     {
-        return _tableName.StartsWith("State") ? "StateDb" : string.Concat(_tableName, "Db");
+        if (_tableName.StartsWith("State"))
+        {
+            return ["StateDb"];
+        }
+
+        if (_columnName != null)
+        {
+            return [
+                string.Concat(_tableName, _columnName, "Db"),
+                string.Concat(_tableName, "Db"),
+            ];
+        }
+
+        return [string.Concat(_tableName, "Db")];
     }
 
-    private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string prefix)
+    private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string[] prefixes)
     {
-        string prefixed = string.Concat(prefix, propertyName);
-
         try
         {
             Type type = dbConfig.GetType();
-            PropertyInfo? propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            PropertyInfo? propertyInfo;
 
-            if (propertyInfo is not null && propertyInfo.PropertyType.CanBeAssignedNull())
+            foreach (var prefix in prefixes)
             {
-                // If its nullable check if its null first
-                T? val = (T?)propertyInfo?.GetValue(dbConfig);
-                if (val is not null)
-                {
-                    return val;
-                }
+                string prefixed = string.Concat(prefix, propertyName);
 
-                // Use generic one even if its available
-                propertyInfo = type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+                propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+                if (propertyInfo is not null)
+                {
+                    if (propertyInfo.PropertyType.CanBeAssignedNull())
+                    {
+                        // If its nullable check if its null first
+                        object? valObj = propertyInfo.GetValue(dbConfig);
+                        if (valObj is not null)
+                        {
+                            T? val = (T?)valObj;
+                            if (val is not null)
+                            {
+                                return val;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // If not nullable just use it directly
+                        return (T?)propertyInfo.GetValue(dbConfig);
+                    }
+                }
             }
 
-            // if no custom db property default to generic one
-            propertyInfo ??= type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            // Use generic one even if its available
+            propertyInfo = type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
             return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
         {
-            throw new InvalidDataException($"Unable to read {prefixed} property from DB config", e);
+            throw new InvalidDataException($"Unable to read property from DB config. Prefixes: ${prefixes}", e);
         }
     }
 }

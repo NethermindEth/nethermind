@@ -149,9 +149,11 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+            CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
+                codeInfoRepository,
                 _logManager);
 
             TransactionProcessor? txProcessor = new(
@@ -164,7 +166,13 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(
+                    new TransactionProcessor(
+                        specProvider,
+                        stateProvider,
+                        virtualMachine,
+                        codeInfoRepository,
+                        _logManager),
                     stateProvider),
                 stateProvider,
                 receiptStorage,

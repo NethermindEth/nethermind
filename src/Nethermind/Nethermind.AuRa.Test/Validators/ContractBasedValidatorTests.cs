@@ -32,6 +32,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Evm;
 using Nethermind.Core.Specs;
 using System.Text.Json;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.AuRa.Test.Validators;
 
@@ -43,7 +44,7 @@ public class ContractBasedValidatorTests
     private AuRaParameters.Validator _validator;
     private Block _block;
     private BlockHeader _parentHeader;
-    private IReadOnlyTransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IAuRaBlockFinalizationManager _blockFinalizationManager;
     private static readonly Address _contractAddress = Address.FromNumber(1000);
     private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] { 0, 1, 2 });
@@ -74,11 +75,12 @@ public class ContractBasedValidatorTests
         };
         _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
 
-        _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
-        _transactionProcessor.IsContractDeployed(_contractAddress).Returns(true);
-        _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(_transactionProcessor);
+        _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
+        _stateProvider.IsContract(_contractAddress).Returns(true);
+
+        _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
+        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder
@@ -96,7 +98,6 @@ public class ContractBasedValidatorTests
     public void TearDown()
     {
         _blockFinalizationManager?.Dispose();
-        _transactionProcessor?.Dispose();
     }
 
     [Test]

@@ -31,12 +31,14 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IReleaseSpec Spec { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
+        private readonly ICodeInfoRepository _codeInfoRepository;
 
         public SystemTxProcessor(
             IReleaseSpec? spec,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
             EthereumEcdsa? ecdsa,
+            ICodeInfoRepository? codeInfoRepository,
             ILogger? logger)
         {
             Logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -44,6 +46,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             VirtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             Ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _codeInfoRepository = codeInfoRepository;
         }
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             Execute(transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
@@ -304,7 +307,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
             CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data?.AsArray() ?? Array.Empty<byte>())
-                : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+                : _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
 
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
 
@@ -415,7 +418,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec, env.IsSystemEnv);
+                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
                             unspentGas -= codeDepositGasCost;
                         }
@@ -454,7 +457,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (WorldState.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
+                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
 

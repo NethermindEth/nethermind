@@ -7,8 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading;
-
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -33,22 +31,27 @@ namespace Nethermind.Evm.TransactionProcessing
         protected ISpecProvider SpecProvider { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
+        private readonly ICodeInfoRepository _codeInfoRepository;
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
+            ICodeInfoRepository? codeInfoRepository,
             ILogManager? logManager)
         {
             ArgumentNullException.ThrowIfNull(logManager, nameof(logManager));
             ArgumentNullException.ThrowIfNull(specProvider, nameof(specProvider));
             ArgumentNullException.ThrowIfNull(worldState, nameof(worldState));
             ArgumentNullException.ThrowIfNull(virtualMachine, nameof(virtualMachine));
+            ArgumentNullException.ThrowIfNull(codeInfoRepository, nameof(codeInfoRepository));
 
             Logger = logManager.GetClassLogger();
             SpecProvider = specProvider;
             WorldState = worldState;
             VirtualMachine = virtualMachine;
+            _codeInfoRepository = codeInfoRepository;
+
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -75,7 +78,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.IsSystem())
             {
-                ITransactionProcessor systemProcessor = new SystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger);
+                ITransactionProcessor systemProcessor = new SystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, _codeInfoRepository, Logger);
                 return systemProcessor.Execute(tx, blCtx, tracer);
             }
 
@@ -389,7 +392,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+                : _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -501,7 +504,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec, env.IsSystemEnv);
+                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+
                             unspentGas -= codeDepositGasCost;
                         }
                     }
@@ -555,7 +559,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (WorldState.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
+                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
 

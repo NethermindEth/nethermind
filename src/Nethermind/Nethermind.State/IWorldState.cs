@@ -96,9 +96,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void UpdateStorageRoot(Address address, Hash256 storageRoot);
 
-    void IncrementNonce(Address address);
+    void IncrementNonce(Address address, UInt256 delta);
 
-    void DecrementNonce(Address address);
+    void DecrementNonce(Address address, UInt256 delta);
+
+    void IncrementNonce(Address address) => IncrementNonce(address, UInt256.One);
+
+    void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
     /* snapshots */
 
@@ -108,4 +112,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
+
+    bool ClearCache() => false;
 }

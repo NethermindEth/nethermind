@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -13,7 +12,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -34,7 +32,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IReceiptStorage? receiptStorage,
         IBlockhashStore? blockhashStore,
         ILogManager? logManager,
-        IOPConfigHelper opConfigHelper,
+        IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IBeaconBlockRootHandler? beaconBlockRootHandler = null)
@@ -43,7 +41,7 @@ public class OptimismBlockProcessor : BlockProcessor
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;
-        ReceiptsTracer = new OptimismBlockReceiptTracer(opConfigHelper, stateProvider);
+        ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
