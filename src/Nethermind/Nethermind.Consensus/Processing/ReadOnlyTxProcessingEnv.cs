@@ -62,11 +62,11 @@ namespace Nethermind.Consensus.Processing
             StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
 
             CodeInfoRepository = new CodeInfoRepository();
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
 
             SpecProvider = specProvider;
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             LogManager = logManager;
 
             _logManager = logManager;
