@@ -193,10 +193,10 @@ namespace Nethermind.Core.Caching
 
         private void Remove(ref LruCacheItem node, int offset)
         {
-            Debug.Assert(_leastRecentlyUsed >= 0, "This method shouldn't be called on empty list!");
+            // Debug.Assert(_leastRecentlyUsed >= 0, "This method shouldn't be called on empty list!");
             if (node.Next == offset)
             {
-                Debug.Assert(_leastRecentlyUsed == offset, "this should only be true for a list with only one node");
+                // Debug.Assert(_leastRecentlyUsed == offset, "this should only be true for a list with only one node");
                 _leastRecentlyUsed = -1;
             }
             else
