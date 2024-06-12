@@ -18,7 +18,7 @@ namespace Nethermind.AccountAbstraction.Executor
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default);
 
-        CallOutput EstimateGas(BlockHeader header, Transaction tx,
+        BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx,
             CancellationToken cancellationToken);
     }
 }

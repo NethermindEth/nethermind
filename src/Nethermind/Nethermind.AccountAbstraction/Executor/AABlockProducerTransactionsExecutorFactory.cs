@@ -6,7 +6,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Executor
@@ -26,10 +25,10 @@ namespace Nethermind.AccountAbstraction.Executor
             _entryPointAddresses = entryPointAddresses;
         }
 
-        public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
+        public IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
             => new AABlockProducerTransactionsExecutor(
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.WorldState,
+                readOnlyTxProcessingEnv.StateProvider,
                 _specProvider,
                 _logManager,
                 _signer,

@@ -228,13 +228,12 @@ namespace Nethermind.Synchronization.Test
             public IWorldState StateProvider { get; set; } = null!;
 
             public DevBlockProducer? BlockProducer { get; set; }
-            public IBlockProducerRunner? BlockProducerRunner { get; set; }
             public ConsoleAsyncLogger? Logger { get; set; }
 
             public async Task StopAsync()
             {
                 await (BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
-                await (BlockProducerRunner?.StopAsync() ?? Task.CompletedTask);
+                await (BlockProducer?.StopAsync() ?? Task.CompletedTask);
                 await (PeerPool?.StopAsync() ?? Task.CompletedTask);
                 await (Synchronizer?.StopAsync() ?? Task.CompletedTask);
                 Logger?.Flush();
@@ -276,8 +275,7 @@ namespace Nethermind.Synchronization.Test
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new();
-            VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
+            VirtualMachine virtualMachine = new(blockhashProvider, specProvider, logManager);
 
             Always sealValidator = Always.Valid;
             HeaderValidator headerValidator = new(tree, sealValidator, specProvider, logManager);
@@ -292,7 +290,7 @@ namespace Nethermind.Synchronization.Test
 
             RewardCalculator rewardCalculator = new(specProvider);
             TransactionProcessor txProcessor =
-                new(specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+                new(specProvider, stateProvider, virtualMachine, logManager);
 
             BlockProcessor blockProcessor = new(
                 specProvider,
@@ -301,6 +299,7 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
+                NullWitnessCollector.Instance,
                 new BlockhashStore(tree, specProvider, stateProvider),
                 txProcessor,
                 logManager);
@@ -314,8 +313,8 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
             WorldState devState = new(trieStore, codeDb, logManager);
-            VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
-            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, codeInfoRepository, logManager);
+            VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
+            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, logManager);
 
             BlockProcessor devBlockProcessor = new(
                 specProvider,
@@ -324,6 +323,7 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
                 devState,
                 receiptStorage,
+                NullWitnessCollector.Instance,
                 new BlockhashStore(tree, specProvider, devState),
                 devTxProcessor,
                 logManager);
@@ -341,15 +341,11 @@ namespace Nethermind.Synchronization.Test
                 devChainProcessor,
                 stateProvider,
                 tree,
+                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,
                 new BlocksConfig(),
                 logManager);
-
-            StandardBlockProducerRunner runner = new(
-                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
-                tree,
-                producer);
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
@@ -387,6 +383,7 @@ namespace Nethermind.Synchronization.Test
                 syncPeerPool,
                 selector,
                 syncConfig,
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 logManager);
@@ -397,7 +394,7 @@ namespace Nethermind.Synchronization.Test
             if (index == 0)
             {
                 _genesis = Build.A.Block.Genesis.WithStateRoot(stateProvider.StateRoot).TestObject;
-                runner.Start();
+                producer.Start();
             }
 
             syncPeerPool.Start();
@@ -419,7 +416,6 @@ namespace Nethermind.Synchronization.Test
             context.SyncServer = syncServer;
             context.Tree = tree;
             context.BlockProducer = producer;
-            context.BlockProducerRunner = runner;
             context.TxPool = txPool;
             context.Logger = logger;
             return context;

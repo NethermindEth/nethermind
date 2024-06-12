@@ -274,10 +274,10 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare PushData(ReadOnlyMemory<byte> data)
+        public Prepare PushData(byte[] data)
         {
             _byteCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
-            _byteCode.AddRange(data.Span);
+            _byteCode.AddRange(data);
             return this;
         }
 

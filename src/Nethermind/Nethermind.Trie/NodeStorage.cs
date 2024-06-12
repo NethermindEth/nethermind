@@ -119,11 +119,11 @@ public class NodeStorage : INodeStorage
 
         if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
         {
-            if (address is null && path.Length > TopStateBoundary)
+            if (address == null && path.Length > TopStateBoundary)
             {
                 readFlags |= ReadFlags.HintReadAhead2;
             }
-            else if (address is not null)
+            else if (address != null)
             {
                 readFlags |= ReadFlags.HintReadAhead3;
             }
@@ -189,14 +189,6 @@ public class NodeStorage : INodeStorage
         if (_keyValueStore is IDb db)
         {
             db.Flush();
-        }
-    }
-
-    public void Compact()
-    {
-        if (_keyValueStore is IDb db)
-        {
-            db.Compact();
         }
     }
 

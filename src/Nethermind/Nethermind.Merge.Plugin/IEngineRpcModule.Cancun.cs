@@ -14,7 +14,7 @@ public partial interface IEngineRpcModule : IRpcModule
 {
 
     [JsonRpcMethod(
-        Description = "Applies fork choice and starts building a new block if payload attributes are present.",
+        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);

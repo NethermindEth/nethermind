@@ -35,9 +35,9 @@ namespace Nethermind.Core
 
         public byte[] Bytes { get; }
 
-        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size).ToArray()) { }
+        public Address(Hash256 keccak) : this(keccak.Bytes.Slice(12, Size).ToArray()) { }
 
-        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size).ToArray()) { }
+        public Address(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, Size).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -235,14 +235,6 @@ namespace Nethermind.Core
         }
 
         public Hash256 ToAccountPath => Keccak.Compute(Bytes);
-
-        [SkipLocalsInit]
-        public ValueHash256 ToHash()
-        {
-            Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-            Bytes.CopyTo(addressBytes.Slice(Hash256.Size - Address.Size));
-            return new ValueHash256(addressBytes);
-        }
     }
 
     public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>

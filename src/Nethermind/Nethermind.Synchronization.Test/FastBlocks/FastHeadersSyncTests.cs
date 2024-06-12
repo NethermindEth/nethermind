@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -148,7 +147,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             syncReport.HeadersInQueue.Returns(new MeasuredProgress());
 
             BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
-            using ResettableHeaderSyncFeed feed = new(
+            ResettableHeaderSyncFeed feed = new(
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
@@ -170,7 +169,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     false)!;
             }
 
-            using HeadersSyncBatch? r = await feed.PrepareRequest();
+            await feed.PrepareRequest();
             using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
             FulfillBatch(batch1);
 
@@ -195,7 +194,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             syncReport.HeadersInQueue.Returns(new MeasuredProgress());
 
             BlockHeader pivot = remoteBlockTree.FindHeader(2000, BlockTreeLookupOptions.None)!;
-            using HeadersSyncFeed feed = new(
+            HeadersSyncFeed feed = new(
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
@@ -249,7 +248,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             // New batch would be at end of batch 5 (batch 6).
             newBatch.EndNumber.Should().Be(batches[^1].StartNumber - 1);
-            batches.DisposeItems();
         }
 
         [Test]
@@ -380,86 +378,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             result.Should().NotBeNull();
             result!.EndNumber.Should().Be(499);
-        }
-
-        //Missing headers in the start is not allowed
-        [TestCase(0, 1, 1, true, false)]
-        [TestCase(0, 1, 1, false, true)]
-        //Missing headers in the start is not allowed
-        [TestCase(0, 2, 1, true, false)]
-        [TestCase(0, 2, 1, false, true)]
-        //Missing headers in the start is not allowed
-        [TestCase(0, 2, 191, true, false)]
-        [TestCase(0, 2, 191, false, true)]
-        //Gaps are not allowed
-        [TestCase(1, 1, 1, true, false)]
-        [TestCase(1, 1, 1, true, true)]
-        [TestCase(187, 5, 1, false, false)]
-        [TestCase(187, 5, 1, false, true)]
-        [TestCase(191, 1, 1, false, false)]
-        [TestCase(191, 1, 1, false, true)]
-        [TestCase(190, 1, 1, true, false)]
-        [TestCase(190, 1, 1, true, true)]
-        [TestCase(80, 1, 1, true, false)]
-        [TestCase(80, 1, 1, true, true)]
-        //All empty reponse
-        [TestCase(0, 192, 1, false, false)]
-        //All null reponse
-        [TestCase(0, 192, 1, false, true)]
-        public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
-        {
-            var peerChain = Build.A.BlockTree().OfChainLength(1000).TestObject;
-            var syncConfig = new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" };
-
-            IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
-            const int lowestInserted = 999;
-            localBlockTree.Insert(peerChain.Head!, BlockTreeInsertBlockOptions.SaveHeader);
-
-            ISyncReport report = Substitute.For<ISyncReport>();
-            report.HeadersInQueue.Returns(new MeasuredProgress());
-            report.FastBlocksHeaders.Returns(new MeasuredProgress());
-
-            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
-            feed.InitializeFeed();
-            using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
-            using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
-            dependentBatch!.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
-
-            void FillBatch(HeadersSyncBatch batch, long start, bool applyNulls)
-            {
-                int c = count;
-                List<BlockHeader?> list = Enumerable.Range((int)start, batch.RequestSize)
-                    .Select(i => peerChain.FindBlock(i, BlockTreeLookupOptions.None)!.Header)
-                    .ToList<BlockHeader?>();
-                if (applyNulls)
-                    for (int i = nullIndex; 0 < c; i += increment)
-                    {
-                        list[i] = null;
-                        c--;
-                    }
-                if (!useNulls)
-                    list = list.Where(h => h is not null).ToList();
-                batch.Response = list.ToPooledList();
-            }
-
-            FillBatch(firstBatch!, lowestInserted - firstBatch!.RequestSize, false);
-            FillBatch(dependentBatch, lowestInserted - dependentBatch.RequestSize * 2, true);
-            long targetHeaderInDependentBatch = dependentBatch.StartNumber;
-
-            feed.HandleResponse(dependentBatch);
-            feed.HandleResponse(firstBatch);
-
-            using HeadersSyncBatch? thirdbatch = await feed.PrepareRequest();
-            FillBatch(thirdbatch!, thirdbatch!.StartNumber, false);
-            feed.HandleResponse(thirdbatch);
-            using HeadersSyncBatch? fourthbatch = await feed.PrepareRequest();
-            FillBatch(fourthbatch!, fourthbatch!.StartNumber, false);
-            feed.HandleResponse(fourthbatch);
-            using HeadersSyncBatch? fifthbatch = await feed.PrepareRequest();
-
-            Assert.That(localBlockTree.LowestInsertedHeader!.Number, Is.LessThanOrEqualTo(targetHeaderInDependentBatch));
-            syncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]

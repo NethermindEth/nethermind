@@ -15,11 +15,11 @@ namespace Nethermind.Consensus.Clique
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
 
-        private readonly ICliqueBlockProducerRunner? _cliqueBlockProducer;
+        private readonly ICliqueBlockProducer? _cliqueBlockProducer;
         private readonly ISnapshotManager _snapshotManager;
         private readonly IBlockFinder _blockTree;
 
-        public CliqueRpcModule(ICliqueBlockProducerRunner? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockFinder blockTree)
+        public CliqueRpcModule(ICliqueBlockProducer? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockFinder blockTree)
         {
             _cliqueBlockProducer = cliqueBlockProducer;
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));

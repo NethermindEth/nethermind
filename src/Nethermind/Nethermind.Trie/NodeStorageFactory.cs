@@ -27,7 +27,7 @@ public class NodeStorageFactory : INodeStorageFactory
     public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
         _currentKeyScheme = DetectKeyScheme(mainStateDb);
-        if (_currentKeyScheme is null)
+        if (_currentKeyScheme == null)
         {
             _logger.Info("No current state db key scheme.");
         }

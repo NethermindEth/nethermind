@@ -199,7 +199,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInFastSync = ShouldBeInFastSyncMode(best);
                             best.IsInStateSync = ShouldBeInStateSyncMode(best);
                             best.IsInStateNodes = ShouldBeInStateNodesMode(best);
-                            best.IsInSnapRanges = ShouldBeInSnapRangesPhase(best);
+                            best.IsInSnapRanges = ShouldBeBeInSnapRangesPhase(best);
                             best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
                             best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
                             best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
@@ -338,16 +338,15 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInBeaconHeaders(bool shouldBeInUpdatingPivot)
         {
             bool shouldBeInBeaconHeaders = _beaconSyncStrategy.ShouldBeInBeaconHeaders();
-            bool shouldBeNotInUpdatingPivot = !shouldBeInUpdatingPivot;
 
             bool result = shouldBeInBeaconHeaders &&
-                          shouldBeNotInUpdatingPivot;
+                          !shouldBeInUpdatingPivot;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("BEACON HEADERS",
                     (nameof(shouldBeInBeaconHeaders), shouldBeInBeaconHeaders),
-                    (nameof(shouldBeNotInUpdatingPivot), shouldBeNotInUpdatingPivot));
+                    (nameof(shouldBeInUpdatingPivot), shouldBeInUpdatingPivot));
             }
 
             return result;
@@ -614,7 +613,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
-                    ($"{nameof(notInFastSync)}||{nameof(stickyStateNodes)}", notInFastSync || stickyStateNodes),
+                    (nameof(notInFastSync), notInFastSync),
                     (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync),
@@ -643,7 +642,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
-        private bool ShouldBeInSnapRangesPhase(Snapshot best)
+        private bool ShouldBeBeInSnapRangesPhase(Snapshot best)
         {
             bool isInStateSync = best.IsInStateSync;
             bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) < Constants.MaxDistanceFromHead;

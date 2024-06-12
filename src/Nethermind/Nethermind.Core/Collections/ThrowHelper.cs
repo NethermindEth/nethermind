@@ -53,6 +53,13 @@ public class ThrowHelper
 
     [DoesNotReturn]
     [StackTraceHidden]
+    public static void ThrowArgumentNullException_Options()
+    {
+        throw new ArgumentNullException("options");
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
     public static void ThrowArgumentNullException_WritingStream()
     {
         throw new ArgumentNullException("writingStream");

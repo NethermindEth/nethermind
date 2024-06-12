@@ -7,10 +7,15 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    [Rlp.Decoder(RlpDecoderKey.Default)]
-    [Rlp.Decoder(RlpDecoderKey.Trie)]
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>
     {
+        public static readonly ReceiptMessageDecoder Instance = new();
+
+        static ReceiptMessageDecoder()
+        {
+            Rlp.RegisterDecoder(typeof(TxReceipt), new ReceiptMessageDecoder());
+        }
+
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())

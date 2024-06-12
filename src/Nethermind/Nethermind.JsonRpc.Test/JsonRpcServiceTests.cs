@@ -16,8 +16,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
@@ -40,15 +38,10 @@ public class JsonRpcServiceTests
     [SetUp]
     public void Initialize()
     {
+        Assembly jConfig = typeof(JsonRpcConfig).Assembly;
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
         _context = new JsonRpcContext(RpcEndpoint.Http);
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _context?.Dispose();
     }
 
     private IJsonRpcService _jsonRpcService = null!;
@@ -94,27 +87,13 @@ public class JsonRpcServiceTests
         Assert.That((response?.Result as BlockForRpc)?.Size, Is.EqualTo(513L));
     }
 
-
-    [Test]
-    public void CanRunEthSimulateV1Empty()
-    {
-        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>() };
-        string serializedCall = new EthereumJsonSerializer().Serialize(payload);
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(_ =>
-            ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(Array.Empty<SimulateBlockResult>()));
-        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_simulateV1", serializedCall) as JsonRpcSuccessResponse;
-        Assert.That(response?.Result, Is.EqualTo(Array.Empty<SimulateBlockResult>()));
-    }
-
-
     [Test]
     public void CanHandleOptionalArguments()
     {
         EthereumJsonSerializer serializer = new();
         string serialized = serializer.Serialize(new TransactionForRpc());
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x1"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x1"));
     }

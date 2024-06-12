@@ -7,7 +7,6 @@ using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Data;

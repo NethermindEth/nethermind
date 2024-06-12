@@ -12,7 +12,9 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public static class NewPayloadV1Result
 {
-    public static readonly ResultWrapper<PayloadStatusV1> Syncing = ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Syncing);
+    public static ResultWrapper<PayloadStatusV1> Syncing = ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Syncing);
+
+    public static ResultWrapper<PayloadStatusV1> Accepted = ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Accepted);
 
     public static ResultWrapper<PayloadStatusV1> Invalid(string validationError)
     {

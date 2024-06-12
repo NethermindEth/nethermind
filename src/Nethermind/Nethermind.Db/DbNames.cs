@@ -15,6 +15,8 @@ namespace Nethermind.Db
         public const string BlockInfos = "blockInfos";
         public const string BadBlocks = "badBlocks";
         public const string Bloom = "bloom";
+        public const string Witness = "witness";
+        public const string CHT = "canonicalHashTrie";
         public const string Metadata = "metadata";
         public const string BlobTransactions = "blobTransactions";
     }

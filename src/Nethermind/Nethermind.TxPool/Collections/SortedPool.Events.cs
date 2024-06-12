@@ -12,16 +12,28 @@ namespace Nethermind.TxPool.Collections
         public event EventHandler<SortedPoolRemovedEventArgs>? Removed;
 #pragma warning restore 67
 
-        public class SortedPoolEventArgs(TKey key, TValue value)
+        public class SortedPoolEventArgs
         {
-            public TKey Key { get; } = key;
-            public TValue Value { get; } = value;
+            public TKey Key { get; }
+            public TValue Value { get; }
+            public TGroupKey Group { get; }
+
+            public SortedPoolEventArgs(TKey key, TValue value, TGroupKey group)
+            {
+                Key = key;
+                Value = value;
+                Group = group;
+            }
         }
 
-        public class SortedPoolRemovedEventArgs(TKey key, TValue value, bool evicted)
-            : SortedPoolEventArgs(key, value)
+        public class SortedPoolRemovedEventArgs : SortedPoolEventArgs
         {
-            public bool Evicted { get; } = evicted;
+            public bool Evicted { get; }
+
+            public SortedPoolRemovedEventArgs(TKey key, TValue value, TGroupKey group, bool evicted) : base(key, value, group)
+            {
+                Evicted = evicted;
+            }
         }
     }
 }

@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -679,6 +680,30 @@ namespace Nethermind.Trie.Test.Pruning
             storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
             fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().BeTrue();
+        }
+
+        [Test]
+        public void ReadOnly_store_doesnt_change_witness()
+        {
+            TrieNode node = new(NodeType.Leaf);
+            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+            node.Value = _accountDecoder.Encode(account).Bytes;
+            node.Key = Bytes.FromHexString("abc");
+            TreePath emptyPath = TreePath.Empty;
+            node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
+
+            MemDb originalStore = new MemDb();
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
+            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(false), kvStore: store);
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            trieStore.CommitNode(0, new NodeCommitInfo(node, TreePath.Empty));
+            trieStore.FinishBlockCommit(TrieType.State, 0, node);
+
+            IReadOnlyTrieStore readOnlyTrieStore = fullTrieStore.AsReadOnly(new NodeStorage(originalStore));
+            readOnlyTrieStore.LoadRlp(null, TreePath.Empty, node.Keccak);
+
+            witnessCollector.Collected.Should().BeEmpty();
         }
 
         [TestCase(true)]

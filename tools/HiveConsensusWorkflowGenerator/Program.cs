@@ -71,7 +71,7 @@ public static class Program
         string? currentDir = Environment.CurrentDirectory;
         do
         {
-            if (currentDir is null)
+            if (currentDir == null)
             {
                 return "";
             }
@@ -80,7 +80,7 @@ public static class Program
                 .EnumerateDirectories(currentDir, searchPattern, SearchOption.TopDirectoryOnly)
                 .SingleOrDefault();
 
-            if (dir is not null)
+            if (dir != null)
             {
                 return dir;
             }

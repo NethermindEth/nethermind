@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
-        private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private readonly ReceiptMessageDecoder _decoder = new();
 
         public ReceiptsMessageSerializer(ISpecProvider specProvider)
         {
@@ -50,6 +50,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     _decoder.Encode(stream, txReceipt,
                         _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 }
+
+
             }
         }
 

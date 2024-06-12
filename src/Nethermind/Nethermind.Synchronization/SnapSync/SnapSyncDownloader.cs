@@ -52,6 +52,8 @@ namespace Nethermind.Synchronization.SnapSync
                         Logger.Error($"DEBUG/ERROR Error after dispatching the snap sync request. Request: {batch}", e);
                 }
             }
+
+            await Task.CompletedTask;
         }
     }
 }

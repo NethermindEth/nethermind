@@ -102,6 +102,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -144,6 +145,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -212,6 +214,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 testSpecProvider,
                 LimboLogs.Instance);
@@ -435,6 +438,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 testSpecProvider,
                 LimboLogs.Instance);
@@ -475,6 +479,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -507,6 +512,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -534,6 +540,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -570,6 +577,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -611,6 +619,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -649,6 +658,7 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
+                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -683,6 +693,7 @@ namespace Nethermind.Synchronization.Test
                     PeerPool,
                     selector,
                     new SyncConfig(),
+                    NullWitnessCollector.Instance,
                     Policy.FullGossip,
                     MainnetSpecProvider.Instance,
                     LimboLogs.Instance);

@@ -40,7 +40,7 @@ namespace Nethermind.Core.Test.Caching
             ISpanCache<byte, Account> cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i].Bytes, _accounts[i]).Should().BeTrue();
+                cache.Set(_addresses[i].Bytes, _accounts[i]);
             }
 
             Account? account = cache.Get(_addresses[Capacity - 1].Bytes);
@@ -51,8 +51,8 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             ISpanCache<byte, Account> cache = Create();
-            cache.Set(_addresses[0].Bytes, _accounts[0]).Should().BeTrue();
-            cache.Set(_addresses[0].Bytes, _accounts[1]).Should().BeFalse();
+            cache.Set(_addresses[0].Bytes, _accounts[0]);
+            cache.Set(_addresses[0].Bytes, _accounts[1]);
             cache.Get(_addresses[0].Bytes).Should().Be(_accounts[1]);
         }
 
@@ -67,10 +67,10 @@ namespace Nethermind.Core.Test.Caching
         public void Can_clear()
         {
             ISpanCache<byte, Account> cache = Create();
-            cache.Set(_addresses[0].Bytes, _accounts[0]).Should().BeTrue();
+            cache.Set(_addresses[0].Bytes, _accounts[0]);
             cache.Clear();
             cache.Get(_addresses[0].Bytes).Should().BeNull();
-            cache.Set(_addresses[0].Bytes, _accounts[1]).Should().BeTrue();
+            cache.Set(_addresses[0].Bytes, _accounts[1]);
             cache.Get(_addresses[0].Bytes).Should().Be(_accounts[1]);
         }
 
@@ -80,25 +80,11 @@ namespace Nethermind.Core.Test.Caching
             ISpanCache<byte, Account> cache = Create();
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i].Bytes, _accounts[i]).Should().BeTrue();
+                cache.Set(_addresses[i].Bytes, _accounts[i]);
             }
 
             Account? account = cache.Get(_addresses[Capacity].Bytes);
             account.Should().Be(_accounts[Capacity]);
-        }
-
-        [Test]
-        public void Beyond_capacity_lru()
-        {
-            ISpanCache<byte, Account> cache = Create();
-            for (int i = 0; i < Capacity * 2; i++)
-            {
-                for (int ii = 0; ii < Capacity / 2; ii++)
-                {
-                    cache.Set(_addresses[i].Bytes, _accounts[i]);
-                }
-                cache.Set(_addresses[i].Bytes, _accounts[i]);
-            }
         }
 
         [Test]
@@ -115,7 +101,7 @@ namespace Nethermind.Core.Test.Caching
         public void Can_delete()
         {
             ISpanCache<byte, Account> cache = Create();
-            cache.Set(_addresses[0].Bytes, _accounts[0]).Should().BeTrue();
+            cache.Set(_addresses[0].Bytes, _accounts[0]);
             cache.Delete(_addresses[0].Bytes).Should().BeTrue();
             cache.Get(_addresses[0].Bytes).Should().Be(null);
             cache.Delete(_addresses[0].Bytes).Should().BeFalse();

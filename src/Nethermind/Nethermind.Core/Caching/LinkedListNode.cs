@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
@@ -22,10 +21,7 @@ internal sealed class LinkedListNode<T>
     {
         if (node.Next == node)
         {
-            if (leastRecentlyUsed != node)
-            {
-                InvalidNotSingleNodeList();
-            }
+            Debug.Assert(leastRecentlyUsed == node, "this should only be true for a list with only one node");
             // Do nothing only one node
         }
         else
@@ -37,16 +33,10 @@ internal sealed class LinkedListNode<T>
 
     public static void Remove(ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
     {
-        if (leastRecentlyUsed is null)
-        {
-            InvalidRemoveFromEmptyList();
-        }
+        Debug.Assert(leastRecentlyUsed is not null, "This method shouldn't be called on empty list!");
         if (node.Next == node)
         {
-            if (leastRecentlyUsed != node)
-            {
-                InvalidNotSingleNodeList();
-            }
+            Debug.Assert(leastRecentlyUsed == node, "this should only be true for a list with only one node");
             leastRecentlyUsed = null;
         }
         else
@@ -58,20 +48,6 @@ internal sealed class LinkedListNode<T>
                 leastRecentlyUsed = node.Next;
             }
         }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void InvalidRemoveFromEmptyList()
-        {
-            throw new InvalidOperationException("This method shouldn't be called on empty list");
-        }
-    }
-
-    [DoesNotReturn]
-    [StackTraceHidden]
-    static void InvalidNotSingleNodeList()
-    {
-        throw new InvalidOperationException("This should only be true for a list with only one node");
     }
 
     public static void AddMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)

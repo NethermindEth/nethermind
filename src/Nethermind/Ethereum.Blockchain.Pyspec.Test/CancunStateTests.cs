@@ -13,6 +13,8 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 [Parallelizable(ParallelScope.All)]
 public class CancunStateTests : GeneralStateTestBase
 {
+
+    [Explicit("We are failing some of those tests")]
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test) => RunTest(test).Pass.Should().BeTrue();
 

@@ -8,18 +8,27 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldStateManager(
-    IWorldState worldState,
-    ITrieStore trieStore,
-    IDbProvider dbProvider,
-    ILogManager logManager)
-    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager)
+public class WorldStateManager : ReadOnlyWorldStateManager
 {
-    public override IWorldState GlobalWorldState => worldState;
+    private readonly IWorldState _worldState;
+    private readonly ITrieStore _trieStore;
+
+    public WorldStateManager(
+        IWorldState worldState,
+        ITrieStore trieStore,
+        IDbProvider dbProvider,
+        ILogManager logManager
+    ) : base(dbProvider, trieStore.AsReadOnly(), logManager)
+    {
+        _worldState = worldState;
+        _trieStore = trieStore;
+    }
+
+    public override IWorldState GlobalWorldState => _worldState;
 
     public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
-        add => trieStore.ReorgBoundaryReached += value;
-        remove => trieStore.ReorgBoundaryReached -= value;
+        add => _trieStore.ReorgBoundaryReached += value;
+        remove => _trieStore.ReorgBoundaryReached -= value;
     }
 }

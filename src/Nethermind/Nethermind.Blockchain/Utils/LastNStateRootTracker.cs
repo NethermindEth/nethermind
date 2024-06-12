@@ -29,7 +29,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         _lastN = lastN;
 
         _blockTree.BlockAddedToMain += BlockTreeOnNewHeadBlock;
-        if (_blockTree.Head is not null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
+        if (_blockTree.Head != null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
     }
 
     private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)

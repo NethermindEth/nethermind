@@ -172,7 +172,7 @@ namespace Nethermind.AccountAbstraction.Source
                 // TODO: Remove logging, just for testing
                 _logger.Info($"Constructed tx from {userOperationsToInclude!.Count} userOperations: {userOperationTransaction.Hash}");
 
-                CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(parent, userOperationTransaction, CancellationToken.None);
+                BlockchainBridge.CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(parent, userOperationTransaction, CancellationToken.None);
                 FailedOp? failedOp = txBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
                 if (failedOp is not null)
                 {

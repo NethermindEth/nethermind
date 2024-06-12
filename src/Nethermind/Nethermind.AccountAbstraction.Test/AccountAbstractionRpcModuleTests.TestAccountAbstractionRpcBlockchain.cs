@@ -122,18 +122,19 @@ namespace Nethermind.AccountAbstraction.Test
 
                 UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, Signer, LogManager.GetClassLogger());
 
-                PostMergeBlockProducer CreatePostMergeBlockProducer(ITxSource? txSource = null)
+                PostMergeBlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
+                    ITxSource? txSource = null)
                 {
                     var blockProducerEnv = blockProducerEnvFactory.Create(txSource);
                     return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
                         LogManager, GasLimitCalculator).Create(
-                        blockProducerEnv);
+                        blockProducerEnv, blockProductionTrigger);
                 }
 
-                IBlockProducer blockProducer = CreatePostMergeBlockProducer(UserOperationTxSource);
+                IBlockProducer blockProducer =
+                    CreatePostMergeBlockProducer(BlockProductionTrigger, UserOperationTxSource);
 
-                BlockProducerRunner = new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, blockProducer);
-                BlockProducerRunner.BlockProduced += OnBlockProduced;
+                blockProducer.BlockProduced += OnBlockProduced;
 
                 return blockProducer;
             }
@@ -189,6 +190,7 @@ namespace Nethermind.AccountAbstraction.Test
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     ReceiptStorage,
+                    NullWitnessCollector.Instance,
                     new BlockhashStore(BlockTree, SpecProvider, State),
                     TxProcessor,
                     LogManager);

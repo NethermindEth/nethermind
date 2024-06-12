@@ -196,6 +196,7 @@ namespace Nethermind.Core.Collections
 
         #endregion
 
+
         #region ICollection<T>
 
         public int Count => _dict.Count;

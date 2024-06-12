@@ -6,9 +6,16 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class BuildUpTransactionProcessorAdapter(ITransactionProcessor transactionProcessor) : ITransactionProcessorAdapter
+    public class BuildUpTransactionProcessorAdapter : ITransactionProcessorAdapter
     {
+        private readonly ITransactionProcessor _transactionProcessor;
+
+        public BuildUpTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
+        {
+            _transactionProcessor = transactionProcessor;
+        }
+
         public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            transactionProcessor.BuildUp(transaction, in blkCtx, txTracer);
+            _transactionProcessor.BuildUp(transaction, in blkCtx, txTracer);
     }
 }

@@ -4,15 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper
+public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
 {
+    private readonly ITxTracer _innerTracer;
+    private readonly CancellationToken _token;
     private readonly bool _isTracingReceipt;
     private readonly bool _isTracingActions;
     private readonly bool _isTracingOpLevelStorage;
@@ -28,431 +29,435 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
 
-    public ITxTracer InnerTracer => innerTracer;
+    public ITxTracer InnerTracer => _innerTracer;
+
+    public CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default)
+    {
+        _innerTracer = innerTracer;
+        _token = token;
+    }
 
     public bool IsCancelable => true;
-    public bool IsCancelled => token.IsCancellationRequested;
+    public bool IsCancelled => _token.IsCancellationRequested;
 
     public bool IsTracingReceipt
     {
-        get => _isTracingReceipt || innerTracer.IsTracingReceipt;
+        get => _isTracingReceipt || _innerTracer.IsTracingReceipt;
         init => _isTracingReceipt = value;
     }
 
     public bool IsTracingActions
     {
-        get => _isTracingActions || innerTracer.IsTracingActions;
+        get => _isTracingActions || _innerTracer.IsTracingActions;
         init => _isTracingActions = value;
     }
 
     public bool IsTracingOpLevelStorage
     {
-        get => _isTracingOpLevelStorage || innerTracer.IsTracingOpLevelStorage;
+        get => _isTracingOpLevelStorage || _innerTracer.IsTracingOpLevelStorage;
         init => _isTracingOpLevelStorage = value;
     }
 
     public bool IsTracingMemory
     {
-        get => _isTracingMemory || innerTracer.IsTracingMemory;
+        get => _isTracingMemory || _innerTracer.IsTracingMemory;
         init => _isTracingMemory = value;
     }
 
     public bool IsTracingInstructions
     {
-        get => _isTracingInstructions || innerTracer.IsTracingInstructions;
+        get => _isTracingInstructions || _innerTracer.IsTracingInstructions;
         init => _isTracingInstructions = value;
     }
 
     public bool IsTracingRefunds
     {
-        get => _isTracingRefunds || innerTracer.IsTracingRefunds;
+        get => _isTracingRefunds || _innerTracer.IsTracingRefunds;
         init => _isTracingRefunds = value;
     }
 
     public bool IsTracingCode
     {
-        get => _isTracingCode || innerTracer.IsTracingCode;
+        get => _isTracingCode || _innerTracer.IsTracingCode;
         init => _isTracingCode = value;
     }
 
     public bool IsTracingStack
     {
-        get => _isTracingStack || innerTracer.IsTracingStack;
+        get => _isTracingStack || _innerTracer.IsTracingStack;
         init => _isTracingStack = value;
     }
 
     public bool IsTracingState
     {
-        get => _isTracingState || innerTracer.IsTracingState;
+        get => _isTracingState || _innerTracer.IsTracingState;
         init => _isTracingState = value;
     }
 
     public bool IsTracingStorage
     {
-        get => _isTracingStorage || innerTracer.IsTracingStorage;
+        get => _isTracingStorage || _innerTracer.IsTracingStorage;
         init => _isTracingStorage = value;
     }
 
     public bool IsTracingBlockHash
     {
-        get => _isTracingBlockHash || innerTracer.IsTracingBlockHash;
+        get => _isTracingBlockHash || _innerTracer.IsTracingBlockHash;
         init => _isTracingBlockHash = value;
     }
 
     public bool IsTracingAccess
     {
-        get => _isTracingBlockAccess || innerTracer.IsTracingAccess;
+        get => _isTracingBlockAccess || _innerTracer.IsTracingAccess;
         init => _isTracingBlockAccess = value;
     }
 
     public bool IsTracingFees
     {
-        get => _isTracingFees || innerTracer.IsTracingFees;
+        get => _isTracingFees || _innerTracer.IsTracingFees;
         init => _isTracingFees = value;
     }
-
     public bool IsTracingLogs
     {
-        get => _isTracingOpLevelLogs || innerTracer.IsTracingLogs;
+        get => _isTracingOpLevelLogs || _innerTracer.IsTracingLogs;
         init => _isTracingOpLevelLogs = value;
     }
 
-
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingState)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingState)
         {
-            innerTracer.ReportBalanceChange(address, before, after);
+            _innerTracer.ReportBalanceChange(address, before, after);
         }
     }
 
     public void ReportCodeChange(Address address, byte[] before, byte[] after)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingState)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingState)
         {
-            innerTracer.ReportCodeChange(address, before, after);
+            _innerTracer.ReportCodeChange(address, before, after);
         }
     }
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingState)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingState)
         {
-            innerTracer.ReportNonceChange(address, before, after);
+            _innerTracer.ReportNonceChange(address, before, after);
         }
     }
 
     public void ReportAccountRead(Address address)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingState)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingState)
         {
-            innerTracer.ReportAccountRead(address);
+            _innerTracer.ReportAccountRead(address);
         }
     }
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingStorage)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingStorage)
         {
-            innerTracer.ReportStorageChange(storageCell, before, after);
+            _innerTracer.ReportStorageChange(storageCell, before, after);
         }
     }
 
     public void ReportStorageRead(in StorageCell storageCell)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingStorage)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingStorage)
         {
-            innerTracer.ReportStorageRead(storageCell);
+            _innerTracer.ReportStorageRead(storageCell);
         }
     }
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingReceipt)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingReceipt)
         {
-            innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+            _innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         }
     }
 
     public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingReceipt)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingReceipt)
         {
-            innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+            _innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         }
     }
 
     public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.StartOperation(pc, opcode, gas, env);
+            _innerTracer.StartOperation(pc, opcode, gas, env);
         }
     }
 
     public void ReportOperationError(EvmExceptionType error)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportOperationError(error);
+            _innerTracer.ReportOperationError(error);
         }
     }
 
     public void ReportOperationRemainingGas(long gas)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportOperationRemainingGas(gas);
+            _innerTracer.ReportOperationRemainingGas(gas);
         }
     }
 
     public void ReportLog(LogEntry log)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingLogs)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingLogs)
         {
-            innerTracer.ReportLog(log);
+            _innerTracer.ReportLog(log);
         }
     }
 
     public void SetOperationStack(TraceStack stack)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingStack)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingStack)
         {
-            innerTracer.SetOperationStack(stack);
+            _innerTracer.SetOperationStack(stack);
         }
     }
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportStackPush(stackItem);
+            _innerTracer.ReportStackPush(stackItem);
         }
     }
 
     public void ReportStackPush(in ZeroPaddedSpan stackItem)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportStackPush(stackItem);
+            _innerTracer.ReportStackPush(stackItem);
         }
     }
 
     public void ReportStackPush(byte stackItem)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportStackPush(stackItem);
+            _innerTracer.ReportStackPush(stackItem);
         }
     }
 
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingMemory)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingMemory)
         {
-            innerTracer.SetOperationMemory(memoryTrace);
+            _innerTracer.SetOperationMemory(memoryTrace);
         }
     }
 
     public void SetOperationMemorySize(ulong newSize)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingMemory)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingMemory)
         {
-            innerTracer.SetOperationMemorySize(newSize);
+            _innerTracer.SetOperationMemorySize(newSize);
         }
     }
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportMemoryChange(offset, data);
+            _innerTracer.ReportMemoryChange(offset, data);
         }
     }
 
     public void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportMemoryChange(offset, data);
+            _innerTracer.ReportMemoryChange(offset, data);
         }
     }
 
     public void ReportMemoryChange(long offset, byte data)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportMemoryChange(offset, data);
+            _innerTracer.ReportMemoryChange(offset, data);
         }
     }
 
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportStorageChange(key, value);
+            _innerTracer.ReportStorageChange(key, value);
         }
     }
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingOpLevelStorage)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingOpLevelStorage)
         {
-            innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
+            _innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
         }
     }
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingOpLevelStorage)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingOpLevelStorage)
         {
-            innerTracer.LoadOperationStorage(address, storageIndex, value);
+            _innerTracer.LoadOperationStorage(address, storageIndex, value);
         }
     }
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingActions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingActions)
         {
-            innerTracer.ReportSelfDestruct(address, balance, refundAddress);
+            _innerTracer.ReportSelfDestruct(address, balance, refundAddress);
         }
     }
 
     public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingActions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingActions)
         {
-            innerTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+            _innerTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         }
     }
 
     public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingActions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingActions)
         {
-            innerTracer.ReportActionEnd(gas, output);
+            _innerTracer.ReportActionEnd(gas, output);
         }
     }
 
     public void ReportActionError(EvmExceptionType evmExceptionType)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingActions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingActions)
         {
-            innerTracer.ReportActionError(evmExceptionType);
+            _innerTracer.ReportActionError(evmExceptionType);
         }
     }
 
     public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingActions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingActions)
         {
-            innerTracer.ReportActionRevert(gasLeft, output);
+            _innerTracer.ReportActionRevert(gasLeft, output);
         }
     }
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingActions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingActions)
         {
-            innerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
+            _innerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
         }
     }
 
     public void ReportBlockHash(Hash256 blockHash)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingBlockHash)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingBlockHash)
         {
-            innerTracer.ReportBlockHash(blockHash);
+            _innerTracer.ReportBlockHash(blockHash);
         }
     }
 
     public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingCode)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingCode)
         {
-            innerTracer.ReportByteCode(byteCode);
+            _innerTracer.ReportByteCode(byteCode);
         }
     }
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions)
         {
-            innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
+            _innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
         }
     }
 
     public void ReportRefund(long refund)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingRefunds)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingRefunds)
         {
-            innerTracer.ReportRefund(refund);
+            _innerTracer.ReportRefund(refund);
         }
     }
 
     public void ReportExtraGasPressure(long extraGasPressure)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingRefunds)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingRefunds)
         {
-            innerTracer.ReportExtraGasPressure(extraGasPressure);
+            _innerTracer.ReportExtraGasPressure(extraGasPressure);
         }
     }
 
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingAccess)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingAccess)
         {
-            innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
+            _innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
         }
     }
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)
     {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingFees)
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingFees)
         {
-            innerTracer.ReportFees(fees, burntFees);
+            _innerTracer.ReportFees(fees, burntFees);
         }
     }
 
     public void Dispose()
     {
-        innerTracer.Dispose();
+        _innerTracer.Dispose();
     }
 }

@@ -29,8 +29,6 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
-using Nethermind.Db;
-using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
@@ -60,9 +58,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
             new(blockchain);
 
-        public class Builder<T>(T blockchain) where T : TestRpcBlockchain
+        public class Builder<T> where T : TestRpcBlockchain
         {
-            private readonly TestRpcBlockchain _blockchain = blockchain;
+            private readonly TestRpcBlockchain _blockchain;
+
+            public Builder(T blockchain)
+            {
+                _blockchain = blockchain;
+            }
 
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
@@ -105,40 +108,30 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(
-                ISpecProvider? specProvider = null,
-                UInt256? initialValues = null) =>
-                (T)(await _blockchain.Build(specProvider, initialValues, true));
+            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+            {
+                return (T)(await _blockchain.Build(specProvider, initialValues));
+            }
         }
 
-        protected override async Task<TestBlockchain> Build(
-            ISpecProvider? specProvider = null,
-            UInt256? initialValues = null,
-            bool addBlockOnStart = true)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, initialValues, addBlockOnStart);
+            await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
-            var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
-            IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
+
             ReadOnlyTxProcessingEnv processingEnv = new(
                 WorldStateManager,
-                roBlockTree,
-                SpecProvider,
-                LimboLogs.Instance);
-            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                WorldStateManager,
-                roBlockTree,
-                new ReadOnlyDbProvider(dbProvider, true),
+                new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);
 
-            BlocksConfig blocksConfig = new BlocksConfig();
             ReceiptFinder ??= ReceiptStorage;
-            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, blocksConfig, false);
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
+
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
             TxSealer = new TxSealer(txSigner, Timestamper);
@@ -160,8 +153,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 GasPriceOracle,
                 new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
                     new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager),
-                FeeHistoryOracle,
-                blocksConfig.SecondsPerSlot);
+                FeeHistoryOracle);
 
             return this;
         }

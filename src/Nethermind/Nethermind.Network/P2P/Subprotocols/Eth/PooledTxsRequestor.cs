@@ -19,7 +19,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITxPool _txPool;
         private readonly ITxPoolConfig _txPoolConfig;
 
-        private readonly LruKeyCacheLowObject<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize, "pending tx hashes");
+        private readonly LruKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
+            Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
 
         public PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig)
         {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -29,6 +30,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 IBlockchainProcessor processor,
                 ISealer sealer,
                 IBlockTree blockTree,
+                IBlockProductionTrigger blockProductionTrigger,
                 IWorldState stateProvider,
                 IGasLimitCalculator gasLimitCalculator,
                 ITimestamper timestamper,
@@ -39,6 +41,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     processor,
                     sealer,
                     blockTree,
+                    blockProductionTrigger,
                     stateProvider,
                     gasLimitCalculator,
                     timestamper,
@@ -49,9 +52,15 @@ namespace Nethermind.Blockchain.Test.Producers
             {
             }
 
+            public override Task Start() { return Task.CompletedTask; }
+
+            public override Task StopAsync() => Task.CompletedTask;
+
             public Block Prepare() => PrepareBlock(Build.A.BlockHeader.TestObject);
 
             public Block Prepare(BlockHeader header) => PrepareBlock(header);
+
+            protected override bool IsRunning() => true;
 
             private class TimestampDifficultyCalculator : IDifficultyCalculator
             {
@@ -69,6 +78,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,
+                Substitute.For<IBlockProductionTrigger>(),
                 Substitute.For<IWorldState>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
@@ -91,6 +101,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,
+                Substitute.For<IBlockProductionTrigger>(),
                 Substitute.For<IWorldState>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,

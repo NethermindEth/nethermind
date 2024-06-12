@@ -26,12 +26,12 @@ namespace Nethermind.Consensus.Processing
             private readonly ILogger _logger;
 
             public BlockProductionTransactionsExecutor(
-                IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
+                ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
                 ISpecProvider specProvider,
                 ILogManager logManager)
                 : this(
                     readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessingEnv.WorldState,
+                    readOnlyTxProcessingEnv.StateProvider,
                     specProvider,
                     logManager)
             {

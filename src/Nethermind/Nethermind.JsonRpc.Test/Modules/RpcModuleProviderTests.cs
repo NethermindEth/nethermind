@@ -28,12 +28,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
-        [TearDown]
-        public void TearDown()
-        {
-            _context?.Dispose();
-        }
-
         [Test]
         public void Module_provider_will_recognize_disabled_modules()
         {

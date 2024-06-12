@@ -110,14 +110,4 @@ public readonly struct CappedArray<T>
         if (_length == array.Length) return array;
         return AsSpan().ToArray();
     }
-
-    public readonly ArraySegment<T> AsArraySegment()
-    {
-        return AsArraySegment(0, _length);
-    }
-
-    public readonly ArraySegment<T> AsArraySegment(int start, int length)
-    {
-        return new ArraySegment<T>(_array!, start, length);
-    }
 }

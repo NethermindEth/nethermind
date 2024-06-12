@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Trace

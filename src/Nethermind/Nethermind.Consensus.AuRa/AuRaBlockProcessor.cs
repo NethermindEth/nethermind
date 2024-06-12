@@ -57,6 +57,7 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
+                NullWitnessCollector.Instance,
                 new BlockhashStore(blockTree, specProvider, stateProvider),
                 transactionProcessor,
                 logManager,

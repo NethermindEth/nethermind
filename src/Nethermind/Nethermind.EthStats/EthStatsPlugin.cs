@@ -118,4 +118,6 @@ public class EthStatsPlugin : INethermindPlugin
             await _ethStatsIntegration.InitAsync();
         }
     }
+
+    public Task InitRpcModules() => Task.CompletedTask;
 }

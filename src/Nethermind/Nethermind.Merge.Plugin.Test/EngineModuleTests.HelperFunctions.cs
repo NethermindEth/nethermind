@@ -48,30 +48,17 @@ namespace Nethermind.Merge.Plugin.Test
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
             Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
-            Transaction BuildTransaction(uint index, AccountStruct senderAccount)
-            {
-                TransactionBuilder<Transaction> builder = Build.A.Transaction
-                    .WithNonce(senderAccount.Nonce + index)
+            Transaction BuildTransaction(uint index, AccountStruct senderAccount) =>
+                Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
                     .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
-                    .WithSenderAddress(from.Address);
-
-                if (blobCountPerTx != 0)
-                {
-                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx);
-                }
-                else
-                {
-                    builder = builder.WithType(TxType.EIP1559);
-                }
-
-                return builder
+                    .WithSenderAddress(from.Address)
+                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
                     .WithMaxFeePerGasIfSupports1559(1.GWei())
                     .SignedAndResolved(from).TestObject;
-            }
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
             chain.StateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);

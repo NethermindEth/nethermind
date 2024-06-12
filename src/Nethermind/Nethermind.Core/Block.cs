@@ -7,8 +7,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Nethermind.Core.ConsensusRequests;
-using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -119,10 +117,6 @@ public class Block
 
     public Hash256? RequestsRoot => Header.RequestsRoot; // do not add setter here
 
-    [JsonIgnore]
-    public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
-    [JsonIgnore]
-    internal volatile int TransactionProcessed;
 
     public override string ToString() => ToString(Format.Short);
 

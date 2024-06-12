@@ -145,9 +145,9 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit(bool commitStorageRoots = true)
+        public void Commit()
         {
-            Commit(NullStateTracer.Instance, commitStorageRoots);
+            Commit(NullStateTracer.Instance);
         }
 
         protected readonly struct ChangeTrace
@@ -172,7 +172,7 @@ namespace Nethermind.State
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitStorageRoots = true)
+        public void Commit(IStorageTracer tracer)
         {
             if (_currentPosition == Snapshot.EmptyPosition)
             {
@@ -182,16 +182,6 @@ namespace Nethermind.State
             {
                 CommitCore(tracer);
             }
-
-            if (commitStorageRoots)
-            {
-                CommitStorageRoots();
-            }
-        }
-
-        protected virtual void CommitStorageRoots()
-        {
-            // Commit storage roots
         }
 
         /// <summary>
@@ -209,7 +199,7 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resizeCollections = true)
+        public virtual void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 

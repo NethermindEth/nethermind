@@ -33,8 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
-        private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
+        private readonly LruKeyCache<Hash256AsKey> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -339,7 +338,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return;
             }
 
-            if (LastBlockNotificationCache.Set(block.Hash))
+            if (_lastBlockNotificationCache.Set(block.Hash))
             {
                 switch (mode)
                 {

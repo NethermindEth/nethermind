@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Precompiles
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            return (inputData.ToArray(), true);
+            return (inputData, true);
         }
     }
 }

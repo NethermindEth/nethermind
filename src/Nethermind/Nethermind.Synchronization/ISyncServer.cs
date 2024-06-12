@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.LesSync;
 
 namespace Nethermind.Synchronization
 {
@@ -20,6 +21,9 @@ namespace Nethermind.Synchronization
         void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[] GetReceipts(Hash256 blockHashes);
         Block? Find(Hash256 hash);
+        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
+        public Task BuildCHT();
+        public CanonicalHashTrie? GetCHT();
         Hash256? FindHash(long number);
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
         IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
@@ -27,5 +31,6 @@ namespace Nethermind.Synchronization
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
+        Hash256[]? GetBlockWitnessHashes(Hash256 blockHash);
     }
 }

@@ -134,7 +134,6 @@ namespace Nethermind.Synchronization.Reporting
         private string _paddedAmountOfOldReceiptsToDownload;
         private long _amountOfBodiesToDownload;
         private long _amountOfReceiptsToDownload;
-        private uint _nodeInfoType;
 
         private void SetPaddedPivots()
         {
@@ -176,14 +175,8 @@ namespace Nethermind.Synchronization.Reporting
             {
                 if (_reportId % PeerCountFrequency == 0)
                 {
-                    if (_nodeInfoType++ % 2 == 0)
-                    {
-                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
-                    }
-                    else
-                    {
-                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | node diversity : "));
-                    }
+                    _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
+                    _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | node diversity : "));
                 }
             }
 

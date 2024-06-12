@@ -20,8 +20,10 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
+using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -233,6 +235,24 @@ namespace Nethermind.Network
                         _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
+
+                    return handler;
+                },
+                [Protocol.Wit] = (session, version) =>
+                {
+                    var handler = version switch
+                    {
+                        0 => new WitProtocolHandler(session, _serializer, _stats, _syncServer, _logManager),
+                        _ => throw new NotSupportedException($"{Protocol.Wit}.{version} is not supported.")
+                    };
+                    InitSatelliteProtocol(session, handler);
+
+                    return handler;
+                },
+                [Protocol.Les] = (session, version) =>
+                {
+                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager);
+                    InitSyncPeerProtocol(session, handler);
 
                     return handler;
                 }

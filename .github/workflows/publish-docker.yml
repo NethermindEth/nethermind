@@ -23,7 +23,9 @@ on:
         required: true
         default: release
         type: choice
-        options: [release, debug]
+        options:
+          - release
+          - debug
 
 jobs:
   publish-docker:
@@ -44,16 +46,14 @@ jobs:
       - name: Build and push image to Docker Hub (staging)
         run: |
           branch=$(echo "${{ github.ref }}" | sed -e "s/refs\/heads\///g")
-          tag=$(echo "${{ github.event.inputs.tag || '$branch' }}" | sed 's/\//-/g') # replace '/' with '-'
-          image_name=nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}
+          original_tag=${{ github.event.inputs.tag || '$branch' }}
+          tag=$(echo "$original_tag" | sed 's/\//-/g') # replace '/' with '-' in tag name
           build_timestamp=$(date '+%s')
-          
           echo "Building image with tag $tag"
 
           docker buildx build --platform=linux/amd64,linux/arm64 \
             -f ${{ github.event.inputs.dockerfile || 'Dockerfile' }} \
-            -t "$image_name:$tag" \
-            ${{ endsWith(github.ref, '/master') && github.event_name == 'push' && '-t $image_name:master-${GITHUB_SHA:0:7}' || '' }} \
+            -t "nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}:$tag" \
             --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
             --build-arg BUILD_TIMESTAMP=$build_timestamp \
             --build-arg CI=$CI \

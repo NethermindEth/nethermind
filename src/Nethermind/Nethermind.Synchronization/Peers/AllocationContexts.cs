@@ -14,7 +14,8 @@ namespace Nethermind.Synchronization.Peers
         Receipts = 4,
         Blocks = 7,
         State = 8,
-        Snap = 16,
-        All = Headers | Bodies | Receipts | Blocks | State | Snap
+        Witness = 16,
+        Snap = 32,
+        All = Headers | Bodies | Receipts | Blocks | State | Witness | Snap
     }
 }

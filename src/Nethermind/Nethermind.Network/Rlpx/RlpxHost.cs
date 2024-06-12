@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
+using ILogger = Nethermind.Logging.InterfaceLogger;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
@@ -104,13 +105,8 @@ namespace Nethermind.Network.Rlpx
 
             try
             {
-                // Default is LogicalCoreCount * 2
-                // - so with two groups and 32 logical cores, we would have 128 threads
-                // Max at 8 threads per group for 16 threads total
-                // Min of 2 threads per group for 4 threads total
-                var threads = Math.Clamp(Environment.ProcessorCount / 2, min: 2, max: 8);
-                _bossGroup = new MultithreadEventLoopGroup(threads);
-                _workerGroup = new MultithreadEventLoopGroup(threads);
+                _bossGroup = new MultithreadEventLoopGroup();
+                _workerGroup = new MultithreadEventLoopGroup();
 
                 ServerBootstrap bootstrap = new();
                 bootstrap

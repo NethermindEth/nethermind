@@ -22,7 +22,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
-using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -65,7 +64,6 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    [SetCulture("en-US")]
     public async Task Eth_get_eth_feeHistory()
     {
         using Context ctx = await Context.Create();

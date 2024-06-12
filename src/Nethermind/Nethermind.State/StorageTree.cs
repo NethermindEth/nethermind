@@ -19,7 +19,7 @@ namespace Nethermind.State
     {
         private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
-        public static readonly byte[] EmptyBytes = [0];
+        private static readonly byte[] _emptyBytes = [0];
 
         private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
@@ -59,28 +59,27 @@ namespace Nethermind.State
         {
             if (index < LookupSize)
             {
-                return GetArray(Lookup[index], storageRoot);
+                return Get(Lookup[index], storageRoot).ToArray();
             }
 
             Span<byte> key = stackalloc byte[32];
             ComputeKey(index, ref key);
-            return GetArray(key, storageRoot);
+            return Get(key, storageRoot).ToArray();
+
         }
 
-        public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> value = base.Get(rawKey, rootHash);
 
             if (value.IsEmpty)
             {
-                return EmptyBytes;
+                return _emptyBytes;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
-
-        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null) => GetArray(rawKey, rootHash);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)

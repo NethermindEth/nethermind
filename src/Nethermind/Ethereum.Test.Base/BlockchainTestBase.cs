@@ -148,18 +148,15 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
-            CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
-                codeInfoRepository,
                 _logManager);
 
             TransactionProcessor? txProcessor = new(
                 specProvider,
                 stateProvider,
                 virtualMachine,
-                codeInfoRepository,
                 _logManager);
 
             IBlockProcessor blockProcessor = new BlockProcessor(
@@ -170,6 +167,7 @@ namespace Ethereum.Test.Base
                     stateProvider),
                 stateProvider,
                 receiptStorage,
+                NullWitnessCollector.Instance,
                 new BlockhashStore(blockTree, specProvider, stateProvider),
                 txProcessor,
                 _logManager);
@@ -342,13 +340,13 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
         {
-            if (test.PostStateRoot is not null)
+            if (test.PostStateRoot != null)
             {
                 return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
             }
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
-                                                     .Where(b => b.BlockHeader is not null)
+                                                     .Where(b => b.BlockHeader != null)
                                                      .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
             BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
             List<string> differences = new();

@@ -104,20 +104,20 @@ public class SnapServer : ISnapServer
                 default:
                     try
                     {
-                        Hash256 storagePath = new Hash256(
-                            requestedPath[0].Length == Hash256.Size
-                                ? requestedPath[0]
-                                : requestedPath[0].PadRight(Hash256.Size));
+                        Hash256 storagePath = new Hash256(requestedPath[0]);
                         Account? account = GetAccountByPath(tree, rootHash, requestedPath[0]);
                         if (account is not null)
                         {
                             Hash256? storageRoot = account.StorageRoot;
-                            StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
-
-                            for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
+                            if (!storageRoot.Bytes.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                             {
-                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
-                                response.Add(sRlp);
+                                StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
+
+                                for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
+                                {
+                                    byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                    response.Add(sRlp);
+                                }
                             }
                         }
                     }

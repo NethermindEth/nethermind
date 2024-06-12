@@ -115,7 +115,7 @@ public class UInt256DictionaryKeyConverterTests
             { new UInt256(1), new UInt256(12345) }
         };
         string serialised = JsonSerializer.Serialize(dictionary, Options);
-        serialised = serialised.Replace("\r\n", "\n");
+
         string expected = """
         {
           "0x1": "0x3039"

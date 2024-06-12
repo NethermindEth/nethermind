@@ -70,6 +70,4 @@ public class MiningConfig : IMiningConfig
             return _blocksConfig;
         }
     }
-
-    public string Signer { get; set; }
 }

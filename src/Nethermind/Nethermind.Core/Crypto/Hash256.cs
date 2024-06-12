@@ -117,12 +117,12 @@ namespace Nethermind.Core.Crypto
         }
 
         public static bool operator ==(in ValueHash256 left, in ValueHash256 right) => left.Equals(in right);
+
         public static bool operator !=(in ValueHash256 left, in ValueHash256 right) => !(left == right);
         public static bool operator >(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) > 0;
         public static bool operator <(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) < 0;
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
-        public static implicit operator Hash256(in ValueHash256 keccak) => new(keccak);
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>

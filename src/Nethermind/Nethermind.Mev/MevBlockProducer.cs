@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -15,9 +14,10 @@ namespace Nethermind.Mev
     public class MevBlockProducer : MultipleBlockProducer<MevBlockProducer.MevBlockProducerInfo>
     {
         public MevBlockProducer(
+            IBlockProductionTrigger blockProductionTrigger,
             ILogManager logManager,
             params MevBlockProducerInfo[] blockProducers)
-            : base(new MevBestBlockPicker(), logManager, blockProducers)
+            : base(blockProductionTrigger, new MevBestBlockPicker(), logManager, blockProducers)
         {
         }
 
@@ -48,19 +48,18 @@ namespace Nethermind.Mev
         public class MevBlockProducerInfo : IBlockProducerInfo
         {
             public IBlockProducer BlockProducer { get; }
-            public IBlockProductionCondition Condition { get; }
+            public IManualBlockProductionTrigger BlockProductionTrigger { get; }
             public IBlockTracer BlockTracer => BeneficiaryTracer;
             public BeneficiaryTracer BeneficiaryTracer { get; }
             public MevBlockProducerInfo(
                 IBlockProducer blockProducer,
-                IBlockProductionCondition checkCondition,
+                IManualBlockProductionTrigger blockProductionTrigger,
                 BeneficiaryTracer beneficiaryTracer)
             {
                 BlockProducer = blockProducer;
-                Condition = checkCondition;
+                BlockProductionTrigger = blockProductionTrigger;
                 BeneficiaryTracer = beneficiaryTracer;
             }
-
         }
     }
 }

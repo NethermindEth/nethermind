@@ -1013,7 +1013,7 @@ namespace Nethermind.Trie.Test
             MemDb memDb = new();
 
             using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
-            WorldState stateProvider = new WorldState(trieStore, new MemDb(), _logManager);
+            WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
             Account[] accounts = new Account[accountsCount];
             Address[] addresses = new Address[accountsCount];
@@ -1062,7 +1062,7 @@ namespace Nethermind.Trie.Test
                                         address, existing.Balance - account.Balance, MuirGlacier.Instance);
                                 }
 
-                                stateProvider.IncrementNonce(address, UInt256.One);
+                                stateProvider.IncrementNonce(address);
                             }
 
                             byte[] storage = new byte[1];

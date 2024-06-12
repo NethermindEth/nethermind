@@ -18,7 +18,6 @@ using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
-using Nethermind.Facade.Eth;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 

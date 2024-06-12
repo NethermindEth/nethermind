@@ -24,21 +24,18 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public Task Execute(CancellationToken _)
+        public async Task Execute(CancellationToken _)
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction() && _api.BlockProducer is not null)
             {
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-                if (_api.BlockProducerRunner is null) throw new StepDependencyException(nameof(_api.BlockProducerRunner));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsInfo) logger.Info($"Starting {_api.SealEngineType} block producer & sealer");
-                ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducerRunner);
+                ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
                 _api.DisposeStack.Push(suggester);
-                _api.BlockProducerRunner.Start();
+                await _api.BlockProducer.Start();
             }
-
-            return Task.CompletedTask;
         }
     }
 }

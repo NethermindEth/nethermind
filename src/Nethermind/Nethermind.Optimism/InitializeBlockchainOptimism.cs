@@ -6,11 +6,9 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -42,10 +40,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
-        CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
+        VirtualMachine virtualMachine = CreateVirtualMachine();
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
@@ -53,8 +49,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             virtualMachine,
             _api.LogManager,
             _api.L1CostHelper,
-            _api.SpecHelper,
-            codeInfoRepository
+            _api.SpecHelper
         );
     }
 
@@ -107,12 +102,12 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState),
             _api.WorldState,
             _api.ReceiptStorage,
+            _api.WitnessCollector,
             new BlockhashStore(_api.BlockTree, _api.SpecProvider, _api.WorldState),
             _api.LogManager,
             _api.SpecHelper,
             _api.TransactionProcessor,
-            contractRewriter,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
+            contractRewriter);
     }
 
     protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;

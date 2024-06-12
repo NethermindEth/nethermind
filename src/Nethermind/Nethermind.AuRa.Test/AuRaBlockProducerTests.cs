@@ -43,7 +43,6 @@ namespace Nethermind.AuRa.Test
             public IAuRaStepCalculator AuRaStepCalculator { get; }
             public Address NodeAddress { get; }
             public AuRaBlockProducer AuRaBlockProducer { get; private set; }
-            public IBlockProducerRunner BlockProducerRunner { get; set; }
             public TimeSpan StepDelay { get; }
 
             public Context()
@@ -98,6 +97,7 @@ namespace Nethermind.AuRa.Test
                 AuRaBlockProducer = new AuRaBlockProducer(
                     TransactionSource,
                     BlockchainProcessor,
+                    onlyWhenNotProcessing,
                     StateProvider,
                     Sealer,
                     BlockTree,
@@ -110,12 +110,7 @@ namespace Nethermind.AuRa.Test
                     LimboLogs.Instance,
                     blocksConfig);
 
-                BlockProducerRunner = new StandardBlockProducerRunner(
-                    onlyWhenNotProcessing,
-                    BlockTree,
-                    AuRaBlockProducer);
-
-                ProducedBlockSuggester suggester = new(BlockTree, BlockProducerRunner);
+                ProducedBlockSuggester suggester = new(BlockTree, AuRaBlockProducer);
             }
         }
 
@@ -228,7 +223,7 @@ namespace Nethermind.AuRa.Test
                     processedEvent.Set();
                 });
 
-            context.BlockProducerRunner.Start();
+            await context.AuRaBlockProducer.Start();
             await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
             await Task.Delay(context.StepDelay);
@@ -253,7 +248,7 @@ namespace Nethermind.AuRa.Test
             }
             finally
             {
-                await context.BlockProducerRunner.StopAsync();
+                await context.AuRaBlockProducer.StopAsync();
             }
 
             return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()));

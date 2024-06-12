@@ -23,7 +23,7 @@ while (true)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet, SimpleConsoleLogManager.Instance);
             Address? sender = ecdsa.RecoverAddress(tx);
-            if (sender is null)
+            if (sender == null)
             {
                 throw new InvalidDataException("Could not recover sender address");
             }

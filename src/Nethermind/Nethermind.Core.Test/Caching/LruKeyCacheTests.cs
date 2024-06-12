@@ -33,7 +33,7 @@ namespace Nethermind.Core.Test.Caching
             LruKeyCache<Address> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i]).Should().BeTrue();
+                cache.Set(_addresses[i]);
             }
 
             cache.Get(_addresses[Capacity - 1]).Should().BeTrue();
@@ -72,31 +72,17 @@ namespace Nethermind.Core.Test.Caching
             LruKeyCache<Address> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i]).Should().BeTrue();
+                cache.Set(_addresses[i]);
             }
 
             cache.Get(_addresses[Capacity]).Should().BeTrue();
         }
 
         [Test]
-        public void Beyond_capacity_lru()
-        {
-            LruKeyCache<AddressAsKey> cache = new(Capacity, "test");
-            for (int i = 0; i < Capacity * 2; i++)
-            {
-                for (int ii = 0; ii < Capacity / 2; ii++)
-                {
-                    cache.Set(_addresses[i]);
-                }
-                cache.Set(_addresses[i]);
-            }
-        }
-
-        [Test]
         public void Can_delete()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
-            cache.Set(_addresses[0]).Should().BeTrue();
+            cache.Set(_addresses[0]);
             cache.Delete(_addresses[0]);
             cache.Get(_addresses[0]).Should().BeFalse();
         }

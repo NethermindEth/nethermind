@@ -52,9 +52,4 @@ public interface IMiningConfig : IConfig
 
     [ConfigItem(HiddenFromDocs = true, DisabledForCli = true, DefaultValue = "null")]
     IBlocksConfig? BlocksConfig { get; }
-    [ConfigItem(
-    Description = "Url for an external signer like clef: https://github.com/ethereum/go-ethereum/blob/master/cmd/clef/tutorial.md",
-    HiddenFromDocs = false,
-    DefaultValue = "null")]
-    string Signer { get; set; }
 }

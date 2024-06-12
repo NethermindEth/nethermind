@@ -28,7 +28,7 @@ namespace Nethermind.HealthChecks
     {
         private readonly ISyncServer _syncServer;
         private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly IBlockProducerRunner _blockProducerRunner;
+        private readonly IBlockProducer _blockProducer;
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
@@ -39,7 +39,7 @@ namespace Nethermind.HealthChecks
 
         public NodeHealthService(ISyncServer syncServer,
             IBlockchainProcessor blockchainProcessor,
-            IBlockProducerRunner blockProducerRunner,
+            IBlockProducer blockProducer,
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
@@ -53,7 +53,7 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = healthChecksConfig;
             _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
-            _blockProducerRunner = blockProducerRunner;
+            _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
             _rpcCapabilitiesProvider = rpcCapabilitiesProvider;
             _api = api;
@@ -232,7 +232,7 @@ namespace Nethermind.HealthChecks
         private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProducerIntervalHint();
-            bool producingBlocks = _blockProducerRunner.IsProducingBlocks(maxIntervalHint);
+            bool producingBlocks = _blockProducer.IsProducingBlocks(maxIntervalHint);
             if (producingBlocks == false)
             {
                 errors.Add(ErrorStrings.NotProducingBlocks);

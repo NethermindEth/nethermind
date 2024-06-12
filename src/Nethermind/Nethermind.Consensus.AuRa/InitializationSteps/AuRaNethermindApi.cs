@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             get
             {
-                if (_txPriorityContractLocalDataSource is not null) return _txPriorityContractLocalDataSource;
+                if (_txPriorityContractLocalDataSource != null) return _txPriorityContractLocalDataSource;
 
                 IAuraConfig config = this.Config<IAuraConfig>();
                 string? auraConfigTxPriorityConfigFilePath = config.TxPriorityConfigFilePath;

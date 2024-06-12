@@ -273,7 +273,6 @@ namespace Nethermind.TxPool.Test
 
             // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions
             _stateProvider.IncrementNonce(TestItem.AddressA);
-            _txPool.ResetAddress(TestItem.AddressA);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
             Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
@@ -506,7 +505,7 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
             _txPool.GetPendingTransactionsCount().Should().Be(30);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(isLocal ? 1 : 0);
-            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
+            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.FeeTooLowToCompete) : nameof(AcceptTxResult.FeeTooLow));
         }
 
         [TestCase(0)]
@@ -565,7 +564,6 @@ namespace Nethermind.TxPool.Test
                 if (i < numberOfStaleTxsInBucket)
                 {
                     _stateProvider.IncrementNonce(TestItem.AddressA);
-                    _txPool.ResetAddress(TestItem.AddressA);
                 }
             }
 
@@ -1043,7 +1041,6 @@ namespace Nethermind.TxPool.Test
             retrievedTransaction.Should().BeEquivalentTo(transaction);
 
             EnsureSenderBalance(transactionWithHigherFee);
-            _txPool.ResetAddress(transactionWithHigherFee.SenderAddress);
             _txPool.SubmitTx(transactionWithHigherFee, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.TryGetPendingTransaction(transactionWithHigherFee.Hash, out var retrievedTransactionWithHigherFee).Should().BeTrue();
             retrievedTransactionWithHigherFee.Should().BeEquivalentTo(transactionWithHigherFee);
@@ -1384,7 +1381,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
             _txPool.GetPendingTransactions().Should().NotContain(cheapTx);
             _txPool.GetOwnPendingTransactions().Should().Contain(cheapTx);
             peer.Received().SendNewTransaction(cheapTx);
@@ -1396,7 +1393,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
             _txPool.GetPendingTransactions().Should().NotContain(fourthTx);
             _txPool.GetOwnPendingTransactions().Should().Contain(fourthTx);
             peer.Received().SendNewTransaction(fourthTx);
@@ -1639,53 +1636,6 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
-        }
-
-        [Test]
-        public void Should_correctly_add_tx_to_local_pool_when_underpaid([Values] TxType txType)
-        {
-            // Should only add non-blob transactions to local pool when underpaid
-            bool expectedResult = txType != TxType.Blob;
-
-            // No need to check for deposit tx
-            if (txType == TxType.DepositTx) return;
-
-            ISpecProvider specProvider = GetCancunSpecProvider();
-            TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
-            _txPool = CreatePool(txPoolConfig, specProvider);
-
-            Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
-
-            foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
-            {
-                EnsureSenderBalance(address, UInt256.MaxValue);
-            }
-
-            // setup full tx pool
-            foreach (Transaction transaction in transactions)
-            {
-                transaction.GasPrice = 10.GWei();
-                _txPool.SubmitTx(transaction, TxHandlingOptions.None);
-            }
-
-            _txPool.GetPendingTransactionsCount().Should().Be(30);
-
-            Transaction testTx = Build.A.Transaction
-                .WithNonce(0)
-                .WithType(txType)
-                .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
-                .WithTo(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
-
-            AcceptTxResult result = _txPool.SubmitTx(testTx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
-            _txPool.GetOwnPendingTransactions().Length.Should().Be(expectedResult ? 1 : 0);
-            _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
-            _txPool.GetPendingTransactions().Should().NotContain(testTx);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)

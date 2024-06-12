@@ -119,10 +119,10 @@ internal class FundsDistributor
                     .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
                 string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
-                if (result is not null)
+                if (result != null)
                     txHash.Add(result);
 
-                if (keyWriter is not null)
+                if (keyWriter != null)
                     keyWriter.WriteLine(key.ToString());
 
                 nonce++;
@@ -194,7 +194,7 @@ internal class FundsDistributor
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
             string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
-            if (result is not null)
+            if (result != null)
                 txHashes.Add(result);
         }
         return txHashes;

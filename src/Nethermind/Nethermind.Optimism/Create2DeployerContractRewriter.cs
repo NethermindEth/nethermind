@@ -11,13 +11,13 @@ namespace Nethermind.Optimism;
 
 public class Create2DeployerContractRewriter
 {
-    private readonly IOptimismSpecHelper _opSpecHelper;
+    private readonly IOPConfigHelper _opConfigHelper;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockTree _blockTree;
 
-    public Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, ISpecProvider specProvider, IBlockTree blockTree)
+    public Create2DeployerContractRewriter(IOPConfigHelper opConfigHelper, ISpecProvider specProvider, IBlockTree blockTree)
     {
-        _opSpecHelper = opSpecHelper;
+        _opConfigHelper = opConfigHelper;
         _specProvider = specProvider;
         _blockTree = blockTree;
     }
@@ -26,9 +26,9 @@ public class Create2DeployerContractRewriter
     {
         IReleaseSpec spec = _specProvider.GetSpec(header);
         BlockHeader? parent = _blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
-        if ((parent is null || !_opSpecHelper.IsCanyon(parent)) && _opSpecHelper.IsCanyon(header))
+        if ((parent is null || !_opConfigHelper.IsCanyon(parent)) && _opConfigHelper.IsCanyon(header))
         {
-            worldState.InsertCode(_opSpecHelper.Create2DeployerAddress!, _opSpecHelper.Create2DeployerCode, spec);
+            worldState.InsertCode(_opConfigHelper.Create2DeployerAddress!, _opConfigHelper.Create2DeployerCode, spec);
         }
     }
 }

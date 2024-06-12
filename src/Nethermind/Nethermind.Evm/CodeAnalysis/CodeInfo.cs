@@ -29,7 +29,6 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public bool IsPrecompile => Precompile is not null;
-        public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer) && !IsPrecompile;
 
         public CodeInfo(IPrecompile precompile)
         {
@@ -38,22 +37,14 @@ namespace Nethermind.Evm.CodeAnalysis
             _analyzer = _emptyAnalyzer;
         }
 
-        public bool ValidateJump(int destination)
+        public bool ValidateJump(int destination, bool isSubroutine)
         {
-            return _analyzer.ValidateJump(destination);
+            return _analyzer.ValidateJump(destination, isSubroutine);
         }
 
         void IThreadPoolWorkItem.Execute()
         {
             _analyzer.Execute();
-        }
-
-        public void AnalyseInBackgroundIfRequired()
-        {
-            if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
-            {
-                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
-            }
         }
     }
 }

@@ -37,7 +37,6 @@ namespace Nethermind.JsonRpc
         public bool BufferResponses { get; set; }
         public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
         public long? MaxRequestBodySize { get; set; } = 30000000;
-        public int MaxLogsPerResponse { get; set; } = 20_000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
         public string JwtSecretFile { get; set; } = "keystore/jwt-secret";
         public bool UnsecureDevNoRpcAuthentication { get; set; }
@@ -55,7 +54,6 @@ namespace Nethermind.JsonRpc
         public string[] EngineEnabledModules { get; set; } = ModuleType.DefaultEngineModules.ToArray();
         public int MaxBatchSize { get; set; } = 1024;
         public long? MaxBatchResponseBodySize { get; set; } = 32.MiB();
-        public long? MaxSimulateBlocksCap { get; set; } = 256;
         public int EstimateErrorMargin { get; set; } = 150;
     };
 };

@@ -8,10 +8,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -48,23 +46,13 @@ namespace Nethermind.Mev.Execution
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _worldStateManager, _blockTree, _specProvider, _logManager);
 
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
-
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                scope,
-                Always.Valid,
-                _recoveryStep,
-                NoBlockRewards.Instance,
-                new InMemoryReceiptStorage(),
-                _specProvider,
-                _blockTree,
-                _worldStateManager.GlobalStateReader,
-                _logManager);
+                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager);
 
-            return CreateTracer(scope, chainProcessingEnv);
+            return CreateTracer(txProcessingEnv, chainProcessingEnv);
         }
 
-        protected virtual ITracer CreateTracer(IReadOnlyTxProcessingScope scope, ReadOnlyChainProcessingEnv chainProcessingEnv) =>
-            new Tracer(scope.WorldState, chainProcessingEnv.ChainProcessor, chainProcessingEnv.ChainProcessor, _processingOptions);
+        protected virtual ITracer CreateTracer(ReadOnlyTxProcessingEnv txProcessingEnv, ReadOnlyChainProcessingEnv chainProcessingEnv) =>
+            new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, chainProcessingEnv.ChainProcessor, _processingOptions);
     }
 }

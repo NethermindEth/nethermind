@@ -28,10 +28,9 @@ on:
         options:
           - lighthouse
           - lodestar
+          #- nimbus
           - prysm
           - teku
-          - nimbus
-          - nimbus_ws
       cl_custom_image:
         description: "In case of need to run non-default cl image (different than actually supported by Sedge) put it in there"
         default: ""

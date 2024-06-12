@@ -105,25 +105,32 @@ public class NodeTable : INodeTable
 
         public bool MoveNext()
         {
-            while (_count < _bucketSize)
+            try
             {
-                if (!_enumeratorSet || !_itemEnumerator.MoveNext())
+                while (_count < _bucketSize)
                 {
-                    _itemEnumerator.Dispose();
-                    _bucketIndex++;
-                    if (_bucketIndex >= _buckets.Length)
+                    if (!_enumeratorSet || !_itemEnumerator.MoveNext())
                     {
-                        return false;
+                        _itemEnumerator.Dispose();
+                        _bucketIndex++;
+                        if (_bucketIndex >= _buckets.Length)
+                        {
+                            return false;
+                        }
+
+                        _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
+                        _enumeratorSet = true;
+                        continue;
                     }
 
-                    _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
-                    _enumeratorSet = true;
-                    continue;
+                    Current = _itemEnumerator.Current.Node!;
+                    _count++;
+                    return true;
                 }
-
-                Current = _itemEnumerator.Current.Node!;
-                _count++;
-                return true;
+            }
+            finally
+            {
+                _itemEnumerator.Dispose();
             }
 
             return false;
@@ -131,7 +138,7 @@ public class NodeTable : INodeTable
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose() => _itemEnumerator.Dispose();
+        public void Dispose() { }
 
         public ClosestNodesEnumerator GetEnumerator() => this;
 
@@ -164,7 +171,7 @@ public class NodeTable : INodeTable
             {
                 foreach (var item in bucket.BondedItems)
                 {
-                    if (item.Node is not null && item.Node.IdHash != idHash)
+                    if (item.Node != null && item.Node.IdHash != idHash)
                     {
                         _sortedNodes.Add(item.Node);
                     }

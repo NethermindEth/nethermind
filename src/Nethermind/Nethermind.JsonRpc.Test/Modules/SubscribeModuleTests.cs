@@ -137,7 +137,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
-            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
+            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = logsSubscription.Id;
             return jsonRpcResults;

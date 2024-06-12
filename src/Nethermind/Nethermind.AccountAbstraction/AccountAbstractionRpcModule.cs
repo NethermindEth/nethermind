@@ -19,7 +19,7 @@ namespace Nethermind.AccountAbstraction
 
         static AccountAbstractionRpcModule()
         {
-            Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly, true);
+            Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
         }
 
         public AccountAbstractionRpcModule(IDictionary<Address, IUserOperationPool> userOperationPool, Address[] supportedEntryPoints)

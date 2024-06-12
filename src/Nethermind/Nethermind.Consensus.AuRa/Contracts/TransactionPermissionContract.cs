@@ -109,14 +109,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
             }
 
-            protected override object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
+            protected override object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
             {
                 if (callInfo is PermissionCallInfo transactionPermissionCallInfo)
                 {
-                    transactionPermissionCallInfo.ToIsContract = scope.WorldState.IsContract(transactionPermissionCallInfo.To);
+                    transactionPermissionCallInfo.ToIsContract = readOnlyTransactionProcessor.IsContractDeployed(transactionPermissionCallInfo.To);
                 }
 
-                return base.CallRaw(callInfo, scope);
+                return base.CallRaw(callInfo, readOnlyTransactionProcessor);
             }
 
             public class PermissionCallInfo : CallInfo

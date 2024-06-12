@@ -8,7 +8,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 

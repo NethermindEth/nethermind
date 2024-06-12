@@ -85,9 +85,10 @@ namespace Nethermind.Network.Test.P2P
         public void On_init_sends_a_hello_message_with_capabilities()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 0));
             p2PProtocolHandler.Init();
 
-            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
+            string[] expectedCapabilities = { "eth66", "eth67", "eth68", "nodedata1", "wit0" };
             _session.Received(1).DeliverMessage(
                 Arg.Is<HelloMessage>(m => m.Capabilities.Select(c => c.ToString()).SequenceEqual(expectedCapabilities)));
         }
@@ -96,6 +97,7 @@ namespace Nethermind.Network.Test.P2P
         public void On_hello_with_no_matching_capability()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 66));
 
             using HelloMessage message = new()
             {

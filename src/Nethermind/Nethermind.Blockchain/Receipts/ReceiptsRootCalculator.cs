@@ -13,8 +13,6 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
 
-    private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Trie);
-
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {
         Hash256 SkipStateAndStatusReceiptsRoot()
@@ -22,7 +20,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
             receipts.SetSkipStateAndStatusInRlp(true);
             try
             {
-                return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
+                return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, ReceiptMessageDecoder.Instance);
             }
             finally
             {
@@ -30,7 +28,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
             }
         }
 
-        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
+        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, ReceiptMessageDecoder.Instance);
         if (!spec.ValidateReceipts && receiptsRoot != suggestedRoot)
         {
             var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();

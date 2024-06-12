@@ -444,7 +444,7 @@ public ref struct Merkleizer
     //{
     //    if (value.Root is null)
     //    {
-    //        if (value.Item is null)
+    //        if (value.Item == null)
     //        {
     //            return;
     //        }

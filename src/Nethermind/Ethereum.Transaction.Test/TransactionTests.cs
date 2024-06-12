@@ -57,7 +57,7 @@ namespace Ethereum.Transaction.Test
                 {
                     TransactionJson transactionJson = byName.Value.Transaction;
                     TransactionTest test;
-                    if (transactionJson is not null)
+                    if (transactionJson != null)
                     {
                         test = new ValidTransactionTest(byDir.Key, byName.Key, byName.Value.Rlp);
                         ValidTransactionTest validTest = (ValidTransactionTest)test;
@@ -165,7 +165,7 @@ namespace Ethereum.Transaction.Test
             }
             catch (Exception)
             {
-                if (validTest is null)
+                if (validTest == null)
                 {
                     return;
                 }
@@ -177,7 +177,7 @@ namespace Ethereum.Transaction.Test
 
             TxValidator validator = new(useChainId ? BlockchainIds.Mainnet : 0UL);
 
-            if (validTest is not null)
+            if (validTest != null)
             {
                 Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
                 Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");

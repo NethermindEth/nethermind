@@ -11,27 +11,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public long StartNumber { get; set; }
         public long EndNumber => StartNumber + RequestSize - 1;
         public int RequestSize { get; set; }
-        public long ResponseSizeEstimate { get; private set; }
-
-        private IOwnedReadOnlyList<BlockHeader?>? _response;
-        public IOwnedReadOnlyList<BlockHeader?>? Response
-        {
-            get => _response;
-            set
-            {
-                ResponseSizeEstimate = 0;
-                if (value is not null)
-                {
-                    long size = 0;
-                    foreach (BlockHeader response in value)
-                    {
-                        size += MemorySizeEstimator.EstimateSize(response);
-                    }
-                    ResponseSizeEstimate = size;
-                }
-                _response = value;
-            }
-        }
+        public IOwnedReadOnlyList<BlockHeader?>? Response { get; set; }
 
         public override string ToString()
         {

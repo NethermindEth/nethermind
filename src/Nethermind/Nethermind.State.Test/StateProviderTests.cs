@@ -176,9 +176,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Restore_in_the_middle()
         {
-            byte[] code = [1];
+            byte[] code = new byte[] { 1 };
 
-            IWorldState provider = new WorldState(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);

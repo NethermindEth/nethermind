@@ -88,20 +88,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
+    protected override bool Remove(ValueHash256 hash, Transaction tx)
     {
-        if (base.Remove(hash, out tx))
-        {
-            if (tx is not null)
-            {
-                _blobTxStorage.Delete(hash, tx.Timestamp);
-            }
-
-            _blobTxCache.Delete(hash);
-
-            return true;
-        }
-
-        return false;
+        _blobTxCache.Delete(hash);
+        _blobTxStorage.Delete(hash, tx.Timestamp);
+        return base.Remove(hash, tx);
     }
 }

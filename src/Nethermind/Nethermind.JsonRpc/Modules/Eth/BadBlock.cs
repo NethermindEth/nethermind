@@ -5,7 +5,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 

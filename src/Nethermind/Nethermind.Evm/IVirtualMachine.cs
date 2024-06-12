@@ -17,5 +17,8 @@ namespace Nethermind.Evm
     {
         TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
             where TTracingActions : struct, IIsTracing;
+
+        CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
+        void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, bool isSystemEnv);
     }
 }

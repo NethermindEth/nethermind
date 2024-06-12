@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -39,6 +37,7 @@ public partial class BlockProcessor : IBlockProcessor
     protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator;
+    private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
     private readonly IBlockValidator _blockValidator;
@@ -47,7 +46,6 @@ public partial class BlockProcessor : IBlockProcessor
 
     private readonly IConsensusRequestsProcessor _consensusRequestsProcessor;
     private readonly IBlockhashStore _blockhashStore;
-    private readonly IBlockCachePreWarmer? _preWarmer;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -63,13 +61,13 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
+        IWitnessCollector? witnessCollector,
         IBlockhashStore? blockHashStore,
         ITransactionProcessor transactionProcessor,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IBeaconBlockRootHandler? beaconBlockRootHandler = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null,
         IConsensusRequestsProcessor? consensusRequestsProcessor = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -77,6 +75,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
@@ -85,11 +84,10 @@ public partial class BlockProcessor : IBlockProcessor
         _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor(transactionProcessor);
 
         _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
-        _preWarmer = preWarmer;
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
-    public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
+    public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed
     {
@@ -110,34 +108,30 @@ public partial class BlockProcessor : IBlockProcessor
            the previous head state.*/
         Hash256 previousBranchStateRoot = CreateCheckpoint();
         InitBranch(newBranchStateRoot);
-        Hash256 preBlockStateRoot = newBranchStateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
+        using IDisposable tracker = _witnessCollector.TrackOnThisThread();
         try
         {
             for (int i = 0; i < blocksCount; i++)
             {
-                Block suggestedBlock = suggestedBlocks[i];
                 if (blocksCount > 64 && i % 8 == 0)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
+                    if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                 }
 
-                using CancellationTokenSource cancellationTokenSource = new();
-                Task? preWarmTask = suggestedBlock.Transactions.Length < 3 ?
-                    null :
-                    _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
-                cancellationTokenSource.Cancel();
-                preWarmTask?.GetAwaiter().GetResult();
+                _witnessCollector.Reset();
+                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
+                PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+
                 if (notReadOnly)
                 {
+                    _witnessCollector.Persist(processedBlock.Hash!);
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -150,12 +144,9 @@ public partial class BlockProcessor : IBlockProcessor
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = CreateCheckpoint();
-                    Hash256? newStateRoot = suggestedBlock.StateRoot;
+                    Hash256? newStateRoot = suggestedBlocks[i].StateRoot;
                     InitBranch(newStateRoot, false);
                 }
-
-                preBlockStateRoot = processedBlock.StateRoot;
-                _stateProvider.Reset(resizeCollections: true);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
@@ -169,7 +160,6 @@ public partial class BlockProcessor : IBlockProcessor
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
-            _preWarmer?.ClearCaches();
             throw;
         }
     }
@@ -242,9 +232,6 @@ public partial class BlockProcessor : IBlockProcessor
             if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
             throw new InvalidBlockException(suggestedBlock, error);
         }
-
-        // Block is valid, copy the account changes as we use the suggested block not the processed one
-        suggestedBlock.AccountChanges = block.AccountChanges;
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
@@ -264,7 +251,7 @@ public partial class BlockProcessor : IBlockProcessor
         _beaconBlockRootHandler.ExecuteSystemCall(block, spec);
         _blockhashStore.ApplyHistoryBlockHashes(block.Header);
 
-        _stateProvider.Commit(spec, commitStorageRoots: false);
+        _stateProvider.Commit(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
@@ -280,13 +267,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec, commitStorageRoots: true);
-
-        if (BlockchainProcessor.IsMainProcessingThread)
-        {
-            // Get the accounts that have been changed
-            block.AccountChanges = _stateProvider.GetAccountChanges();
-        }
+        _stateProvider.Commit(spec);
 
         if (ShouldComputeStateRoot(block.Header))
         {

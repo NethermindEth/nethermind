@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -412,6 +413,7 @@ namespace Nethermind.Synchronization.Test
                     SyncPeerPool,
                     Synchronizer.SyncModeSelector,
                     syncConfig,
+                    new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,
                     MainnetSpecProvider.Instance,
                     _logManager);
@@ -435,7 +437,7 @@ namespace Nethermind.Synchronization.Test
                 return this;
             }
 
-            private const int DynamicTimeout = 10000;
+            private const int DynamicTimeout = 5000;
 
             public SyncingContext BestSuggestedHeaderIs(BlockHeader header)
             {
@@ -973,7 +975,8 @@ namespace Nethermind.Synchronization.Test
                 .StopAsync();
         }
 
-        private const int WaitTime = 1500;
+        private const int Moment = 50;
+        private const int WaitTime = 500;
 
         private static bool IsMerge(SynchronizerType synchronizerType) =>
             synchronizerType switch

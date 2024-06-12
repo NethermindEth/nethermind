@@ -10,13 +10,13 @@ namespace Nethermind.Consensus.Producers
     public class ProducedBlockSuggester : IDisposable
     {
         private readonly IBlockTree _blockTree;
-        private readonly IBlockProducerRunner _blockProducerRunner;
+        private readonly IBlockProducer _blockProducer;
 
-        public ProducedBlockSuggester(IBlockTree blockTree, IBlockProducerRunner blockProducer)
+        public ProducedBlockSuggester(IBlockTree blockTree, IBlockProducer blockProducer)
         {
             _blockTree = blockTree;
-            _blockProducerRunner = blockProducer;
-            _blockProducerRunner.BlockProduced += OnBlockProduced;
+            _blockProducer = blockProducer;
+            _blockProducer.BlockProduced += OnBlockProduced;
         }
 
         private void OnBlockProduced(object? sender, BlockEventArgs e)
@@ -28,6 +28,6 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        public void Dispose() => _blockProducerRunner.BlockProduced -= OnBlockProduced;
+        public void Dispose() => _blockProducer.BlockProduced -= OnBlockProduced;
     }
 }

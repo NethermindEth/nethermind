@@ -674,7 +674,7 @@ namespace Nethermind.Network.P2P
 
         private void RecordIncomingMessageMetric(string protocol, int packetType, int size)
         {
-            if (protocol is null) return;
+            if (protocol == null) return;
             byte version = _protocols.TryGetValue(protocol, out IProtocolHandler? handler)
                 ? handler!.ProtocolVersion
                 : (byte)0;

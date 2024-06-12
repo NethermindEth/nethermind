@@ -37,7 +37,9 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Trie;
+using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -161,20 +163,16 @@ namespace Nethermind.Init.Steps
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            CodeInfoRepository codeInfoRepository = new();
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
+            VirtualMachine virtualMachine = CreateVirtualMachine();
 
-            TransactionProcessor transactionProcessor = new(
+            return new TransactionProcessor(
                 _api.SpecProvider,
                 _api.WorldState,
                 virtualMachine,
-                codeInfoRepository,
                 _api.LogManager);
-
-            return transactionProcessor;
         }
 
-        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository)
+        protected virtual VirtualMachine CreateVirtualMachine()
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -184,13 +182,10 @@ namespace Nethermind.Init.Steps
             BlockhashProvider blockhashProvider = new(
                 _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
 
-            VirtualMachine virtualMachine = new(
+            return new VirtualMachine(
                 blockhashProvider,
                 _api.SpecProvider,
-                codeInfoRepository,
                 _api.LogManager);
-
-            return virtualMachine;
         }
 
         protected virtual IHealthHintService CreateHealthHintService() =>
@@ -225,15 +220,8 @@ namespace Nethermind.Init.Steps
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
-            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            IBlocksConfig blocksConfig = _api.Config<IBlocksConfig>();
             IWorldState worldState = _api.WorldState!;
-
-            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, worldState), _api.SpecProvider, _api.LogManager, worldState)
-                : null;
 
             return new BlockProcessor(
                 _api.SpecProvider,
@@ -242,11 +230,10 @@ namespace Nethermind.Init.Steps
                 new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage,
+                _api.WitnessCollector,
                 new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
                 _api.TransactionProcessor,
-                _api.LogManager,
-                preWarmer: preWarmer
-            );
+                _api.LogManager);
         }
 
         // TODO: remove from here - move to consensus?

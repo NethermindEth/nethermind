@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -23,7 +22,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private CancellationTokenSource? _cancellationTokenSource;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
-        IBlockProducer blockProducer,
+        IManualBlockProductionTrigger blockProductionTrigger,
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
@@ -36,11 +35,11 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
+        ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
     }
 
     private async Task<Block?> StartImprovingBlock(
-        IBlockProducer blockProducer,
+        IManualBlockProductionTrigger blockProductionTrigger,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         CancellationToken cancellationToken)
@@ -49,7 +48,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
         _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
-        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, cancellationToken);
+        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
         if (block is not null)
         {
             CurrentBestBlock = block;

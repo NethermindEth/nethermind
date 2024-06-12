@@ -7,6 +7,6 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public interface IReadOnlyTxProcessorSource
     {
-        IReadOnlyTxProcessingScope Build(Hash256 stateRoot);
+        IReadOnlyTransactionProcessor Build(Hash256 stateRoot);
     }
 }
