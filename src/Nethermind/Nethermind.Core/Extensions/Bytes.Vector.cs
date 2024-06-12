@@ -38,18 +38,18 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void Or(this Span<byte> thisSpam, Span<byte> valueSpam)
+        public static void Or(this Span<byte> thisSpan, Span<byte> valueSpan)
         {
-            var length = thisSpam.Length;
-            if (length != valueSpam.Length)
+            var length = thisSpan.Length;
+            if (length != valueSpan.Length)
             {
                 throw new ArgumentException("Both byte spans has to be same length.");
             }
 
             int i = 0;
 
-            fixed (byte* thisPtr = thisSpam)
-            fixed (byte* valuePtr = valueSpam)
+            fixed (byte* thisPtr = thisSpan)
+            fixed (byte* valuePtr = valueSpan)
             {
                 if (Avx2.IsSupported)
                 {
@@ -73,23 +73,23 @@ namespace Nethermind.Core.Extensions
 
             for (; i < length; i++)
             {
-                thisSpam[i] |= valueSpam[i];
+                thisSpan[i] |= valueSpan[i];
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void Xor(this Span<byte> thisSpam, Span<byte> valueSpam)
+        public static void Xor(this Span<byte> thisSpan, Span<byte> valueSpan)
         {
-            var length = thisSpam.Length;
-            if (length != valueSpam.Length)
+            var length = thisSpan.Length;
+            if (length != valueSpan.Length)
             {
                 throw new ArgumentException("Both byte spans has to be same length.");
             }
 
             int i = 0;
 
-            fixed (byte* thisPtr = thisSpam)
-            fixed (byte* valuePtr = valueSpam)
+            fixed (byte* thisPtr = thisSpan)
+            fixed (byte* valuePtr = valueSpan)
             {
                 if (Avx2.IsSupported)
                 {
@@ -113,7 +113,7 @@ namespace Nethermind.Core.Extensions
 
             for (; i < length; i++)
             {
-                thisSpam[i] ^= valueSpam[i];
+                thisSpan[i] ^= valueSpan[i];
             }
         }
 

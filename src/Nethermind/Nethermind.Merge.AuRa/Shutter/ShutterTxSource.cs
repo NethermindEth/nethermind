@@ -24,6 +24,7 @@ using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
+using System.IO;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -102,10 +103,13 @@ public class ShutterTxSource : ITxSource
             .Select(x => x.Item2)
             .OfType<Transaction>();
 
-        transactions.ForEach((tx) =>
+        if (_logger.IsInfo)
         {
-            if (_logger.IsInfo) _logger.Info(tx.ToShortString());
-        });
+            transactions.ForEach((tx) =>
+            {
+                _logger.Info(tx.ToShortString());
+            });
+        }
 
         return transactions;
     }
@@ -140,12 +144,28 @@ public class ShutterTxSource : ITxSource
         try
         {
             byte[] encodedTransaction = ShutterCrypto.Decrypt(encryptedMessage, key);
-            transaction = Rlp.Decode<Transaction>(new Rlp(encodedTransaction));
+            transaction = Rlp.Decode<Transaction>(encodedTransaction.AsSpan());
+            // todo: test sending transactions with bad signatures to see if secp segfaults
             transaction.SenderAddress = _ethereumEcdsa.RecoverAddress(transaction, true);
         }
-        catch (Exception e)
+        catch (ShutterCrypto.ShutterCryptoException e)
         {
-            if (_logger.IsDebug) _logger.Debug("Could not decrypt Shutter transaction: " + e.Message);
+            if (_logger.IsDebug) _logger.Debug($"Could not decrypt Shutter transaction: {e}");
+            return null;
+        }
+        catch (RlpException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Could not decode decrypted Shutter transaction: {e}");
+            return null;
+        }
+        catch (ArgumentException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Could not recover Shutter transaction sender address: {e}");
+            return null;
+        }
+        catch (InvalidDataException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transaction had no signature: {e}");
             return null;
         }
 
@@ -154,10 +174,8 @@ public class ShutterTxSource : ITxSource
 
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
     {
-        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents();
-        long totalEvents = events.LongCount();
-        events = events.Where(e => e.Eon == eon);
-        if (_logger.IsDebug) _logger.Debug($"Found {totalEvents} events in Shutter sequencer contract, {events.Count()} this eon.");
+        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon);
+        if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract for this eon.");
 
         events = events.Skip(txPointer);
 

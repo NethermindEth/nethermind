@@ -36,6 +36,10 @@ internal class ShutterCrypto
         public IEnumerable<Bytes32> c3;
     }
 
+    public class ShutterCryptoException(string message) : Exception(message)
+    {
+    }
+
     public static G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
     {
         Span<byte> preimage = stackalloc byte[52];
@@ -58,7 +62,7 @@ internal class ShutterCrypto
         G2 expectedC1 = ComputeC1(r);
         if (!expectedC1.is_equal(encryptedMessage.c1))
         {
-            throw new Exception("Could not decrypt message.");
+            throw new ShutterCryptoException("Could not decrypt message.");
         }
 
         return msg;
@@ -68,7 +72,7 @@ internal class ShutterCrypto
     {
         if (bytes[0] != CryptoVersion)
         {
-            throw new Exception("Encrypted message had wrong crypto id.");
+            throw new ShutterCryptoException("Encrypted message had wrong Shutter crypto version.");
         }
 
         // todo: change once shutter swaps to blst
@@ -165,7 +169,7 @@ internal class ShutterCrypto
 
         if (n == 0 || n > 32)
         {
-            throw new Exception("Invalid padding length");
+            throw new ShutterCryptoException("Invalid padding length");
         }
 
         byte[] res = new byte[(blocks.Count() * 32) - n];

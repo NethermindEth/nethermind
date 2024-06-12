@@ -37,6 +37,11 @@ public class SequencerContract : Contract
         return logs.Select(log => ParseTransactionSubmitted(AbiEncoder.Decode(AbiEncodingStyle.None, TransactionSubmittedAbi.Signature, log.Data)));
     }
 
+    public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon)
+    {
+        return GetEvents().Where(e => e.Eon == eon);
+    }
+
     private ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(object[] decodedEvent)
     {
         return new ISequencerContract.TransactionSubmitted()

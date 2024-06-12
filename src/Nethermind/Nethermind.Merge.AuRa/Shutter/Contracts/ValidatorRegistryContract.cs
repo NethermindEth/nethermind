@@ -129,7 +129,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         {
             if (encodedMessage.Length != 46)
             {
-                throw new Exception("Encoded validator registry contract message was malformed.");
+                throw new ArgumentException("Validator registry contract message was wrong length.");
             }
 
             Version = encodedMessage[0];

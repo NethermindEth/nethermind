@@ -99,12 +99,29 @@ namespace Nethermind.Merge.AuRa
                 Dictionary<ulong, byte[]> validatorsInfo = [];
                 try
                 {
+                    // todo: parse as normal class?
                     JsonDocument validatorsInfoDoc = JsonDocument.Parse(File.ReadAllText(_auraConfig.ShutterValidatorInfoFile));
                     validatorsInfo = validatorsInfoDoc.RootElement.EnumerateObject().ToDictionary((JsonProperty p) => Convert.ToUInt64(p.Name), (JsonProperty p) => Convert.FromHexString(p.Value.GetString()!.AsSpan(2)));
                 }
-                catch (Exception e)
+                catch (FileNotFoundException e)
                 {
-                    throw new Exception("Could not load Shutter validator info file: " + e.Message);
+                    throw new FileNotFoundException($"Could not find Shutter validator info file: {e}");
+                }
+                catch (DirectoryNotFoundException e)
+                {
+                    throw new DirectoryNotFoundException($"Could not find Shutter validator info file: {e}");
+                }
+                catch (UnauthorizedAccessException e)
+                {
+                    throw new UnauthorizedAccessException($"Could not access Shutter validator info file (update permissions): {e}");
+                }
+                catch (IOException e)
+                {
+                    throw new IOException($"Could not load Shutter validator info file: {e}");
+                }
+                catch (JsonException e)
+                {
+                    throw new JsonException($"Could not parse Shutter validator info file: {e}");
                 }
 
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();

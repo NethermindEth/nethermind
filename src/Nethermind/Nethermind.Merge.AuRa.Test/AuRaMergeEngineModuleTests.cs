@@ -39,7 +39,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -175,7 +174,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         transactions5[3].Value.Should().Be(id5.GWei());
     }
 
-    class ShutterTxSource : ITxSource
+    class TestShutterTxSource : ITxSource
     {
         private UInt256 _nonce = 0;
         private Transaction? _transaction;
@@ -307,7 +306,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager);
 
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_useShutter ? new ShutterTxSource() : null);
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_useShutter ? new TestShutterTxSource() : null);
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(

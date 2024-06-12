@@ -15,10 +15,8 @@ using Nethermind.Crypto;
 using Multiformats.Address;
 using Nethermind.Core;
 using Google.Protobuf;
-using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
-using Nethermind.Consensus.Processing;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Merge.AuRa.Shutter;
@@ -31,6 +29,9 @@ public class ShutterP2P
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ILogger _logger;
     private readonly ulong InstanceID;
+    private readonly ConcurrentQueue<byte[]> _msgQueue = new();
+    private PubsubRouter _router;
+    private ILocalPeer _peer;
 
     public ShutterP2P(ShutterEonInfo eonInfo, Action<Dto.DecryptionKeys> onDecryptionKeysValidated, Func<Dto.DecryptionKeys, bool> shouldProcessDecryptionKeys, IReadOnlyBlockTree readOnlyBlockTree, IAuraConfig auraConfig, ILogManager logManager)
     {
@@ -59,42 +60,51 @@ public class ShutterP2P
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
-        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + auraConfig.ShutterP2PPort);
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {peer.Address}");
-        PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
+        _peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + auraConfig.ShutterP2PPort);
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
+        _router = serviceProvider.GetService<PubsubRouter>()!;
 
-        ITopic topic = router.Subscribe("decryptionKeys");
-        ConcurrentQueue<byte[]> msgQueue = new();
+        ITopic topic = _router.Subscribe("decryptionKeys");
 
         topic.OnMessage += (byte[] msg) =>
         {
-            msgQueue.Enqueue(msg);
+            _msgQueue.Enqueue(msg);
             if (_logger.IsDebug) _logger.Debug($"Received Shutter P2P message.");
         };
 
+        Run(auraConfig.ShutterKeyperP2PAddresses);
+    }
+
+    internal class MyProto : IDiscoveryProtocol
+    {
+        public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
+        public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
+
+        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
+        {
+            return Task.Delay(int.MaxValue);
+        }
+    }
+
+    internal void Run(in IEnumerable<string> p2pAddresses)
+    {
         MyProto proto = new();
         CancellationTokenSource ts = new();
-        _ = router.RunAsync(peer, proto, token: ts.Token);
-        ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
+        _ = _router.RunAsync(_peer, proto, token: ts.Token);
+        ConnectToPeers(proto, p2pAddresses);
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         long delta = 0;
+
         Task.Run(() =>
         {
             for (; ; )
             {
                 Thread.Sleep(250);
 
-                while (msgQueue.TryDequeue(out var msg))
+                while (_msgQueue.TryDequeue(out var msg))
                 {
-                    try
-                    {
-                        ProcessP2PMessage(msg);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsError) _logger.Error("Could not process Shutter P2P message: " + e.Message);
-                    }
+                    ProcessP2PMessage(msg);
                     lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                 }
 
@@ -107,17 +117,8 @@ public class ShutterP2P
                 }
             }
         });
-    }
 
-    internal class MyProto : IDiscoveryProtocol
-    {
-        public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
-        public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
-
-        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
-        {
-            return Task.Delay(int.MaxValue);
-        }
+        // todo: use cancellation source on finish
     }
 
     internal void ProcessP2PMessage(byte[] msg)
@@ -161,11 +162,21 @@ public class ShutterP2P
 
         foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
         {
-            Bls.P1 dk = new(key.Key_.ToArray());
-            Bls.P1 identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
+            Bls.P1 dk, identity;
+            try
+            {
+                dk = new(key.Key_.ToArray());
+                identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
+            }
+            catch (ApplicationException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: {e}.");
+                return false;
+            }
+
             if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
+                if (_logger.IsDebug) _logger.Debug("Invalid decryption keys received on P2P network: decryption key did not match eon key.");
                 return false;
             }
         }

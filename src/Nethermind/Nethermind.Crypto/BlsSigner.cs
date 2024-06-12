@@ -33,7 +33,7 @@ public class BlsSigner
         {
             sig = new(signature.Bytes);
         }
-        catch (Exception)
+        catch (ApplicationException)
         {
             // point not on curve
             return false;
@@ -63,7 +63,6 @@ public class BlsSigner
     public struct PrivateKey
     {
         public byte[] Bytes = new byte[32];
-
         public PrivateKey()
         {
         }
