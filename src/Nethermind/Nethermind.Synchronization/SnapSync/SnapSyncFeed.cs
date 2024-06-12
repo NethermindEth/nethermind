@@ -110,101 +110,93 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
+{
+    if (peer is null)
+    {
+        return SyncResponseHandlingResult.OK;
+    }
+
+    int maxSize = 10 * AllowedInvalidResponses;
+    while (_resultLog.Count > maxSize)
+    {
+        lock (_syncLock)
         {
-            if (peer is null)
+            if (_resultLog.Count > 0)
             {
-                return SyncResponseHandlingResult.OK;
+                _resultLog.RemoveLast();
             }
+        }
+    }
 
-            int maxSize = 10 * AllowedInvalidResponses;
-            while (_resultLog.Count > maxSize)
-            {
-                lock (_syncLock)
-                {
-                    if (_resultLog.Count > 0)
-                    {
-                        _resultLog.RemoveLast();
-                    }
-                }
-            }
+    lock (_syncLock)
+    {
+        _resultLog.AddFirst((peer, result));
+    }
 
-            lock (_syncLock)
-            {
-                _resultLog.AddFirst((peer, result));
-            }
+    if (result == AddRangeResult.OK)
+    {
+        return SyncResponseHandlingResult.OK;
+    }
 
-            if (result == AddRangeResult.OK)
+    int allLastSuccess = 0;
+    int allLastFailures = 0;
+    int peerLastFailures = 0;
+    bool peerIsOnlyFailure = true;
+
+    lock (_syncLock)
+    {
+        foreach (var item in _resultLog)
+        {
+            if (item.result == AddRangeResult.OK)
             {
-                return SyncResponseHandlingResult.OK;
+                allLastSuccess++;
             }
             else
             {
-                int allLastSuccess = 0;
-                int allLastFailures = 0;
-                int peerLastFailures = 0;
+                allLastFailures++;
 
-                lock (_syncLock)
+                if (item.peer != peer)
                 {
-                    foreach (var item in _resultLog)
-                    {
-                        if (item.result == AddRangeResult.OK)
-                        {
-                            allLastSuccess++;
-
-                            if (item.peer == peer)
-                            {
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            allLastFailures++;
-
-                            if (item.peer == peer)
-                            {
-                                peerLastFailures++;
-
-                                if (peerLastFailures > AllowedInvalidResponses)
-                                {
-                                    if (allLastFailures == peerLastFailures)
-                                    {
-                                        
-                                        _snapProvider.UpdatePivot();
-                                        _resultLog.Clear();
-
-                                        _logger.Trace($"SNAP - updating pivot and retrying with peer: {peer}");
-
-                                        
-                                        return SyncResponseHandlingResult.OK;
-                                    }
-                                    else
-                                    {
-                                        _logger.Trace($"SNAP - peer to be punished: {peer}");
-                                        return SyncResponseHandlingResult.LesserQuality;
-                                    }
-                                }
-
-                                if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
-                                {
-                                    _snapProvider.UpdatePivot();
-
-                                    _resultLog.Clear();
-
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    peerIsOnlyFailure = false;
                 }
-
-                if (result == AddRangeResult.ExpiredRootHash)
+                else
                 {
-                    return SyncResponseHandlingResult.NoProgress;
+                    peerLastFailures++;
                 }
-
-                return SyncResponseHandlingResult.OK;
             }
         }
+    }
+
+    if (peerLastFailures > AllowedInvalidResponses)
+    {
+        if (peerIsOnlyFailure)
+        {
+            _logger.Trace($"SNAP - updating pivot and retrying with peer: {peer}");
+            _snapProvider.UpdatePivot();
+            _resultLog.Clear();
+            return SyncResponseHandlingResult.OK;
+        }
+        else
+        {
+            _logger.Trace($"SNAP - peer to be punished: {peer}");
+            return SyncResponseHandlingResult.LesserQuality;
+        }
+    }
+
+    if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
+    {
+        _snapProvider.UpdatePivot();
+        _resultLog.Clear();
+    }
+
+    if (result == AddRangeResult.ExpiredRootHash)
+    {
+        return SyncResponseHandlingResult.NoProgress;
+    }
+
+    return SyncResponseHandlingResult.OK;
+}
+
 
         public void Dispose()
         {
