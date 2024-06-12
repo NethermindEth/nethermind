@@ -86,6 +86,9 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
+            // These is a problem with header where it reliably hangs when setting a high enough allowance. So we disable it for now.
+            _allocationAllowances[AllocationContexts.Headers] = 1;
+
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
 
