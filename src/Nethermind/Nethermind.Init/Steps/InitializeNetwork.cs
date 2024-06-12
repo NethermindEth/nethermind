@@ -105,7 +105,14 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
-        SyncPeerPool apiSyncPeerPool = new(_api.BlockTree, _api.NodeStatsManager!, _api.BetterPeerStrategy, _api.LogManager, maxPeersCount, maxPriorityPeersCount);
+        SyncPeerPool apiSyncPeerPool = new(
+            _api.BlockTree,
+            _api.NodeStatsManager!,
+            _api.BetterPeerStrategy,
+            _api.LogManager,
+            maxPeersCount,
+            maxPriorityPeersCount,
+            _syncConfig.AllocationSlots);
 
         _api.SyncPeerPool = apiSyncPeerPool;
         _api.PeerDifficultyRefreshPool = apiSyncPeerPool;

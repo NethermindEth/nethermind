@@ -65,6 +65,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool? SnapServingEnabled { get; set; } = null;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
+        public int AllocationSlots { get; set; } = 2;
         public bool TrieHealing { get; set; } = true;
 
         public override string ToString()

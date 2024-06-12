@@ -39,6 +39,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new();
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
+        private readonly Dictionary<AllocationContexts, int> _allocationAllowances;
 
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
         private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations = new();
@@ -65,6 +66,7 @@ namespace Nethermind.Synchronization.Peers
             ILogManager logManager,
             int peersMaxCount = 100,
             int priorityPeerMaxCount = 0,
+            int allocationSlots = 1,
             int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -74,6 +76,15 @@ namespace Nethermind.Synchronization.Peers
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            _allocationAllowances = new Dictionary<AllocationContexts, int>();
+            foreach (AllocationContexts ctx in Enum.GetValues<AllocationContexts>())
+            {
+                if (PeerInfo.IsOnlyOneContext(ctx))
+                {
+                    _allocationAllowances[ctx] = allocationSlots;
+                }
+            }
 
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
