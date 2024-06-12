@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -44,6 +45,7 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _accounts;
+        private readonly AccountCache _accountCache;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
@@ -65,6 +67,8 @@ namespace Nethermind.TxPool
         private readonly ITimer? _timer;
         private Transaction[]? _transactionSnapshot;
         private Transaction[]? _blobTransactionSnapshot;
+        private long _lastBlockNumber = -1;
+        private Hash256? _lastBlockHash;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -97,7 +101,7 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
-            _accounts = _headInfo.AccountStateProvider;
+            _accounts = _accountCache = new AccountCache(_headInfo.AccountStateProvider);
             _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -206,6 +210,23 @@ namespace Nethermind.TxPool
                     {
                         try
                         {
+                            ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
+                            if (!CanUseCache(args.Block, accountChanges))
+                            {
+                                // Not sequential block, reset cache
+                                _accountCache.Reset();
+                            }
+                            else
+                            {
+                                // Sequential block, just remove changed accounts from cache
+                                _accountCache.RemoveAccounts(accountChanges);
+                            }
+                            args.Block.AccountChanges = null;
+                            accountChanges?.Dispose();
+
+                            _lastBlockNumber = args.Block.Number;
+                            _lastBlockHash = args.Block.Hash;
+
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
@@ -218,6 +239,11 @@ namespace Nethermind.TxPool
                             if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                         }
                     }
+                }
+
+                bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
+                {
+                    return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
                 }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
@@ -454,14 +480,17 @@ namespace Nethermind.TxPool
             if (tx.Hash == removed?.Hash)
             {
                 // it means it was added and immediately evicted - pool was full of better txs
-                if (isPersistentBroadcast)
+                if (!isPersistentBroadcast || tx.SupportsBlobs || !_broadcaster.Broadcast(tx, true))
                 {
                     // we are adding only to persistent broadcast - not good enough for standard pool,
                     // but can be good enough for TxBroadcaster pool - for local txs only
-                    _broadcaster.Broadcast(tx, isPersistentBroadcast);
+                    Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
+                    return AcceptTxResult.FeeTooLowToCompete;
                 }
-                Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
-                return AcceptTxResult.FeeTooLowToCompete;
+                else
+                {
+                    return AcceptTxResult.Accepted;
+                }
             }
 
             relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
@@ -732,6 +761,74 @@ namespace Nethermind.TxPool
             WriteTxPoolReport(_logger);
 
             _timer!.Enabled = true;
+        }
+
+        internal void ResetAddress(Address address)
+        {
+            ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
+            arrayPoolList.Add(address);
+            _accountCache.RemoveAccounts(arrayPoolList);
+        }
+
+        private sealed class AccountCache : IAccountStateProvider
+        {
+            private readonly IAccountStateProvider _provider;
+            private readonly LruCacheLowObject<AddressAsKey, AccountStruct>[] _caches;
+
+            public AccountCache(IAccountStateProvider provider)
+            {
+                _provider = provider;
+                _caches = new LruCacheLowObject<AddressAsKey, AccountStruct>[16];
+                for (int i = 0; i < _caches.Length; i++)
+                {
+                    // Cache per nibble to reduce contention as TxPool is very parallel
+                    _caches[i] = new LruCacheLowObject<AddressAsKey, AccountStruct>(1_024, "");
+                }
+            }
+
+            public bool TryGetAccount(Address address, out AccountStruct account)
+            {
+                var cache = _caches[GetCacheIndex(address)];
+                if (!cache.TryGet(new AddressAsKey(address), out account))
+                {
+                    if (!_provider.TryGetAccount(address, out account))
+                    {
+                        cache.Set(address, AccountStruct.TotallyEmpty);
+                        return false;
+                    }
+                    cache.Set(address, account);
+                }
+                else
+                {
+                    Db.Metrics.IncrementStateTreeCacheHits();
+                }
+
+                return true;
+            }
+
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
+            {
+                Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
+                    n =>
+                    {
+                        LruCacheLowObject<AddressAsKey, AccountStruct> cache = _caches[n.Key];
+                        foreach (AddressAsKey a in n)
+                        {
+                            cache.Delete(a);
+                        }
+                    }
+                );
+            }
+
+            private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
+
+            public void Reset()
+            {
+                for (int i = 0; i < _caches.Length; i++)
+                {
+                    _caches[i].Clear();
+                }
+            }
         }
 
         private static void WriteTxPoolReport(in ILogger logger)

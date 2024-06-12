@@ -20,13 +20,13 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
     private readonly IRlpStreamDecoder<TReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, TReceipt[] receipts, IRlpStreamDecoder<TReceipt> decoder, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    public ReceiptTrie(IReceiptSpec spec, TReceipt[] receipts, IRlpStreamDecoder<TReceipt> trieDecoder, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(receipts);
-        ArgumentNullException.ThrowIfNull(decoder);
-        _decoder = decoder;
+        ArgumentNullException.ThrowIfNull(trieDecoder);
+        _decoder = trieDecoder;
 
         if (receipts.Length > 0)
         {
@@ -37,8 +37,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
 
     private void Initialize(TReceipt[] receipts, IReceiptSpec spec)
     {
-        RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
-                                | RlpBehaviors.SkipTypedWrapping;
+        RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         int key = 0;
 
         foreach (TReceipt? receipt in receipts)

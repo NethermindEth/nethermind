@@ -12,6 +12,7 @@ using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.State;
@@ -56,7 +57,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
     }
 
     protected override BlockProcessor CreateBlockProcessor(
-        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+        IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -71,7 +72,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             blockValidator,
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-            readOnlyTxProcessingEnv.StateProvider,
+            readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
             logManager,
             _blockTree,
@@ -92,6 +93,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource(processingEnv);
+        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource();
     }
 }

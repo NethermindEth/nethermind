@@ -34,7 +34,7 @@ namespace Nethermind.State
                 return Bytes.ZeroByte.Span;
             }
 
-            Metrics.StorageTreeReads++;
+            Metrics.StorageReaderReads++;
 
             StorageTree storage = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
             return storage.Get(index, new Hash256(storageRoot));
@@ -68,7 +68,7 @@ namespace Nethermind.State
                 return false;
             }
 
-            Metrics.StateTreeReads++;
+            Metrics.IncrementStateReaderReads();
             return _state.TryGetStruct(address, out account, stateRoot);
         }
     }

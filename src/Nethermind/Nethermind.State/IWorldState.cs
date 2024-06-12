@@ -3,7 +3,9 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State.Tracing;
@@ -53,7 +55,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <summary>
     /// Reset all storage
     /// </summary>
-    void Reset();
+    void Reset(bool resizeCollections = false);
 
     /// <summary>
     /// Creates a restartable snapshot.
@@ -67,7 +69,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     Snapshot TakeSnapshot(bool newTransactionStart = false);
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
-
+    void WarmUp(AccessList? accessList);
+    void WarmUp(Address address);
     /// <summary>
     /// Clear all storage at specified address
     /// </summary>
@@ -93,21 +96,22 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void UpdateStorageRoot(Address address, Hash256 storageRoot);
 
-    void IncrementNonce(Address address);
+    void IncrementNonce(Address address, UInt256 delta);
 
-    void DecrementNonce(Address address);
+    void DecrementNonce(Address address, UInt256 delta);
+
+    void IncrementNonce(Address address) => IncrementNonce(address, UInt256.One);
+
+    void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
     /* snapshots */
 
-    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
+    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true);
 
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? traver, bool isGenesis = false);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitStorageRoots = true);
 
     void CommitTree(long blockNumber);
+    ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
-    /// <summary>
-    /// For witness
-    /// </summary>
-    /// <param name="codeHash"></param>
-    void TouchCode(in ValueHash256 codeHash);
+    bool ClearCache() => false;
 }

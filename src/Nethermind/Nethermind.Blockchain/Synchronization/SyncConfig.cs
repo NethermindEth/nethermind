@@ -48,7 +48,6 @@ namespace Nethermind.Blockchain.Synchronization
             set => _pivotHash = value;
         }
         public int MaxAttemptsToUpdatePivot { get; set; } = int.MaxValue;
-        public bool WitnessProtocolEnabled { get; set; } = false;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -277,12 +278,12 @@ public class TxPermissionFilterTest
             IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
             IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
                 WorldStateManager,
-                BlockTree,
+                BlockTree.AsReadOnly(),
                 SpecProvider,
                 LimboLogs.Instance);
 
             VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, _contractAddress, 1,
-                new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
+                new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
 
             TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
             PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, LimboLogs.Instance);

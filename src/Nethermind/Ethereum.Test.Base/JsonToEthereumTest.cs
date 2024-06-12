@@ -85,7 +85,7 @@ namespace Ethereum.Test.Base
 
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
         {
-            if (headerJson == null)
+            if (headerJson is null)
             {
                 throw new InvalidDataException("Header JSON was null when constructing test.");
             }
@@ -151,7 +151,7 @@ namespace Ethereum.Test.Base
             else
                 transaction.AccessList = null;
 
-            if (transactionJson.MaxFeePerGas != null)
+            if (transactionJson.MaxFeePerGas is not null)
                 transaction.Type = TxType.EIP1559;
 
             if (transaction.BlobVersionedHashes?.Length > 0)
@@ -202,7 +202,7 @@ namespace Ethereum.Test.Base
 
         public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
         {
-            if (testJson.LoadFailure != null)
+            if (testJson.LoadFailure is not null)
             {
                 return Enumerable.Repeat(new GeneralStateTest { Name = name, LoadFailure = testJson.LoadFailure }, 1);
             }
@@ -234,6 +234,7 @@ namespace Ethereum.Test.Base
                     test.CurrentRandom = testJson.Env.CurrentRandom;
                     test.CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot;
                     test.CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot;
+                    test.CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas;
                     test.ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed;
                     test.ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas;
                     test.PostReceiptsRoot = stateJson.Logs;
@@ -251,7 +252,7 @@ namespace Ethereum.Test.Base
 
         public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
         {
-            if (testJson.LoadFailure != null)
+            if (testJson.LoadFailure is not null)
             {
                 return new BlockchainTest { Name = name, LoadFailure = testJson.LoadFailure };
             }
@@ -262,13 +263,13 @@ namespace Ethereum.Test.Base
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
             test.TransitionForkActivation = testJson.TransitionForkActivation;
             test.LastBlockHash = new Hash256(testJson.LastBlockHash);
-            test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
+            test.GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
-            if (half != null)
+            if (half is not null)
             {
                 test.PostStateRoot = half.PostState;
             }
