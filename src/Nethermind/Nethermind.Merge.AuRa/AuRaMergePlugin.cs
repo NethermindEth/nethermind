@@ -125,6 +125,13 @@ namespace Nethermind.Merge.AuRa
                 };
 
                 ShutterP2P shutterP2P = new(onDecryptionKeysValidated, shouldProccessDecryptionKeys, readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, _api.LogManager);
+
+                _api.BlockTree!.NewHeadBlock += (object? sender, BlockEventArgs e) =>
+                {
+                    BlockHeader header = e.Block.Header;
+                    shutterP2P.EonInfo.Update(header);
+                };
+
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);

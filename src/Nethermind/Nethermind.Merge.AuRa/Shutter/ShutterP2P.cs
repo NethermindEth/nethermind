@@ -25,13 +25,13 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterP2P
 {
+    public ShutterEonInfo EonInfo;
     private readonly Func<Dto.DecryptionKeys, bool> _shouldProcessDecryptionKeys;
     private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysValidated;
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogger _logger;
     private readonly ulong InstanceID;
-    private ShutterEonInfo _eonInfo;
 
     public ShutterP2P(Action<Dto.DecryptionKeys> onDecryptionKeysValidated, Func<Dto.DecryptionKeys, bool> shouldProcessDecryptionKeys, IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
     {
@@ -40,7 +40,7 @@ public class ShutterP2P
         _readOnlyBlockTree = readOnlyBlockTree;
         _abiEncoder = abiEncoder;
         _logger = logManager.GetClassLogger();
-        _eonInfo = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, abiEncoder, auraConfig, _logger);
+        EonInfo = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, abiEncoder, auraConfig, _logger);
         InstanceID = auraConfig.ShutterInstanceID;
 
         ServiceProvider serviceProvider = new ServiceCollection()
@@ -138,7 +138,7 @@ public class ShutterP2P
             return;
         }
 
-        if (_eonInfo.Update() && CheckDecryptionKeys(decryptionKeys))
+        if (CheckDecryptionKeys(decryptionKeys))
         {
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
             _onDecryptionKeysValidated(decryptionKeys);
@@ -155,9 +155,9 @@ public class ShutterP2P
             return false;
         }
 
-        if (decryptionKeys.Eon != _eonInfo.Eon)
+        if (decryptionKeys.Eon != EonInfo.Eon)
         {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {_eonInfo.Eon}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {EonInfo.Eon}.");
             return false;
         }
 
@@ -165,7 +165,7 @@ public class ShutterP2P
         {
             Bls.P1 dk = new(key.Key_.ToArray());
             Bls.P1 identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
-            if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
+            if (!ShutterCrypto.CheckDecryptionKey(dk, EonInfo.Key, identity))
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
                 return false;
@@ -186,7 +186,7 @@ public class ShutterP2P
             return false;
         }
 
-        if (signerIndicesCount != (int)_eonInfo.Threshold)
+        if (signerIndicesCount != (int)EonInfo.Threshold)
         {
             if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
             return false;
@@ -196,9 +196,9 @@ public class ShutterP2P
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
-            Address keyperAddress = _eonInfo.Addresses[signerIndex];
+            Address keyperAddress = EonInfo.Addresses[signerIndex];
 
-            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
+            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, EonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
                 return false;

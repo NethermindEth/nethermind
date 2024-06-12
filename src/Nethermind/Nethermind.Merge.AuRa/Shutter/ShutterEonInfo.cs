@@ -35,11 +35,11 @@ public class ShutterEonInfo
         KeyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
     }
 
-    public bool Update()
+    public bool Update(BlockHeader header)
     {
         Hash256 stateRoot = _readOnlyBlockTree.Head!.StateRoot!;
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(stateRoot);
-        BlockHeader header = _readOnlyBlockTree.Head!.Header;
+        // BlockHeader header = _readOnlyBlockTree.Head!.Header;
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
 
         if (IsSyncing(header))
