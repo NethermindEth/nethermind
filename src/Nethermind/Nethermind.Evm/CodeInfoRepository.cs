@@ -98,7 +98,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         _localPrecompiles = precompileCache is null
             ? _precompiles
-            : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCashedPrecompile(kvp, precompileCache));
+            : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
