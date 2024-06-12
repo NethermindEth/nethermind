@@ -284,7 +284,7 @@ namespace Nethermind.Blockchain.Test
             Hash256? genesisHash)
         {
             Hash256? result = provider.GetBlockhash(currentHeader, 0);
-            if (currentHeader.Number > Eip2935Constants.RingBufferSize || spec.IsEip7709Enabled || currentHeader.Number > 256)
+            if ((spec.IsEip7709Enabled && currentHeader.Number > Eip2935Constants.RingBufferSize) || currentHeader.Number > 256)
                 Assert.That(result, Is.Null);
             else
                 Assert.That(result, Is.EqualTo(genesisHash));
