@@ -15,9 +15,7 @@ using Nethermind.State.Proofs;
 namespace Nethermind.JsonRpc.Modules.Eth
 {
     [RpcModule(ModuleType.Eth)]
-    public interface IEthRpcModule : IEthRpcModule<ReceiptForRpc> { }
-
-    public interface IEthRpcModule<TReceiptForRpc> : IRpcModule where TReceiptForRpc : ReceiptForRpc
+    public interface IEthRpcModule : IRpcModule
     {
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns ChainID",
