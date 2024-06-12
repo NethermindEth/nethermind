@@ -51,7 +51,7 @@ public class WithdrawalRequestProcessorTests
 
         _codeInfoRepository = new CodeInfoRepository();
 
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, _codeInfoRepository ,LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, _codeInfoRepository, LimboLogs.Instance);
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
