@@ -31,6 +31,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Simulate;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -81,11 +82,20 @@ namespace Nethermind.Api
                 SpecProvider,
                 LogManager);
 
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
+                new SimulateReadOnlyBlocksProcessingEnvFactory(
+                    WorldStateManager!,
+                    readOnlyTree,
+                    DbProvider!,
+                    SpecProvider!,
+                    LogManager);
+
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
+                simulateReadOnlyBlocksProcessingEnvFactory,
                 TxPool,
                 ReceiptFinder,
                 FilterStore,

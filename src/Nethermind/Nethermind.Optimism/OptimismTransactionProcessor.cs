@@ -19,7 +19,9 @@ public class OptimismTransactionProcessor(
     IVirtualMachine virtualMachine,
     ILogManager logManager,
     IL1CostHelper l1CostHelper,
-    IOptimismSpecHelper opSpecHelper) : TransactionProcessor(specProvider, worldState, virtualMachine, logManager)
+    IOptimismSpecHelper opSpecHelper,
+    ICodeInfoRepository? codeInfoRepository
+    ) : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 

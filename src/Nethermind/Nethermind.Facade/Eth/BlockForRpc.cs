@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.JsonRpc.Modules.Eth;
+namespace Nethermind.Facade.Eth;
 
 public class BlockForRpc
 {

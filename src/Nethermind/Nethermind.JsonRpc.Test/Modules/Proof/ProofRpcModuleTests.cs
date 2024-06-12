@@ -29,6 +29,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
+using Nethermind.Facade.Eth;
 using Nethermind.State.Tracing;
 using NSubstitute;
 

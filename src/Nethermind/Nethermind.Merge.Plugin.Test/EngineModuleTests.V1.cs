@@ -20,6 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -1033,7 +1034,7 @@ public partial class EngineModuleTests
 
             executePayloadRequest.GasUsed = GasCostOf.Transaction * count;
             executePayloadRequest.StateRoot = new Hash256("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-            executePayloadRequest.ReceiptsRoot = new Hash256("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
+            executePayloadRequest.ReceiptsRoot = new Hash256("0xb34a29e4a30ab5d32fdbc0292a97ac1cf1028c085f538dec2d91d91c6d0b0562");
             TryCalculateHash(executePayloadRequest, out Hash256? hash);
             executePayloadRequest.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executePayloadRequest);
@@ -1071,7 +1072,7 @@ public partial class EngineModuleTests
             executionPayload.StateRoot =
                 new Hash256("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
             executionPayload.ReceiptsRoot =
-                new Hash256("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
+                new Hash256("0xb34a29e4a30ab5d32fdbc0292a97ac1cf1028c085f538dec2d91d91c6d0b0562");
             TryCalculateHash(executionPayload, out Hash256 hash);
             executionPayload.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executionPayload);
