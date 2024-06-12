@@ -71,22 +71,9 @@ public class ShutterP2P
             _msgQueue.Enqueue(msg);
             if (_logger.IsDebug) _logger.Debug($"Received Shutter P2P message.");
         };
-
-        Run(auraConfig.ShutterKeyperP2PAddresses);
     }
 
-    internal class MyProto : IDiscoveryProtocol
-    {
-        public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
-        public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
-
-        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
-        {
-            return Task.Delay(int.MaxValue);
-        }
-    }
-
-    internal void Run(in IEnumerable<string> p2pAddresses)
+    public void Start(in IEnumerable<string> p2pAddresses)
     {
         MyProto proto = new();
         CancellationTokenSource ts = new();
@@ -119,6 +106,17 @@ public class ShutterP2P
         });
 
         // todo: use cancellation source on finish
+    }
+
+    internal class MyProto : IDiscoveryProtocol
+    {
+        public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
+        public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
+
+        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
+        {
+            return Task.Delay(int.MaxValue);
+        }
     }
 
     internal void ProcessP2PMessage(byte[] msg)

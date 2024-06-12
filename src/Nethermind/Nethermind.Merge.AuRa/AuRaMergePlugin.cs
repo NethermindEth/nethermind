@@ -142,12 +142,13 @@ namespace Nethermind.Merge.AuRa
                 };
 
                 ShutterEonInfo shutterEonInfo = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, logger);
-                ShutterP2P shutterP2P = new(shutterEonInfo, onDecryptionKeysValidated, shouldProccessDecryptionKeys, readOnlyBlockTree, _auraConfig, _api.LogManager);
-
                 _api.BlockTree!.NewHeadBlock += (object? sender, BlockEventArgs e) =>
                 {
                     shutterEonInfo.Update(e.Block.Header);
                 };
+
+                ShutterP2P shutterP2P = new(shutterEonInfo, onDecryptionKeysValidated, shouldProccessDecryptionKeys, readOnlyBlockTree, _auraConfig, _api.LogManager);
+                shutterP2P.Start(_auraConfig.ShutterKeyperP2PAddresses);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
