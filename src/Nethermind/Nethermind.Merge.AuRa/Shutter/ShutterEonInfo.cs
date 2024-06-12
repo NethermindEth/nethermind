@@ -63,15 +63,12 @@ public class ShutterEonInfo
                 Bls.P2 key = new(eonKeyBytes);
 
                 // update atomically
-                lock (Addresses)
-                {
-                    Eon = eon;
-                    Key = key;
-                    Threshold = threshold;
-                    Addresses = addresses;
+                Eon = eon;
+                Key = key;
+                Threshold = threshold;
+                Addresses = addresses;
 
-                    if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} threshold: {Threshold} #keypers: {Addresses.Length}");
-                }
+                if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} threshold: {Threshold} #keypers: {Addresses.Length}");
             }
         }
         catch (AbiException e)
