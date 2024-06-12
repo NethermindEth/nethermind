@@ -32,6 +32,8 @@ public class WithdrawalRequestProcessorTests
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
 
+    private ICodeInfoRepository _codeInfoRepository;
+
     private static readonly UInt256 AccountBalance = 1.Ether();
 
     private readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
@@ -47,7 +49,9 @@ public class WithdrawalRequestProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _codeInfoRepository = new CodeInfoRepository();
+
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, _codeInfoRepository ,LimboLogs.Instance);
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
@@ -78,7 +82,7 @@ public class WithdrawalRequestProcessorTests
         var withdrawalRequest = new WithdrawalRequest()
         {
             SourceAddress = new Address(Bytes.FromHexString("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b")),
-            ValidatorPubkey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
+            ValidatorPublicKey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
             Amount = 0
         };
 
