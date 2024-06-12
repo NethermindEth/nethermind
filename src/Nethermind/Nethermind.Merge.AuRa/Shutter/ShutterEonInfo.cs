@@ -1,5 +1,4 @@
 using Nethermind.Blockchain;
-using System;
 using Nethermind.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
@@ -14,10 +13,10 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterEonInfo
 {
-    public ulong Eon = uint.MaxValue;
-    public Bls.P2 Key;
-    public ulong Threshold;
-    public Address[] Addresses = [];
+    public ulong Eon { get; private set; } = uint.MaxValue;
+    public Bls.P2 Key { get; private set; }
+    public ulong Threshold { get; private set; }
+    public Address[] Addresses { get; private set; } = [];
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
@@ -35,58 +34,49 @@ public class ShutterEonInfo
         KeyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
     }
 
-    public bool Update(BlockHeader header)
+    public void Update(BlockHeader header)
     {
         Hash256 stateRoot = _readOnlyBlockTree.Head!.StateRoot!;
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(stateRoot);
-        // BlockHeader header = _readOnlyBlockTree.Head!.Header;
-        KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
 
-        if (IsSyncing(header))
+        try
         {
-            return false;
-        }
+            KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
+            ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
 
-        ulong nextBlockNumber = (ulong)header.Number + 1;
-        ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, nextBlockNumber);
-
-        if (Eon != eon)
-        {
-            Eon = eon;
-
-            Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
-            KeyperSetContract keyperSetContract = new(readOnlyTransactionProcessor, _abiEncoder, keyperSetContractAddress);
-
-            if (!keyperSetContract.IsFinalized(header))
+            if (Eon != eon)
             {
-                if (_logger.IsError) _logger.Error("Cannot use unfinalised keyper set contract.");
-                return false;
+                Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
+                KeyperSetContract keyperSetContract = new(readOnlyTransactionProcessor, _abiEncoder, keyperSetContractAddress);
+
+                if (!keyperSetContract.IsFinalized(header))
+                {
+                    if (_logger.IsError) _logger.Error("Cannot use unfinalised keyper set contract.");
+                    return;
+                }
+
+                ulong threshold = keyperSetContract.GetThreshold(header);
+                Address[] addresses = keyperSetContract.GetMembers(header);
+
+                KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
+                byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
+                Bls.P2 key = new(eonKeyBytes);
+
+                // update atomically
+                lock (Addresses)
+                {
+                    Eon = eon;
+                    Key = key;
+                    Threshold = threshold;
+                    Addresses = addresses;
+
+                    if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} threshold: {Threshold} #keypers: {Addresses.Length}");
+                }
             }
-
-            Threshold = keyperSetContract.GetThreshold(header);
-            Addresses = keyperSetContract.GetMembers(header);
-
-            KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
-            byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
-            Key = new(eonKeyBytes);
-
-            if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} threshold: {Threshold} #keypers: {Addresses.Length}");
         }
-
-        return true;
-    }
-
-    internal bool IsSyncing(BlockHeader header)
-    {
-        if ((header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) > 60)
+        catch (AbiException e)
         {
-            return true;
+            if (_logger.IsDebug) _logger.Debug($"Error when calling Shutter Keyper contracts: {e}");
         }
-
-        long bestSuggestedNumber = _readOnlyBlockTree.FindBestSuggestedHeader()?.Number ?? 0;
-        long headNumberOrZero = _readOnlyBlockTree.Head?.Number ?? 0;
-        bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
-
-        return isSyncing;
     }
 }
