@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.Peers
 {
     public class PeerInfo
     {
-        private static readonly Dictionary<AllocationContexts, int> DefaultAllowances = new Dictionary<AllocationContexts, int>()
+        public static readonly Dictionary<AllocationContexts, int> DefaultAllowances = new Dictionary<AllocationContexts, int>()
         {
             {AllocationContexts.Headers, 1},
             {AllocationContexts.Bodies, 1},
@@ -250,7 +250,7 @@ namespace Nethermind.Synchronization.Peers
             }
 
             cachedContext = Enum.GetValues<AllocationContexts>()
-                .Where(aCtx => IsNotCompositeContexts(aCtx) && (contexts & aCtx) != 0)
+                .Where(aCtx => IsOnlyOneContext(aCtx) && (contexts & aCtx) != 0)
                 .ToArray();
 
             SeparatedContextsCache.TryAdd(contexts, cachedContext);
@@ -259,7 +259,7 @@ namespace Nethermind.Synchronization.Peers
 
         private static ConcurrentDictionary<AllocationContexts, AllocationContexts[]> SeparatedContextsCache = new ConcurrentDictionary<AllocationContexts, AllocationContexts[]>();
 
-        bool IsNotCompositeContexts(AllocationContexts x)
+        public static bool IsOnlyOneContext(AllocationContexts x)
         {
             return (x & (x - 1)) == 0;
         }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.Peers;
@@ -97,6 +99,33 @@ namespace Nethermind.Synchronization.Test
         public void Can_allocate()
         {
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
+            peerInfo.TryAllocate(_contexts);
+            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
+            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
+        }
+
+        [Test]
+        public void Can_allocate_multiple()
+        {
+            if (!PeerInfo.IsOnlyOneContext(_contexts)) return;
+
+            Dictionary<AllocationContexts, int> newAllowances = PeerInfo.DefaultAllowances.ToDictionary();
+            newAllowances[_contexts] = 5;
+
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>(), newAllowances);
+
+            for (int i = 0; i < 5; i++)
+            {
+                peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
+                peerInfo.TryAllocate(_contexts);
+            }
+            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
+            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
+
+            // Partial free
+            peerInfo.Free(_contexts);
+            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
             peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
             peerInfo.TryAllocate(_contexts);
             peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
