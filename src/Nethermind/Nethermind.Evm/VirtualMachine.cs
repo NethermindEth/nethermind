@@ -37,6 +37,8 @@ using Nethermind.Crypto;
 
 using Nethermind.Core.Collections;
 
+using Nethermind.Core.Collections;
+
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
