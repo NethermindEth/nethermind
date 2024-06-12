@@ -27,17 +27,11 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 
-using System.Collections.Frozen;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
 
 using Int256;
 using Nethermind.Crypto;
 
-using Nethermind.Core.Collections;
-
-using Nethermind.Core.Collections;
 
 public class VirtualMachine : IVirtualMachine
 {
