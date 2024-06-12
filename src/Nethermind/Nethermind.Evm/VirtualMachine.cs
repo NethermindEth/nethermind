@@ -2225,7 +2225,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (vmState.ReturnStackHead + 1 == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
                             goto InvalidSubroutineEntry;
 
-                        stack.EnsureDepth(inputCount);
                         vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                         {
                             Index = sectionIndex,
@@ -2257,7 +2256,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (vmState.ReturnStackHead + 1 == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
                             goto InvalidSubroutineEntry;
 
-                        stack.EnsureDepth(inputCount);
                         sectionIndex = index;
                         (programCounter, _) = env.CodeInfo.SectionOffset(index);
                         break;
@@ -2271,12 +2269,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
                         (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
-                        if (vmState.ReturnStackHead == 0)
-                        {
-                            exceptionType = EvmExceptionType.InvalidSubroutineReturn;
-                            goto ReturnFailure;
-                        }
-
+                        
                         var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
                         sectionIndex = stackFrame.Index;
                         programCounter = stackFrame.Offset;

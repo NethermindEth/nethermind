@@ -213,7 +213,6 @@ namespace Nethermind.Evm
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
             Instruction.JUMPF or Instruction.RETURNCONTRACT => true,
-            Instruction.RJUMP => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };
