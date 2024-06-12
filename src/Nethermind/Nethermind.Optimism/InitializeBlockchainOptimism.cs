@@ -108,7 +108,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.LogManager,
             _api.SpecHelper,
             contractRewriter,
-			new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
             preWarmer: preWarmer);
     }
 
