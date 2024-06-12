@@ -79,6 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
+                new ReadOnlyTxProcessorSource(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
 
             _proofRpcModule = moduleFactory.Create();
@@ -223,6 +224,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
                 _specProvider,
+                new ReadOnlyTxProcessorSource(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
 
             _proofRpcModule = moduleFactory.Create();

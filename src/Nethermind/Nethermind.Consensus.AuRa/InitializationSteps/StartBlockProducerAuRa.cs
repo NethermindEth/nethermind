@@ -123,7 +123,7 @@ public class StartBlockProducerAuRa
                 changeableTxProcessingEnv.WorldState,
                 changeableTxProcessingEnv.TransactionProcessor,
                 _api.BlockTree,
-                _api.CreateReadOnlyTransactionProcessorSource(),
+                _api.ReadOnlyTxProcessorSource,
                 _api.ReceiptStorage,
                 _api.ValidatorStore,
                 _api.FinalizationManager,
@@ -224,9 +224,7 @@ public class StartBlockProducerAuRa
         BlockProducerEnv Create()
         {
             ReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree.AsReadOnly();
-
-            ReadOnlyTxProcessingEnv txProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource();
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = _api.ReadOnlyTxProcessorSource.Build(Keccak.EmptyTreeHash);
             BlockProcessor blockProcessor = CreateBlockProcessor(scope);
 
             IBlockchainProcessor blockchainProcessor =
@@ -248,7 +246,6 @@ public class StartBlockProducerAuRa
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
-                ReadOnlyTxProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource(),
             };
         }
 
@@ -303,7 +300,7 @@ public class StartBlockProducerAuRa
             {
                 RandomContractTxSource randomContractTxSource = new RandomContractTxSource(
                     GetRandomContracts(randomnessContractAddress, _api.AbiEncoder,
-                        _api.CreateReadOnlyTransactionProcessorSource(),
+                        _api.ReadOnlyTxProcessorSource,
                         signer),
                     new EciesCipher(_api.CryptoRandom),
                     signer,
@@ -365,7 +362,7 @@ public class StartBlockProducerAuRa
                                 api.AbiEncoder,
                                 blockGasLimitContractTransition.Value,
                                 blockGasLimitContractTransition.Key,
-                                api.CreateReadOnlyTransactionProcessorSource()))
+                                api.ReadOnlyTxProcessorSource))
                         .ToArray<IBlockGasLimitContract>(),
                     api.GasLimitCalculatorCache,
                     api.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,

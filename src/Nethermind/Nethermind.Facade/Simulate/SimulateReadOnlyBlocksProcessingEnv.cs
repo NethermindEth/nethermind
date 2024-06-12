@@ -39,12 +39,11 @@ public class SimulateBlockValidationTransactionsExecutor : BlockValidationTransa
     }
 }
 
-public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
+public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
 {
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
     private readonly TransactionProcessor _transactionProcessor;
-    public IWorldState WorldState => StateProvider;
 
     public SimulateReadOnlyBlocksProcessingEnv(
         IWorldStateManager worldStateManager,
@@ -54,7 +53,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         ISpecProvider specProvider,
         ILogManager? logManager = null,
         bool validate = false)
-        : base(worldStateManager, blockTree, specProvider, logManager)
     {
         ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;
@@ -62,20 +60,27 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         _logManager = logManager;
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
-        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
-        StateProvider = WorldStateManager.GlobalWorldState;
+        WorldState = WorldStateManager.GlobalWorldState;
         StateReader = WorldStateManager.GlobalStateReader;
+
+        SpecProvider = specProvider;
+        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, WorldState, logManager), BlockTree);
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
         VirtualMachine = new SimulateVirtualMachine(new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager));
-        _transactionProcessor = new SimulateTransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, validate);
+        _transactionProcessor = new SimulateTransactionProcessor(specProvider, WorldState, VirtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
     }
 
-    public IWorldStateManager WorldStateManager { get; }
-    public IVirtualMachine VirtualMachine { get; }
-    public IReadOnlyDbProvider DbProvider { get; }
-    public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }
+    public IWorldState WorldState { get; }
+    public IStateReader StateReader { get; }
+    public IBlockTree BlockTree { get; }
+    private IBlockhashProvider BlockhashProvider { get; }
+    public ISpecProvider SpecProvider { get; }
+    private IWorldStateManager WorldStateManager { get; }
+    private IVirtualMachine VirtualMachine { get; }
+    private IReadOnlyDbProvider DbProvider { get; }
+    private IReadOnlyBlockTree ReadOnlyBlockTree { get; }
     public OverridableCodeInfoRepository CodeInfoRepository { get; }
     public BlockProductionTransactionPicker BlockTransactionPicker { get; }
 
@@ -107,10 +112,10 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             _blockValidator,
             NoBlockRewards.Instance,
             validate
-                ? new BlockValidationTransactionsExecutor(_transactionProcessor, StateProvider)
-                : new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider),
-            StateProvider,
+                ? new BlockValidationTransactionsExecutor(_transactionProcessor, WorldState)
+                : new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, WorldState),
+            WorldState,
             NullReceiptStorage.Instance,
-            new BlockhashStore(BlockTree, SpecProvider, StateProvider),
+            new BlockhashStore(BlockTree, SpecProvider, WorldState),
             _logManager);
 }

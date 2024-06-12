@@ -35,16 +35,16 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly ISpecProvider _specProvider;
         private readonly IUserOperationTxBuilder _userOperationTxBuilder;
         private readonly IReadOnlyStateProvider _stateProvider;
-        private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
         private readonly ITimestamper _timestamper;
         private readonly IBlocksConfig _blocksConfig;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
+        private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
 
         public UserOperationSimulator(
             IUserOperationTxBuilder userOperationTxBuilder,
             IReadOnlyStateProvider stateProvider,
-            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             AbiDefinition entryPointContractAbi,
             Address entryPointContractAddress,
             Address[] whitelistedPaymasters,
@@ -55,7 +55,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             _userOperationTxBuilder = userOperationTxBuilder;
             _stateProvider = stateProvider;
-            _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
+            _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
             _entryPointContractAbi = entryPointContractAbi;
             _entryPointContractAddress = entryPointContractAddress;
             _whitelistedPaymasters = whitelistedPaymasters;
@@ -87,8 +87,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
-            IReadOnlyTxProcessorSource processorSource = _readOnlyTxProcessingEnvFactory.Create();
-            using IReadOnlyTxProcessingScope scope = processorSource.Build(_stateProvider.StateRoot);
+            using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
@@ -188,8 +187,7 @@ namespace Nethermind.AccountAbstraction.Executor
         [Todo("Refactor once BlockchainBridge is separated")]
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            IReadOnlyTxProcessorSource txProcessorSource = _readOnlyTxProcessingEnvFactory.Create();
-            using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(header.StateRoot!);
+            using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(

@@ -121,16 +121,10 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
 
         var (getFromApi, _) = _nethermindApi!.ForProducer;
 
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
-            getFromApi.WorldStateManager!,
-            getFromApi.BlockTree!,
-            getFromApi.SpecProvider,
-            getFromApi.LogManager);
-
         _userOperationSimulators[entryPoint] = new UserOperationSimulator(
             UserOperationTxBuilder(entryPoint),
             getFromApi.ChainHeadStateProvider!,
-            readOnlyTxProcessingEnvFactory,
+            getFromApi.ReadOnlyTxProcessorSource,
             _entryPointContractAbi,
             entryPoint,
             _whitelistedPaymasters.ToArray(),

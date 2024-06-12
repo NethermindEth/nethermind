@@ -130,14 +130,14 @@ public class TxCertifierFilterTests
 
     public class TestTxPermissionsBlockchain : TestContractBlockchain
     {
-        public ReadOnlyTxProcessingEnv ReadOnlyTransactionProcessorSource { get; private set; }
+        public ReadOnlyTxProcessorSource ReadOnlyTransactionProcessorSource { get; private set; }
         public RegisterContract RegisterContract { get; private set; }
         public CertifierContract CertifierContract { get; private set; }
 
         protected override BlockProcessor CreateBlockProcessor()
         {
             AbiEncoder abiEncoder = AbiEncoder.Instance;
-            ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(
                 WorldStateManager,
                 BlockTree.AsReadOnly(), SpecProvider,
                 LimboLogs.Instance);

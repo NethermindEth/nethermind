@@ -113,9 +113,12 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.SpecProvider,
             _api.PoSSwitcher,
             _api.LogManager,
-            _api.L1CostHelper,
             _api.SpecHelper,
             new Create2DeployerContractRewriter(_api.SpecHelper, _api.SpecProvider, _api.BlockTree),
+
+            // TODO: Should this get overridden globally?
+            new OptimismReadOnlyTxProcessorSource(_api.WorldStateManager, _api.BlockTree.AsReadOnly(), _api.SpecProvider, _api.LogManager, _api.L1CostHelper, _api.SpecHelper),
+
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
 
         rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);

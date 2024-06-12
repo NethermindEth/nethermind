@@ -96,6 +96,7 @@ public class MevPlugin : IConsensusWrapperPlugin
                     getFromApi.WorldStateManager!,
                     getFromApi.BlockPreprocessor!,
                     getFromApi.SpecProvider!,
+                    getFromApi.ReadOnlyTxProcessorSource,
                     getFromApi.LogManager!,
                     SimulateBundleProcessingOptions);
             }

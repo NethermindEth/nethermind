@@ -29,6 +29,7 @@ public class TraceModuleFactory(
     IReceiptStorage receiptFinder,
     ISpecProvider specProvider,
     IPoSSwitcher poSSwitcher,
+    IReadOnlyTxProcessorSource txProcessorSource,
     ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
 {
     protected readonly IWorldStateManager _worldStateManager = worldStateManager;
@@ -40,8 +41,6 @@ public class TraceModuleFactory(
     protected readonly IBlockPreprocessorStep _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
     protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
     protected readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-
-    protected virtual ReadOnlyTxProcessingEnv CreateTxProcessingEnv() => new(_worldStateManager, _blockTree, _specProvider, _logManager);
 
     protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
                 scope,
@@ -57,8 +56,7 @@ public class TraceModuleFactory(
 
     public override ITraceRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
-        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        IReadOnlyTxProcessingScope scope = txProcessorSource.Build(Keccak.EmptyTreeHash);
 
         IRewardCalculator rewardCalculator =
             new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),
@@ -72,7 +70,7 @@ public class TraceModuleFactory(
 
         Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.StateReader);
+        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _worldStateManager.GlobalStateReader);
     }
 
 }

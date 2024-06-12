@@ -33,6 +33,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
+        private readonly IReadOnlyTxProcessorSource _txProcessorSource;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
@@ -47,6 +48,7 @@ namespace Nethermind.Consensus.Producers
             ITxPool txPool,
             ITransactionComparerProvider transactionComparerProvider,
             IBlocksConfig blocksConfig,
+            IReadOnlyTxProcessorSource txProcessorSource,
             ILogManager logManager)
         {
             _worldStateManager = worldStateManager;
@@ -59,6 +61,7 @@ namespace Nethermind.Consensus.Producers
             _txPool = txPool;
             _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
+            _txProcessorSource = txProcessorSource;
             _logManager = logManager;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
@@ -67,11 +70,7 @@ namespace Nethermind.Consensus.Producers
         public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
         {
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
-
-            ReadOnlyTxProcessingEnv txProcessingEnv =
-                CreateReadonlyTxProcessingEnv(_worldStateManager, readOnlyBlockTree);
-
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(Keccak.EmptyTreeHash);
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(
@@ -88,7 +87,7 @@ namespace Nethermind.Consensus.Producers
                     readOnlyBlockTree,
                     blockProcessor,
                     _blockPreprocessorStep,
-                    txProcessingEnv.StateReader,
+                    _worldStateManager.GlobalStateReader,
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 
@@ -101,28 +100,22 @@ namespace Nethermind.Consensus.Producers
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
-                ReadOnlyTxProcessingEnv = txProcessingEnv
+                TxSource = CreateTxSourceForProducer(additionalTxSource, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
             };
         }
 
-        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(worldStateManager, readOnlyBlockTree, _specProvider, _logManager);
-
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,
-            ReadOnlyTxProcessingEnv processingEnv,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
         {
-            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, blocksConfig, transactionComparerProvider, logManager);
+            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(txPool, blocksConfig, transactionComparerProvider, logManager);
             return additionalTxSource.Then(txPoolSource);
         }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
-            ReadOnlyTxProcessingEnv processingEnv,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,

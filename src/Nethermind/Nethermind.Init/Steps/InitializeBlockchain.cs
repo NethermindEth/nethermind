@@ -104,6 +104,12 @@ namespace Nethermind.Init.Steps
 
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
+            setApi.ReadOnlyTxProcessorSource = new ReadOnlyTxProcessorSource(
+                _api.WorldStateManager!,
+                getApi.BlockTree!.AsReadOnly(),
+                getApi.SpecProvider,
+                getApi.LogManager);
+
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
@@ -232,7 +238,7 @@ namespace Nethermind.Init.Steps
             IWorldState worldState = _api.WorldState!;
 
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, worldState), _api.SpecProvider, _api.LogManager, worldState)
+                ? new(_api.ReadOnlyTxProcessorSource, _api.SpecProvider, _api.LogManager, _api.WorldStateManager, worldState)
                 : null;
 
             return new BlockProcessor(

@@ -48,6 +48,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             txPool,
             transactionComparerProvider,
             blocksConfig,
+            auraApi.ReadOnlyTxProcessorSource,
             logManager)
     {
         _auraApi = auraApi;
@@ -83,7 +84,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(
-        ReadOnlyTxProcessingEnv processingEnv,
         ITxPool txPool,
         IBlocksConfig blocksConfig,
         ITransactionComparerProvider transactionComparerProvider,

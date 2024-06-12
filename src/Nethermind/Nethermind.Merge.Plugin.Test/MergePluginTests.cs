@@ -55,6 +55,7 @@ public class MergePluginTests
             _context.TxPool!,
             _context.TransactionComparerProvider!,
             miningConfig,
+            _context.ReadOnlyTxProcessorSource,
             _context.LogManager!);
         _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;

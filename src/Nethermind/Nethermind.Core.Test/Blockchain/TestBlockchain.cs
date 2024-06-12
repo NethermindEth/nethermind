@@ -54,6 +54,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
     public IWorldStateManager WorldStateManager { get; set; } = null!;
+    public IReadOnlyTxProcessorSource ReadOnlyTxProcessingSource { get; set; } = null!;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
@@ -174,6 +175,12 @@ public class TestBlockchain : IDisposable
             new SyncConfig(),
             LimboLogs.Instance);
 
+        ReadOnlyTxProcessingSource = new ReadOnlyTxProcessorSource(
+            WorldStateManager,
+            BlockTree,
+            SpecProvider,
+            LogManager);
+
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
         TxPool = CreateTxPool();
@@ -287,6 +294,7 @@ public class TestBlockchain : IDisposable
             TxPool,
             transactionComparerProvider,
             blocksConfig,
+            ReadOnlyTxProcessingSource,
             LogManager);
 
         BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);

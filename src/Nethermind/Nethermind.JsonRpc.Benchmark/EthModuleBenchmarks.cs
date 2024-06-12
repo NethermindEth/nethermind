@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new ReceiptsRecovery(ecdsa, specProvider));
 
             BlockchainBridge bridge = new(
-                new ReadOnlyTxProcessingEnv(
+                new ReadOnlyTxProcessorSource(
                     stateManager,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
@@ -135,6 +135,8 @@ namespace Nethermind.JsonRpc.Benchmark
                     new ReadOnlyDbProvider(dbProvider, true),
                     specProvider,
                     LimboLogs.Instance),
+                blockTree,
+                stateManager.GlobalStateReader,
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullFilterStore.Instance,

@@ -33,6 +33,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -52,9 +53,9 @@ public class TraceRpcModuleTests
             ReceiptsRecovery receiptsRecovery =
                 new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
-            ReadOnlyTxProcessingEnv txProcessingEnv =
+            ReadOnlyTxProcessorSource txProcessorSource =
                 new(Blockchain.WorldStateManager, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = txProcessorSource.Build(Keccak.EmptyTreeHash);
 
             RewardCalculator rewardCalculatorSource = new(Blockchain.SpecProvider);
 
@@ -80,7 +81,7 @@ public class TraceRpcModuleTests
             ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor);
 
             Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
-            TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, txProcessingEnv.StateReader);
+            TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, Blockchain.StateReader);
 
             for (int i = 1; i < 10; i++)
             {

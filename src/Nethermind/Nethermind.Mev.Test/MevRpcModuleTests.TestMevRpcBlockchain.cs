@@ -103,6 +103,7 @@ namespace Nethermind.Mev.Test
                     TxPool,
                     transactionComparerProvider,
                     blocksConfig,
+                    ReadOnlyTxProcessingSource,
                     LogManager)
                 {
                     TransactionsExecutorFactory =
@@ -195,6 +196,7 @@ namespace Nethermind.Mev.Test
                     WorldStateManager,
                     BlockPreprocessorStep,
                     SpecProvider,
+                    ReadOnlyTxProcessingSource,
                     LogManager,
                     ProcessingOptions.ProducingBlock);
 
