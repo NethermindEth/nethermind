@@ -244,7 +244,7 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            PeerInfo peerInfo = new(syncPeer);
+            PeerInfo peerInfo = new(syncPeer, _allocationAllowances);
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
 
@@ -679,7 +679,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
                 // or we have some connection issue
-                ReportWeakPeer(new PeerInfo(syncPeer), AllocationContexts.All);
+                ReportWeakPeer(new PeerInfo(syncPeer, _allocationAllowances), AllocationContexts.All);
             }
             else
             {
