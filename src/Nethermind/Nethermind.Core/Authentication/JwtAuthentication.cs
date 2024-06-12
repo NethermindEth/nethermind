@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -154,7 +153,7 @@ public partial class JwtAuthentication : IRpcAuthentication
                 if (_logger.IsWarn) _logger.Warn($"Message authentication error: {result.Exception?.Message}");
                 return false;
             }
-            
+
             long iat = ((DateTimeOffset)jwtToken.IssuedAt).ToUnixTimeSeconds();
             DateTimeOffset now = _timestamper.UtcNowOffset;
             if (Math.Abs(iat - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
