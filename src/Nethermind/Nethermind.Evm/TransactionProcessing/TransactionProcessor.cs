@@ -78,7 +78,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.IsSystem())
             {
-                ITransactionProcessor systemProcessor = new SystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger);
+                ITransactionProcessor systemProcessor = new SystemTxProcessor(spec, WorldState, VirtualMachine, _codeInfoRepository, Ecdsa, Logger);
                 return systemProcessor.Execute(tx, blCtx, tracer);
             }
 
