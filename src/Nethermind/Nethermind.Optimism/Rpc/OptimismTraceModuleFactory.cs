@@ -9,6 +9,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -43,13 +44,15 @@ public class OptimismTraceModuleFactory(
     protected override ReadOnlyTxProcessingEnv CreateTxProcessingEnv() =>
         new OptimismReadOnlyTxProcessingEnv(_worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
 
-    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, ReadOnlyTxProcessingEnv txProcessingEnv, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
-                txProcessingEnv,
+    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
+                scope,
                 Always.Valid,
                 _recoveryStep,
                 rewardCalculator,
                 _receiptStorage,
                 _specProvider,
+                _blockTree,
+                _worldStateManager.GlobalStateReader,
                 _logManager,
                 opSpecHelper,
                 contractRewriter,
