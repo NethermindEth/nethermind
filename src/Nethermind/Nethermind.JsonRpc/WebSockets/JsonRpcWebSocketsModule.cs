@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.WebSockets
             _maxBatchResponseBodySize = maxBatchResponseBodySize;
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext context)
+        public async Task<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext context)
         {
             int port = context.Connection.LocalPort;
 
@@ -58,7 +58,9 @@ namespace Nethermind.JsonRpc.WebSockets
                 throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
             }
 
-            if (jsonRpcUrl.IsAuthenticated && !_rpcAuthentication.Authenticate(context.Request.Headers.Authorization))
+            bool authenticated = await _rpcAuthentication.Authenticate(context.Request.Headers.Authorization);
+
+            if (jsonRpcUrl.IsAuthenticated && !authenticated)
             {
                 throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
             }

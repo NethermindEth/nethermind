@@ -149,7 +149,9 @@ namespace Nethermind.Runner.JsonRpc
                     if (jsonRpcUrl.MaxRequestBodySize is not null)
                         ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
 
-                    if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
+                    bool authenticated = await rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization);
+
+                    if (jsonRpcUrl.IsAuthenticated && !authenticated)
                     {
                         await PushErrorResponse(StatusCodes.Status403Forbidden, ErrorCodes.InvalidRequest,
                             "Authentication error");

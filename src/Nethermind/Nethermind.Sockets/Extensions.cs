@@ -51,8 +51,7 @@ namespace Nethermind.Sockets
                     if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
 
                     using WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    using ISocketsClient socketsClient =
-                        module.CreateClient(webSocket, clientName, context);
+                    using ISocketsClient socketsClient = await module.CreateClient(webSocket, clientName, context);
                     id = socketsClient.Id;
                     await socketsClient.ReceiveLoopAsync();
                 }

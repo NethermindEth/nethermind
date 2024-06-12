@@ -28,12 +28,12 @@ namespace Nethermind.Analytics
             _logManager = logManager;
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
+        public Task<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
         {
             SocketClient<WebSocketMessageStream> socketsClient = new(clientName, new WebSocketMessageStream(webSocket, _logManager), _jsonSerializer);
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
-            return socketsClient;
+            return Task.FromResult<ISocketsClient>(socketsClient);
         }
 
         public void RemoveClient(string id) => _clients.TryRemove(id, out _);
