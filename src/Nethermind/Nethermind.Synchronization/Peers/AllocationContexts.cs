@@ -6,7 +6,7 @@ using System;
 namespace Nethermind.Synchronization.Peers
 {
     [Flags]
-    public enum AllocationContexts: uint
+    public enum AllocationContexts : uint
     {
         None = 0,
         Headers = 1,
