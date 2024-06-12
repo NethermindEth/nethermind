@@ -24,15 +24,24 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public async Task Execute(CancellationToken _)
+        public Task Execute(CancellationToken _)
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
-                _api.BlockProducer = await BuildProducer();
+                _api.BlockProducer = BuildProducer();
+
+                _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
+
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                {
+                    _api.BlockProducerRunner = wrapperPlugin.InitBlockProducerRunner(_api.BlockProducerRunner);
+                }
             }
+
+            return Task.CompletedTask;
         }
 
-        protected virtual async Task<IBlockProducer> BuildProducer()
+        protected virtual IBlockProducer BuildProducer()
         {
             _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
@@ -59,7 +68,7 @@ namespace Nethermind.Init.Steps
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }
 
-                return await blockProducerFactory.InitBlockProducer(consensusPlugin.DefaultBlockProductionTrigger);
+                return blockProducerFactory.InitBlockProducer();
             }
             else
             {
@@ -71,9 +80,9 @@ namespace Nethermind.Init.Steps
             IConsensusWrapperPlugin consensusWrapperPlugin,
             IBlockProducerFactory baseBlockProducerFactory) : IBlockProducerFactory
         {
-            public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource = null)
+            public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
             {
-                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, blockProductionTrigger, additionalTxSource);
+                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, additionalTxSource);
             }
         }
     }

@@ -75,14 +75,19 @@ namespace Nethermind.Consensus.Clique
 
         public static Hash256 CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
-            int extraSeal = 65;
-            int shortExtraLength = blockHeader.ExtraData.Length - extraSeal;
             byte[] fullExtraData = blockHeader.ExtraData;
-            byte[] shortExtraData = blockHeader.ExtraData.Slice(0, shortExtraLength);
+            byte[] shortExtraData = SliceExtraSealFromExtraData(blockHeader.ExtraData);
             blockHeader.ExtraData = shortExtraData;
             Hash256 sigHash = blockHeader.CalculateHash();
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
+        }
+
+        public static byte[] SliceExtraSealFromExtraData(byte[] extraData)
+        {
+            if (extraData.Length < Clique.ExtraSealLength)
+                new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
+            return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
         }
 
         private readonly object _snapshotCreationLock = new();

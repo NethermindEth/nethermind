@@ -19,7 +19,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -58,14 +57,17 @@ public class ReorgTests
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
+        CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
+            codeInfoRepository,
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
             specProvider,
             stateProvider,
             virtualMachine,
+            codeInfoRepository,
             LimboLogs.Instance);
 
         BlockProcessor blockProcessor = new(
@@ -75,7 +77,6 @@ public class ReorgTests
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
             new BlockhashStore(_blockTree, MainnetSpecProvider.Instance, stateProvider),
             transactionProcessor,
             LimboLogs.Instance);

@@ -61,10 +61,15 @@ namespace Nethermind.Core.Resettables
         public int Count => _wrapped.Count;
         public bool IsReadOnly => false;
 
-        public void Reset()
+        public void Reset(bool resizeCollections = true)
         {
             if (_wrapped.Count == 0)
             {
+                return;
+            }
+            if (!resizeCollections)
+            {
+                _wrapped.Clear();
                 return;
             }
 

@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -227,7 +228,7 @@ namespace Nethermind.Trie
                     if (nodesToCommit.Count >= 4)
                     {
                         ClearExceptions();
-                        Parallel.For(0, nodesToCommit.Count, i =>
+                        Parallel.For(0, nodesToCommit.Count, RuntimeInformation.ParallelOptionsLogicalCores, i =>
                         {
                             try
                             {
@@ -345,10 +346,10 @@ namespace Nethermind.Trie
             }
         }
 
-        public void UpdateRootHash()
+        public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
-            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool);
+            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
@@ -380,7 +381,7 @@ namespace Nethermind.Trie
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                ref readonly CappedArray<byte> result = ref Run(nibbles, nibblesCount, ref updatePathTreePath, in CappedArray<byte>.Empty, isUpdate: false, startRootHash: rootHash);
+                ref readonly CappedArray<byte> result = ref Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, isUpdate: false, startRootHash: rootHash);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
                 return result.AsSpan();
@@ -397,9 +398,8 @@ namespace Nethermind.Trie
         {
             try
             {
-                int nibblesCount = nibbles.Length;
                 TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                CappedArray<byte> result = Run(nibbles, nibblesCount, ref updatePathTreePath, Array.Empty<byte>(), false, startRootHash: rootHash,
+                CappedArray<byte> result = Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
                 return result.ToArray() ?? Array.Empty<byte>();
             }
@@ -423,7 +423,7 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size;
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                CappedArray<byte> result = Run(nibbles, nibblesCount, ref updatePathTreePath, Array.Empty<byte>(), false, startRootHash: rootHash,
+                CappedArray<byte> result = Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result.ToArray() ?? Array.Empty<byte>();
@@ -506,7 +506,7 @@ namespace Nethermind.Trie
                 // lazy stack cleaning after the previous update
                 ClearNodeStack();
                 TreePath updatePathTreePath = TreePath.FromPath(rawKey); // Only used on update.
-                Run(nibbles, nibblesCount, ref updatePathTreePath, in value, isUpdate: true);
+                Run(ref updatePathTreePath, in value, nibbles, isUpdate: true);
 
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
@@ -531,27 +531,28 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
         {
-            Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
+            if (value is null)
+            {
+                Set(rawKey, in CappedArray<byte>.Empty);
+            }
+            else
+            {
+                CappedArray<byte> valueBytes = new(value.Bytes);
+                Set(rawKey, in valueBytes);
+            }
         }
 
         private ref readonly CappedArray<byte> Run(
-            Span<byte> updatePath,
-            int nibblesCount,
             ref TreePath updatePathTreePath,
             in CappedArray<byte> updateValue,
+            Span<byte> updatePath,
             bool isUpdate,
             bool ignoreMissingDelete = true,
             Hash256? startRootHash = null,
             bool isNodeRead = false)
         {
-#if DEBUG
-            if (nibblesCount != updatePath.Length)
-            {
-                throw new Exception("Does it ever happen?");
-            }
-#endif
             TraverseContext traverseContext =
-                new(updatePath[..nibblesCount], ref updatePathTreePath, updateValue, isUpdate, ignoreMissingDelete, isNodeRead: isNodeRead);
+                new(updatePath, ref updatePathTreePath, updateValue, isUpdate, ignoreMissingDelete, isNodeRead: isNodeRead);
 
             if (startRootHash is not null)
             {
@@ -571,7 +572,7 @@ namespace Nethermind.Trie
                     if (traverseContext.UpdateValue.IsNotNull)
                     {
                         if (_logger.IsTrace) TraceNewLeaf(in traverseContext);
-                        byte[] key = updatePath[..nibblesCount].ToArray();
+                        byte[] key = updatePath.ToArray();
                         RootRef = TrieNodeFactory.CreateLeaf(key, in traverseContext.UpdateValue);
                     }
 
@@ -1356,7 +1357,7 @@ namespace Nethermind.Trie
                 ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
                 : TrieStore;
 
-            if (storageAddr != null)
+            if (storageAddr is not null)
             {
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }

@@ -22,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
@@ -97,7 +96,6 @@ namespace Nethermind.Synchronization.Test
                 _pool,
                 _synchronizer.SyncModeSelector,
                 quickConfig,
-                new WitnessCollector(new MemDb(), LimboLogs.Instance),
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);

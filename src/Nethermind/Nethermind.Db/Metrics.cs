@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel;
+using System.Threading;
+
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.Db
@@ -12,11 +12,76 @@ namespace Nethermind.Db
     {
         [CounterMetric]
         [Description("Number of Code DB cache reads.")]
-        public static long CodeDbCache { get; set; }
+        public static long CodeDbCache
+        {
+            get
+            {
+                long total = 0;
+                foreach (var value in _codeDbCache.Values)
+                {
+                    total += value;
+                }
+                return total;
+            }
+        }
+        private static ThreadLocal<long> _codeDbCache = new(trackAllValues: true);
+        [Description("Number of Code DB cache reads on thread.")]
+        public static long ThreadLocalCodeDbCache => _codeDbCache.Value;
+        public static void IncrementCodeDbCache() => _codeDbCache.Value++;
+
+        [CounterMetric]
+        [Description("Number of State Trie cache hits.")]
+        public static long StateTreeCache
+        {
+            get
+            {
+                long total = 0;
+                foreach (var value in _stateTreeCacheHits.Values)
+                {
+                    total += value;
+                }
+                return total;
+            }
+        }
+
+        private static ThreadLocal<long> _stateTreeCacheHits = new(trackAllValues: true);
+        public static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Value++;
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
-        public static long StateTreeReads { get; set; }
+        public static long StateTreeReads
+        {
+            get
+            {
+                long total = 0;
+                foreach (var value in _stateTreeReads.Values)
+                {
+                    total += value;
+                }
+                return total;
+            }
+        }
+        private static ThreadLocal<long> _stateTreeReads = new(trackAllValues: true);
+        [Description("Number of State Trie reads on thread.")]
+        public static long ThreadLocalStateTreeReads => _stateTreeReads.Value;
+        public static void IncrementStateTreeReads() => _stateTreeReads.Value++;
+
+        [CounterMetric]
+        [Description("Number of State Reader reads.")]
+        public static long StateReaderReads
+        {
+            get
+            {
+                long total = 0;
+                foreach (var value in _stateReaderReads.Values)
+                {
+                    total += value;
+                }
+                return total;
+            }
+        }
+        private static ThreadLocal<long> _stateReaderReads = new(trackAllValues: true);
+        public static void IncrementStateReaderReads() => _stateReaderReads.Value++;
 
         [CounterMetric]
         [Description("Number of Blocks Trie writes.")]
@@ -27,8 +92,44 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
+        [Description("Number of storage trie cache hits.")]
+        public static long StorageTreeCache
+        {
+            get
+            {
+                long total = 0;
+                foreach (var value in _storageTreeCache.Values)
+                {
+                    total += value;
+                }
+                return total;
+            }
+        }
+        private static ThreadLocal<long> _storageTreeCache = new(trackAllValues: true);
+        public static void IncrementStorageTreeCache() => _storageTreeCache.Value++;
+
+        [CounterMetric]
         [Description("Number of storage trie reads.")]
-        public static long StorageTreeReads { get; set; }
+        public static long StorageTreeReads
+        {
+            get
+            {
+                long total = 0;
+                foreach (var value in _storageTreeReads.Values)
+                {
+                    total += value;
+                }
+                return total;
+            }
+        }
+        private static ThreadLocal<long> _storageTreeReads = new(trackAllValues: true);
+        [Description("Number of storage trie reads on thread.")]
+        public static long ThreadLocalStorageTreeReads => _storageTreeReads.Value;
+        public static void IncrementStorageTreeReads() => _storageTreeReads.Value++;
+
+        [CounterMetric]
+        [Description("Number of storage reader reads.")]
+        public static long StorageReaderReads { get; set; }
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]
