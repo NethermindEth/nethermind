@@ -3,7 +3,9 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -24,10 +26,7 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(5);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -43,10 +42,10 @@ namespace Nethermind.Evm.Precompiles
 
                 UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
 
-                byte[] expSignificantBytes = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
+                using ArrayPoolList<byte> expSignificantBytes = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
 
                 UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
-                UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
+                UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes.AsSpan());
                 UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
                 return gas > long.MaxValue ? long.MaxValue : (long)gas;
             }
@@ -56,49 +55,49 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
+        [SkipLocalsInit]
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 
-            int baseLength = (int)inputData.Span.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
-            BigInteger expLengthBig = inputData.Span.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
+            ReadOnlySpan<byte> inputDataSpan = inputData.Span;
+            int baseLength = (int)ExtractBigInteger(inputDataSpan, 0, 32);
+            BigInteger expLengthBig = ExtractBigInteger(inputDataSpan, 32, 32);
             int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
-            int modulusLength = (int)inputData.Span.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
+            int modulusLength = (int)ExtractBigInteger(inputDataSpan, 64, 32);
 
-            BigInteger modulusInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
+            BigInteger modulusInt = ExtractBigInteger(inputDataSpan, 96 + baseLength + expLength, modulusLength);
 
             if (modulusInt.IsZero)
             {
                 return (new byte[modulusLength], true);
             }
 
-            BigInteger baseInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-            BigInteger expInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength).ToUnsignedBigInteger();
+            BigInteger baseInt = ExtractBigInteger(inputDataSpan, 96, baseLength);
+            BigInteger expInt = ExtractBigInteger(inputDataSpan, 96 + baseLength, expLength);
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
+
+            BigInteger ExtractBigInteger(ReadOnlySpan<byte> span, int startIndex, int length)
+            {
+                using ArrayPoolList<byte> arrayPoolList = span.SliceWithZeroPaddingEmptyOnError(startIndex, length);
+                return arrayPoolList.AsSpan().ToUnsignedBigInteger();
+            }
         }
 
-        private UInt256 MultComplexity(in UInt256 adjustedExponentLength)
-        {
-            if (adjustedExponentLength <= 64)
-            {
-                return adjustedExponentLength * adjustedExponentLength;
-            }
+        private UInt256 MultComplexity(in UInt256 adjustedExponentLength) =>
+            adjustedExponentLength <= 64
+                ? adjustedExponentLength * adjustedExponentLength
+                : adjustedExponentLength <= 1024
+                    ? adjustedExponentLength * adjustedExponentLength / 4 + 96 * adjustedExponentLength - 3072
+                    : adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
 
-            if (adjustedExponentLength <= 1024)
-            {
-                return adjustedExponentLength * adjustedExponentLength / 4 + 96 * adjustedExponentLength - 3072;
-            }
-
-            return adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
-        }
-
-        private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, byte[] exponent)
+        private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, ReadOnlySpan<byte> exponent)
         {
             bool overflow = false;
             bool underflow = false;
             UInt256 result;
 
-            int leadingZeros = exponent.AsSpan().LeadingZerosCount();
+            int leadingZeros = exponent.LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
                 overflow |= UInt256.MultiplyOverflow(lengthOver32, 8, out result);

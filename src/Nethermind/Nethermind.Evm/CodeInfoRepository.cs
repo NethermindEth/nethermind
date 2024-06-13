@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -61,6 +62,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
 
     private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
     {
@@ -92,11 +94,18 @@ public class CodeInfoRepository : ICodeInfoRepository
         }.ToFrozenDictionary();
     }
 
+    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)>? precompileCache = null)
+    {
+        _localPrecompiles = precompileCache is null
+            ? _precompiles
+            : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+    }
+
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
-            return _precompiles[codeSource];
+            return _localPrecompiles[codeSource];
         }
 
         CodeInfo? cachedCodeInfo = null;
@@ -157,5 +166,36 @@ public class CodeInfoRepository : ICodeInfoRepository
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);
+    }
+
+    private CodeInfo CreateCachedPrecompile(
+        in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
+        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+
+    private class CachedPrecompile(
+        Address address,
+        IPrecompile precompile,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) : IPrecompile
+    {
+        public static Address Address => Address.Zero;
+
+        public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
+
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
+
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
+            if (!cache.TryGetValue(key, out (ReadOnlyMemory<byte>, bool) result))
+            {
+                result = precompile.Run(inputData, releaseSpec);
+                // we need to rebuild the key with data copy as the data can be changed by VM processing
+                key = new PreBlockCaches.PrecompileCacheKey(address, inputData.ToArray());
+                cache.TryAdd(key, result);
+            }
+
+            return result;
+        }
     }
 }
