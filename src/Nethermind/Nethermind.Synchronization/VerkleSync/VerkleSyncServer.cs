@@ -45,7 +45,10 @@ public class VerkleSyncServer
 
         VerkleTree tree = new(_store, _logManager);
         watch = Stopwatch.StartNew();
-        VerkleProof vProof = tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
+        _logger.Info($"Starting Proof Generation");
+        VerkleProof vProof = nodes.Count == 0
+            ? new VerkleProof()
+            : tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
         watch.Stop();
         _logger.Info($"Proof Generated time: {watch.Elapsed}");
         // TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
