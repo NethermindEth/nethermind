@@ -12,25 +12,24 @@ namespace Nethermind.Verkle.Tree.Test;
 [TestFixture]
 public class NodeSerializerTests
 {
-
     private readonly Random _rand = new(0);
 
     [Test]
     public void TestBranchNode()
     {
-        byte[] commitment = new byte[32];
+        byte[] commitment = new byte[64];
         _rand.NextBytes(commitment);
         _rand.NextBytes(commitment);
-        InternalNode node = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytes(commitment)!.Value));
+        InternalNode node = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytesUncompressedUnchecked(commitment, isBigEndian: false)));
         AssertEncodeDecodeEqual(node);
     }
 
     [Test]
     public void TestFullStemNode()
     {
-        byte[] commitment = new byte[32];
-        byte[] c1 = new byte[32];
-        byte[] c2 = new byte[32];
+        byte[] commitment = new byte[64];
+        byte[] c1 = new byte[64];
+        byte[] c2 = new byte[64];
         byte[] stem = new byte[31];
 
         Banderwagon? c1Point;
@@ -45,13 +44,13 @@ public class NodeSerializerTests
         while (true)
         {
             _rand.NextBytes(c1);
-            c1Point = Banderwagon.FromBytes(c1);
+            c1Point = Banderwagon.FromBytesUncompressedUnchecked(c1);
             if (c1Point.HasValue) break;
         }
         while (true)
         {
             _rand.NextBytes(c2);
-            c2Point = Banderwagon.FromBytes(c2);
+            c2Point = Banderwagon.FromBytesUncompressedUnchecked(c2);
             if (c2Point.HasValue) break;
         }
         _rand.NextBytes(stem);
@@ -64,8 +63,8 @@ public class NodeSerializerTests
     [Test]
     public void TestC1NullStemNode()
     {
-        byte[] commitment = new byte[32];
-        byte[] c2 = new byte[32];
+        byte[] commitment = new byte[64];
+        byte[] c2 = new byte[64];
         byte[] stem = new byte[31];
 
 
@@ -74,14 +73,14 @@ public class NodeSerializerTests
         while (true)
         {
             _rand.NextBytes(commitment);
-            internalCommitment = Banderwagon.FromBytes(commitment);
+            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment);
             if (internalCommitment.HasValue) break;
         }
 
         while (true)
         {
             _rand.NextBytes(c2);
-            c2Point = Banderwagon.FromBytes(c2);
+            c2Point = Banderwagon.FromBytesUncompressedUnchecked(c2);
             if (c2Point.HasValue) break;
         }
         _rand.NextBytes(stem);
@@ -94,8 +93,8 @@ public class NodeSerializerTests
     [Test]
     public void TestC2NullStemNode()
     {
-        byte[] commitment = new byte[32];
-        byte[] c1 = new byte[32];
+        byte[] commitment = new byte[64];
+        byte[] c1 = new byte[64];
         byte[] stem = new byte[31];
 
         Banderwagon? c1Point;
@@ -103,13 +102,13 @@ public class NodeSerializerTests
         while (true)
         {
             _rand.NextBytes(commitment);
-            internalCommitment = Banderwagon.FromBytes(commitment);
+            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment);
             if (internalCommitment.HasValue) break;
         }
         while (true)
         {
             _rand.NextBytes(c1);
-            c1Point = Banderwagon.FromBytes(c1);
+            c1Point = Banderwagon.FromBytesUncompressedUnchecked(c1);
             if (c1Point.HasValue) break;
         }
         _rand.NextBytes(stem);
@@ -122,14 +121,14 @@ public class NodeSerializerTests
     [Test]
     public void TestNullNullStemNode()
     {
-        byte[] commitment = new byte[32];
+        byte[] commitment = new byte[64];
         byte[] stem = new byte[31];
 
         Banderwagon? internalCommitment;
         while (true)
         {
             _rand.NextBytes(commitment);
-            internalCommitment = Banderwagon.FromBytes(commitment);
+            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment);
             if (internalCommitment.HasValue) break;
         }
         _rand.NextBytes(stem);
@@ -143,8 +142,8 @@ public class NodeSerializerTests
     public void TestZeroBanderwagonSerialized()
     {
         Banderwagon zero = new Banderwagon();
-        var ser = zero.ToBytes();
-        Banderwagon zero2 = Banderwagon.FromBytes(ser).Value;
+        var ser = zero.ToBytesUncompressedLittleEndian();
+        Banderwagon zero2 = Banderwagon.FromBytesUncompressedUnchecked(ser, isBigEndian: false);
         Assert.IsTrue(zero == zero2);
     }
 
