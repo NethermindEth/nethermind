@@ -355,7 +355,8 @@ public partial class BlockProcessor : IBlockProcessor
         }
         else
         {
-            if (!block.IsGenesis)
+            // we dont store the execution witness on disk so when we run blocks after restart, this fails
+            if (!block.IsGenesis && block.Body.ExecutionWitness is not null)
             {
                 var verkleWorldState = worldState as VerkleWorldState;
                 ExecutionWitness? witness = block.Body.ExecutionWitness;
