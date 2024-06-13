@@ -104,6 +104,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
         SpanConcurrentDictionary<byte, byte[]?>? leafs = block.ExecutionWitness?.LeafStore;
         Console.WriteLine($"AddToHealingCache {block.Number} {block.Hash} {leafs?.Count}");
         ExecutionWitness witness = block.ExecutionWitness!;
+        if(witness is null ) return;
         var stopwatch = Stopwatch.StartNew();
         var verkleStore = new NullVerkleTreeStore();
         var tree = new VerkleTree(verkleStore, LimboLogs.Instance);
