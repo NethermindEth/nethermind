@@ -218,7 +218,7 @@ namespace Nethermind.Core.Caching
 
             static void InvalidRemoveFromEmptyList()
             {
-                throw new InvalidOperationException("This method shouldn't be called on empty list");
+                Debug.Assert(false, "This method shouldn't be called on empty list");
             }
         }
 
@@ -226,7 +226,7 @@ namespace Nethermind.Core.Caching
         [StackTraceHidden]
         static void InvalidNotSingleNodeList()
         {
-            throw new InvalidOperationException("This should only be true for a list with only one node");
+            Debug.Assert(false, "This should only be true for a list with only one node");
         }
 
         private void AddMostRecent(ref LruCacheItem node, int offset)
