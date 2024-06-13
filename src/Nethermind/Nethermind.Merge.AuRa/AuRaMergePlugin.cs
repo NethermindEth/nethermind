@@ -33,6 +33,7 @@ namespace Nethermind.Merge.AuRa
     {
         private AuRaNethermindApi? _auraApi;
         private IAuraConfig? _auraConfig;
+        private ShutterP2P? _shutterP2P;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
@@ -111,7 +112,7 @@ namespace Nethermind.Merge.AuRa
                 {
                     throw new Exception($"Could not load Shutter validator info file: {e}");
                 }
-                
+
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
@@ -124,8 +125,8 @@ namespace Nethermind.Merge.AuRa
                 // init Shutter transaction source
                 shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, _api.EthereumEcdsa!, shutterEonInfo, validatorsInfo);
 
-                ShutterP2P shutterP2P = new(shutterTxSource.OnDecryptionKeysReceived, _auraConfig, _api.LogManager);
-                shutterP2P.Start(_auraConfig.ShutterKeyperP2PAddresses);
+                _shutterP2P = new(shutterTxSource.OnDecryptionKeysReceived, _auraConfig, _api.LogManager);
+                _shutterP2P.Start(_auraConfig.ShutterKeyperP2PAddresses);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
@@ -137,5 +138,10 @@ namespace Nethermind.Merge.AuRa
             return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
 
+        public new void DisposeAsync()
+        {
+            _shutterP2P?.DisposeAsync();
+            _ = base.DisposeAsync();
+        }
     }
 }

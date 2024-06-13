@@ -6,13 +6,13 @@ using Nethermind.Libp2p.Protocols;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
-using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
 using Multiformats.Address;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
+using System.Threading.Channels;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -20,21 +20,27 @@ public class ShutterP2P
 {
     private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
     private readonly ILogger _logger;
-    private readonly ConcurrentQueue<byte[]> _msgQueue = new();
-    private PubsubRouter _router;
-    private ILocalPeer _peer;
+    private readonly Channel<byte[]> _msgQueue = Channel.CreateUnbounded<byte[]>();
+    private readonly IAuraConfig _auraConfig;
+    private PubsubRouter? _router;
+    private ServiceProvider? _serviceProvider;
+    private CancellationTokenSource? _cancellationTokenSource;
 
     public ShutterP2P(Action<Dto.DecryptionKeys> onDecryptionKeysReceived, IAuraConfig auraConfig, ILogManager logManager)
     {
         _onDecryptionKeysReceived = onDecryptionKeysReceived;
         _logger = logManager.GetClassLogger();
+        _auraConfig = auraConfig;
+    }
 
-        ServiceProvider serviceProvider = new ServiceCollection()
+    public void Start(in IEnumerable<string> p2pAddresses)
+    {
+        _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
             {
-                ProtocolVersion = auraConfig.ShutterP2PProtocolVersion,
-                AgentVersion = auraConfig.ShutterP2PAgentVersion
+                ProtocolVersion = _auraConfig.ShutterP2PProtocolVersion,
+                AgentVersion = _auraConfig.ShutterP2PAgentVersion
             })
             // .AddLogging(builder =>
             //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
@@ -46,25 +52,22 @@ public class ShutterP2P
             // )
             .BuildServiceProvider();
 
-        IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
-        _peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + auraConfig.ShutterP2PPort);
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
-        _router = serviceProvider.GetService<PubsubRouter>()!;
+        IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
+        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + _auraConfig.ShutterP2PPort);
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {peer.Address}");
+        _router = _serviceProvider.GetService<PubsubRouter>()!;
 
         ITopic topic = _router.Subscribe("decryptionKeys");
 
         topic.OnMessage += (byte[] msg) =>
         {
-            _msgQueue.Enqueue(msg);
+            _msgQueue.Writer.TryWrite(msg);
             if (_logger.IsDebug) _logger.Debug($"Received Shutter P2P message.");
         };
-    }
 
-    public void Start(in IEnumerable<string> p2pAddresses)
-    {
         MyProto proto = new();
-        CancellationTokenSource ts = new();
-        _ = _router.RunAsync(_peer, proto, token: ts.Token);
+        _cancellationTokenSource = new();
+        _ = _router.RunAsync(peer, proto, token: _cancellationTokenSource.Token);
         ConnectToPeers(proto, p2pAddresses);
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -76,7 +79,7 @@ public class ShutterP2P
             {
                 Thread.Sleep(250);
 
-                while (_msgQueue.TryDequeue(out var msg))
+                while (_msgQueue.Reader.TryRead(out var msg))
                 {
                     ProcessP2PMessage(msg);
                     lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -90,9 +93,14 @@ public class ShutterP2P
                     if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }
             }
-        });
+        }, _cancellationTokenSource.Token);
+    }
 
-        // todo: use cancellation source on finish
+    public void DisposeAsync()
+    {
+        _router?.UnsubscribeAll();
+        _ = _serviceProvider?.DisposeAsync();
+        _cancellationTokenSource?.Cancel();
     }
 
     internal class MyProto : IDiscoveryProtocol
