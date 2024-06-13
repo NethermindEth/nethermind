@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Verkle;
@@ -35,13 +36,18 @@ public class VerkleSyncServer
     public (List<PathWithSubTree>, VerkleProof) GetSubTreeRanges(Hash256 rootHash, Stem startingStem, Stem? limitStem, long byteLimit, out Banderwagon rootPoint)
     {
         rootPoint = default;
-        if (_logger.IsDebug) _logger.Debug($"Getting SubTreeRanges - RH:{rootHash} S:{startingStem} L:{limitStem} Bytes:{byteLimit}");
+        var watch = Stopwatch.StartNew();
+        _logger.Info($"Getting SubTreeRanges - RH:{rootHash} S:{startingStem} L:{limitStem} Bytes:{byteLimit}");
         var nodes = _store.GetLeafRangeIterator(startingStem, limitStem ?? Stem.MaxValue, rootHash, byteLimit).ToList();
-        if (_logger.IsDebug) _logger.Debug($"Nodes Count - {nodes.Count}");
-        if (nodes.Count == 0) return (new List<PathWithSubTree>(), new VerkleProof());
+        watch.Stop();
+        _logger.Info($"Nodes Count - {nodes.Count} time: {watch.Elapsed}");
+        if (nodes.Count == 0) return ([], new VerkleProof());
 
         VerkleTree tree = new(_store, _logManager);
+        watch = Stopwatch.StartNew();
         VerkleProof vProof = tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
+        watch.Stop();
+        _logger.Info($"Proof Generated time: {watch.Elapsed}");
         // TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
         return (nodes, vProof);
     }
