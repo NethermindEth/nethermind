@@ -26,10 +26,10 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
     {
         return item.NodeType switch
         {
-            TreeNodes.VerkleNodeType.BranchNode => 1 + 33, // NodeType + InternalCommitment
-            TreeNodes.VerkleNodeType.StemNode => 1 + 32 + 33
-                                                 + (item.C1 == null ? 1 : 33)
-                                                 + (item.C2 == null ? 1 : 33), // NodeType + Stem + InternalCommitment + C1? + C2?
+            TreeNodes.VerkleNodeType.BranchNode => 1 + 66, // NodeType + InternalCommitment
+            TreeNodes.VerkleNodeType.StemNode => 1 + 32 + 66
+                                                 + (item.C1 == null ? 1 : 66)
+                                                 + (item.C2 == null ? 1 : 66), // NodeType + Stem + InternalCommitment + C1? + C2?
             _ => throw new ArgumentOutOfRangeException()
         };
     }
@@ -41,7 +41,7 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
         {
             case TreeNodes.VerkleNodeType.BranchNode:
                 InternalNode node = new(TreeNodes.VerkleNodeType.BranchNode);
-                node.UpdateCommitment(Banderwagon.FromBytes(rlpStream.DecodeByteArray(), subgroupCheck: false)!.Value);
+                node.UpdateCommitment(Banderwagon.FromBytesUncompressedUnchecked(rlpStream.DecodeByteArray(), isBigEndian: false));
                 return node;
             case TreeNodes.VerkleNodeType.StemNode:
                 var stem = rlpStream.DecodeByteArray();
@@ -49,15 +49,15 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
                 var c1Ser = rlpStream.DecodeByteArray();
                 Commitment? c1 = c1Ser.Length == 0
                     ? null
-                    : new Commitment(Banderwagon.FromBytes(c1Ser, subgroupCheck: false)!.Value);
+                    : new Commitment(Banderwagon.FromBytesUncompressedUnchecked(c1Ser, isBigEndian: false));
 
                 var c2Ser = rlpStream.DecodeByteArray();
                 Commitment? c2 = c2Ser.Length == 0
                     ? null
-                    : new Commitment(Banderwagon.FromBytes(c2Ser, subgroupCheck: false)!.Value);
+                    : new Commitment(Banderwagon.FromBytesUncompressedUnchecked(c2Ser, isBigEndian: false));
 
                 Commitment extCommit =
-                    new(Banderwagon.FromBytes(rlpStream.DecodeByteArray(), subgroupCheck: false)!.Value);
+                    new(Banderwagon.FromBytesUncompressedUnchecked(rlpStream.DecodeByteArray(), isBigEndian: false));
                 return new InternalNode(TreeNodes.VerkleNodeType.StemNode, stem, c1, c2, extCommit);
             default:
                 throw new ArgumentOutOfRangeException();
@@ -70,16 +70,16 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
         {
             case TreeNodes.VerkleNodeType.BranchNode:
                 stream.WriteByte((byte)TreeNodes.VerkleNodeType.BranchNode);
-                stream.Encode(item.InternalCommitment.Point.ToBytes());
+                stream.Encode(item.InternalCommitment.Point.ToBytesUncompressedLittleEndian());
                 break;
             case TreeNodes.VerkleNodeType.StemNode:
                 stream.WriteByte((byte)TreeNodes.VerkleNodeType.StemNode);
                 stream.Encode(item.Stem!.Bytes);
-                if (item.C1 is not null) stream.Encode(item.C1.Point.ToBytes());
+                if (item.C1 is not null) stream.Encode(item.C1.Point.ToBytesUncompressedLittleEndian());
                 else stream.EncodeEmptyByteArray();
-                if (item.C2 is not null) stream.Encode(item.C2.Point.ToBytes());
+                if (item.C2 is not null) stream.Encode(item.C2.Point.ToBytesUncompressedLittleEndian());
                 else stream.EncodeEmptyByteArray();
-                stream.Encode(item.InternalCommitment.Point.ToBytes());
+                stream.Encode(item.InternalCommitment.Point.ToBytesUncompressedLittleEndian());
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
