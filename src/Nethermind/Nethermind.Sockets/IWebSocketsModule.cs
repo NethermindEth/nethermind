@@ -10,7 +10,7 @@ namespace Nethermind.Sockets
     public interface IWebSocketsModule
     {
         string Name { get; }
-        Task<ISocketsClient> CreateClient(WebSocket webSocket, string client, HttpContext context);
+        ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string client, HttpContext context);
         void RemoveClient(string clientId);
         Task SendAsync(SocketsMessage message);
     }

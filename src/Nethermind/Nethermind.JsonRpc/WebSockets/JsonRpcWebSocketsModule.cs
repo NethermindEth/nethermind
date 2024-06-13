@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.WebSockets
             _maxBatchResponseBodySize = maxBatchResponseBodySize;
         }
 
-        public async Task<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext context)
+        public async ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext context)
         {
             int port = context.Connection.LocalPort;
 
