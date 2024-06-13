@@ -25,6 +25,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using System.IO;
+using Google.Protobuf;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -34,7 +35,8 @@ using G1 = Bls.P1;
 
 public class ShutterTxSource : ITxSource
 {
-    public Dto.DecryptionKeys? DecryptionKeys;
+    private IEnumerable<Transaction> _loadedTransactions = [];
+    private ulong _loadedTransactionsSlot = 0;
     private bool _validatorsRegistered = false;
     private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
@@ -43,11 +45,13 @@ public class ShutterTxSource : ITxSource
     private readonly ILogger _logger;
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private readonly SequencerContract _sequencerContract;
+    private readonly ShutterEonInfo _eonInfo;
     private readonly Address ValidatorRegistryContractAddress;
     private readonly Dictionary<ulong, byte[]> ValidatorsInfo;
     private readonly UInt256 EncryptedGasLimit;
+    private readonly ulong InstanceID;
 
-    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, Dictionary<ulong, byte[]> validatorsInfo)
+    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, ShutterEonInfo eonInfo, Dictionary<ulong, byte[]> validatorsInfo)
         : base()
     {
         _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
@@ -56,14 +60,17 @@ public class ShutterTxSource : ITxSource
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
         _ethereumEcdsa = ethereumEcdsa;
+        _eonInfo = eonInfo;
         _sequencerContract = new(auraConfig.ShutterSequencerContractAddress, logFinder, filterStore);
         ValidatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
         ValidatorsInfo = validatorsInfo;
         EncryptedGasLimit = _auraConfig.ShutterEncryptedGasLimit;
+        InstanceID = _auraConfig.ShutterInstanceID;
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
+        // assume validator will stay registered
         if (!_validatorsRegistered)
         {
             if (IsRegistered(parent))
@@ -76,25 +83,59 @@ public class ShutterTxSource : ITxSource
             }
         }
 
-        // assume Gnosis or Chiado chain
-        ulong genesisTimestamp = (_specProvider.ChainId == BlockchainIds.Chiado) ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
-        ulong nextSlot = (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - genesisTimestamp) / 5) + 1;
-
-        if (DecryptionKeys is null || DecryptionKeys.Gnosis.Slot != nextSlot)
+        ulong nextSlot = GetNextSlot();
+        if (_loadedTransactionsSlot != nextSlot)
         {
-            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");
-            if (_logger.IsDebug && DecryptionKeys is not null) _logger.Debug($"Current Shutter decryption keys stored for slot {DecryptionKeys.Gnosis.Slot}");
+            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions.");
+            if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {_loadedTransactionsSlot}");
             return [];
         }
 
-        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, DecryptionKeys.Gnosis.TxPointer);
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
+        return _loadedTransactions;
+    }
 
+    public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
+    {
+        if (decryptionKeys.Gnosis.Slot != GetNextSlot())
+        {
+            return;
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
+
+        if (CheckDecryptionKeys(decryptionKeys))
+        {
+            if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
+
+            IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer);
+            if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
+
+            _loadedTransactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys);
+
+            if (_logger.IsInfo)
+            {
+                _loadedTransactions.ForEach((tx) =>
+                {
+                    _logger.Info(tx.ToShortString());
+                });
+            }
+        }
+    }
+
+    internal ulong GetNextSlot()
+    {
+        // assume Gnosis or Chiado chain
+        ulong genesisTimestamp = (_specProvider.ChainId == BlockchainIds.Chiado) ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
+        return (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - genesisTimestamp) / 5) + 1;
+    }
+
+    internal IEnumerable<Transaction> DecryptSequencedTransactions(IEnumerable<SequencedTransaction> sequencedTransactions, Dto.DecryptionKeys decryptionKeys)
+    {
         // order by identity preimage to match decryption keys
         IEnumerable<(int, Transaction?)> unorderedTransactions = sequencedTransactions
             .Select((x, index) => x with { Index = index })
             .OrderBy(x => x.IdentityPreimage, new ByteArrayComparer())
-            .Zip(DecryptionKeys.Keys.Skip(1))
+            .Zip(decryptionKeys.Keys.Skip(1))
             .Select(x => (x.Item1.Index, DecryptSequencedTransaction(x.Item1, x.Item2)));
 
         // return decrypted transactions to original order
@@ -103,15 +144,78 @@ public class ShutterTxSource : ITxSource
             .Select(x => x.Item2)
             .OfType<Transaction>();
 
-        if (_logger.IsInfo)
+        return transactions;
+    }
+
+    internal bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys)
+    {
+        if (decryptionKeys.InstanceID != InstanceID)
         {
-            transactions.ForEach((tx) =>
-            {
-                _logger.Info(tx.ToShortString());
-            });
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: instanceID {decryptionKeys.InstanceID} did not match expected value {InstanceID}.");
+            return false;
         }
 
-        return transactions;
+        if (decryptionKeys.Eon != _eonInfo.Eon)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {_eonInfo.Eon}.");
+            return false;
+        }
+
+        foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
+        {
+            G1 dk, identity;
+            try
+            {
+                dk = new(key.Key_.ToArray());
+                identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
+            }
+            catch (ApplicationException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: {e}.");
+                return false;
+            }
+
+            if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
+            {
+                if (_logger.IsDebug) _logger.Debug("Invalid decryption keys received on P2P network: decryption key did not match eon key.");
+                return false;
+            }
+        }
+
+        long signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.LongCount();
+
+        if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: incorrect number of signer indices.");
+            return false;
+        }
+
+        if (decryptionKeys.Gnosis.Signatures.Count() != signerIndicesCount)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: incorrect number of signatures.");
+            return false;
+        }
+
+        if (signerIndicesCount != (int)_eonInfo.Threshold)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
+            return false;
+        }
+
+        List<byte[]> identityPreimages = decryptionKeys.Keys.Select((Dto.Key key) => key.Identity.ToArray()).ToList();
+
+        foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
+        {
+            Address keyperAddress = _eonInfo.Addresses[signerIndex];
+
+            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
+                return false;
+            }
+        }
+
+        return true;
     }
 
     internal bool IsRegistered(BlockHeader parent)

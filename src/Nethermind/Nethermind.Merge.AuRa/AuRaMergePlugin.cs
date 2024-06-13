@@ -127,27 +127,16 @@ namespace Nethermind.Merge.AuRa
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-                // init Shutter transaction source
-                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, _api.EthereumEcdsa!, validatorsInfo);
-
-                // init P2P to listen for decryption keys
-                Func<Shutter.Dto.DecryptionKeys, bool> shouldProccessDecryptionKeys = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
-                {
-                    return shutterTxSource.DecryptionKeys is null || decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys.Gnosis.Slot;
-                };
-
-                Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysValidated = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
-                {
-                    shutterTxSource.DecryptionKeys = decryptionKeys;
-                };
-
                 ShutterEonInfo shutterEonInfo = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, logger);
                 _api.BlockTree!.NewHeadBlock += (object? sender, BlockEventArgs e) =>
                 {
                     shutterEonInfo.Update(e.Block.Header);
                 };
 
-                ShutterP2P shutterP2P = new(shutterEonInfo, onDecryptionKeysValidated, shouldProccessDecryptionKeys, readOnlyBlockTree, _auraConfig, _api.LogManager);
+                // init Shutter transaction source
+                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, _api.EthereumEcdsa!, shutterEonInfo, validatorsInfo);
+
+                ShutterP2P shutterP2P = new(shutterTxSource.OnDecryptionKeysReceived, _auraConfig, _api.LogManager);
                 shutterP2P.Start(_auraConfig.ShutterKeyperP2PAddresses);
             }
 

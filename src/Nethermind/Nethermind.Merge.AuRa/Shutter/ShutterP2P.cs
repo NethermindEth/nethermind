@@ -3,18 +3,13 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Protocols;
-using Nethermind.Blockchain;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
-using System.Linq;
 using System.Collections.Generic;
-using Nethermind.Crypto;
 using Multiformats.Address;
-using Nethermind.Core;
-using Google.Protobuf;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -23,24 +18,16 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterP2P
 {
-    private ShutterEonInfo _eonInfo;
-    private readonly Func<Dto.DecryptionKeys, bool> _shouldProcessDecryptionKeys;
-    private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysValidated;
-    private readonly IReadOnlyBlockTree _readOnlyBlockTree;
+    private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
     private readonly ILogger _logger;
-    private readonly ulong InstanceID;
     private readonly ConcurrentQueue<byte[]> _msgQueue = new();
     private PubsubRouter _router;
     private ILocalPeer _peer;
 
-    public ShutterP2P(ShutterEonInfo eonInfo, Action<Dto.DecryptionKeys> onDecryptionKeysValidated, Func<Dto.DecryptionKeys, bool> shouldProcessDecryptionKeys, IReadOnlyBlockTree readOnlyBlockTree, IAuraConfig auraConfig, ILogManager logManager)
+    public ShutterP2P(Action<Dto.DecryptionKeys> onDecryptionKeysReceived, IAuraConfig auraConfig, ILogManager logManager)
     {
-        _eonInfo = eonInfo;
-        _onDecryptionKeysValidated = onDecryptionKeysValidated;
-        _shouldProcessDecryptionKeys = shouldProcessDecryptionKeys;
-        _readOnlyBlockTree = readOnlyBlockTree;
+        _onDecryptionKeysReceived = onDecryptionKeysReceived;
         _logger = logManager.GetClassLogger();
-        InstanceID = auraConfig.ShutterInstanceID;
 
         ServiceProvider serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
@@ -130,89 +117,7 @@ public class ShutterP2P
             return;
         }
 
-        if (!_shouldProcessDecryptionKeys(decryptionKeys))
-        {
-            return;
-        }
-
-        if (CheckDecryptionKeys(decryptionKeys))
-        {
-            if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
-            _onDecryptionKeysValidated(decryptionKeys);
-        }
-    }
-
-    internal bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys)
-    {
-        if (_logger.IsDebug) _logger.Debug($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot} #block: {_readOnlyBlockTree.Head!.Header.Number}");
-
-        if (decryptionKeys.InstanceID != InstanceID)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: instanceID {decryptionKeys.InstanceID} did not match expected value {InstanceID}.");
-            return false;
-        }
-
-        if (decryptionKeys.Eon != _eonInfo.Eon)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {_eonInfo.Eon}.");
-            return false;
-        }
-
-        foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
-        {
-            Bls.P1 dk, identity;
-            try
-            {
-                dk = new(key.Key_.ToArray());
-                identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
-            }
-            catch (ApplicationException e)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: {e}.");
-                return false;
-            }
-
-            if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
-            {
-                if (_logger.IsDebug) _logger.Debug("Invalid decryption keys received on P2P network: decryption key did not match eon key.");
-                return false;
-            }
-        }
-
-        long signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.LongCount();
-
-        if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: incorrect number of signer indices.");
-            return false;
-        }
-
-        if (decryptionKeys.Gnosis.Signatures.Count() != signerIndicesCount)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: incorrect number of signatures.");
-            return false;
-        }
-
-        if (signerIndicesCount != (int)_eonInfo.Threshold)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
-            return false;
-        }
-
-        List<byte[]> identityPreimages = decryptionKeys.Keys.Select((Dto.Key key) => key.Identity.ToArray()).ToList();
-
-        foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
-        {
-            Address keyperAddress = _eonInfo.Addresses[signerIndex];
-
-            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
-                return false;
-            }
-        }
-
-        return true;
+        _onDecryptionKeysReceived(decryptionKeys);
     }
 
     internal void ConnectToPeers(MyProto proto, IEnumerable<string> p2pAddresses)
