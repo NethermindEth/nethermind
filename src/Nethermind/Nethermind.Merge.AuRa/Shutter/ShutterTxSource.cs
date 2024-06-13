@@ -96,7 +96,8 @@ public class ShutterTxSource : ITxSource
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        if (decryptionKeys.Gnosis.Slot <= _loadedTransactionsSlot || decryptionKeys.Gnosis.Slot != GetNextSlot())
+        ulong nextSlot = GetNextSlot();
+        if (decryptionKeys.Gnosis.Slot <= _loadedTransactionsSlot || decryptionKeys.Gnosis.Slot != nextSlot)
         {
             return;
         }
@@ -111,6 +112,7 @@ public class ShutterTxSource : ITxSource
             if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
 
             _loadedTransactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys);
+            _loadedTransactionsSlot = nextSlot;
 
             if (_logger.IsInfo)
             {
