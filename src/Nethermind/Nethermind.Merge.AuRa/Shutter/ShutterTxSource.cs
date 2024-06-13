@@ -96,7 +96,7 @@ public class ShutterTxSource : ITxSource
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        if (decryptionKeys.Gnosis.Slot != GetNextSlot())
+        if (decryptionKeys.Gnosis.Slot <= _loadedTransactionsSlot || decryptionKeys.Gnosis.Slot != GetNextSlot())
         {
             return;
         }
