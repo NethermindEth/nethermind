@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
@@ -10,18 +11,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching
 {
-    [TestFixture(typeof(LruCache<Address, Account>))]
     public class LruCacheTests<TCache>
     {
         private static ICache<Address, Account> Create()
         {
-            return (ICache<Address, Account>)Activator.CreateInstance(typeof(TCache), Capacity, "test")!;
+            return new LruCache<Address, Account>(Capacity, Capacity / 2, "test");
         }
 
-        private const int Capacity = 16;
+        private const int Capacity = 32;
 
-        private readonly Account[] _accounts = new Account[Capacity * 2];
-        private readonly Address[] _addresses = new Address[Capacity * 2];
+        private readonly Account[] _accounts = new Account[Capacity * 2 + 1];
+        private readonly Address[] _addresses = new Address[Capacity * 2 + 1];
 
         [SetUp]
         public void Setup()
@@ -85,6 +85,117 @@ namespace Nethermind.Core.Test.Caching
                 }
                 cache.Set(_addresses[i], _accounts[i]);
             }
+        }
+
+        [Test]
+        public void Beyond_capacity_lru_check()
+        {
+            Random random = new();
+            ICache<Address, Account> cache = Create();
+            for (var iter = 0; iter < Capacity; iter++)
+            {
+                for (int ii = 0; ii < Capacity; ii++)
+                {
+                    cache.Set(_addresses[ii], _accounts[ii]).Should().BeTrue();
+                }
+
+                for (int i = 1; i < Capacity; i++)
+                {
+                    for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
+                    {
+                        // Fuzz the order of the addresses
+                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        cache.Set(_addresses[index], _accounts[index]).Should().BeFalse();
+                    }
+                    for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
+                    {
+                        // Fuzz the order of the addresses
+                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        cache.Delete(_addresses[index]).Should().BeTrue();
+                        cache.Set(_addresses[index], _accounts[index]).Should().BeTrue();
+                    }
+                    for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
+                    {
+                        // Fuzz the order of the addresses
+                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        cache.Get(_addresses[index]).Should().BeEquivalentTo(_accounts[index]);
+                    }
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        if (ii <  i + Capacity - 1)
+                            cache.Set(_addresses[ii], _accounts[ii]).Should().BeFalse();
+                        else
+                            cache.Set(_addresses[ii], _accounts[ii]).Should().BeTrue();
+                    }
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        cache.Get(_addresses[ii]).Should().NotBeNull();
+                    }
+                    if (i > 0)
+                    {
+                        cache.Get(_addresses[i - 1]).Should().BeNull();
+                    }
+                    cache.Get(_addresses[i + Capacity]).Should().BeNull();
+                }
+
+                cache.Count.Should().Be(Capacity);
+                if (iter % 2 == 0)
+                {
+                    cache.Clear();
+                }
+                else
+                {
+                    for (int ii = Capacity - 1; ii < Capacity * 2 - 1; ii++)
+                    {
+                        cache.Get(_addresses[ii]).Should().BeEquivalentTo(_accounts[ii]);
+                        cache.Delete(_addresses[ii]).Should().BeTrue();
+                    }
+                }
+
+                cache.Count.Should().Be(0);
+            }
+        }
+
+        [Test]
+        public void Beyond_capacity_lru_parallel()
+        {
+            ICache<Address, Account> cache = Create();
+            Parallel.For(0, Environment.ProcessorCount * 8, (iter) =>
+            {
+                for (int ii = 0; ii < Capacity; ii++)
+                {
+                    cache.Set(_addresses[ii], _accounts[ii]);
+                }
+
+                for (int i = 1; i < Capacity; i++)
+                {
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        cache.Set(_addresses[ii], _accounts[ii]);
+                    }
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        cache.Get(_addresses[ii]);
+                    }
+                    if (i > 0)
+                    {
+                        cache.Get(_addresses[i - 1]);
+                    }
+                    cache.Get(_addresses[i + Capacity]);
+
+                    if (iter % Environment.ProcessorCount == 0)
+                    {
+                        cache.Clear();
+                    }
+                    else
+                    {
+                        for (int ii = i; ii < i + Capacity / 2; ii++)
+                        {
+                            cache.Delete(_addresses[ii]);
+                        }
+                    }
+                }
+            });
         }
 
         [Test]
