@@ -13,7 +13,7 @@ internal class DiscoveryReport
     public DiscoveryReport(IDiscv5Protocol discv5Protocol, ILogManager logManager, CancellationToken token)
     {
         ILogger logger = logManager.GetClassLogger<DiscoveryReport>();
-        if (!logger.IsInfo)
+        if (!logger.IsDebug)
         {
             return;
         }
@@ -23,7 +23,7 @@ internal class DiscoveryReport
             while (!token.IsCancellationRequested)
             {
                 logger.Debug($"Nodes checked: {Interlocked.Exchange(ref RecentlyChecked, 0)}, in total {TotalChecked}. Kademlia table state: {discv5Protocol.GetActiveNodes.Count()} active nodes, {discv5Protocol.GetAllNodes.Count()} all nodes.");
-                await Task.Delay(10_000);
+                await Task.Delay(10_000, token);
             }
         }, token);
     }

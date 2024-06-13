@@ -37,7 +37,7 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly SimpleFilePublicKeyDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
-    private DiscoveryReport? _discoveryReport;
+    private readonly DiscoveryReport? _discoveryReport;
 
     public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
@@ -98,7 +98,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
-            .WithLoggerFactory(NullLoggerFactory.Instance)
+            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
             .Build();
 
 
@@ -283,10 +283,6 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public async Task StopAsync()
     {
-        await _discv5Protocol!.StopAsync();
-        _appShutdownSource.Cancel();
-        _discoveryDb.Clear();
-
         if (_api.PeerManager is null)
         {
             return;
@@ -304,6 +300,10 @@ public class DiscoveryV5App : IDiscoveryApp
                 batch[enr.NodeId] = enr.EncodeRecord();
             }
         }
+
+        await _discv5Protocol!.StopAsync();
+        _appShutdownSource.Cancel();
+        _discoveryDb.Clear();
     }
 
     public void AddNodeToDiscovery(Node node)
