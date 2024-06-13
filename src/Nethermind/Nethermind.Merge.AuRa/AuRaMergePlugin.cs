@@ -99,31 +99,19 @@ namespace Nethermind.Merge.AuRa
                 Dictionary<ulong, byte[]> validatorsInfo = [];
                 try
                 {
-                    // todo: parse as normal class?
-                    JsonDocument validatorsInfoDoc = JsonDocument.Parse(File.ReadAllText(_auraConfig.ShutterValidatorInfoFile));
-                    validatorsInfo = validatorsInfoDoc.RootElement.EnumerateObject().ToDictionary((JsonProperty p) => Convert.ToUInt64(p.Name), (JsonProperty p) => Convert.FromHexString(p.Value.GetString()!.AsSpan(2)));
+                    string validatorsInfoRaw = File.ReadAllText(_auraConfig.ShutterValidatorInfoFile);
+                    Dictionary<ulong, string>? validatorsInfoParsed = JsonSerializer.Deserialize<Dictionary<ulong, string>>(JsonDocument.Parse(validatorsInfoRaw));
+                    if (validatorsInfoParsed is null)
+                    {
+                        throw new JsonException("Invalid JSON document format, should be (index, public key) pairs.");
+                    }
+                    validatorsInfo = validatorsInfoParsed.ToDictionary(x => x.Key, x => Convert.FromHexString(x.Value.AsSpan()[2..]));
                 }
-                catch (FileNotFoundException e)
+                catch (Exception e)
                 {
-                    throw new FileNotFoundException($"Could not find Shutter validator info file: {e}");
+                    throw new Exception($"Could not load Shutter validator info file: {e}");
                 }
-                catch (DirectoryNotFoundException e)
-                {
-                    throw new DirectoryNotFoundException($"Could not find Shutter validator info file: {e}");
-                }
-                catch (UnauthorizedAccessException e)
-                {
-                    throw new UnauthorizedAccessException($"Could not access Shutter validator info file (update permissions): {e}");
-                }
-                catch (IOException e)
-                {
-                    throw new IOException($"Could not load Shutter validator info file: {e}");
-                }
-                catch (JsonException e)
-                {
-                    throw new JsonException($"Could not parse Shutter validator info file: {e}");
-                }
-
+                
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
