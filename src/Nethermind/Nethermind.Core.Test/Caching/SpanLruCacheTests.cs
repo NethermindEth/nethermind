@@ -136,7 +136,7 @@ namespace Nethermind.Core.Test.Caching
                     }
                     for (int ii = i; ii < i + Capacity; ii++)
                     {
-                        if (ii <  i + Capacity - 1)
+                        if (ii < i + Capacity - 1)
                             cache.Set(_addresses[ii].Bytes, _accounts[ii]).Should().BeFalse();
                         else
                             cache.Set(_addresses[ii].Bytes, _accounts[ii]).Should().BeTrue();

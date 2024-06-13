@@ -129,7 +129,7 @@ namespace Nethermind.Core.Test.Caching
                     }
                     for (int ii = i; ii < i + Capacity; ii++)
                     {
-                        if (ii <  i + Capacity - 1)
+                        if (ii < i + Capacity - 1)
                             cache.Set(_addresses[ii]).Should().BeFalse();
                         else
                             cache.Set(_addresses[ii]).Should().BeTrue();
@@ -188,7 +188,7 @@ namespace Nethermind.Core.Test.Caching
                         cache.Get(_addresses[i - 1]);
                     }
                     cache.Get(_addresses[i + Capacity]);
-                
+
                     for (int ii = i; ii < i + Capacity / 2; ii++)
                     {
                         cache.Delete(_addresses[ii]);
