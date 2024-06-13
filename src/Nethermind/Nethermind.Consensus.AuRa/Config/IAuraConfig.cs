@@ -74,6 +74,6 @@ public interface IAuraConfig : IConfig
     ulong ShutterInstanceID { get; set; }
 
     [ConfigItem(Description = "The maximum amount of gas to use on Shutter transactions.",
-        DefaultValue = "17000000")]
+        DefaultValue = "10000000")]
     ulong ShutterEncryptedGasLimit { get; set; }
 }
