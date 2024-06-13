@@ -249,7 +249,7 @@ namespace Nethermind.Synchronization.Peers
                 return cachedContext;
             }
 
-            cachedContext = Enum.GetValues<AllocationContexts>()
+            cachedContext = FastEnum.GetValues<AllocationContexts>()
                 .Where(aCtx => IsOnlyOneContext(aCtx) && (contexts & aCtx) != 0)
                 .ToArray();
 
