@@ -64,7 +64,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
         _verkleStore = new VerkleTreeStore<PersistEveryBlock>(dbProvider, logManager);
         _pivot = new Pivot(blockTree, logManager);
 
-        blockTree.OnUpdateMainChain += OnNewBlock;
+        // blockTree.OnUpdateMainChain += OnNewBlock;
 
         if (subTreeRangePartitionCount < 1 || subTreeRangePartitionCount > 256)
             throw new ArgumentException("SubTree range partition must be between 1 to 256.");
