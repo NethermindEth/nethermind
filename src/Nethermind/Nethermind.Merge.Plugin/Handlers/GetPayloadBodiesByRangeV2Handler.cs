@@ -53,6 +53,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 
             List<Deposit> deposits = [];
             List<WithdrawalRequest> withdrawalRequests = [];
+            List<ConsolidationRequest> consolidationRequests = [];
 
             if (consensusRequests is not null)
             {
@@ -66,18 +67,22 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
                     {
                         withdrawalRequests.Add((WithdrawalRequest)request);
                     }
+                    else if (request.Type == ConsensusRequestsType.ConsolidationRequest)
+                    {
+                        consolidationRequests.Add((ConsolidationRequest)request);
+                    }
                     else
                     {
                         var error = $"Unknown request type {request.Type}";
                         if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
                     }
                 }
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
+                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests, consolidationRequests);
 
             }
             else
             {
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, null, null);
+                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, null, null, null);
             }
         }
 

@@ -14,12 +14,14 @@ public class ExecutionPayloadBodyV2Result : ExecutionPayloadBodyV1Result
         IList<Transaction> transactions,
         IList<Withdrawal>? withdrawals,
         IList<Deposit>? deposits,
-        IList<WithdrawalRequest>? withdrawalsRequests
+        IList<WithdrawalRequest>? withdrawalsRequests,
+        IList<ConsolidationRequest>? consolidationRequests
     )
         : base(transactions, withdrawals)
     {
         DepositRequests = deposits;
         WithdrawalRequests = withdrawalsRequests;
+        ConsolidationRequests = consolidationRequests;
     }
 
     /// <summary>
@@ -33,4 +35,10 @@ public class ExecutionPayloadBodyV2Result : ExecutionPayloadBodyV1Result
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public IList<WithdrawalRequest>? WithdrawalRequests { get; set; }
+
+    /// <summary>
+    /// Consolidation requests <see cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/prague.md#specification-2"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public IList<ConsolidationRequest>? ConsolidationRequests { get; set; }
 }
