@@ -92,11 +92,11 @@ namespace Nethermind.Core.Caching
             return true;
         }
 
-        public void Delete(TKey key)
+        public bool Delete(TKey key)
         {
             using var lockRelease = _lock.Acquire();
 
-            DeleteNoLock(key);
+            return DeleteNoLock(key);
         }
 
         private bool DeleteNoLock(TKey key)
@@ -121,13 +121,7 @@ namespace Nethermind.Core.Caching
             return _cacheMap.ContainsKey(key);
         }
 
-        public int Size
-        {
-            get
-            {
-                return _cacheMap.Count;
-            }
-        }
+        public int Count => _cacheMap.Count;
 
         private void Replace(TKey key)
         {
