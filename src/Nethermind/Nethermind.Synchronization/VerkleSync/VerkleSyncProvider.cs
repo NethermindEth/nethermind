@@ -153,6 +153,15 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         _progressTracker.UpdatePivot();
     }
 
+    public void Finish()
+    {
+        _progressTracker.DisableHealingCache();
+    }
+    public void Activate()
+    {
+        _progressTracker.ActivateHealingCache();
+    }
+
     public bool IsFinished(out VerkleSyncBatch? nextBatch) => _progressTracker.IsFinished(out nextBatch);
 
     private class TrieStorePoolPolicy : IPooledObjectPolicy<IVerkleTreeStore>

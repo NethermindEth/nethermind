@@ -50,6 +50,18 @@ public class VerkleSyncFeed : SyncFeed<VerkleSyncBatch?>, IDisposable
         }
     }
 
+    public override void Finish()
+    {
+        _syncProvider.Finish();
+        base.Finish();
+    }
+
+    public override void Activate()
+    {
+        _syncProvider.Activate();
+        base.Activate();
+    }
+
     public override SyncResponseHandlingResult HandleResponse(VerkleSyncBatch? batch, PeerInfo? peer = null)
     {
         if (batch is null)

@@ -22,4 +22,7 @@ public interface IVerkleSyncProvider
 
     bool IsGetRangesFinished();
     void UpdatePivot();
+
+    void Activate();
+    void Finish();
 }
