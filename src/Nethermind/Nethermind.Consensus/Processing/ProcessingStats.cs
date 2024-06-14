@@ -82,6 +82,7 @@ namespace Nethermind.Consensus.Processing
             Metrics.GasLimit = block.GasLimit;
 
             Metrics.BlockchainHeight = block.Header.Number;
+            Metrics.SetFirst8BytesOfLastBlockHash(block.Hash);
             Metrics.BestKnownBlockNumber = blockTreeCtx.BestKnownNumber;
 
             _blockProcessingMicroseconds = _processingStopwatch.ElapsedMicroseconds();
