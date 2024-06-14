@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
-using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Config;
 
@@ -51,7 +50,6 @@ public interface IAuraConfig : IConfig
     [ConfigItem(Description = "The port to connect to Shutter P2P network with.",
         DefaultValue = "23001")]
     int ShutterP2PPort { get; set; }
-
 
     [ConfigItem(Description = "The filepath of the validator info json file.",
         DefaultValue = "null")]

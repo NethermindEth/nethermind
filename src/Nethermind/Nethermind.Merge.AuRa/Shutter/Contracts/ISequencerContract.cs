@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -13,7 +13,6 @@ public interface ISequencerContract
 
     struct TransactionSubmitted
     {
-
         public ulong Eon;
         public Bytes32 IdentityPrefix;
         public Address Sender;

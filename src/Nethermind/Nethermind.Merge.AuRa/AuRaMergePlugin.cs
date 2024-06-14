@@ -22,6 +22,8 @@ using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Consensus.Processing;
+using Nethermind.Libp2p.Core.Enums;
+using Multiformats.Address;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -96,17 +98,12 @@ namespace Nethermind.Merge.AuRa
 
             if (_auraConfig!.UseShutter)
             {
-                // parse validator info file (index, pk)
-                Dictionary<ulong, byte[]> validatorsInfo = [];
+                ValidateShutterConfig(_auraConfig);
+
+                Dictionary<ulong, byte[]> validatorsInfo;
                 try
                 {
-                    string validatorsInfoRaw = File.ReadAllText(_auraConfig.ShutterValidatorInfoFile);
-                    Dictionary<ulong, string>? validatorsInfoParsed = JsonSerializer.Deserialize<Dictionary<ulong, string>>(JsonDocument.Parse(validatorsInfoRaw));
-                    if (validatorsInfoParsed is null)
-                    {
-                        throw new JsonException("Invalid JSON document format, should be (index, public key) pairs.");
-                    }
-                    validatorsInfo = validatorsInfoParsed.ToDictionary(x => x.Key, x => Convert.FromHexString(x.Value.AsSpan()[2..]));
+                    validatorsInfo = LoadValidatorInfo(_auraConfig.ShutterValidatorInfoFile);
                 }
                 catch (Exception e)
                 {
@@ -142,6 +139,52 @@ namespace Nethermind.Merge.AuRa
         {
             _shutterP2P?.DisposeAsync();
             _ = base.DisposeAsync();
+        }
+
+        private void ValidateShutterConfig(IAuraConfig auraConfig)
+        {
+            if (auraConfig.ShutterSequencerContractAddress is null || !Address.TryParse(auraConfig.ShutterSequencerContractAddress, out _))
+            {
+                throw new ArgumentException("Must set Shutter sequencer contract address to valid address.");
+            }
+
+            if (auraConfig.ShutterValidatorRegistryContractAddress is null || !Address.TryParse(auraConfig.ShutterValidatorRegistryContractAddress, out _))
+            {
+                throw new ArgumentException("Must set Shutter validator registry contract address to valid address.");
+            }
+
+            if (auraConfig.ShutterKeyBroadcastContractAddress is null || !Address.TryParse(auraConfig.ShutterKeyBroadcastContractAddress, out _))
+            {
+                throw new ArgumentException("Must set Shutter key broadcast contract address to valid address.");
+            }
+
+            if (auraConfig.ShutterKeyperSetManagerContractAddress is null || !Address.TryParse(auraConfig.ShutterKeyperSetManagerContractAddress, out _))
+            {
+                throw new ArgumentException("Must set Shutter keyper set manager contract address to valid address.");
+            }
+
+            foreach (string addr in auraConfig.ShutterKeyperP2PAddresses)
+            {
+                try
+                {
+                    Multiaddress.Decode(addr);
+                }
+                catch (NotSupportedException)
+                {
+                    throw new ArgumentException($"Could not decode Shutter keyper p2p address \"{addr}\".");
+                }
+            }
+        }
+
+        private Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)
+        {
+            string validatorsInfoRaw = File.ReadAllText(fp);
+            Dictionary<ulong, string>? validatorsInfoParsed = JsonSerializer.Deserialize<Dictionary<ulong, string>>(JsonDocument.Parse(validatorsInfoRaw));
+            if (validatorsInfoParsed is null)
+            {
+                throw new JsonException("Invalid JSON document format, should be (index, public key) pairs.");
+            }
+            return validatorsInfoParsed.ToDictionary(x => x.Key, x => Convert.FromHexString(x.Value.AsSpan()[2..]));
         }
     }
 }
