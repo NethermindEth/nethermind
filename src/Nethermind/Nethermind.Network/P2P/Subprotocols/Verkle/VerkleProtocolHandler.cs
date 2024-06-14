@@ -241,23 +241,33 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
 
     private void TestSubTreeRangeMessageEncoding(Hash256 rootHash, Stem startingStem, SubTreeRangeMessage response)
     {
-        SubTreeRangeMessageSerializer subTreeRangeMessageSerializer = new();
-        VerkleProofSerializer verkleProofSerializer = new();
+        try
+        {
+            SubTreeRangeMessageSerializer subTreeRangeMessageSerializer = new();
+            VerkleProofSerializer verkleProofSerializer = new();
 
-        Banderwagon rootPoint = Banderwagon.FromBytes(rootHash.Bytes.ToArray()) ?? throw new Exception("the root point is invalid");
+            Banderwagon rootPoint = Banderwagon.FromBytes(rootHash.Bytes.ToArray()) ?? throw new Exception("the root point is invalid");
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-        subTreeRangeMessageSerializer.Serialize(buffer, response);
-        SubTreeRangeMessage? decode = subTreeRangeMessageSerializer.Deserialize(buffer);
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
+            subTreeRangeMessageSerializer.Serialize(buffer, response);
+            SubTreeRangeMessage? decode = subTreeRangeMessageSerializer.Deserialize(buffer);
 
-        var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
-        var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
-        var isCorrect = localTree.CreateStatelessTreeFromRange(
-            verkleProofSerializer.Decode(new RlpStream(decode.Proofs)), rootPoint, startingStem,
-            decode.PathsWithSubTrees[^1].Path, decode.PathsWithSubTrees);
-        Logger.Info(!isCorrect
-            ? $"FulfillSubTreeRangeMessage: SubTreeRangeMessage encoding-decoding and verification: FAILED"
-            : $"FulfillSubTreeRangeMessage: SubTreeRangeMessage encoding-decoding and verification: SUCCESS");
+            var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
+            var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
+            var isCorrect = localTree.CreateStatelessTreeFromRange(
+                verkleProofSerializer.Decode(new RlpStream(decode.Proofs)), rootPoint, startingStem,
+                decode.PathsWithSubTrees[^1].Path, decode.PathsWithSubTrees);
+            Logger.Info(!isCorrect
+                ? $"FulfillSubTreeRangeMessage: SubTreeRangeMessage encoding-decoding and verification: FAILED"
+                : $"FulfillSubTreeRangeMessage: SubTreeRangeMessage encoding-decoding and verification: SUCCESS");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("there might be some error");
+            Console.WriteLine(e);
+            throw;
+        }
+
     }
 
     private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageQueue<TIn, TOut> requestQueue, CancellationToken token)
