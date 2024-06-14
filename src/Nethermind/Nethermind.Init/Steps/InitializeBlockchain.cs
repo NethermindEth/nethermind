@@ -82,7 +82,10 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            _api.TransactionProcessor = CreateTransactionProcessor();
+            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
+            CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
+            _api.TransactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
@@ -104,7 +107,10 @@ namespace Nethermind.Init.Steps
 
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
-            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
+                ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager, _api.WorldState), _api.SpecProvider, _api.LogManager, _api.WorldState)
+                : null;
+            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor(preWarmer);
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -157,20 +163,19 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor()
+        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-
-            VirtualMachine virtualMachine = CreateVirtualMachine();
 
             return new TransactionProcessor(
                 _api.SpecProvider,
                 _api.WorldState,
                 virtualMachine,
+                codeInfoRepository,
                 _api.LogManager);
         }
 
-        protected virtual VirtualMachine CreateVirtualMachine()
+        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -180,10 +185,13 @@ namespace Nethermind.Init.Steps
             BlockhashProvider blockhashProvider = new(
                 _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
 
-            return new VirtualMachine(
+            VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
+                codeInfoRepository,
                 _api.LogManager);
+
+            return virtualMachine;
         }
 
         protected virtual IHealthHintService CreateHealthHintService() =>
@@ -212,7 +220,7 @@ namespace Nethermind.Init.Steps
             _api.LogManager);
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor()
+        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
         {
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -221,13 +229,7 @@ namespace Nethermind.Init.Steps
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            IBlocksConfig blocksConfig = _api.Config<IBlocksConfig>();
             IWorldState worldState = _api.WorldState!;
-
-            PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, preBlockCaches), _api.SpecProvider, _api.LogManager, preBlockCaches)
-                : null;
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,

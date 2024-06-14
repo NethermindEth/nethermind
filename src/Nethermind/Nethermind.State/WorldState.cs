@@ -165,13 +165,13 @@ namespace Nethermind.State
         {
             _stateProvider.UpdateStorageRoot(address, storageRoot);
         }
-        public void IncrementNonce(Address address)
+        public void IncrementNonce(Address address, UInt256 delta)
         {
-            _stateProvider.IncrementNonce(address);
+            _stateProvider.IncrementNonce(address, delta);
         }
-        public void DecrementNonce(Address address)
+        public void DecrementNonce(Address address, UInt256 delta)
         {
-            _stateProvider.DecrementNonce(address);
+            _stateProvider.DecrementNonce(address, delta);
         }
 
         public void CommitTree(long blockNumber)
@@ -269,6 +269,8 @@ namespace Nethermind.State
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
 
-        PreBlockCaches IPreBlockCaches.Caches => PreBlockCaches;
+        PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
+
+        public bool ClearCache() => PreBlockCaches?.Clear() == true;
     }
 }

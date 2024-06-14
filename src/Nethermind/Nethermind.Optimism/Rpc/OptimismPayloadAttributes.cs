@@ -12,7 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.Rpc;
 
 public class OptimismPayloadAttributes : PayloadAttributes
 {
@@ -69,7 +69,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        int offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;
@@ -122,9 +122,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)
-        {
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Length}");
-        }
 
         sb.Append('}');
         return sb.ToString();

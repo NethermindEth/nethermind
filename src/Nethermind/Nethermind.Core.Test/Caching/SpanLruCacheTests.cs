@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
@@ -11,15 +12,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching
 {
-    [TestFixture(typeof(SpanLruCache<byte, Account>))]
     public class SpanLruCacheTests<TCache>
     {
         private static ISpanCache<byte, Account> Create()
         {
-            return (ISpanCache<byte, Account>)Activator.CreateInstance(typeof(TCache), Capacity, 0, "test", Bytes.SpanEqualityComparer)!;
+            return new SpanLruCache<byte, Account>(Capacity, 0, "test", Bytes.SpanEqualityComparer)!;
         }
 
-        private const int Capacity = 16;
+        private const int Capacity = 32;
 
         private readonly Account[] _accounts = new Account[Capacity * 2];
         private readonly Address[] _addresses = new Address[Capacity * 2];
@@ -40,7 +40,7 @@ namespace Nethermind.Core.Test.Caching
             ISpanCache<byte, Account> cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i].Bytes, _accounts[i]);
+                cache.Set(_addresses[i].Bytes, _accounts[i]).Should().BeTrue();
             }
 
             Account? account = cache.Get(_addresses[Capacity - 1].Bytes);
@@ -51,8 +51,8 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             ISpanCache<byte, Account> cache = Create();
-            cache.Set(_addresses[0].Bytes, _accounts[0]);
-            cache.Set(_addresses[0].Bytes, _accounts[1]);
+            cache.Set(_addresses[0].Bytes, _accounts[0]).Should().BeTrue();
+            cache.Set(_addresses[0].Bytes, _accounts[1]).Should().BeFalse();
             cache.Get(_addresses[0].Bytes).Should().Be(_accounts[1]);
         }
 
@@ -67,10 +67,10 @@ namespace Nethermind.Core.Test.Caching
         public void Can_clear()
         {
             ISpanCache<byte, Account> cache = Create();
-            cache.Set(_addresses[0].Bytes, _accounts[0]);
+            cache.Set(_addresses[0].Bytes, _accounts[0]).Should().BeTrue();
             cache.Clear();
             cache.Get(_addresses[0].Bytes).Should().BeNull();
-            cache.Set(_addresses[0].Bytes, _accounts[1]);
+            cache.Set(_addresses[0].Bytes, _accounts[1]).Should().BeTrue();
             cache.Get(_addresses[0].Bytes).Should().Be(_accounts[1]);
         }
 
@@ -80,11 +80,137 @@ namespace Nethermind.Core.Test.Caching
             ISpanCache<byte, Account> cache = Create();
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i].Bytes, _accounts[i]);
+                cache.Set(_addresses[i].Bytes, _accounts[i]).Should().BeTrue();
             }
 
             Account? account = cache.Get(_addresses[Capacity].Bytes);
             account.Should().Be(_accounts[Capacity]);
+        }
+
+        [Test]
+        public void Beyond_capacity_lru()
+        {
+            ISpanCache<byte, Account> cache = Create();
+            for (int i = 0; i < Capacity * 2; i++)
+            {
+                for (int ii = 0; ii < Capacity / 2; ii++)
+                {
+                    cache.Set(_addresses[i].Bytes, _accounts[i]);
+                }
+                cache.Set(_addresses[i].Bytes, _accounts[i]);
+            }
+        }
+
+        [Test]
+        public void Beyond_capacity_lru_check()
+        {
+            Random random = new();
+            ISpanCache<byte, Account> cache = Create();
+            for (var iter = 0; iter < Capacity; iter++)
+            {
+                for (int ii = 0; ii < Capacity; ii++)
+                {
+                    cache.Set(_addresses[ii].Bytes, _accounts[ii]).Should().BeTrue();
+                }
+
+                for (int i = 1; i < Capacity; i++)
+                {
+                    for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
+                    {
+                        // Fuzz the order of the addresses
+                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        cache.Delete(_addresses[index].Bytes).Should().BeTrue();
+                        cache.Set(_addresses[index].Bytes, _accounts[index]).Should().BeTrue();
+                    }
+                    for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
+                    {
+                        // Fuzz the order of the addresses
+                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        cache.Set(_addresses[index].Bytes, _accounts[index]).Should().BeFalse();
+                    }
+                    for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
+                    {
+                        // Fuzz the order of the addresses
+                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        cache.Get(_addresses[index].Bytes).Should().BeEquivalentTo(_accounts[index]);
+                    }
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        if (ii < i + Capacity - 1)
+                            cache.Set(_addresses[ii].Bytes, _accounts[ii]).Should().BeFalse();
+                        else
+                            cache.Set(_addresses[ii].Bytes, _accounts[ii]).Should().BeTrue();
+                    }
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        cache.Get(_addresses[ii].Bytes).Should().NotBeNull();
+                        cache.Get(_addresses[ii].Bytes).Should().BeEquivalentTo(_accounts[ii]);
+                    }
+                    if (i > 0)
+                    {
+                        cache.Get(_addresses[i - 1].Bytes).Should().BeNull();
+                    }
+                    cache.Get(_addresses[i + Capacity].Bytes).Should().BeNull();
+                }
+
+                cache.Count.Should().Be(Capacity);
+                if (iter % 2 == 0)
+                {
+                    cache.Clear();
+                }
+                else
+                {
+                    for (int ii = Capacity - 1; ii < Capacity * 2 - 1; ii++)
+                    {
+                        cache.Get(_addresses[ii].Bytes).Should().BeEquivalentTo(_accounts[ii]);
+                        cache.Delete(_addresses[ii].Bytes).Should().BeTrue();
+                    }
+                }
+
+                cache.Count.Should().Be(0);
+            }
+        }
+
+        [Test]
+        public void Beyond_capacity_lru_parallel()
+        {
+            ISpanCache<byte, Account> cache = Create();
+            Parallel.For(0, Environment.ProcessorCount * 8, (iter) =>
+            {
+                for (int ii = 0; ii < Capacity; ii++)
+                {
+                    cache.Set(_addresses[ii].Bytes, _accounts[ii]);
+                }
+
+                for (int i = 1; i < Capacity; i++)
+                {
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        cache.Set(_addresses[ii].Bytes, _accounts[ii]);
+                    }
+                    for (int ii = i; ii < i + Capacity; ii++)
+                    {
+                        cache.Get(_addresses[ii].Bytes);
+                    }
+                    if (i > 0)
+                    {
+                        cache.Get(_addresses[i - 1].Bytes);
+                    }
+                    cache.Get(_addresses[i + Capacity].Bytes);
+
+                    if (iter % Environment.ProcessorCount == 0)
+                    {
+                        cache.Clear();
+                    }
+                    else
+                    {
+                        for (int ii = i; ii < i + Capacity / 2; ii++)
+                        {
+                            cache.Delete(_addresses[ii].Bytes);
+                        }
+                    }
+                }
+            });
         }
 
         [Test]
@@ -101,7 +227,7 @@ namespace Nethermind.Core.Test.Caching
         public void Can_delete()
         {
             ISpanCache<byte, Account> cache = Create();
-            cache.Set(_addresses[0].Bytes, _accounts[0]);
+            cache.Set(_addresses[0].Bytes, _accounts[0]).Should().BeTrue();
             cache.Delete(_addresses[0].Bytes).Should().BeTrue();
             cache.Get(_addresses[0].Bytes).Should().Be(null);
             cache.Delete(_addresses[0].Bytes).Should().BeFalse();

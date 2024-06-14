@@ -144,13 +144,7 @@ namespace Nethermind.Core.Caching
             return _cacheMap.ContainsKey(key);
         }
 
-        public int Size
-        {
-            get
-            {
-                return _cacheMap.Count;
-            }
-        }
+        public int Count => _cacheMap.Count;
 
         private void Replace(TKey key, TValue value)
         {
@@ -163,9 +157,13 @@ namespace Nethermind.Core.Caching
             ref var node = ref _items[offset];
 
             _cacheMap.Remove(node.Key);
+            node = new(key, value)
+            {
+                Next = node.Next,
+                Prev = node.Prev
+            };
 
             MoveToMostRecent(ref node, offset);
-            node = new(key, value);
             _cacheMap.Add(key, offset);
 
             [DoesNotReturn]
@@ -181,8 +179,10 @@ namespace Nethermind.Core.Caching
         {
             if (node.Next == offset)
             {
-                // Debug.Assert(_leastRecentlyUsed == offset, "this should only be true for a list with only one node");
-                // Do nothing only one node
+                if (_leastRecentlyUsed != offset)
+                {
+                    InvalidNotSingleNodeList();
+                }
             }
             else
             {
@@ -193,10 +193,17 @@ namespace Nethermind.Core.Caching
 
         private void Remove(ref LruCacheItem node, int offset)
         {
-            // Debug.Assert(_leastRecentlyUsed >= 0, "This method shouldn't be called on empty list!");
+            if (_leastRecentlyUsed < 0)
+            {
+                InvalidRemoveFromEmptyList();
+            }
+
             if (node.Next == offset)
             {
-                // Debug.Assert(_leastRecentlyUsed == offset, "this should only be true for a list with only one node");
+                if (_leastRecentlyUsed != offset)
+                {
+                    InvalidNotSingleNodeList();
+                }
                 _leastRecentlyUsed = -1;
             }
             else
@@ -208,6 +215,18 @@ namespace Nethermind.Core.Caching
                     _leastRecentlyUsed = node.Next;
                 }
             }
+
+            static void InvalidRemoveFromEmptyList()
+            {
+                throw new InvalidOperationException("This method shouldn't be called on empty list");
+            }
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void InvalidNotSingleNodeList()
+        {
+            throw new InvalidOperationException("This should only be true for a list with only one node");
         }
 
         private void AddMostRecent(ref LruCacheItem node, int offset)

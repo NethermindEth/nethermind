@@ -7,7 +7,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.Rpc;
 
 public class OptimismReceiptForRpc : ReceiptForRpc
 {

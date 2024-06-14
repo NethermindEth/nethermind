@@ -6,9 +6,11 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -35,13 +37,12 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return base.InitBlockchain();
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor()
+    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
-
-        VirtualMachine virtualMachine = CreateVirtualMachine();
+        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
@@ -49,7 +50,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             virtualMachine,
             _api.LogManager,
             _api.L1CostHelper,
-            _api.SpecHelper
+            _api.SpecHelper,
+            codeInfoRepository
         );
     }
 
@@ -82,7 +84,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor()
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -105,7 +107,9 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             new BlockhashStore(_api.BlockTree, _api.SpecProvider, _api.WorldState),
             _api.LogManager,
             _api.SpecHelper,
-            contractRewriter);
+            contractRewriter,
+            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            preWarmer: preWarmer);
     }
 
     protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;

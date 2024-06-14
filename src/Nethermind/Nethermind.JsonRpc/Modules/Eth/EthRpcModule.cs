@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -19,6 +20,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -51,7 +53,8 @@ public partial class EthRpcModule(
     ISpecProvider specProvider,
     IGasPriceOracle gasPriceOracle,
     IEthSyncingInfo ethSyncingInfo,
-    IFeeHistoryOracle feeHistoryOracle) : IEthRpcModule
+    IFeeHistoryOracle feeHistoryOracle,
+    ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -67,6 +70,7 @@ public partial class EthRpcModule(
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+    protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
@@ -320,6 +324,10 @@ public partial class EthRpcModule(
     public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
+
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
+        new SimulateTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _secondsPerSlot)
+            .Execute(payload, blockParameter);
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
@@ -608,11 +616,28 @@ public partial class EthRpcModule(
 
         try
         {
-            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock,
-                filter.Address, filter.Topics);
+            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
+
             IEnumerable<IFilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
 
-            return ResultWrapper<IEnumerable<IFilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            ArrayPoolList<IFilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
+
+            using (cancellationTokenSource)
+            {
+                foreach (FilterLog log in filterLogs)
+                {
+                    logs.Add(log);
+                    if (JsonRpcContext.Current.Value?.IsAuthenticated != true // not authenticated
+                        && _rpcConfig.MaxLogsPerResponse != 0                 // not unlimited
+                        && logs.Count > _rpcConfig.MaxLogsPerResponse)
+                    {
+                        logs.Dispose();
+                        return ResultWrapper<IEnumerable<IFilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                    }
+                }
+            }
+
+            return ResultWrapper<IEnumerable<IFilterLog>>.Success(logs);
         }
         catch (ResourceNotFoundException exception)
         {

@@ -34,7 +34,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
-            _api.ChainSpec,
             _api.BlockTree,
             _api.SpecProvider,
             _api.BlockValidator,

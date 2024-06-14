@@ -4,16 +4,20 @@
 using System;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Consensus.AuRa.Withdrawals;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.Rpc;
 
 public class RegisterOptimismRpcModules : RegisterRpcModules
 {
@@ -54,6 +58,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         BasicJsonRpcClient? sequencerJsonRpcClient = _config.SequencerUrl is null
             ? null
             : new(new Uri(_config.SequencerUrl), _api.EthereumJsonSerializer, _api.LogManager);
+        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
 
         ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
         TxSealer sealer = new(txSigner, _api.Timestamper);
@@ -75,8 +80,9 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
 
-            sequencerJsonRpcClient,
+        sequencerJsonRpcClient,
             _api.WorldState,
             _api.EthereumEcdsa,
             sealer,
@@ -84,5 +90,34 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
 
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
             _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+    }
+
+    protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.WorldState);
+        StepDependencyException.ThrowIfNull(_api.L1CostHelper);
+        StepDependencyException.ThrowIfNull(_api.SpecHelper);
+
+        OptimismTraceModuleFactory traceModuleFactory = new(
+            _api.WorldStateManager,
+            _api.BlockTree,
+            _jsonRpcConfig,
+            _api.BlockPreprocessor,
+            _api.RewardCalculatorSource,
+            _api.ReceiptStorage,
+            _api.SpecProvider,
+            _api.PoSSwitcher,
+            _api.LogManager,
+            _api.L1CostHelper,
+            _api.SpecHelper,
+            new Create2DeployerContractRewriter(_api.SpecHelper, _api.SpecProvider, _api.BlockTree),
+            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
+
+        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
     }
 }

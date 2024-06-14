@@ -7,7 +7,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Optimism;
+namespace Nethermind.Optimism.Rpc;
 
 public class OptimismEngineRpcModule : IOptimismEngineRpcModule
 {

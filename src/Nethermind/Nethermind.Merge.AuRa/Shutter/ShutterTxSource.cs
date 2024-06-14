@@ -228,7 +228,7 @@ public class ShutterTxSource : ITxSource
 
     internal bool IsRegistered(BlockHeader parent)
     {
-        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(parent.StateRoot!);
+        ITransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(parent.StateRoot!).TransactionProcessor;
         ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
         if (!validatorRegistryContract!.IsRegistered(parent, ValidatorsInfo, out HashSet<ulong> unregistered))
         {

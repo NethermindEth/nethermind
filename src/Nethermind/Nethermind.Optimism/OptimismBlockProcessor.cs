@@ -29,15 +29,17 @@ public class OptimismBlockProcessor : BlockProcessor
         IReceiptStorage? receiptStorage,
         IBlockhashStore? blockhashStore,
         ILogManager? logManager,
-        IOPConfigHelper opConfigHelper,
+        IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
-        IWithdrawalProcessor? withdrawalProcessor = null)
+        IWithdrawalProcessor? withdrawalProcessor = null,
+        IBlockCachePreWarmer? preWarmer = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, blockhashStore, logManager, withdrawalProcessor, ReceiptsRootCalculator.Instance)
+            stateProvider, receiptStorage, blockhashStore, logManager, withdrawalProcessor,
+            ReceiptsRootCalculator.Instance, preWarmer)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;
-        ReceiptsTracer = new OptimismBlockReceiptTracer(opConfigHelper, stateProvider);
+        ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
