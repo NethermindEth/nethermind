@@ -12,7 +12,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching
 {
-    public class SpanLruCacheTests<TCache>
+    [TestFixture]
+    public class SpanLruCacheTests
     {
         private static ISpanCache<byte, Account> Create()
         {
@@ -83,8 +84,15 @@ namespace Nethermind.Core.Test.Caching
                 cache.Set(_addresses[i].Bytes, _accounts[i]).Should().BeTrue();
             }
 
-            Account? account = cache.Get(_addresses[Capacity].Bytes);
-            account.Should().Be(_accounts[Capacity]);
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Get(_addresses[i].Bytes).Should().BeNull();
+            }
+            // Check in reverse order
+            for (int i = Capacity * 2 - 1; i >= Capacity; i--)
+            {
+                cache.Get(_addresses[i].Bytes).Should().Be(_accounts[i]);
+            }
         }
 
         [Test]
