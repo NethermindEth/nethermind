@@ -109,7 +109,7 @@ internal class ShutterCrypto
 
     public static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
     {
-        // todo: change this when shutter swaps to blst
+        // todo: change this once shutter swaps to blst
         // GT p = new(decryptionKey, encryptedMessage.c1);
         // Bytes32 key = Hash2(p);
         Bytes32 key = new Bytes32();
@@ -199,7 +199,7 @@ internal class ShutterCrypto
         preimage[0] = 0x1;
         bytes.CopyTo(preimage.AsSpan()[1..]);
 
-        // todo: change once shutter updates
+        // todo: change once shutter swaps to blst
         // return new G1().hash_to(preimage, "SHUTTER_V01_BLS12381G1_XMD:SHA-256_SSWU_RO_");
 
         Span<byte> hash = Keccak.Compute(preimage).Bytes;
@@ -302,5 +302,82 @@ internal class ShutterCrypto
         UInt256 root;
         Merkle.Ize(out root, container);
         return new(root.ToLittleEndian());
+    }
+
+    public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
+    {
+        UInt256 r;
+        ComputeR(sigma, msg, out r);
+
+        EncryptedMessage c = new()
+        {
+            VersionId = CryptoVersion,
+            c1 = ComputeC1(r),
+            c2 = ComputeC2(sigma, r, identity, eonKey),
+            c3 = ComputeC3(PadAndSplit(msg), sigma)
+        };
+        return c;
+    }
+
+    internal static byte[] EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
+    {
+        // todo: change once shutter swaps to blst
+        // byte[] bytes = new byte[1 + 96 + 32 + (encryptedMessage.c3.Count() * 32)];
+
+        // bytes[0] = encryptedMessage.VersionId;
+        // encryptedMessage.c1.compress().CopyTo(bytes.AsSpan()[1..]);
+        // encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[(1 + 96)..]);
+
+        // foreach ((Bytes32 block, int i) in encryptedMessage.c3.WithIndex())
+        // {
+        //     int offset = 1 + 96 + 32 + (32 * i);
+        //     block.Unwrap().CopyTo(bytes.AsSpan()[offset..]);
+        // }
+
+        byte[] bytes = new byte[1 + 192 + 32 + (encryptedMessage.c3.Count() * 32)];
+
+        bytes[0] = encryptedMessage.VersionId;
+        encryptedMessage.c1.serialize().CopyTo(bytes.AsSpan()[1..]);
+        encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[(1 + 192)..]);
+
+        foreach ((Bytes32 block, int i) in encryptedMessage.c3.WithIndex())
+        {
+            int offset = 1 + 192 + 32 + (32 * i);
+            block.Unwrap().CopyTo(bytes.AsSpan()[offset..]);
+        }
+
+        return bytes;
+    }
+
+    private static Bytes32 ComputeC2(Bytes32 sigma, UInt256 r, G1 identity, G2 eonKey)
+    {
+        // todo: change once shutter swaps to blst
+        // GT p = new(identity, eonKey);
+        // GT preimage = ShutterCrypto.GTExp(p, r);
+        // Bytes32 key = ShutterCrypto.Hash2(preimage);
+        Bytes32 key = new();
+        return XorBlocks(sigma, key);
+    }
+
+    private static IEnumerable<Bytes32> ComputeC3(IEnumerable<Bytes32> messageBlocks, Bytes32 sigma)
+    {
+        IEnumerable<Bytes32> keys = ComputeBlockKeys(sigma, messageBlocks.Count());
+        return Enumerable.Zip(keys, messageBlocks, XorBlocks);
+    }
+
+    private static IEnumerable<Bytes32> PadAndSplit(ReadOnlySpan<byte> bytes)
+    {
+        List<Bytes32> res = [];
+        int n = 32 - (bytes.Length % 32);
+        Span<byte> padded = stackalloc byte[bytes.Length + n];
+        padded.Fill((byte)n);
+        bytes.CopyTo(padded);
+
+        for (int i = 0; i < padded.Length / 32; i++)
+        {
+            int offset = i * 32;
+            res.Add(new(padded[offset..(offset + 32)]));
+        }
+        return res;
     }
 }
