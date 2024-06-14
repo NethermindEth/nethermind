@@ -233,7 +233,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         response.PathsWithSubTrees = data.Item1.ToArray();
         response.Proofs = data.Item2.EncodeRlp();
 
-        TestSubTreeRangeMessageEncoding(accountRange.RootHash, accountRange.StartingStem, response);
+        // TestSubTreeRangeMessageEncoding(accountRange.RootHash, accountRange.StartingStem, response);
 
         Metrics.VerkleSubTreeRangeSent++;
         return response;
