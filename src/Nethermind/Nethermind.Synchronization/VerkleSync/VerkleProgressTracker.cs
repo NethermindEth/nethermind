@@ -56,6 +56,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
 
     private readonly Pivot _pivot;
     private readonly IVerkleTreeStore _verkleStore;
+    private readonly IBlockTree _blockTree;
 
     public VerkleProgressTracker(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, int subTreeRangePartitionCount = 8)
     {
@@ -63,10 +64,9 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
         _db = dbProvider.GetColumnDb<VerkleDbColumns>(DbNames.VerkleState).GetColumnDb(VerkleDbColumns.InternalNodes) ?? throw new ArgumentNullException(nameof(dbProvider));
         _verkleStore = new VerkleTreeStore<PersistEveryBlock>(dbProvider, logManager);
         _pivot = new Pivot(blockTree, logManager);
+        _blockTree = blockTree;
 
-        // blockTree.OnUpdateMainChain += OnNewBlock;
-
-        if (subTreeRangePartitionCount < 1 || subTreeRangePartitionCount > 256)
+        if (subTreeRangePartitionCount is < 1 or > 256)
             throw new ArgumentException("SubTree range partition must be between 1 to 256.");
 
         _subTreeRangePartitionCount = subTreeRangePartitionCount;
@@ -74,6 +74,17 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
 
         //TODO: maybe better to move to a init method instead of the constructor
         GetSyncProgress();
+    }
+
+    public void ActivateHealingCache()
+    {
+        _blockTree.OnUpdateMainChain += OnNewBlock;
+    }
+
+    public void DisableHealingCache()
+    {
+        _healingCache.Clear();
+        _blockTree.OnUpdateMainChain -= OnNewBlock;
     }
 
     private readonly Dictionary<long, VerkleMemoryDb> _healingCache = new();
@@ -359,7 +370,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
 
     public void Dispose()
     {
-
+        DisableHealingCache();
     }
 
 
