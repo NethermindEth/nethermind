@@ -45,13 +45,13 @@ public class ShutterTxSource : ITxSource
     private readonly ILogger _logger;
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private readonly SequencerContract _sequencerContract;
-    private readonly ShutterEonInfo _eonInfo;
+    private readonly ShutterEon _eon;
     private readonly Address ValidatorRegistryContractAddress;
     private readonly Dictionary<ulong, byte[]> ValidatorsInfo;
     private readonly UInt256 EncryptedGasLimit;
     private readonly ulong InstanceID;
 
-    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, ShutterEonInfo eonInfo, Dictionary<ulong, byte[]> validatorsInfo)
+    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, ShutterEon eon, Dictionary<ulong, byte[]> validatorsInfo)
         : base()
     {
         _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
@@ -60,7 +60,7 @@ public class ShutterTxSource : ITxSource
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
         _ethereumEcdsa = ethereumEcdsa;
-        _eonInfo = eonInfo;
+        _eon = eon;
         _sequencerContract = new(auraConfig.ShutterSequencerContractAddress, logFinder, filterStore);
         ValidatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
         ValidatorsInfo = validatorsInfo;
@@ -102,9 +102,15 @@ public class ShutterTxSource : ITxSource
             return;
         }
 
+        ShutterEon.Info? eonInfo = _eon.GetCurrentEonInfo();
+        if (eonInfo is null)
+        {
+            return;
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
 
-        if (CheckDecryptionKeys(decryptionKeys))
+        if (CheckDecryptionKeys(decryptionKeys, eonInfo.Value))
         {
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
 
@@ -149,7 +155,7 @@ public class ShutterTxSource : ITxSource
         return transactions;
     }
 
-    internal bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys)
+    internal bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys, in ShutterEon.Info eonInfo)
     {
         if (decryptionKeys.InstanceID != InstanceID)
         {
@@ -157,9 +163,9 @@ public class ShutterTxSource : ITxSource
             return false;
         }
 
-        if (decryptionKeys.Eon != _eonInfo.Eon)
+        if (decryptionKeys.Eon != eonInfo.Eon)
         {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {_eonInfo.Eon}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {eonInfo.Eon}.");
             return false;
         }
 
@@ -177,7 +183,7 @@ public class ShutterTxSource : ITxSource
                 return false;
             }
 
-            if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
+            if (!ShutterCrypto.CheckDecryptionKey(dk, eonInfo.Key, identity))
             {
                 if (_logger.IsDebug) _logger.Debug("Invalid decryption keys received on P2P network: decryption key did not match eon key.");
                 return false;
@@ -198,7 +204,7 @@ public class ShutterTxSource : ITxSource
             return false;
         }
 
-        if (signerIndicesCount != (int)_eonInfo.Threshold)
+        if (signerIndicesCount != (int)eonInfo.Threshold)
         {
             if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
             return false;
@@ -208,9 +214,9 @@ public class ShutterTxSource : ITxSource
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
-            Address keyperAddress = _eonInfo.Addresses[signerIndex];
+            Address keyperAddress = eonInfo.Addresses[signerIndex];
 
-            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
+            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
                 return false;

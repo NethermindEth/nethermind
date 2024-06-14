@@ -116,14 +116,14 @@ namespace Nethermind.Merge.AuRa
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-                ShutterEonInfo shutterEonInfo = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, logger);
+                ShutterEon shutterEon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, logger);
                 _api.BlockTree!.NewHeadBlock += (object? sender, BlockEventArgs e) =>
                 {
-                    shutterEonInfo.Update(e.Block.Header);
+                    shutterEon.Update(e.Block.Header);
                 };
 
                 // init Shutter transaction source
-                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, _api.EthereumEcdsa!, shutterEonInfo, validatorsInfo);
+                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, _api.EthereumEcdsa!, shutterEon, validatorsInfo);
 
                 _shutterP2P = new(shutterTxSource.OnDecryptionKeysReceived, _auraConfig, _api.LogManager);
                 _shutterP2P.Start(_auraConfig.ShutterKeyperP2PAddresses);

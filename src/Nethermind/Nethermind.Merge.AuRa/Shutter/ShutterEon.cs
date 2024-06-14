@@ -11,12 +11,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
-public class ShutterEonInfo
+public class ShutterEon
 {
-    public ulong Eon { get; private set; } = uint.MaxValue;
-    public Bls.P2 Key { get; private set; }
-    public ulong Threshold { get; private set; }
-    public Address[] Addresses { get; private set; } = [];
+    private Info? _info;
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
@@ -24,7 +21,7 @@ public class ShutterEonInfo
     private readonly Address KeyBroadcastContractAddress;
     private readonly Address KeyperSetManagerContractAddress;
 
-    public ShutterEonInfo(IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogger logger)
+    public ShutterEon(IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogger logger)
     {
         _readOnlyBlockTree = readOnlyBlockTree;
         _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
@@ -32,6 +29,11 @@ public class ShutterEonInfo
         _logger = logger;
         KeyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
         KeyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
+    }
+
+    public Info? GetCurrentEonInfo()
+    {
+        return _info;
     }
 
     public void Update(BlockHeader header)
@@ -44,7 +46,7 @@ public class ShutterEonInfo
             KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
             ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
 
-            if (Eon != eon)
+            if (_info is null || _info.Value.Eon != eon)
             {
                 Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
                 KeyperSetContract keyperSetContract = new(readOnlyTransactionProcessor, _abiEncoder, keyperSetContractAddress);
@@ -63,17 +65,28 @@ public class ShutterEonInfo
                 Bls.P2 key = new(eonKeyBytes);
 
                 // update atomically
-                Eon = eon;
-                Key = key;
-                Threshold = threshold;
-                Addresses = addresses;
+                _info = new()
+                {
+                    Eon = eon,
+                    Key = key,
+                    Threshold = threshold,
+                    Addresses = addresses
+                };
 
-                if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} threshold: {Threshold} #keypers: {Addresses.Length}");
+                if (_logger.IsInfo) _logger.Info($"Shutter eon: {_info.Value.Eon} threshold: {_info.Value.Threshold} #keypers: {_info.Value.Addresses.Length}");
             }
         }
         catch (AbiException e)
         {
             if (_logger.IsDebug) _logger.Debug($"Error when calling Shutter Keyper contracts: {e}");
         }
+    }
+
+    public readonly struct Info
+    {
+        public ulong Eon { get; init; }
+        public Bls.P2 Key { get; init; }
+        public ulong Threshold { get; init; }
+        public Address[] Addresses { get; init; }
     }
 }
