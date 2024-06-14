@@ -341,7 +341,9 @@ public partial class EngineModuleTests
                 else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                 {
                     withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }else {
+                }
+                else
+                {
                     consolidationRequests[consolidationRequestIndex++] = (ConsolidationRequest)request;
                 }
             }
@@ -402,7 +404,9 @@ public partial class EngineModuleTests
                 else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                 {
                     withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }else {
+                }
+                else
+                {
                     consolidationRequests[consolidationRequestIndex++] = (ConsolidationRequest)request;
 
                 }

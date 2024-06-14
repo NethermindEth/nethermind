@@ -57,7 +57,9 @@ public static class ConsensusRequestExtensions
             else if (requests[i].Type == ConsensusRequestsType.WithdrawalRequest)
             {
                 withdrawalRequestCount++;
-            } else {
+            }
+            else
+            {
                 consolidationRequestCount++;
             }
         }

@@ -187,7 +187,9 @@ namespace Nethermind.Merge.Plugin.Test
                     else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                     {
                         withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                    } else {
+                    }
+                    else
+                    {
                         consolidationRequests[consolidationRequestIndex++] = (ConsolidationRequest)request;
                     }
                 }
