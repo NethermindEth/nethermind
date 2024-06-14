@@ -183,6 +183,7 @@ namespace Nethermind.Core.Caching
                 {
                     InvalidNotSingleNodeList();
                 }
+                // Do nothing only one node
             }
             else
             {

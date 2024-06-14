@@ -124,7 +124,14 @@ namespace Nethermind.Core.Extensions
 
             for (; i < length; i++)
             {
-                thisSpan[i] |= valueSpan[i];
+                if (doXor)
+                {
+                    thisSpan[i] ^= valueSpan[i];
+                }
+                else
+                {
+                    thisSpan[i] |= valueSpan[i];
+                }
             }
         }
     }
