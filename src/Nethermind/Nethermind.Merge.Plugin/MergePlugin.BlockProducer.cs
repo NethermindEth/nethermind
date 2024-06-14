@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;

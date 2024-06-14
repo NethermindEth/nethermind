@@ -8,7 +8,6 @@ namespace Nethermind.Serialization.Ssz;
 
 public partial class Ssz
 {
-    // public const ulong SlotDecryptionIdentitesLength = 32 + 52 * 1024;
     public struct SlotDecryptionIdentites
     {
         public ulong InstanceID;
