@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -39,7 +40,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new();
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
-        private readonly Dictionary<AllocationContexts, int> _allocationAllowances;
+        private readonly FrozenDictionary<AllocationContexts, int> _allocationAllowances;
 
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
         private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations = new();
@@ -77,17 +78,18 @@ namespace Nethermind.Synchronization.Peers
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-            _allocationAllowances = new Dictionary<AllocationContexts, int>();
+            Dictionary<AllocationContexts, int> allocationAllowances = new();
             foreach (AllocationContexts ctx in Enum.GetValues<AllocationContexts>())
             {
                 if (PeerInfo.IsOnlyOneContext(ctx))
                 {
-                    _allocationAllowances[ctx] = allocationSlots;
+                    allocationAllowances[ctx] = allocationSlots;
                 }
             }
 
             // These is a problem with header where it reliably hangs when setting a high enough allowance. So we disable it for now.
-            _allocationAllowances[AllocationContexts.Headers] = 1;
+            allocationAllowances[AllocationContexts.Headers] = 1;
+            _allocationAllowances = allocationAllowances.ToFrozenDictionary();
 
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
@@ -678,7 +680,7 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
 
-            if (exception is OperationCanceledException || exception is TimeoutException)
+            if (exception is OperationCanceledException or TimeoutException)
             {
                 // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
                 // or we have some connection issue

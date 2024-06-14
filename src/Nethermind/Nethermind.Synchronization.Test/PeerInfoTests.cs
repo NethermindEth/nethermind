@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -113,7 +114,7 @@ namespace Nethermind.Synchronization.Test
             Dictionary<AllocationContexts, int> newAllowances = PeerInfo.DefaultAllowances.ToDictionary();
             newAllowances[_contexts] = 5;
 
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>(), newAllowances);
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>(), newAllowances.ToFrozenDictionary());
 
             for (int i = 0; i < 5; i++)
             {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using NonBlocking;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,24 +21,22 @@ namespace Nethermind.Synchronization.Peers
 {
     public class PeerInfo
     {
-        public static readonly Dictionary<AllocationContexts, int> DefaultAllowances = new Dictionary<AllocationContexts, int>()
+        public static readonly FrozenDictionary<AllocationContexts, int> DefaultAllowances = new Dictionary<AllocationContexts, int>()
         {
             {AllocationContexts.Headers, 1},
             {AllocationContexts.Bodies, 1},
             {AllocationContexts.Receipts, 1},
             {AllocationContexts.State, 1},
             {AllocationContexts.Snap, 1},
-        };
+        }.ToFrozenDictionary();
 
-        private readonly Dictionary<AllocationContexts, int> _allocationAllowances;
+        private readonly FrozenDictionary<AllocationContexts, int> _allocationAllowances;
 
-        public PeerInfo(ISyncPeer syncPeer, Dictionary<AllocationContexts, int>? allocationAllowances = null)
+        public PeerInfo(ISyncPeer syncPeer, FrozenDictionary<AllocationContexts, int>? allocationAllowances = null)
         {
             SyncPeer = syncPeer;
-
-            allocationAllowances ??= DefaultAllowances;
-            AllocationSlots = new ConcurrentDictionary<AllocationContexts, int>(allocationAllowances);
-            _allocationAllowances = allocationAllowances;
+            _allocationAllowances = allocationAllowances?.ToFrozenDictionary() ?? DefaultAllowances;
+            AllocationSlots = new ConcurrentDictionary<AllocationContexts, int>(_allocationAllowances);
         }
 
         public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
