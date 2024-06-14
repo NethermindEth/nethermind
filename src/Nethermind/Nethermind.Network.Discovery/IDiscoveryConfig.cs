@@ -116,5 +116,5 @@ public interface IDiscoveryConfig : IConfig
     int MaxOutgoingMessagePerSecond { get; set; }
 
     [ConfigItem(Description = "Discv5 support.", DefaultValue = "false", HiddenFromDocs = true)]
-    public bool Discv5Enabled { get; set; }
+    bool Discv5Enabled { get; set; }
 }

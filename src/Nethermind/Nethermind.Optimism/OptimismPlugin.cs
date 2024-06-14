@@ -177,7 +177,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.LogManager
         );
 
-        PivotUpdator pivotUpdator = new(
+        _ = new(
             _api.BlockTree,
             _api.Synchronizer.SyncModeSelector,
             _api.SyncPeerPool,
