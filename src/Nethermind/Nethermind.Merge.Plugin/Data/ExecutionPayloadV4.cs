@@ -32,11 +32,13 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
         else
         {
-            (int depositCount, int withdrawalRequestCount) = blockRequests.GetTypeCounts();
+            (int depositCount, int withdrawalRequestCount, int consolidationRequestCount) = blockRequests.GetTypeCounts();
             executionPayload.DepositRequests = new Deposit[depositCount];
             executionPayload.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+            executionPayload.ConsolidationRequests = new ConsolidationRequest[consolidationRequestCount];
             int depositIndex = 0;
             int withdrawalRequestIndex = 0;
+            int ConsolidationRequestsIndex = 0;
             for (int i = 0; i < blockRequests.Length; ++i)
             {
                 ConsensusRequest request = blockRequests[i];
@@ -44,9 +46,13 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
                 {
                     executionPayload.DepositRequests[depositIndex++] = (Deposit)request;
                 }
-                else
+                else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                 {
                     executionPayload.WithdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
+                }
+                else
+                {
+                    executionPayload.ConsolidationRequests[ConsolidationRequestsIndex++] = (ConsolidationRequest)request;
                 }
             }
         }
@@ -109,4 +115,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// </summary>
     [JsonRequired]
     public sealed override WithdrawalRequest[]? WithdrawalRequests { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ConsolidationRequests"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7251">EIP-7251</see>.
+    /// </summary>
+    [JsonRequired]
+    public sealed override ConsolidationRequest[]? ConsolidationRequests { get; set; }
 }

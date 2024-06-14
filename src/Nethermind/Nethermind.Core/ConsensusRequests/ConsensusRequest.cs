@@ -9,7 +9,8 @@ namespace Nethermind.Core.ConsensusRequests;
 public enum ConsensusRequestsType : byte
 {
     Deposit = 0,
-    WithdrawalRequest = 1
+    WithdrawalRequest = 1,
+    ConsolidationRequest = 2
 }
 
 public class ConsensusRequest
@@ -27,6 +28,9 @@ public class ConsensusRequest
     public byte[]? PubKeyField { get; set; }
 
     [JsonIgnore]
+    public byte[]? TargetPubKeyField { get; set; }
+
+    [JsonIgnore]
     public byte[]? WithdrawalCredentialsField { get; protected set; }
 
     [JsonIgnore]
@@ -38,10 +42,11 @@ public class ConsensusRequest
 
 public static class ConsensusRequestExtensions
 {
-    public static (int depositCount, int withdrawalRequestCount) GetTypeCounts(this ConsensusRequest[]? requests)
+    public static (int depositCount, int withdrawalRequestCount, int consolidationRequestCount) GetTypeCounts(this ConsensusRequest[]? requests)
     {
         int depositCount = 0;
         int withdrawalRequestCount = 0;
+        int consolidationRequestCount = 0;
         int length = requests?.Length ?? 0;
         for (int i = 0; i < length; i++)
         {
@@ -49,12 +54,14 @@ public static class ConsensusRequestExtensions
             {
                 depositCount++;
             }
-            else
+            else if (requests[i].Type == ConsensusRequestsType.WithdrawalRequest)
             {
                 withdrawalRequestCount++;
+            } else {
+                consolidationRequestCount++;
             }
         }
 
-        return (depositCount, withdrawalRequestCount);
+        return (depositCount, withdrawalRequestCount, consolidationRequestCount);
     }
 }
