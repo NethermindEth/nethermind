@@ -229,13 +229,9 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         SubTreeRange? accountRange = getAccountRangeMessage.SubTreeRange;
         (List<PathWithSubTree>, VerkleProof) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
             accountRange.LimitStem, getAccountRangeMessage.ResponseBytes, out _);
-        Console.WriteLine($"Got the sync data: {data.Item1.Count}");
         SubTreeRangeMessage? response = new();
-        Console.WriteLine($"Got the sync data - encoding the path with sub tree: {data.Item1.Count}");
         response.PathsWithSubTrees = data.Item1.ToArray();
-        Console.WriteLine($"Got the sync data - encding proogs");
         response.Proofs = data.Item2.EncodeRlp();
-        Console.WriteLine($"Got the sync data - everything encoded");
 
         TestSubTreeRangeMessageEncoding(accountRange.RootHash, accountRange.StartingStem, response);
 

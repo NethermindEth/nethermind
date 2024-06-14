@@ -41,13 +41,13 @@ public class VerkleSyncServer
         var nodes = _store.GetLeafRangeIterator(startingStem, limitStem ?? Stem.MaxValue, rootHash, byteLimit).ToList();
         watch.Stop();
         _logger.Info($"Nodes Count - {nodes.Count} time: {watch.Elapsed}");
-        if (nodes.Count == 0) return ([], new VerkleProof());
 
         VerkleTree tree = new(_store, _logManager);
         watch = Stopwatch.StartNew();
         _logger.Info($"Starting Proof Generation");
-        VerkleProof vProof =
-            tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
+        VerkleProof vProof = nodes.Count == 0
+            ? tree.CreateVerkleRangeProof(startingStem.Bytes, limitStem ?? Stem.MaxValue, out rootPoint, rootHash)
+            : tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
         watch.Stop();
         _logger.Info($"Proof Generated time: {watch.Elapsed}");
         // TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
