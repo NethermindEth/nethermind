@@ -50,7 +50,7 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
         if (result == null || result.Length == 0)
             yield break;
 
-        int sizeOfClass = 20 + 48 + 8;
+        int sizeOfClass = 20 + 48 + 48;
         int count = result.Length / sizeOfClass;
         for (int i = 0; i < count; ++i)
         {
