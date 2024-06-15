@@ -13,8 +13,8 @@ public class PerTableDbConfigTests
     public void CanReadAllConfigForAllTable()
     {
         DbConfig dbConfig = new DbConfig();
-        string[] tables = new[]
-        {
+        string[] tables =
+        [
             DbNames.Storage,
             DbNames.State,
             DbNames.Code,
@@ -23,10 +23,8 @@ public class PerTableDbConfigTests
             DbNames.Receipts,
             DbNames.BlockInfos,
             DbNames.Bloom,
-            DbNames.Witness,
-            DbNames.CHT,
-            DbNames.Metadata,
-        };
+            DbNames.Metadata
+        ];
 
         foreach (string table in tables)
         {
@@ -38,6 +36,17 @@ public class PerTableDbConfigTests
             _ = config.WriteBufferNumber;
             _ = config.MaxOpenFiles;
         }
+    }
+
+    [Test]
+    public void When_ColumnDb_UsePerTableConfig()
+    {
+        DbConfig dbConfig = new DbConfig();
+        dbConfig.MaxOpenFiles = 2;
+        dbConfig.ReceiptsDbMaxOpenFiles = 3;
+
+        PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""), "Blocks");
+        config.MaxOpenFiles.Should().Be(3);
     }
 
     [Test]

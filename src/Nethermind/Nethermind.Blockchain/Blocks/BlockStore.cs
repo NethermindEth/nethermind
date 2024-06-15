@@ -30,7 +30,7 @@ public class BlockStore : IBlockStore
     private string? _basePath;
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder = new();
-    private const int CacheSize = 128 + 32;
+    public const int CacheSize = 128 + 32;
     private const int BlocksPerEra = 8192;
     private const int FileSplit = 8;
     private const int BlocksPerFile = BlocksPerEra / FileSplit;

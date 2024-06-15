@@ -9,7 +9,7 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode? Root { get; private set; }
 
-        public bool IsSealed => Root != null;
+        public bool IsSealed => Root is not null;
 
         public BlockCommitSet(long blockNumber)
         {

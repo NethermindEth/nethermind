@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -227,7 +228,7 @@ namespace Nethermind.Trie
                     if (nodesToCommit.Count >= 4)
                     {
                         ClearExceptions();
-                        Parallel.For(0, nodesToCommit.Count, i =>
+                        Parallel.For(0, nodesToCommit.Count, RuntimeInformation.ParallelOptionsLogicalCores, i =>
                         {
                             try
                             {
@@ -345,10 +346,10 @@ namespace Nethermind.Trie
             }
         }
 
-        public void UpdateRootHash()
+        public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
-            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool);
+            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
@@ -1356,7 +1357,7 @@ namespace Nethermind.Trie
                 ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
                 : TrieStore;
 
-            if (storageAddr != null)
+            if (storageAddr is not null)
             {
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }

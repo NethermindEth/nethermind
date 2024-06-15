@@ -47,7 +47,6 @@ namespace Nethermind.Specs
         public bool IsEip1108Enabled { get; set; }
         public bool IsEip1884Enabled { get; set; }
         public bool IsEip2200Enabled { get; set; }
-        public bool IsEip2315Enabled { get; set; }
         public bool IsEip2537Enabled { get; set; }
         public bool IsEip2565Enabled { get; set; }
         public bool IsEip2929Enabled { get; set; }
@@ -81,6 +80,7 @@ namespace Nethermind.Specs
         public bool IsEip3860Enabled { get; set; }
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
+        public bool IsRip7212Enabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }

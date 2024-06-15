@@ -628,32 +628,6 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        public BlockHeader? FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant,
-            long maxSearchDepth)
-        {
-            if (firstDescendant.Number > secondDescendant.Number)
-            {
-                firstDescendant = GetAncestorAtNumber(firstDescendant, secondDescendant.Number);
-            }
-            else if (secondDescendant.Number > firstDescendant.Number)
-            {
-                secondDescendant = GetAncestorAtNumber(secondDescendant, firstDescendant.Number);
-            }
-
-            long currentSearchDepth = 0;
-            while (
-                firstDescendant is not null
-                && secondDescendant is not null
-                && firstDescendant.Hash != secondDescendant.Hash)
-            {
-                if (currentSearchDepth++ >= maxSearchDepth) return null;
-                firstDescendant = this.FindParentHeader(firstDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                secondDescendant = this.FindParentHeader(secondDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return firstDescendant;
-        }
-
         private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
         {
             BlockHeader? result = header;
@@ -827,22 +801,17 @@ namespace Nethermind.Blockchain
             return childHash;
         }
 
-        public bool IsMainChain(BlockHeader blockHeader)
-        {
-            ChainLevelInfo? chainLevelInfo = LoadLevel(blockHeader.Number);
-            bool isMain = chainLevelInfo is not null && chainLevelInfo.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
-            return isMain;
-        }
+        public bool IsMainChain(BlockHeader blockHeader) =>
+            LoadLevel(blockHeader.Number)?.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
 
-        public bool IsMainChain(Hash256 blockHash)
+        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true)
         {
             BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header is null)
-            {
-                throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
-            }
-
-            return IsMainChain(header);
+            return header is not null
+                ? IsMainChain(header)
+                : throwOnMissingHash
+                    ? throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}")
+                    : false;
         }
 
         public BlockHeader? FindBestSuggestedHeader() => BestSuggestedHeader;
@@ -1279,7 +1248,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number >= Head.Number - HeaderStore.CacheSize;
+            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)

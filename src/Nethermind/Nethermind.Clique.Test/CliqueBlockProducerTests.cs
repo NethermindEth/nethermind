@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -55,7 +56,7 @@ namespace Nethermind.Clique.Test
             private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
             private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
             private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
-            private readonly Dictionary<PrivateKey, CliqueBlockProducer> _producers = new();
+            private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = new();
             private readonly Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
 
             private On()
@@ -127,8 +128,10 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
+                CodeInfoRepository codeInfoRepository = new();
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
-                    new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
+                    new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
+                    codeInfoRepository,
                     nodeLogManager);
                 BlockProcessor blockProcessor = new(
                     goerliSpecProvider,
@@ -137,7 +140,6 @@ namespace Nethermind.Clique.Test
                     new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                     stateProvider,
                     NullReceiptStorage.Instance,
-                    NullWitnessCollector.Instance,
                     new BlockhashStore(blockTree, goerliSpecProvider, stateProvider),
                     nodeLogManager);
 
@@ -147,8 +149,8 @@ namespace Nethermind.Clique.Test
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
                 WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
-                VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
-                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, nodeLogManager);
+                VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
+                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
                 BlockProcessor minerBlockProcessor = new(
                     goerliSpecProvider,
@@ -157,7 +159,6 @@ namespace Nethermind.Clique.Test
                     new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
                     minerStateProvider,
                     NullReceiptStorage.Instance,
-                    NullWitnessCollector.Instance,
                     new BlockhashStore(blockTree, goerliSpecProvider, minerStateProvider),
                     nodeLogManager);
 
@@ -177,7 +178,6 @@ namespace Nethermind.Clique.Test
                     txPoolTxSource,
                     minerProcessor,
                     minerStateProvider,
-                    blockTree,
                     _timestamper,
                     new CryptoRandom(),
                     snapshotManager,
@@ -186,11 +186,21 @@ namespace Nethermind.Clique.Test
                     MainnetSpecProvider.Instance,
                     _cliqueConfig,
                     nodeLogManager);
-                blockProducer.Start();
 
-                ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, blockProducer);
+                CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+                    blockTree,
+                    _timestamper,
+                    new CryptoRandom(),
+                    snapshotManager,
+                    blockProducer,
+                    _cliqueConfig,
+                    LimboLogs.Instance);
 
-                _producers.Add(privateKey, blockProducer);
+                producerRunner.Start();
+
+                ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, producerRunner);
+
+                _producers.Add(privateKey, producerRunner);
 
                 return this;
             }
@@ -251,7 +261,7 @@ namespace Nethermind.Clique.Test
             public On IsProducingBlocks(PrivateKey nodeId, bool expected, ulong? maxInterval)
             {
                 if (_logger.IsInfo) _logger.Info($"IsProducingBlocks");
-                Assert.That(((IBlockProducer)_producers[nodeId]).IsProducingBlocks(maxInterval), Is.EqualTo(expected));
+                Assert.That(((IBlockProducerRunner)_producers[nodeId]).IsProducingBlocks(maxInterval), Is.EqualTo(expected));
                 return this;
             }
 
