@@ -131,7 +131,7 @@ public class BlockStore : IBlockStore
             Directory.CreateDirectory(directory);
         }
 
-        FileStream file = new(path, mode: FileMode.OpenOrCreate, access: FileAccess.Write, share: FileShare.Read);
+        FileStream file = new(path, mode: FileMode.OpenOrCreate, access: FileAccess.Write, share: FileShare.ReadWrite);
         SafeFileHandle fileHandle = file.SafeFileHandle;
         long fileOffset = Math.Max(RandomAccess.GetLength(fileHandle), Vector128<byte>.Count * BlocksPerFile);
 
