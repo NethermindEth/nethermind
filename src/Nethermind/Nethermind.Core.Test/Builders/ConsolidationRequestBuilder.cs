@@ -15,16 +15,16 @@ public class ConsolidationRequestBuilder : BuilderBase<ConsolidationRequest>
         return this;
     }
 
-    public ConsolidationRequestBuilder WithSourcePubkey(byte[] sourcePubkey)
+    public ConsolidationRequestBuilder WithSourcePubkey(byte[] SourcePubkey)
     {
-        TestObject.SourcePubKey = sourcePubkey;
+        TestObject.SourcePubkey = SourcePubkey;
 
         return this;
     }
 
-    public ConsolidationRequestBuilder WithTargetPubkey(byte[] targetPubkey)
+    public ConsolidationRequestBuilder WithTargetPubkey(byte[] TargetPubkey)
     {
-        TestObject.TargetPubKey = targetPubkey;
+        TestObject.TargetPubkey = TargetPubkey;
 
         return this;
     }

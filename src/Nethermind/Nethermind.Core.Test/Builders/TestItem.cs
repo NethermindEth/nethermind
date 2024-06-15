@@ -115,12 +115,12 @@ namespace Nethermind.Core.Test.Builders
         public static WithdrawalRequest WithdrawalRequestE = new() { SourceAddress = AddressE, ValidatorPublicKey = PublicKeyE.Bytes };
         public static WithdrawalRequest WithdrawalRequestF = new() { SourceAddress = AddressF, ValidatorPublicKey = PublicKeyF.Bytes };
 
-        public static ConsolidationRequest ConsolidationRequestA = new() { SourceAddress = AddressA, SourcePubKey = PublicKeyA.Bytes, TargetPubKey = PublicKeyB.Bytes };
-        public static ConsolidationRequest ConsolidationRequestB = new() { SourceAddress = AddressB, SourcePubKey = PublicKeyB.Bytes, TargetPubKey = PublicKeyC.Bytes };
-        public static ConsolidationRequest ConsolidationRequestC = new() { SourceAddress = AddressC, SourcePubKey = PublicKeyC.Bytes, TargetPubKey = PublicKeyD.Bytes };
-        public static ConsolidationRequest ConsolidationRequestD = new() { SourceAddress = AddressD, SourcePubKey = PublicKeyD.Bytes, TargetPubKey = PublicKeyE.Bytes };
-        public static ConsolidationRequest ConsolidationRequestE = new() { SourceAddress = AddressE, SourcePubKey = PublicKeyE.Bytes, TargetPubKey = PublicKeyF.Bytes };
-        public static ConsolidationRequest ConsolidationRequestF = new() { SourceAddress = AddressF, SourcePubKey = PublicKeyF.Bytes, TargetPubKey = PublicKeyA.Bytes };
+        public static ConsolidationRequest ConsolidationRequestA = new() { SourceAddress = AddressA, SourcePubkey = PublicKeyA.Bytes, TargetPubkey = PublicKeyB.Bytes };
+        public static ConsolidationRequest ConsolidationRequestB = new() { SourceAddress = AddressB, SourcePubkey = PublicKeyB.Bytes, TargetPubkey = PublicKeyC.Bytes };
+        public static ConsolidationRequest ConsolidationRequestC = new() { SourceAddress = AddressC, SourcePubkey = PublicKeyC.Bytes, TargetPubkey = PublicKeyD.Bytes };
+        public static ConsolidationRequest ConsolidationRequestD = new() { SourceAddress = AddressD, SourcePubkey = PublicKeyD.Bytes, TargetPubkey = PublicKeyE.Bytes };
+        public static ConsolidationRequest ConsolidationRequestE = new() { SourceAddress = AddressE, SourcePubkey = PublicKeyE.Bytes, TargetPubkey = PublicKeyF.Bytes };
+        public static ConsolidationRequest ConsolidationRequestF = new() { SourceAddress = AddressF, SourcePubkey = PublicKeyF.Bytes, TargetPubkey = PublicKeyA.Bytes };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

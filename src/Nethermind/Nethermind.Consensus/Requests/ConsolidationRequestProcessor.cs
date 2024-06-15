@@ -57,8 +57,8 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
             ConsolidationRequest request = new();
             Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
             request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
-            request.SourcePubKey = span.Slice(20, 48).ToArray();
-            request.TargetPubKey = span.Slice(68, 48).ToArray();
+            request.SourcePubkey = span.Slice(20, 48).ToArray();
+            request.TargetPubkey = span.Slice(68, 48).ToArray();
 
             yield return request;
         }

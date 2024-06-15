@@ -21,24 +21,24 @@ public class ConsolidationRequest : ConsensusRequest
         set { SourceAddressField = value; }
     }
 
-    public byte[]? SourcePubKey
+    public byte[]? SourcePubkey
     {
         get { return PubKeyField; }
         set { PubKeyField = value; }
     }
 
-    public byte[]? TargetPubKey
+    public byte[]? TargetPubkey
     {
-        get { return TargetPubKeyField; }
-        set { TargetPubKeyField = value; }
+        get { return TargetPubkeyField; }
+        set { TargetPubkeyField = value; }
     }
 
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => @$"{indentation}{nameof(ConsolidationRequest)}
             {{ {nameof(SourceAddress)}: {SourceAddress},
-            {nameof(SourcePubKey)}: {SourcePubKey?.ToHexString()},
-            {nameof(TargetPubKey)}: {TargetPubKey?.ToHexString()},
+            {nameof(SourcePubkey)}: {SourcePubkey?.ToHexString()},
+            {nameof(TargetPubkey)}: {TargetPubkey?.ToHexString()},
             }}";
 
 

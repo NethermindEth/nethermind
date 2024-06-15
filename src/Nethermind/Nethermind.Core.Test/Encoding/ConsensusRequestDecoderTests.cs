@@ -53,15 +53,15 @@ public class ConsensusRequestDecoderTests
     [Test]
     public void Roundtrip_consolidationRequest()
     {
-        byte[] sourcePubKey = new byte[48];
-        sourcePubKey[11] = 11;
-        byte[] targetPubkey = new byte[48];
-        targetPubkey[22] = 22;
+        byte[] SourcePubkey = new byte[48];
+        SourcePubkey[11] = 11;
+        byte[] TargetPubkey = new byte[48];
+        TargetPubkey[22] = 22;
         ConsensusRequest consolidationRequest = new ConsolidationRequest()
         {
             SourceAddress = TestItem.AddressA,
-            SourcePubKey = sourcePubKey,
-            TargetPubKey = targetPubkey
+            SourcePubkey = SourcePubkey,
+            TargetPubkey = TargetPubkey
         };
 
         byte[] rlp = Rlp.Encode(consolidationRequest).Bytes;
@@ -118,8 +118,8 @@ public class ConsensusRequestDecoderTests
         ConsensusRequest consolidationRequest = new ConsolidationRequest()
         {
             SourceAddress = TestItem.AddressA,
-            SourcePubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
-            TargetPubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
+            SourcePubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
         };
         RlpStream stream = new(1024);
         ConsensusRequestDecoder codec = new();
@@ -170,8 +170,8 @@ public class ConsensusRequestDecoderTests
         ConsensusRequest consolidationRequest = new ConsolidationRequest()
         {
             SourceAddress = TestItem.AddressA,
-            SourcePubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
-            TargetPubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
+            SourcePubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
         };
         byte[] rlp1 = new ConsensusRequestDecoder().Encode(consolidationRequest).Bytes;
         byte[] rlp2 = Rlp.Encode(consolidationRequest).Bytes;
@@ -201,8 +201,8 @@ public class ConsensusRequestDecoderTests
             new ConsolidationRequest()
             {
                 SourceAddress = TestItem.AddressA,
-                SourcePubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
-                TargetPubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
+                SourcePubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
             }
         };
 

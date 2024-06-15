@@ -13,21 +13,21 @@ public class ConsolidationRequestDecoder : IRlpStreamDecoder<ConsolidationReques
         Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetContentLength(ConsolidationRequest item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.SourcePubKey) +
-        Rlp.LengthOf(item.TargetPubKey);
+        Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.SourcePubkey) +
+        Rlp.LengthOf(item.TargetPubkey);
 
     public ConsolidationRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int _ = rlpStream.ReadSequenceLength();
         Address sourceAddress = rlpStream.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] sourcePubKey = rlpStream.DecodeByteArray();
-        byte[] targetPubKey = rlpStream.DecodeByteArray();
+        byte[] SourcePubkey = rlpStream.DecodeByteArray();
+        byte[] TargetPubkey = rlpStream.DecodeByteArray();
         return new ConsolidationRequest()
         {
             SourceAddress = sourceAddress,
-            SourcePubKey = sourcePubKey,
-            TargetPubKey = targetPubKey
+            SourcePubkey = SourcePubkey,
+            TargetPubkey = TargetPubkey
         };
     }
 
@@ -36,13 +36,13 @@ public class ConsolidationRequestDecoder : IRlpStreamDecoder<ConsolidationReques
         int _ = decoderContext.ReadSequenceLength();
         Address sourceAddress = decoderContext.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] sourcePubKey = decoderContext.DecodeByteArray();
-        byte[] targetPubKey = decoderContext.DecodeByteArray();
+        byte[] SourcePubkey = decoderContext.DecodeByteArray();
+        byte[] TargetPubkey = decoderContext.DecodeByteArray();
         return new ConsolidationRequest()
         {
             SourceAddress = sourceAddress,
-            SourcePubKey = sourcePubKey,
-            TargetPubKey = targetPubKey
+            SourcePubkey = SourcePubkey,
+            TargetPubkey = TargetPubkey
         };
     }
 
@@ -51,8 +51,8 @@ public class ConsolidationRequestDecoder : IRlpStreamDecoder<ConsolidationReques
         int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
         stream.Encode(item.SourceAddress);
-        stream.Encode(item.SourcePubKey);
-        stream.Encode(item.TargetPubKey);
+        stream.Encode(item.SourcePubkey);
+        stream.Encode(item.TargetPubkey);
     }
 
     public Rlp Encode(ConsolidationRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
