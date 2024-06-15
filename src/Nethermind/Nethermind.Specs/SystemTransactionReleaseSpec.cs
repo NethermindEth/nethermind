@@ -129,6 +129,8 @@ namespace Nethermind.Specs
         public bool AuRaSystemCalls => false;
         public bool IsEip7002Enabled => _spec.IsEip7002Enabled;
         public Address Eip7002ContractAddress => _spec.Eip7002ContractAddress;
+        public bool IsEip7251Enabled => _spec.IsEip7251Enabled;
+        public Address Eip7251ContractAddress => _spec.Eip7251ContractAddress;
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;

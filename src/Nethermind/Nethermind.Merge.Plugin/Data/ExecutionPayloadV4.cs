@@ -29,6 +29,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         {
             executionPayload.DepositRequests = Array.Empty<Deposit>();
             executionPayload.WithdrawalRequests = Array.Empty<WithdrawalRequest>();
+            executionPayload.ConsolidationRequests = Array.Empty<ConsolidationRequest>();
         }
         else
         {
@@ -71,7 +72,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
         var depositsLength = DepositRequests?.Length ?? 0;
         var withdrawalRequestsLength = WithdrawalRequests?.Length ?? 0;
-        var requestsCount = depositsLength + withdrawalRequestsLength;
+        var consolidationRequestsLength = ConsolidationRequests?.Length ?? 0;
+        var requestsCount = depositsLength + withdrawalRequestsLength + consolidationRequestsLength;
         if (requestsCount > 0)
         {
             var requests = new ConsensusRequest[requestsCount];
@@ -81,9 +83,14 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
                 requests[i] = DepositRequests![i];
             }
 
-            for (; i < requestsCount; ++i)
+            for (; i < depositsLength + withdrawalRequestsLength; ++i)
             {
                 requests[i] = WithdrawalRequests![i - depositsLength];
+            }
+
+            for (; i < requestsCount; ++i)
+            {
+                requests[i] = ConsolidationRequests![i - depositsLength - withdrawalRequestsLength];
             }
 
             block.Body.Requests = requests;

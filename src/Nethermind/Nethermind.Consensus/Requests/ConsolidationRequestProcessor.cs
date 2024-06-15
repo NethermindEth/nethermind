@@ -18,18 +18,18 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Requests;
 
-// https://eips.ethereum.org/EIPS/eip-7002#block-processing
+// https://eips.ethereum.org/EIPS/eip-7251#block-processing
 public class ConsolidationRequestsProcessor(ITransactionProcessor transactionProcessor) : IConsolidationRequestsProcessor
 {
     private const long GasLimit = 30_000_000L;
 
     public IEnumerable<ConsolidationRequest> ReadConsolidationRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
-        if (!spec.IsEip7002Enabled)
+        if (!spec.IsEip7251Enabled)
             yield break;
 
-        Address eip7002Account = spec.Eip7002ContractAddress;
-        if (!state.AccountExists(eip7002Account)) // not needed anymore?
+        Address eip7251Account = spec.Eip7251ContractAddress;
+        if (!state.AccountExists(eip7251Account)) // not needed anymore?
             yield break;
 
         CallOutputTracer tracer = new();
@@ -38,7 +38,7 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
         {
             Value = UInt256.Zero,
             Data = Array.Empty<byte>(),
-            To = spec.Eip7002ContractAddress,
+            To = spec.Eip7251ContractAddress,
             SenderAddress = Address.SystemUser,
             GasLimit = GasLimit,
             GasPrice = UInt256.Zero,

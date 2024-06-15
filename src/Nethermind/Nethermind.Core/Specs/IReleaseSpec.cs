@@ -282,6 +282,15 @@ namespace Nethermind.Core.Specs
         bool WithdrawalRequestsEnabled => IsEip7002Enabled;
         Address Eip7002ContractAddress { get; }
 
+
+        /// <summary>
+        /// EIP-7251: triggered consolidations
+        /// </summary>
+        bool IsEip7251Enabled { get; }
+        bool ConsolidationRequestsEnabled => IsEip7251Enabled;
+        Address Eip7251ContractAddress { get; }
+
+
         /// <summary>
         /// Save historical block hashes in state
         /// </summary>

@@ -157,6 +157,8 @@ namespace Nethermind.Specs.Test
         public Address? Eip4788ContractAddress => _spec.Eip4788ContractAddress;
         public bool IsEip7002Enabled => _spec.IsEip7002Enabled;
         public Address Eip7002ContractAddress => _spec.Eip7002ContractAddress;
+        public bool IsEip7251Enabled => _spec.IsEip7251Enabled;
+        public Address Eip7251ContractAddress => _spec.Eip7251ContractAddress;
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public bool IsEip3074Enabled => _spec.IsEip3074Enabled;
