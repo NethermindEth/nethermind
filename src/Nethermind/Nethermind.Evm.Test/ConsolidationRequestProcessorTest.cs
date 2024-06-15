@@ -83,12 +83,12 @@ public class ConsolidationRequestProcessorTests
         {
             SourceAddress = new Address(Bytes.FromHexString("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b")),
             SourcePubKey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
-            TargetPubKey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001")
+            TargetPubKey = Bytes.FromHexString("0000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b0000000000000000000000000000000000000000")
         };
 
         var ConsolidationRequests = ConsolidationRequestsProcessor.ReadConsolidationRequests(spec, _stateProvider, block).ToList();
 
-        Assert.That(ConsolidationRequests, Has.Count.EqualTo(16));
+        Assert.That(ConsolidationRequests, Has.Count.EqualTo(10));
 
         ConsolidationRequest ConsolidationRequestResult = ConsolidationRequests[0];
 
