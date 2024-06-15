@@ -18,7 +18,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     private readonly Dictionary<byte[], byte[]> _metadataDict = new(Bytes.EqualityComparer);
     private readonly BlockDecoder _blockDecoder = new();
 
-    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
+    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None, bool shouldCache = false)
     {
         _blockDict[block.Hash] = block;
         _blockNumDict[block.Number] = block;
