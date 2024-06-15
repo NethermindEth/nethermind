@@ -66,6 +66,21 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
+        public static RecyclableRlpStream EncodeToNewRecyclableRlpStream<T>(this IRlpStreamDecoder<T> decoder, T? item, string tag, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            RecyclableRlpStream rlpStream;
+            if (item is null)
+            {
+                rlpStream = new RecyclableRlpStream(tag);
+                rlpStream.WriteByte(Rlp.NullObjectByte);
+                return rlpStream;
+            }
+
+            rlpStream = new RecyclableRlpStream(tag);
+            decoder.Encode(rlpStream, item, rlpBehaviors);
+            return rlpStream;
+        }
+
         public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             NettyRlpStream rlpStream;

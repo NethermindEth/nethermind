@@ -9,6 +9,7 @@ namespace Nethermind.Db
 {
     public interface IDb : IKeyValueStoreWithBatching, IDbMeta, IDisposable
     {
+        string? DbPath { get; }
         string Name { get; }
         KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false);

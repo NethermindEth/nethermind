@@ -11,6 +11,7 @@ namespace Nethermind.Db
     public class ReadOnlyDb(IDb wrappedDb, bool createInMemWriteStore) : IReadOnlyDb
     {
         private readonly MemDb _memDb = new();
+        public string? DbPath => wrappedDb.DbPath;
 
         public void Dispose()
         {

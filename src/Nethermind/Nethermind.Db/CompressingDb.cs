@@ -22,6 +22,8 @@ namespace Nethermind.Db
         {
             private readonly IDb _wrapped;
 
+            public string? DbPath => _wrapped.DbPath;
+
             public EOACompressingDb(IDb wrapped)
             {
                 // TODO: consider wrapping IDbWithSpan to make the read with a span, with no alloc for reading?

@@ -19,6 +19,7 @@ namespace Nethermind.Db
         public long WritesCount { get; private set; }
 
         private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
+        string? IDb.DbPath => null;
 
         public MemDb(string name)
             : this(0, 0)

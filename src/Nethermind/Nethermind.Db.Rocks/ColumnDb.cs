@@ -19,6 +19,8 @@ public class ColumnDb : IDb
 
     private readonly DbOnTheRocks.IteratorManager _iteratorManager;
 
+    public string? DbPath => _mainDb.DbPath;
+
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
         _rocksDb = rocksDb;

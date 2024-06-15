@@ -17,5 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Polly" />
+    <PackageReference Include="Snappier" />
   </ItemGroup>
 </Project>
