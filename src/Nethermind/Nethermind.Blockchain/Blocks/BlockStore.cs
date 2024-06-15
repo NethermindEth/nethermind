@@ -121,7 +121,7 @@ public class BlockStore : IBlockStore
         string path = Path.Combine(directory, filename);
 
         bool newLock = false;
-        var handle = _locks.GetOrAdd(lockId, _ =>
+        using var handle = _locks.GetOrAdd(lockId, _ =>
         {
             newLock = true;
             return new McsLock();
