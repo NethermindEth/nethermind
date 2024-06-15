@@ -23,9 +23,9 @@ public class WithdrawalRequestBuilder : BuilderBase<WithdrawalRequest>
         return this;
     }
 
-    public WithdrawalRequestBuilder WithValidatorPubkey(byte[] validatorPubkey)
+    public WithdrawalRequestBuilder WithValidatorPubkey(byte[] ValidatorPubkey)
     {
-        TestObject.ValidatorPublicKey = validatorPubkey;
+        TestObject.ValidatorPubkey = ValidatorPubkey;
 
         return this;
     }

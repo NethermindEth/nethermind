@@ -108,12 +108,12 @@ namespace Nethermind.Core.Test.Builders
         public static Deposit DepositF_6Eth = new() { Index = 6, Pubkey = PublicKeyF.Bytes, Amount = 6_000_000_000, WithdrawalCredentials = AddressF.Bytes, Signature = KeccakF.Bytes.ToArray() };
 
 
-        public static WithdrawalRequest WithdrawalRequestA = new() { SourceAddress = AddressA, ValidatorPublicKey = PublicKeyA.Bytes };
-        public static WithdrawalRequest WithdrawalRequestB = new() { SourceAddress = AddressB, ValidatorPublicKey = PublicKeyB.Bytes };
-        public static WithdrawalRequest WithdrawalRequestC = new() { SourceAddress = AddressC, ValidatorPublicKey = PublicKeyC.Bytes };
-        public static WithdrawalRequest WithdrawalRequestD = new() { SourceAddress = AddressD, ValidatorPublicKey = PublicKeyD.Bytes };
-        public static WithdrawalRequest WithdrawalRequestE = new() { SourceAddress = AddressE, ValidatorPublicKey = PublicKeyE.Bytes };
-        public static WithdrawalRequest WithdrawalRequestF = new() { SourceAddress = AddressF, ValidatorPublicKey = PublicKeyF.Bytes };
+        public static WithdrawalRequest WithdrawalRequestA = new() { SourceAddress = AddressA, ValidatorPubkey = PublicKeyA.Bytes };
+        public static WithdrawalRequest WithdrawalRequestB = new() { SourceAddress = AddressB, ValidatorPubkey = PublicKeyB.Bytes };
+        public static WithdrawalRequest WithdrawalRequestC = new() { SourceAddress = AddressC, ValidatorPubkey = PublicKeyC.Bytes };
+        public static WithdrawalRequest WithdrawalRequestD = new() { SourceAddress = AddressD, ValidatorPubkey = PublicKeyD.Bytes };
+        public static WithdrawalRequest WithdrawalRequestE = new() { SourceAddress = AddressE, ValidatorPubkey = PublicKeyE.Bytes };
+        public static WithdrawalRequest WithdrawalRequestF = new() { SourceAddress = AddressF, ValidatorPubkey = PublicKeyF.Bytes };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

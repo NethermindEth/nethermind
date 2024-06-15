@@ -59,11 +59,11 @@ public class BlockDecoderTests
             }
             else
             {
-                byte[] validatorPubkey = new byte[48];
-                validatorPubkey[11] = 11;
+                byte[] ValidatorPubkey = new byte[48];
+                ValidatorPubkey[11] = 11;
                 requests[i] = Build.A.WithdrawalRequest
                     .WithSourceAddress(TestItem.AddressA)
-                    .WithValidatorPubkey(validatorPubkey)
+                    .WithValidatorPubkey(ValidatorPubkey)
                     .WithAmount(int.MaxValue)
                     .TestObject;
             }
