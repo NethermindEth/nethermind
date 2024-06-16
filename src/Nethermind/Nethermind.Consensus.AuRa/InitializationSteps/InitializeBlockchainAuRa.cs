@@ -71,7 +71,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         }
     }
 
-    protected override BlockProcessor CreateBlockProcessor()
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.ChainHeadStateProvider is null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
@@ -89,10 +89,10 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api,
             new ServiceTxFilter(_api.SpecProvider));
 
-        return NewAuraBlockProcessor(auRaTxFilter);
+        return NewAuraBlockProcessor(auRaTxFilter, preWarmer);
     }
 
-    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter)
+    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)
     {
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
@@ -113,7 +113,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             CreateAuRaValidator(),
             txFilter,
             GetGasLimitCalculator(),
-            contractRewriter
+            contractRewriter,
+            preWarmer: preWarmer
         );
     }
 
