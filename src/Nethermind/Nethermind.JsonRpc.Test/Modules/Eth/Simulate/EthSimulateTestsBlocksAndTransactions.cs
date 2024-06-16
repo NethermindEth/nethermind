@@ -26,11 +26,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
-    private static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 ammount)
+    private static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount)
     {
         Transaction tx = new()
         {
-            Value = ammount,
+            Value = amount,
             Nonce = nonce,
             GasLimit = 50_000,
             SenderAddress = from.Address,

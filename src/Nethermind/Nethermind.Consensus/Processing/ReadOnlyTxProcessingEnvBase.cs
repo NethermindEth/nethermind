@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Processing;
 public class ReadOnlyTxProcessingEnvBase
 {
     public IStateReader StateReader { get; protected set; }
-    public IWorldState StateProvider { get; protected set; }
+    protected IWorldState StateProvider { get; set; }
     public IBlockTree BlockTree { get; protected set; }
     public IBlockhashProvider BlockhashProvider { get; protected set; }
 
@@ -36,11 +36,5 @@ public class ReadOnlyTxProcessingEnvBase
         BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
         BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
         LogManager = logManager;
-    }
-
-
-    public void Reset()
-    {
-        StateProvider.Reset();
     }
 }

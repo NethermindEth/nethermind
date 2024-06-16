@@ -20,6 +20,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -102,7 +103,7 @@ public class StartBlockProducerAuRa
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv)
+    private BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope changeableTxProcessingEnv)
     {
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.ValidatorStore is null) throw new StepDependencyException(nameof(_api.ValidatorStore));
@@ -119,9 +120,9 @@ public class StartBlockProducerAuRa
             new LocalTxFilter(_api.EngineSigner));
 
         _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                changeableTxProcessingEnv.StateProvider,
+                changeableTxProcessingEnv.WorldState,
                 changeableTxProcessingEnv.TransactionProcessor,
-                changeableTxProcessingEnv.BlockTree,
+                _api.BlockTree,
                 _api.CreateReadOnlyTransactionProcessorSource(),
                 _api.ReceiptStorage,
                 _api.ValidatorStore,
@@ -151,10 +152,10 @@ public class StartBlockProducerAuRa
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-            changeableTxProcessingEnv.StateProvider,
+            changeableTxProcessingEnv.WorldState,
             _api.ReceiptStorage,
             _api.LogManager,
-            changeableTxProcessingEnv.BlockTree,
+            _api.BlockTree,
             NullWithdrawalProcessor.Instance,
             _validator,
             auRaTxFilter,
@@ -162,7 +163,7 @@ public class StartBlockProducerAuRa
             contractRewriter);
     }
 
-    internal TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv)
+    internal TxPoolTxSource CreateTxPoolTxSource()
     {
         _txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
         _localDataSource = _api.TxPriorityContractLocalDataSource;
@@ -203,7 +204,7 @@ public class StartBlockProducerAuRa
 
             return new TxPriorityTxSource(
                 _api.TxPool,
-                processingEnv.StateReader,
+                _api.StateReader,
                 _api.LogManager,
                 txFilterPipeline,
                 whitelistContractDataStore,
@@ -225,27 +226,28 @@ public class StartBlockProducerAuRa
             ReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv txProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource();
-            BlockProcessor blockProcessor = CreateBlockProcessor(txProcessingEnv);
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            BlockProcessor blockProcessor = CreateBlockProcessor(scope);
 
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
                     readOnlyBlockTree,
                     blockProcessor,
                     _api.BlockPreprocessor,
-                    txProcessingEnv.StateReader,
+                    _api.StateReader,
                     _api.LogManager,
                     BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                txProcessingEnv.StateProvider,
+                scope.WorldState,
                 blockchainProcessor);
 
             return new BlockProducerEnv()
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = CreateTxSourceForProducer(txProcessingEnv, additionalTxSource),
+                ReadOnlyStateProvider = scope.WorldState,
+                TxSource = CreateTxSourceForProducer(additionalTxSource),
                 ReadOnlyTxProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource(),
             };
         }
@@ -253,8 +255,8 @@ public class StartBlockProducerAuRa
         return _blockProducerContext ??= Create();
     }
 
-    private ITxSource CreateStandardTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv) =>
-        CreateTxPoolTxSource(processingEnv);
+    private ITxSource CreateStandardTxSourceForProducer() =>
+        CreateTxPoolTxSource();
 
     private TxPoolTxSource CreateStandardTxPoolTxSource()
     {
@@ -268,7 +270,7 @@ public class StartBlockProducerAuRa
 
     private ITxFilter CreateAuraTxFilterForProducer() => TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_api, _minGasPricesContractDataStore);
 
-    private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ITxSource? additionalTxSource)
+    private ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
     {
         bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
         {
@@ -320,7 +322,7 @@ public class StartBlockProducerAuRa
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
-        IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer(processingEnv) };
+        IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer() };
         bool needSigner = false;
 
         if (additionalTxSource is not null)
@@ -335,7 +337,7 @@ public class StartBlockProducerAuRa
         if (needSigner)
         {
             TxSealer transactionSealer = new TxSealer(_api.EngineSigner, _api.Timestamper);
-            txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _api.LogManager);
+            txSource = new GeneratedTxSource(txSource, transactionSealer, _api.StateReader, _api.LogManager);
         }
 
         ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api);
