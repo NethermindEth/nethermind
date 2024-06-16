@@ -172,7 +172,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Debug(long blockNumber)
             {
-                _logger.Debug($"Finished committing {RootRef.Keccak} in block {blockNumber}");
+                _logger.Debug($"Finished committing {RootRef?.Keccak} in block {blockNumber}");
             }
         }
 
