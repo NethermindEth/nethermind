@@ -307,6 +307,9 @@ namespace Nethermind.Core.Specs
         /// AUTH and AUTHCALL for EOA
         /// </summary>
         bool IsEip3074Enabled { get; }
+        /// Secp256r1 precompile
+        /// </summary>
+        bool IsRip7212Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

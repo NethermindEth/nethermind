@@ -658,7 +658,7 @@ namespace Nethermind.Trie.Pruning
                                 {
                                     // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
                                     // usually faster to just SaveSnapshot causing most of the entry to be persisted.
-                                    // Not saving snapshot just save about 5% of memory at most most of the time, causing
+                                    // Not saving snapshot just save about 5% of memory at most of the time, causing
                                     // an elevated pruning a few blocks after making it not very effective especially
                                     // on constant block processing such as during forward sync where it can take up to
                                     // 30% of the total time on halfpath as the block processing portion got faster.

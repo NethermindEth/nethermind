@@ -35,12 +35,12 @@ public class ConsensusRequestDecoderTests
     [Test]
     public void Roundtrip_withdrawalRequest()
     {
-        byte[] validatorPubkey = new byte[48];
-        validatorPubkey[11] = 11;
+        byte[] ValidatorPubkey = new byte[48];
+        ValidatorPubkey[11] = 11;
         ConsensusRequest withdrawalRequest = new WithdrawalRequest()
         {
             SourceAddress = TestItem.AddressA,
-            ValidatorPublicKey = validatorPubkey,
+            ValidatorPubkey = ValidatorPubkey,
             Amount = int.MaxValue
         };
 
@@ -98,7 +98,7 @@ public class ConsensusRequestDecoderTests
         ConsensusRequest withdrawalRequest = new WithdrawalRequest()
         {
             SourceAddress = TestItem.AddressA,
-            ValidatorPublicKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
         RlpStream stream = new(1024);
@@ -155,7 +155,7 @@ public class ConsensusRequestDecoderTests
         ConsensusRequest withdrawalRequest = new WithdrawalRequest()
         {
             SourceAddress = TestItem.AddressA,
-            ValidatorPublicKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
         byte[] rlp1 = new ConsensusRequestDecoder().Encode(withdrawalRequest).Bytes;
@@ -195,7 +195,7 @@ public class ConsensusRequestDecoderTests
             new WithdrawalRequest()
             {
                 SourceAddress = TestItem.AddressA,
-                ValidatorPublicKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
                 Amount = int.MaxValue
             },
             new ConsolidationRequest()

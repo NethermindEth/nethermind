@@ -160,13 +160,7 @@ namespace Nethermind.Core.Caching
             return array;
         }
 
-        public int Size
-        {
-            get
-            {
-                return _cacheMap.Count;
-            }
-        }
+        public int Count => _cacheMap.Count;
 
         private void Replace(TKey key, TValue value)
         {

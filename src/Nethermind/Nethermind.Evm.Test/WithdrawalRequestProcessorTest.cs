@@ -82,7 +82,7 @@ public class WithdrawalRequestProcessorTests
         var withdrawalRequest = new WithdrawalRequest()
         {
             SourceAddress = new Address(Bytes.FromHexString("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b")),
-            ValidatorPublicKey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
+            ValidatorPubkey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
             Amount = 0
         };
 
