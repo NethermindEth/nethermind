@@ -13,7 +13,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetContentLength(WithdrawalRequest item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPublicKey) +
+        Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPubkey) +
         Rlp.LengthOf(item.Amount);
 
     public WithdrawalRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -21,12 +21,12 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         int _ = rlpStream.ReadSequenceLength();
         Address sourceAddress = rlpStream.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] validatorPubkey = rlpStream.DecodeByteArray();
+        byte[] ValidatorPubkey = rlpStream.DecodeByteArray();
         ulong amount = rlpStream.DecodeULong();
         return new WithdrawalRequest()
         {
             SourceAddress = sourceAddress,
-            ValidatorPublicKey = validatorPubkey,
+            ValidatorPubkey = ValidatorPubkey,
             Amount = amount
         };
     }
@@ -36,12 +36,12 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         int _ = decoderContext.ReadSequenceLength();
         Address sourceAddress = decoderContext.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] validatorPubkey = decoderContext.DecodeByteArray();
+        byte[] ValidatorPubkey = decoderContext.DecodeByteArray();
         ulong amount = decoderContext.DecodeULong();
         return new WithdrawalRequest()
         {
             SourceAddress = sourceAddress,
-            ValidatorPublicKey = validatorPubkey,
+            ValidatorPubkey = ValidatorPubkey,
             Amount = amount
         };
     }
@@ -51,7 +51,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
         stream.Encode(item.SourceAddress);
-        stream.Encode(item.ValidatorPublicKey);
+        stream.Encode(item.ValidatorPubkey);
         stream.Encode(item.Amount);
     }
 
