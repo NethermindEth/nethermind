@@ -190,12 +190,22 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
         RefreshNodeContactTime();
 
-        foreach (Node node in msg.Nodes)
+        foreach (Node? node in msg.Nodes)
         {
+            if (node is null)
+            {
+                // ports differed between tcp and udp
+                return;
+            }
             if (node.Address.Address == _localhost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
+                continue;
+            }
+            else if (!NetworkStorage.NodesFilter.Set(node.Address.Address))
+            {
+                // Already seen this node ip recently
                 continue;
             }
 

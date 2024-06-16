@@ -9,7 +9,7 @@ namespace Nethermind.Network.Discovery.Messages;
 
 public class NeighborsMsg : DiscoveryMsg
 {
-    public Node[] Nodes { get; init; }
+    public Node?[] Nodes { get; init; }
 
     public NeighborsMsg(IPEndPoint farAddress, long expirationTime, Node[] nodes) : base(farAddress, expirationTime)
     {
@@ -23,7 +23,7 @@ public class NeighborsMsg : DiscoveryMsg
 
     public override string ToString()
     {
-        return base.ToString() + $", Nodes: {(Nodes.Length != 0 ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";
+        return base.ToString() + $", Nodes: {(Nodes.Length != 0 ? string.Join(",", Nodes.Select(x => x?.ToString())) : "empty")}";
     }
 
     public override MsgType MsgType => MsgType.Neighbors;
