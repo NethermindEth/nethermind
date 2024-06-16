@@ -16,7 +16,6 @@ public class Prague : Cancun
         Name = "Prague";
         IsEip2537Enabled = true;
         IsEip2935Enabled = true;
-        IsEip3074Enabled = true;
         IsEip6110Enabled = true;
         IsEip7002Enabled = true;
         IsRip7212Enabled = true;

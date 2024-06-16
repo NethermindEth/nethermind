@@ -293,11 +293,6 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip6780Enabled { get; }
 
-        /// <summary>
-        /// https://eips.ethereum.org/EIPS/eip-3074
-        /// AUTH and AUTHCALL for EOA
-        /// </summary>
-        bool IsEip3074Enabled { get; }
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
@@ -400,8 +395,6 @@ namespace Nethermind.Core.Specs
         /// </remarks>
         public bool AuRaSystemCalls { get; }
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
-
-        bool AuthCallsEnabled => IsEip3074Enabled;
 
         public bool ConsensusRequestsEnabled => WithdrawalRequestsEnabled || DepositsEnabled;
     }
