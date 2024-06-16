@@ -2056,7 +2056,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Metrics.IncrementCalls();
 
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
-            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled ) return EvmExceptionType.BadInstruction;
+            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
         if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
         Address codeSource = stack.PopAddress();
