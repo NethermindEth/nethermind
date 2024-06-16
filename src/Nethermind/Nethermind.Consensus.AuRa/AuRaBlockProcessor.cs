@@ -49,6 +49,7 @@ namespace Nethermind.Consensus.AuRa
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
+            IBlockCachePreWarmer? preWarmer = null,
             IConsensusRequestsProcessor? consensusRequestsProcessor = null)
             : base(
                 specProvider,
@@ -61,6 +62,7 @@ namespace Nethermind.Consensus.AuRa
                 transactionProcessor,
                 logManager,
                 withdrawalProcessor,
+                preWarmer: preWarmer,
                 consensusRequestsProcessor: consensusRequestsProcessor)
         {
             _specProvider = specProvider;

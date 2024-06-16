@@ -14,6 +14,7 @@ using Nethermind.AccountAbstraction.Test.TestContracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -96,9 +97,10 @@ public partial class AccountAbstractionRpcModuleTests
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .TestObject;
 
-            Address accountAddress = new(Bytes.FromHexString(chain.EthRpcModule.eth_call(new TransactionForRpc(getAccountAddressTransaction)).Data).SliceWithZeroPaddingEmptyOnError(12, 20));
+            using ArrayPoolList<byte> data = Bytes.FromHexString(chain.EthRpcModule.eth_call(new TransactionForRpc(getAccountAddressTransaction)).Data)
+                .SliceWithZeroPaddingEmptyOnError(12, 20);
 
-            return accountAddress;
+            return new(data.ToArray());
         }
 
         public byte[] GetWalletConstructor(Address entryPointAddress)

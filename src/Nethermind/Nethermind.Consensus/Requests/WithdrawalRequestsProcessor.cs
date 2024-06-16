@@ -55,7 +55,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
             WithdrawalRequest request = new();
             Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
             request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
-            request.ValidatorPublicKey = span.Slice(20, 48).ToArray();
+            request.ValidatorPubkey = span.Slice(20, 48).ToArray();
             request.Amount = BinaryPrimitives.ReadUInt64BigEndian(span.Slice(68, 8));
 
             yield return request;

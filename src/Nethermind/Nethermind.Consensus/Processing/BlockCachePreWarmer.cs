@@ -76,9 +76,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                     i =>
                     {
                         IReadOnlyTxProcessorSource env = _envPool.Get();
-                        using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                         try
                         {
+                            using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                             scope.WorldState.WarmUp(block.Withdrawals[i].Address);
                         }
                         catch (Exception ex)

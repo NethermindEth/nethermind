@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -100,7 +101,7 @@ public partial class JwtAuthentication : IRpcAuthentication
         }
     }
 
-    public bool Authenticate(string? token)
+    public async Task<bool> Authenticate(string? token)
     {
         if (string.IsNullOrEmpty(token))
         {
@@ -127,9 +128,32 @@ public partial class JwtAuthentication : IRpcAuthentication
 
         try
         {
-            JwtSecurityTokenHandler handler = new();
-            handler.ValidateToken(token, tokenValidationParameters, out SecurityToken _);
-            JwtSecurityToken jwtToken = handler.ReadJwtToken(token);
+            JsonWebTokenHandler handler = new();
+            JsonWebToken jwtToken = handler.ReadJsonWebToken(token);
+            TokenValidationResult result = await handler.ValidateTokenAsync(jwtToken, tokenValidationParameters);
+
+            if (!result.IsValid)
+            {
+                if (result.Exception is SecurityTokenDecryptionFailedException)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Message authentication error: The token cannot be decrypted.");
+                    return false;
+                }
+                if (result.Exception is SecurityTokenReplayDetectedException)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Message authentication error: The token has been used multiple times.");
+                    return false;
+                }
+                if (result.Exception is SecurityTokenInvalidSignatureException)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Message authentication error: Invalid token signature.");
+                    return false;
+                }
+
+                if (_logger.IsWarn) _logger.Warn($"Message authentication error: {result.Exception?.Message}");
+                return false;
+            }
+
             long iat = ((DateTimeOffset)jwtToken.IssuedAt).ToUnixTimeSeconds();
             DateTimeOffset now = _timestamper.UtcNowOffset;
             if (Math.Abs(iat - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
@@ -139,21 +163,6 @@ public partial class JwtAuthentication : IRpcAuthentication
             }
 
             if (_logger.IsWarn) _logger.Warn($"Token expired. Now is {now}, token issued at {jwtToken.IssuedAt}");
-            return false;
-        }
-        catch (SecurityTokenDecryptionFailedException)
-        {
-            if (_logger.IsWarn) _logger.Warn("Message authentication error: The token cannot be decrypted.");
-            return false;
-        }
-        catch (SecurityTokenReplayDetectedException)
-        {
-            if (_logger.IsWarn) _logger.Warn("Message authentication error: The token has been used multiple times.");
-            return false;
-        }
-        catch (SecurityTokenInvalidSignatureException)
-        {
-            if (_logger.IsWarn) _logger.Warn("Message authentication error: Invalid token signature.");
             return false;
         }
         catch (Exception ex)
