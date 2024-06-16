@@ -117,7 +117,7 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 using CancellationTokenSource cancellationTokenSource = new();
-                Task? preWarmTask = suggestedBlock.Transactions.Length < 3
+                Task? preWarmTask = suggestedBlock.Transactions.Length < 3 || !BlockchainProcessor.IsMainProcessingThread
                     ? null
                     : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
