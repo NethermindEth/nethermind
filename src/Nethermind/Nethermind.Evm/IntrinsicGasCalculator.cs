@@ -84,14 +84,14 @@ public static class IntrinsicGasCalculator
 
     private static long ContractCodeCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        SetCodeAuthorization[]? contractCodes = transaction.ContractCodes;
+        AuthorizationTuple[]? contractCodes = transaction.AuthorizationList;
         long contractCodeCost = 0;
         if (contractCodes is not null)
         {
-            if (!releaseSpec.UseContractCode)
+            if (!releaseSpec.IsAuthorizationListEnabled)
             {
                 throw new InvalidDataException(
-                    $"Transaction with a contract code received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
+                    $"Transaction with an authorization_list received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
             }
 
             if (contractCodes.Length == 0) return contractCodeCost;

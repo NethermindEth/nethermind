@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -17,6 +18,8 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
@@ -33,6 +36,9 @@ namespace Nethermind.Evm.TransactionProcessing
         protected ISpecProvider SpecProvider { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
+
+        private AuthorizationListDecoder _authorizationListDecoder = new();
+        private Dictionary<Address, CodeInfo> _authorizationCodeCache = new();
 
         [Flags]
         protected enum ExecutionOptions
@@ -127,11 +133,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
+            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
+                BuildAuthorizedCodeCache(tx.AuthorizationList, _authorizationCodeCache, spec);
+
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _authorizationCodeCache);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
+
+            _authorizationCodeCache.Clear();
 
             // Finalize
             if (restore)
@@ -399,16 +410,17 @@ namespace Nethermind.Evm.TransactionProcessing
             Transaction tx,
             in BlockExecutionContext blCtx,
             IReleaseSpec spec,
-            in UInt256 effectiveGasPrice)
+            in UInt256 effectiveGasPrice,
+            IDictionary<Address, CodeInfo> authorizedCode)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
+            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, authorizedCode);
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+                : VirtualMachine.GetAuthorizedOrCachedCodeInfo(authorizedCode, WorldState, recipient, spec);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -453,10 +465,6 @@ namespace Nethermind.Evm.TransactionProcessing
             // If sender is SystemUser subtracting value will cause InsufficientBalanceException
             if (validate || !tx.IsSystem())
                 WorldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
-            if (tx.Type == TxType.SetCode)
-            {
-                Ecdsa.RecoverAddress();
-            }
 
             try
             {
@@ -484,6 +492,11 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (spec.AddCoinbaseToTxAccessList)
                     {
                         state.WarmUp(header.GasBeneficiary);
+                    }
+
+                    foreach (Address authorized in env.TxExecutionContext.AuthorizedCode.Keys)
+                    {
+                        state.WarmUp(authorized);
                     }
 
                     substate = !tracer.IsTracingActions
@@ -542,6 +555,11 @@ namespace Nethermind.Evm.TransactionProcessing
                             tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                     }
 
+                    foreach(Address toBeRemoved in env.AuthorizedAddresses)
+                    {
+                        VirtualMachine.InsertCode(Array.Empty<byte>(), toBeRemoved, spec);
+                    }
+
                     statusCode = StatusCode.Success;
                 }
 
@@ -555,6 +573,50 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate && !tx.IsSystem())
                 header.GasUsed += spentGas;
+        }
+        /// <summary>
+        /// eip-7702
+        /// Insert temporary code into EOA's authorized by signature.  
+        /// </summary>
+        /// <param name="state"></param>
+        /// <param name="authorizations"></param>
+        /// <param name="spec"></param>
+        /// <exception cref="RlpException"></exception>
+        private void BuildAuthorizedCodeCache(AuthorizationTuple[] authorizations, IDictionary<Address, CodeInfo> authorizedCache, IReleaseSpec spec)
+        {
+            if (authorizedCache.Any())
+                authorizedCache.Clear();
+
+            Span<byte> encoded = stackalloc byte[128];
+            encoded[0] = Eip7702Constants.Magic;
+            //TODO optimize
+            //TODO try parallel sig recovery
+            foreach (AuthorizationTuple authTuple in authorizations)
+            {
+                if (authTuple.ChainId != 0 && SpecProvider.ChainId != authTuple.ChainId)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because chain id ({authTuple.ChainId}) does not match.");
+                    continue;
+                }
+                RlpStream stream = _authorizationListDecoder.EncodeForCommitMessage(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
+                stream.Data.AsSpan().CopyTo(encoded.Slice(1));
+                Address authority = Ecdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
+
+                CodeInfo authorityCodeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, authority, spec);
+                if (authorityCodeInfo.MachineCode.Length > 0)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) has code deployed.");
+                    continue;
+                }
+                if (authTuple.Nonce != null && WorldState.GetNonce(authority) != authTuple.Nonce)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) nonce ({authTuple.Nonce}) does not match.");
+                    continue;
+                }
+                CodeInfo codeToBeInserted = VirtualMachine.GetCachedCodeInfo(WorldState, authTuple.CodeAddress, spec);
+                //TODO should we do insert if code is empty?
+                authorizedCache.Add(authority, codeToBeInserted);
+            }
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)

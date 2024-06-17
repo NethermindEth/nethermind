@@ -46,6 +46,7 @@ public class VirtualMachine : IVirtualMachine
     public const int MaxCallDepth = 1024;
     internal static FrozenDictionary<AddressAsKey, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
     internal static CodeLruCache CodeCache { get; } = new();
+    internal static CodeLruCache AuthorizationCodeCache { get; } = new();
 
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     internal static ref readonly UInt256 P255 => ref P255Int;
@@ -90,6 +91,8 @@ public class VirtualMachine : IVirtualMachine
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
+    public CodeInfo GetAuthorizedOrCachedCodeInfo(IDictionary<Address, CodeInfo> authorizedCode, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+        => _evm.GetAuthorizedOrCachedCodeInfo(authorizedCode, worldState, codeSource, vmSpec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
@@ -185,6 +188,10 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct NotTracing : IIsTracing { }
     public readonly struct IsTracing : IIsTracing { }
 
+    internal sealed class AuthorizedCodeLruCache
+    {
+
+    }
     internal sealed class CodeLruCache
     {
         private const int CacheCount = 16;
@@ -531,11 +538,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
     {
+        InsertCode(code, callCodeOwner, _state, spec);
+    }
+    public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IWorldState state, IReleaseSpec spec)
+    {
         var codeInfo = new CodeInfo(code);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
-        _state.InsertCode(callCodeOwner, codeHash, code, spec);
+        state.InsertCode(callCodeOwner, codeHash, code, spec);
         CodeCache.Set(codeHash, codeInfo);
     }
 
@@ -576,9 +587,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo = new(code);
             cachedCodeInfo.AnalyseInBackgroundIfRequired();
-
             CodeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -594,6 +604,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
         }
+    }
+
+    /// <summary>
+    /// Lookup for code from authorization_list and state. See <see cref="https://eips.ethereum.org/EIPS/eip-7702"/>.
+    /// </summary>
+    /// <param name="code"></param>
+    public CodeInfo GetAuthorizedOrCachedCodeInfo(IDictionary<Address, CodeInfo> authorizedCode, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    {
+        if (vmSpec.IsAuthorizationListEnabled && authorizedCode.ContainsKey(codeSource))
+        {
+            return authorizedCode[codeSource];
+        }
+        return GetCachedCodeInfo(worldState, codeSource, vmSpec);
     }
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
@@ -1442,8 +1465,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 break;
                             }
                         }
-
-                        InstructionExtCodeSize(address, ref stack, spec);
+                        
+                        InstructionExtCodeSize(address, ref stack, txCtx.AuthorizedCode, spec);
                         break;
                     }
                 case Instruction.EXTCODECOPY:
@@ -1462,7 +1485,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ReadOnlyMemory<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = GetAuthorizedOrCachedCodeInfo(txCtx.AuthorizedCode, _worldState, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2170,9 +2193,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
+    private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IDictionary<Address, CodeInfo> authorizedCode, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span.Length;
+        
+        int codeLength = GetAuthorizedOrCachedCodeInfo(authorizedCode, _worldState, address, spec).MachineCode.Span.Length;
         UInt256 result = (UInt256)codeLength;
         stack.PushUInt256(in result);
     }
@@ -2249,8 +2273,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
-        CodeInfo codeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+        
+        CodeInfo codeInfo = GetAuthorizedOrCachedCodeInfo(vmState.Env.TxExecutionContext.AuthorizedCode, _worldState, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)

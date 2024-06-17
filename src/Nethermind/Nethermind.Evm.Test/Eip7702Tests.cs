@@ -50,7 +50,7 @@ public class Eip7702Tests : VirtualMachineTestsBase
         
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
-            .WithContractCode(new SetCodeAuthorization(0, TestItem.AddressF, 0, sig))
+            .WithSetCode(new AuthorizationTuple(0, TestItem.AddressF, 0, sig))
             .WithGasLimit(40000)
             .WithGasPrice(1)
             .WithValue(0)

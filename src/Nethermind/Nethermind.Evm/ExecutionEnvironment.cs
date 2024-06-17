@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -20,6 +21,32 @@ namespace Nethermind.Evm
             in TxExecutionContext txExecutionContext,
             UInt256 transferValue,
             UInt256 value,
+            int callDepth = 0
+            ) :
+            this(
+            codeInfo,
+            executingAccount,
+            caller,
+            codeSource,
+            inputData,
+            txExecutionContext,
+            transferValue,
+            value,
+            Array.Empty<Address>(),
+            callDepth)
+        { }
+
+        public ExecutionEnvironment
+        (
+            CodeInfo codeInfo,
+            Address executingAccount,
+            Address caller,
+            Address? codeSource,
+            ReadOnlyMemory<byte> inputData,
+            in TxExecutionContext txExecutionContext,
+            UInt256 transferValue,
+            UInt256 value,
+            IEnumerable<Address> authorizedAddresses,
             int callDepth = 0)
         {
             CodeInfo = codeInfo;
@@ -31,6 +58,7 @@ namespace Nethermind.Evm
             TransferValue = transferValue;
             Value = value;
             CallDepth = callDepth;
+            AuthorizedAddresses = authorizedAddresses;
         }
 
         /// <summary>
@@ -77,5 +105,7 @@ namespace Nethermind.Evm
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth;
+
+        public readonly IEnumerable<Address> AuthorizedAddresses;
     }
 }

@@ -117,10 +117,10 @@ namespace Nethermind.Evm.Test
             Test(Shanghai.Instance, true);
             Test(Cancun.Instance, true);
         }
-        public static IEnumerable<(SetCodeAuthorization[] contractCode, long expectedCost)> SetContractCodeTestCaseSource()
+        public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> SetCodeTestCaseSource()
         {
             yield return (
-                [new SetCodeAuthorization(
+                [new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
@@ -130,14 +130,14 @@ namespace Nethermind.Evm.Test
                 ],
                 GasCostOf.PerAuthBaseCost);
             yield return (
-               [new SetCodeAuthorization(
+               [new AuthorizationTuple(
                    TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10)),
-                new SetCodeAuthorization(
+                new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
@@ -147,21 +147,21 @@ namespace Nethermind.Evm.Test
                ],
                GasCostOf.PerAuthBaseCost * 2);
             yield return (
-               [new SetCodeAuthorization(
+               [new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10)),
-                new SetCodeAuthorization(
+                new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10)),
-                new SetCodeAuthorization(
+                new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
@@ -171,11 +171,11 @@ namespace Nethermind.Evm.Test
                ],
                GasCostOf.PerAuthBaseCost * 3);
         }
-        [TestCaseSource(nameof(SetContractCodeTestCaseSource))]
-        public void Calculate_TxHasSetCode_ReturnsExpectedCostOfTx((SetCodeAuthorization[] ContractCodes, long ExpectedCost) testCase)
+        [TestCaseSource(nameof(SetCodeTestCaseSource))]
+        public void Calculate_TxHasSetCode_ReturnsExpectedCostOfTx((AuthorizationTuple[] ContractCodes, long ExpectedCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
-                .WithContractCode(testCase.ContractCodes)
+                .WithSetCode(testCase.ContractCodes)
                 .TestObject;
 
             IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
@@ -186,8 +186,8 @@ namespace Nethermind.Evm.Test
         public void Calculate_TxHasSetCodeBeforePrague_ThrowsInvalidDataException()
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
-                .WithContractCode(
-                new SetCodeAuthorization(
+                .WithSetCode(
+                new AuthorizationTuple(
                     0,
                     TestItem.AddressF,
                     0,

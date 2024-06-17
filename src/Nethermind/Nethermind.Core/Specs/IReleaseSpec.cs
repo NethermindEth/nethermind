@@ -367,6 +367,6 @@ namespace Nethermind.Core.Specs
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
 
-        bool UseContractCode => IsEip7702Enabled;
+        bool IsAuthorizationListEnabled => IsEip7702Enabled;
     }
 }

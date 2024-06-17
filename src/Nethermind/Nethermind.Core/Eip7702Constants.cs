@@ -10,5 +10,5 @@ using System.Threading.Tasks;
 namespace Nethermind.Core;
 public static class Eip7702Constants
 {
-    public static byte Magic => 4;
+    public static byte Magic => 0x05;
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -19,6 +20,7 @@ namespace Nethermind.Evm
             where TTracingActions : struct, IIsTracing;
 
         CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
+        CodeInfo GetAuthorizedOrCachedCodeInfo(IDictionary<Address, CodeInfo> authorizedCode, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
         void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     }
 }
