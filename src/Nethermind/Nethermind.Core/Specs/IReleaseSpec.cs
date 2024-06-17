@@ -285,6 +285,11 @@ namespace Nethermind.Core.Specs
         bool IsEofEnabled { get; }
 
         /// <summary>
+        /// Secp256r1 precompile
+        /// </summary>
+        bool IsRip7212Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

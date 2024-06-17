@@ -194,6 +194,12 @@ namespace Nethermind.Core.Extensions
             return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
         }
 
+        public static int LeadingZerosCount(this ReadOnlySpan<byte> bytes, int startIndex = 0)
+        {
+            int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
+            return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
+        }
+
         public static int TrailingZerosCount(this byte[] bytes)
         {
             int lastIndex = bytes.AsSpan().LastIndexOfAnyExcept((byte)0);

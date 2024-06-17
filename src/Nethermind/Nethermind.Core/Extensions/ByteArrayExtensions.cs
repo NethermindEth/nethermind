@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Extensions
 {
@@ -34,7 +35,7 @@ namespace Nethermind.Core.Extensions
         {
             if (length == 1)
             {
-                return new[] { bytes[startIndex] };
+                return [bytes[startIndex]];
             }
 
             byte[] slice = new byte[length];
@@ -42,31 +43,29 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static byte[] SliceWithZeroPaddingEmptyOnError(this byte[] bytes, int startIndex, int length)
+        public static ArrayPoolList<byte> SliceWithZeroPaddingEmptyOnError(this byte[] bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return Array.Empty<byte>();
+                return ArrayPoolList<byte>.Empty();
             }
 
-            byte[] slice = new byte[length];
-
-            Buffer.BlockCopy(bytes, startIndex, slice, 0, copiedFragmentLength);
+            ArrayPoolList<byte> slice = new(length, length);
+            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan().Slice(0, copiedFragmentLength));
             return slice;
         }
 
-        public static byte[] SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
+        public static ArrayPoolList<byte> SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return Array.Empty<byte>();
+                return ArrayPoolList<byte>.Empty();
             }
 
-            byte[] slice = new byte[length];
-
-            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan(0, copiedFragmentLength));
+            ArrayPoolList<byte> slice = new(length, length);
+            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan().Slice(0, copiedFragmentLength));
             return slice;
         }
     }
