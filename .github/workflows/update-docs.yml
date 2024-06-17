@@ -20,12 +20,18 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           path: n
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Check out Nethermind docs repository
         uses: actions/checkout@v4
         with:
           repository: NethermindEth/docs
           path: d
-          token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          token: ${{ steps.gh-app.outputs.token }}
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -57,7 +63,7 @@ jobs:
       - name: Create a pull request
         working-directory: d
         env:
-          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
           version="${{ github.event_name == 'release' && format(' of v{0}', github.event.release.tag_name) || '' }}"
           head_branch=feature/auto-update-${{ github.run_number }}-${{ github.run_attempt }}
