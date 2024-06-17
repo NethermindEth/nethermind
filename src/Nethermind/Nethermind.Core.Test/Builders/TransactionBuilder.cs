@@ -27,12 +27,6 @@ namespace Nethermind.Core.Test.Builders
             };
         }
 
-        public TransactionBuilder<T> WithEofInitcodes(byte[][] initcodes)
-        {
-            TestObjectInternal.Initcodes = initcodes;
-            return this;
-        }
-
         public TransactionBuilder<T> WithNonce(UInt256 nonce)
         {
             TestObjectInternal.Nonce = nonce;

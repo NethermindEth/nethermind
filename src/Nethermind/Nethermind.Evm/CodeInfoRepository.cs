@@ -25,33 +25,33 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly LruCacheLowObject<ValueHash256, CodeInfo>[] _caches;
+        private readonly LruCacheLowObject<ValueHash256, ICodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new LruCacheLowObject<ValueHash256, CodeInfo>[CacheCount];
+            _caches = new LruCacheLowObject<ValueHash256, ICodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new LruCacheLowObject<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+                _caches[i] = new LruCacheLowObject<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
             }
         }
 
-        public CodeInfo? Get(in ValueHash256 codeHash)
+        public ICodeInfo? Get(in ValueHash256 codeHash)
         {
-            LruCacheLowObject<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            LruCacheLowObject<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
-        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        public bool Set(in ValueHash256 codeHash, ICodeInfo codeInfo)
         {
-            LruCacheLowObject<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            LruCacheLowObject<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
 
-        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out ICodeInfo? codeInfo)
         {
             codeInfo = Get(codeHash);
             return codeInfo is not null;
@@ -59,47 +59,47 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 
 
-    private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
+    private static readonly FrozenDictionary<AddressAsKey, ICodeInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
 
-    private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
+    private static FrozenDictionary<AddressAsKey, ICodeInfo> InitializePrecompiledContracts()
     {
-        return new Dictionary<AddressAsKey, CodeInfo>
+        return new Dictionary<AddressAsKey, ICodeInfo>
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Address] = new CodeInfo(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new CodeInfo(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new CodeInfo(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new CodeInfo(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Address] = new CodeInfo(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new CodeInfo(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new CodeInfo(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new CodeInfo(ModExpPrecompile.Instance),
 
-            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Address] = new CodeInfo(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+            [G1AddPrecompile.Address] = new CodeInfo(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address] = new CodeInfo(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address] = new CodeInfo(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address] = new CodeInfo(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address] = new CodeInfo(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address] = new CodeInfo(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address] = new CodeInfo(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address] = new CodeInfo(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address] = new CodeInfo(MapToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+            [PointEvaluationPrecompile.Address] = new CodeInfo(PointEvaluationPrecompile.Instance),
         }.ToFrozenDictionary();
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
             return _precompiles[codeSource];
         }
 
-        CodeInfo? cachedCodeInfo = null;
+        ICodeInfo? cachedCodeInfo = null;
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
@@ -116,8 +116,9 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = new CodeInfo(code);
-            cachedCodeInfo.AnalyseInBackgroundIfRequired();
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec);
+            if(cachedCodeInfo is CodeInfo eof0CodeInfo)
+                eof0CodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -135,11 +136,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
+    public ICodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode, IReleaseSpec spec)
     {
-        if (!_codeCache.TryGet(codeHash, out CodeInfo? codeInfo))
+        if (!_codeCache.TryGet(codeHash, out ICodeInfo? codeInfo))
         {
-            codeInfo = new(initCode.ToArray());
+            codeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
 
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
@@ -151,8 +152,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        CodeInfo codeInfo = new(code);
-        codeInfo.AnalyseInBackgroundIfRequired();
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec);
+        if(codeInfo is CodeInfo eof0CodeInfo)
+                eof0CodeInfo.AnalyseInBackgroundIfRequired();
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);

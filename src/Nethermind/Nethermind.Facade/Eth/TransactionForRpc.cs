@@ -132,8 +132,6 @@ public class TransactionForRpc
 
     public TxType Type { get; set; }
 
-    public byte[][] Initcodes { get; set;}
-
     public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -182,11 +180,6 @@ public class TransactionForRpc
             tx.BlobVersionedHashes = BlobVersionedHashes;
         }
 
-        if(tx.SupportsEofInitcode)
-        {
-            tx.Initcodes = Initcodes;
-        }
-
         return tx;
     }
 
@@ -225,11 +218,6 @@ public class TransactionForRpc
         {
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
-        }
-
-        if (tx.SupportsEofInitcode)
-        {
-            tx.Initcodes = Initcodes;
         }
 
         return tx;

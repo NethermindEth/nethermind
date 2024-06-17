@@ -2217,7 +2217,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
                         (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
 
-                        if (maxStackHeight + stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT)
+                        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
                         {
                             goto StackOverflow;
                         }
@@ -2248,13 +2248,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
                         (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
 
-                        if (maxStackHeight + stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT)
+                        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
                         {
                             goto StackOverflow;
                         }
-
-                        if (vmState.ReturnStackHead + 1 == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
-                            goto InvalidSubroutineEntry;
 
                         sectionIndex = index;
                         (programCounter, _) = env.CodeInfo.SectionOffset(index);
@@ -2540,8 +2537,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_worldState, codeSource, spec);
-        codeInfo.AnalyseInBackgroundIfRequired();
+        ICodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_worldState, codeSource, spec);
+        if(codeInfo is CodeInfo eof0CodeInfo)
+            eof0CodeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)
         {

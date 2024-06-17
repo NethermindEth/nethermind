@@ -12,7 +12,7 @@ namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
 {
-    CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
-    CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode);
+    ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
+    ICodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode, IReleaseSpec vmSpec);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
 }

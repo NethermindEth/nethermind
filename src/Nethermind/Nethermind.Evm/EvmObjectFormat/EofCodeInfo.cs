@@ -11,12 +11,13 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public class EofCodeInfo : ICodeInfo
 {
-    private readonly CodeInfo _codeInfo;
+    private readonly ICodeInfo _codeInfo;
 
     private readonly EofHeader _header;
     public ReadOnlyMemory<byte> MachineCode => _codeInfo.MachineCode;
     public IPrecompile? Precompile => _codeInfo.Precompile;
     public int Version => _header.Version;
+    public bool IsEmpty => _codeInfo.IsEmpty;
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection(int index)
     {
@@ -24,6 +25,7 @@ public class EofCodeInfo : ICodeInfo
         return MachineCode.Slice(offset.Start, offset.Size);
     }
     public ReadOnlyMemory<byte> DataSection { get; }
+
     public ReadOnlyMemory<byte> ContainerSection(int index)
     {
         var offset = ContainerOffset(index);
@@ -51,7 +53,7 @@ public class EofCodeInfo : ICodeInfo
             );
     }
 
-    public EofCodeInfo(CodeInfo codeInfo, in EofHeader header)
+    public EofCodeInfo(ICodeInfo codeInfo, in EofHeader header)
     {
         _codeInfo = codeInfo;
         _header = header;

@@ -12,12 +12,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.EOF;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
+using Org.BouncyCastle.Bcpg;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 
 using static Nethermind.Evm.VirtualMachine;
@@ -130,10 +132,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
-
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            if(!(result = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, out ExecutionEnvironment? env))) {
+                return result;
+            }
+
+            ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env.Value, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -171,12 +175,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
+                    tracer.MarkAsFailed(env.Value.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
+                    tracer.MarkAsSuccess(env.Value.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
 
@@ -399,26 +403,36 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected ExecutionEnvironment BuildExecutionEnvironment(
+        protected TransactionResult BuildExecutionEnvironment(
             Transaction tx,
             in BlockExecutionContext blCtx,
             IReleaseSpec spec,
-            in UInt256 effectiveGasPrice)
+            in UInt256 effectiveGasPrice,
+            out ExecutionEnvironment? env)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, tx.Initcodes);
+            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
-            CodeInfo codeInfo = tx.IsContractCreation
-                ? new(tx.Data ?? Memory<byte>.Empty)
-                : _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
+            env = null;
 
-            codeInfo.AnalyseInBackgroundIfRequired();
-
+            ICodeInfo codeInfo = null;
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
+            if (tx.IsContractCreation)
+            {
+                if(CodeInfoFactory.CreateInitCodeInfo(tx.Data ?? default, spec, out codeInfo, out Memory<byte> trailingData)) {
+                    inputData = trailingData.ToArray();
+                } else {
+                    return "Eip 7698: Invalid CreateTx Initcode";
+                }
+            } else
+            {
+                codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec); 
+                (codeInfo as CodeInfo).AnalyseInBackgroundIfRequired();
+            }
 
-            return new ExecutionEnvironment
+            env = new ExecutionEnvironment
             (
                 txExecutionContext: in executionContext,
                 value: tx.Value,
@@ -429,6 +443,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 inputData: inputData,
                 codeInfo: codeInfo
             );
+            return TransactionResult.Ok;
         }
 
         protected void ExecuteEvmCall(

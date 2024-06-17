@@ -48,8 +48,7 @@ namespace Nethermind.Consensus.Validators
                    && ValidateChainId(transaction, ref error)
                    && ValidateWithError(Validate1559GasFields(transaction, releaseSpec), TxErrorMessages.InvalidMaxPriorityFeePerGas, ref error)
                    && ValidateWithError(Validate3860Rules(transaction, releaseSpec), TxErrorMessages.ContractSizeTooBig, ref error)
-                   && Validate4844Fields(transaction, ref error)
-                   && ValidateMegaEofRules(transaction, releaseSpec, ref error);
+                   && Validate4844Fields(transaction, ref error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -63,7 +62,6 @@ namespace Nethermind.Consensus.Validators
                 TxType.AccessList => releaseSpec.UseTxAccessLists,
                 TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
                 TxType.Blob => releaseSpec.IsEip4844Enabled,
-                TxType.EofInitcodeTx => releaseSpec.IsEofEnabled,
                 _ => false
             };
 
@@ -151,51 +149,6 @@ namespace Nethermind.Consensus.Validators
 
             return !spec.ValidateChainId;
         }
-
-        private static bool ValidateMegaEofRules(Transaction transaction, IReleaseSpec spec, ref string error)
-        {
-            if (!spec.IsEofEnabled) return true;
-
-            if (transaction.To is null &&
-                transaction.Data is not null &&
-                transaction.Data.Value.Span.StartsWith(EvmObjectFormat.MAGIC)
-                )
-            {
-                error = TxErrorMessages.InvalidCreateTxData;
-                return false;
-            }
-
-            if (transaction.Initcodes?.Length == 0)
-            {
-                error = TxErrorMessages.TooManyEofInitcodes;
-                return false;
-            }
-
-            if (transaction.Initcodes?.Length >= Transaction.MaxInitcodeCount)
-            {
-                error = TxErrorMessages.TooManyEofInitcodes;
-                return false;
-            }
-
-            bool valid = true;
-            foreach (var initcode in transaction.Initcodes)
-            {
-                if (initcode?.Length >= spec.MaxInitCodeSize || initcode?.Length == 0)
-                {
-                    valid = false;
-                    break;  
-                }
-            }
-
-            if(!valid)
-            {
-                error = TxErrorMessages.EofContractSizeInvalid;
-                return false;
-            }
-
-            return true;
-        }
-
         private static bool Validate4844Fields(Transaction transaction, ref string error)
         {
             // Execution-payload version verification

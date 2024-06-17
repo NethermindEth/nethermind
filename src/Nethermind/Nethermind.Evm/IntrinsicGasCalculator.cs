@@ -24,7 +24,6 @@ public static class IntrinsicGasCalculator
         result += DataCost(transaction, releaseSpec);
         result += CreateCost(transaction, releaseSpec);
         result += AccessListCost(transaction, releaseSpec);
-        result += EofInitCodeCost(transaction, releaseSpec);
         return result;
     }
 
@@ -37,24 +36,6 @@ public static class IntrinsicGasCalculator
         }
 
         return createCost;
-    }
-
-    private static long EofInitCodeCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        if(releaseSpec.IsEofEnabled && transaction.IsEofContractCreation)
-        {
-            long txDataNonZeroGasCost =
-                releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
-
-            long initcodeCosts = 0;
-            foreach(var initcode in transaction.Initcodes)
-            {
-                int totalZeros = initcode.AsSpan().CountZeros();
-                initcodeCosts += totalZeros * GasCostOf.TxDataZero + (initcode.Length - totalZeros) * txDataNonZeroGasCost;
-            }
-            return initcodeCosts;
-        }
-        return 0;
     }
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
