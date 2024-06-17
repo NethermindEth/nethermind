@@ -116,7 +116,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec);
+            CodeInfoFactory.CreateCodeInfo(code, vmSpec, out cachedCodeInfo, EOF.EvmObjectFormat.ValidationStrategy.None);
             if(cachedCodeInfo is CodeInfo eof0CodeInfo)
                 eof0CodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
@@ -140,7 +140,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (!_codeCache.TryGet(codeHash, out ICodeInfo? codeInfo))
         {
-            codeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
+            CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out codeInfo, EOF.EvmObjectFormat.ValidationStrategy.None);
 
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
@@ -152,7 +152,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec);
+        CodeInfoFactory.CreateCodeInfo(code, spec, out ICodeInfo codeInfo, EOF.EvmObjectFormat.ValidationStrategy.None);
         if(codeInfo is CodeInfo eof0CodeInfo)
                 eof0CodeInfo.AnalyseInBackgroundIfRequired();
 

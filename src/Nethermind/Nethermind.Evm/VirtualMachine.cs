@@ -2896,7 +2896,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
-        var currentContext = instruction == Instruction.EOFCREATE ? ExecutionType.EOFCREATE: ExecutionType.TXCREATE;
+        var currentContext = ExecutionType.EOFCREATE;
         if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
             return (EvmExceptionType.OutOfGas, null);
 
@@ -2990,7 +2990,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
+        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.None);
 
         ExecutionEnvironment callEnv = new
         (
@@ -3007,11 +3007,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         EvmState callState = new(
             callGas,
             callEnv,
-            instruction switch
-            {
-                Instruction.EOFCREATE => ExecutionType.EOFCREATE,
-                _ => throw new UnreachableException()
-            },
+            currentContext,
             false,
             snapshot,
             0L,
@@ -3143,7 +3139,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
-        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
+        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.None);
         if(codeinfo is CodeInfo classicalCode)
         {
             classicalCode.AnalyseInBackgroundIfRequired();
