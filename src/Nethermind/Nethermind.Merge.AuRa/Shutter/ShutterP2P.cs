@@ -45,6 +45,10 @@ public class ShutterP2P
                 ProtocolVersion = _auraConfig.ShutterP2PProtocolVersion,
                 AgentVersion = _auraConfig.ShutterP2PAgentVersion
             })
+            .AddSingleton(new Settings()
+            {
+                ReconnectionAttempts = int.MaxValue
+            })
             // .AddLogging(builder =>
             //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
             //     .AddSimpleConsole(l =>
