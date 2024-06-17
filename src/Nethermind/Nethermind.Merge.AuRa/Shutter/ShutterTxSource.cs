@@ -242,7 +242,17 @@ public class ShutterTxSource : ITxSource
     {
         ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
 
-        G1 key = new(decryptionKey.Key_.ToArray());
+        G1 key;
+        try
+        {
+            key = new(decryptionKey.Key_.ToArray());;
+        }
+        catch (ApplicationException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Could not decrypt Shutter transaction with invalid key: {e}");
+            return null;
+        }
+
         G1 identity = ShutterCrypto.ComputeIdentity(decryptionKey.Identity.Span);
 
         if (!identity.is_equal(sequencedTransaction.Identity))
