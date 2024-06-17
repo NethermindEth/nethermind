@@ -10,6 +10,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private const int ForkHashLength = 5;
 
+        private readonly bool _includeTd;
+
+        public StatusMessageSerializer() : this(true) { }
+
+        protected StatusMessageSerializer(bool includeTd)
+        {
+            _includeTd = includeTd;
+        }
+
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
             int forkIdContentLength = 0;
@@ -26,7 +35,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.ProtocolVersion);
             rlpStream.Encode(message.NetworkId);
-            rlpStream.Encode(message.TotalDifficulty);
+
+            if (_includeTd)
+                rlpStream.Encode(message.TotalDifficulty);
+
             rlpStream.Encode(message.BestHash);
             rlpStream.Encode(message.GenesisHash);
             if (message.ForkId is not null)
@@ -40,7 +52,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(StatusMessage message, out int contentLength)
         {
-
             int forkIdSequenceLength = 0;
             if (message.ForkId.HasValue)
             {
@@ -52,10 +63,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             contentLength =
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.NetworkId) +
-                Rlp.LengthOf(message.TotalDifficulty) +
                 Rlp.LengthOf(message.BestHash) +
                 Rlp.LengthOf(message.GenesisHash) +
                 forkIdSequenceLength;
+
+            if (_includeTd)
+                contentLength += Rlp.LengthOf(message.TotalDifficulty);
 
             return Rlp.LengthOfSequence(contentLength);
         }
@@ -63,16 +76,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public StatusMessage Deserialize(IByteBuffer byteBuffer)
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
-        }
 
-        private static StatusMessage Deserialize(RlpStream rlpStream)
-        {
             StatusMessage statusMessage = new();
             rlpStream.ReadSequenceLength();
             statusMessage.ProtocolVersion = rlpStream.DecodeByte();
             statusMessage.NetworkId = rlpStream.DecodeUInt256();
-            statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
+
+            if (_includeTd)
+                statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
+
             statusMessage.BestHash = rlpStream.DecodeKeccak();
             statusMessage.GenesisHash = rlpStream.DecodeKeccak();
             if (rlpStream.Position < rlpStream.Length)
