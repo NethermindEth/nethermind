@@ -18,14 +18,7 @@ public class OptimismTransactionForRpc : TransactionForRpc
         {
             SourceHash = transaction.SourceHash;
             Mint = transaction.Mint;
-            if (transaction.IsOPSystemTransaction)
-            {
-                IsSystemTx = transaction.IsOPSystemTransaction;
-            }
-            else
-            {
-                IsSystemTx = null;
-            }
+            IsSystemTx = transaction.IsOPSystemTransaction ? true : null;
             Nonce = receipt?.DepositNonce;
             DepositReceiptVersion = receipt?.DepositReceiptVersion;
         }
