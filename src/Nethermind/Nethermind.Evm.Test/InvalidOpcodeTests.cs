@@ -116,8 +116,8 @@ namespace Nethermind.Evm.Test
             CancunInstructions.Union(
                 new Instruction[]
                 {
-                            Instruction.AUTH,
-                            Instruction.AUTHCALL
+                    // Instruction.AUTH,
+                    // Instruction.AUTHCALL
                 }
             ).ToArray();
 
