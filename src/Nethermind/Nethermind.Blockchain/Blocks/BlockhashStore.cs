@@ -42,7 +42,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
             return null;
         }
         var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
-        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
         return data.SequenceEqual(EmptyBytes) ? null : new Hash256(data);
