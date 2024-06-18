@@ -44,6 +44,7 @@ public class JsonRpcService : IJsonRpcService
             (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
             if (errorCode.HasValue)
             {
+                if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
                 return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
             }
 

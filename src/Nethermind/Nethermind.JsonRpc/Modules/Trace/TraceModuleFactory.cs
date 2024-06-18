@@ -10,8 +10,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -41,31 +43,34 @@ public class TraceModuleFactory(
 
     protected virtual ReadOnlyTxProcessingEnv CreateTxProcessingEnv() => new(_worldStateManager, _blockTree, _specProvider, _logManager);
 
-    protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, ReadOnlyTxProcessingEnv txProcessingEnv, IRewardCalculator rewardCalculator) => new(
-                txProcessingEnv,
+    protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
+                scope,
                 Always.Valid,
                 _recoveryStep,
                 rewardCalculator,
                 _receiptStorage,
                 _specProvider,
+                _blockTree,
+                _worldStateManager.GlobalStateReader,
                 _logManager,
                 transactionsExecutor);
 
     public override ITraceRpcModule Create()
     {
         ReadOnlyTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
+        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
         IRewardCalculator rewardCalculator =
-            new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),
+            new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),
                 _poSSwitcher);
 
-        RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
-        BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+        RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
+        BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
 
-        ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor, txProcessingEnv, rewardCalculator);
-        ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor, txProcessingEnv, rewardCalculator);
+        ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor, scope, rewardCalculator);
+        ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor, scope, rewardCalculator);
 
-        Tracer tracer = new(txProcessingEnv.StateProvider, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
+        Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
 
         return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.StateReader);
     }

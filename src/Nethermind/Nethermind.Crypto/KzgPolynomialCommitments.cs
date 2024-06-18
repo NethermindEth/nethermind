@@ -91,17 +91,29 @@ public static class KzgPolynomialCommitments
 
     public static bool AreProofsValid(byte[][] blobs, byte[][] commitments, byte[][] proofs)
     {
-        var length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
+        if (blobs.Length is 1 && commitments.Length is 1 && proofs.Length is 1)
+        {
+            try
+            {
+                return Ckzg.Ckzg.VerifyBlobKzgProof(blobs[0], commitments[0], proofs[0], _ckzgSetup);
+            }
+            catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+            {
+                return false;
+            }
+        }
+
+        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
         byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
-        var flatBlobs = new Span<byte>(flatBlobsArray, 0, length);
+        Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
 
         length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
         byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
-        var flatCommitments = new Span<byte>(flatCommitmentsArray, 0, length);
+        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
 
         length = blobs.Length * Ckzg.Ckzg.BytesPerProof;
         byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
-        var flatProofs = new Span<byte>(flatProofsArray, 0, length);
+        Span<byte> flatProofs = new(flatProofsArray, 0, length);
 
         for (int i = 0; i < blobs.Length; i++)
         {

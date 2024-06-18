@@ -37,14 +37,12 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return base.InitBlockchain();
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor()
+    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
         if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
-
-        VirtualMachine virtualMachine = CreateVirtualMachine();
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
@@ -52,7 +50,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             virtualMachine,
             _api.LogManager,
             _api.L1CostHelper,
-            _api.SpecHelper
+            _api.SpecHelper,
+            codeInfoRepository
         );
     }
 
@@ -85,7 +84,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor()
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -109,7 +108,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.LogManager,
             _api.SpecHelper,
             contractRewriter,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
+            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            preWarmer: preWarmer);
     }
 
     protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;

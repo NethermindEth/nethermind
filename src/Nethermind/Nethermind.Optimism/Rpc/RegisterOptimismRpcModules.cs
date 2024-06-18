@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Init.Steps;
@@ -79,8 +80,9 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
 
-            sequencerJsonRpcClient,
+        sequencerJsonRpcClient,
             _api.WorldState,
             _api.EthereumEcdsa,
             sealer,

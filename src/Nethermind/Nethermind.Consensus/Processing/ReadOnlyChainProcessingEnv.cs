@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -17,46 +19,55 @@ namespace Nethermind.Consensus.Processing
     /// </summary>
     public class ReadOnlyChainProcessingEnv : IDisposable
     {
-        private readonly ReadOnlyTxProcessingEnv _txEnv;
-
         private readonly BlockchainProcessor _blockProcessingQueue;
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
-        public IWorldState StateProvider => _txEnv.StateProvider;
 
         public ReadOnlyChainProcessingEnv(
-            ReadOnlyTxProcessingEnv txEnv,
+            IReadOnlyTxProcessingScope scope,
             IBlockValidator blockValidator,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IStateReader stateReader,
             ILogManager logManager,
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
-            _txEnv = txEnv;
-
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
 
-            BlockProcessor = CreateBlockProcessor(txEnv, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
+            BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
 
-            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(txEnv.StateProvider, _blockProcessingQueue);
+            ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
+            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            BlockProcessingQueue = _blockProcessingQueue;
+            ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
         }
 
-        protected virtual IBlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv txEnv, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IReceiptStorage receiptStorage, ISpecProvider specProvider, ILogManager logManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
+        protected virtual IBlockProcessor CreateBlockProcessor(
+            IReadOnlyTxProcessingScope scope,
+            IBlockTree blockTree,
+            IBlockValidator blockValidator,
+            IRewardCalculator rewardCalculator,
+            IReceiptStorage receiptStorage,
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor
+        )
         {
             return new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,
-                StateProvider,
+                scope.WorldState,
                 receiptStorage,
-                new BlockhashStore(specProvider, StateProvider),
+                new BlockhashStore(specProvider, scope.WorldState),
                 logManager);
         }
 
