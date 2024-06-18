@@ -47,7 +47,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
+        VerkleProof proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out byte[] root);
 
 
 
@@ -71,8 +71,8 @@ public class VerkleRangeProofTests
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
 
-        tree.Accept(oldTreeDumper, new Hash256(root.ToBytes()));
-        newTree.Accept(newTreeDumper, new Hash256(root.ToBytes()));
+        tree.Accept(oldTreeDumper, new Hash256(root));
+        newTree.Accept(newTreeDumper, new Hash256(root));
 
         oldTreeDumper.ToString().Should().BeEquivalentTo(newTreeDumper.ToString());
     }
@@ -100,7 +100,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(stem, stem, out Banderwagon root);
+        VerkleProof proof = tree.CreateVerkleRangeProof(stem, stem, out byte[] root);
 
         List<PathWithSubTree> subTrees = [];
         List<LeafInSubTree> leafs = [];
@@ -120,8 +120,8 @@ public class VerkleRangeProofTests
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
 
-        tree.Accept(oldTreeDumper, new Hash256(root.ToBytes()));
-        newTree.Accept(newTreeDumper, new Hash256(root.ToBytes()));
+        tree.Accept(oldTreeDumper, new Hash256(root));
+        newTree.Accept(newTreeDumper, new Hash256(root));
         oldTreeDumper.ToString().Should().BeEquivalentTo(newTreeDumper.ToString());
     }
 
@@ -156,7 +156,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
+        VerkleProof proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out byte[] root);
 
         // bool verified = VerkleTree.VerifyVerkleRangeProof(proof, stems[0], stems[^1], stems, root, out _);
         // Assert.That(verified, Is.True);
@@ -183,8 +183,8 @@ public class VerkleRangeProofTests
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
 
-        tree.Accept(oldTreeDumper, new Hash256(root.ToBytes()));
-        newTree.Accept(newTreeDumper, new Hash256(root.ToBytes()));
+        tree.Accept(oldTreeDumper, new Hash256(root));
+        newTree.Accept(newTreeDumper, new Hash256(root));
 
         Console.WriteLine("oldTreeDumper");
         Console.WriteLine(oldTreeDumper.ToString());

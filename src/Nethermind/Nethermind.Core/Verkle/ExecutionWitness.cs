@@ -6,11 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using FastEnumUtility;
-using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Proofs;
 
 namespace Nethermind.Core.Verkle;
-
 
 public class ExecutionWitness
 {
@@ -34,16 +32,15 @@ public class WitnessVerkleProof
 {
     public Stem[]? OtherStems { get; set; }
     public byte[] DepthExtensionPresent { get; set; }
-    public Banderwagon[] CommitmentsByPath { get; set; }
-    public Banderwagon D { get; set; }
-    public IpaProofStruct IpaProof { get; set; }
-
+    public byte[][] CommitmentsByPath { get; set; }
+    public byte[] D { get; set; }
+    public IpaProofStructSerialized IpaProof { get; set; }
     public WitnessVerkleProof(
         Stem[] otherStems,
         byte[] depthExtensionPresent,
-        Banderwagon[] commitmentsByPath,
-        Banderwagon d,
-        IpaProofStruct ipaProof)
+        byte[][] commitmentsByPath,
+        byte[] d,
+        IpaProofStructSerialized ipaProof)
     {
         OtherStems = otherStems;
         DepthExtensionPresent = depthExtensionPresent;
@@ -68,11 +65,10 @@ public class WitnessVerkleProof
             depthExtensionPresent,
             proof.CommsSorted,
             proof.Proof.D,
-            proof.Proof.IpaProof
+            proof.Proof.IpaProofSerialized
         );
     }
 }
-
 
 public struct StateDiff
 {

@@ -23,13 +23,13 @@ public partial class VerkleTree
     private Dictionary<byte[], FrE[]> ProofBranchPolynomialCache { get; } = new(Bytes.EqualityComparer);
     private Dictionary<Stem, SuffixPoly> ProofStemPolynomialCache { get; } = new();
 
-    public ExecutionWitness GenerateExecutionWitnessFromStore(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitnessFromStore(byte[][] keys, out byte[] rootPoint)
     {
         VerkleTree tree = new(_verkleStateStore, LimboLogs.Instance);
         return tree.GenerateExecutionWitness(keys, out rootPoint);
     }
 
-    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out byte[] rootPoint)
     {
         if (keys.Length == 0)
         {
@@ -78,7 +78,7 @@ public partial class VerkleTree
         });
     }
 
-    public VerkleProof CreateVerkleProof(byte[][] keys, out Banderwagon rootPoint)
+    public VerkleProof CreateVerkleProof(byte[][] keys, out byte[] rootPoint)
     {
         if (keys.Length == 0)
         {
@@ -155,7 +155,7 @@ public partial class VerkleTree
         return finalProof;
     }
 
-    public VerkleProof CreateVerkleRangeProof(Stem startStem, Stem endStem, out Banderwagon rootPoint, Hash256? rootHash = null)
+    public VerkleProof CreateVerkleRangeProof(Stem startStem, Stem endStem, out byte[] rootPoint, Hash256? rootHash = null)
     {
         ProofBranchPolynomialCache.Clear();
         ProofStemPolynomialCache.Clear();
@@ -244,13 +244,12 @@ public partial class VerkleTree
         return finalProof;
     }
 
-
     private VerkleProof CreateProofStruct(HashSet<byte[]> stemList,
-        Dictionary<byte[], HashSet<byte>> neededOpenings, bool addLeafOpenings, out Banderwagon rootPoint, Hash256? rootHash)
+        Dictionary<byte[], HashSet<byte>> neededOpenings, bool addLeafOpenings, out byte[] rootPoint, Hash256? rootHash)
     {
-        List<VerkleProverQuery> queries = [];
+        List<VerkleProverQuerySerialized> queries = [];
         HashSet<byte[]> stemWithNoProofSet = new(Bytes.EqualityComparer);
-        List<Banderwagon> sortedCommitments = [];
+        List<byte[]> sortedCommitments = [];
 
         foreach (KeyValuePair<byte[], HashSet<byte>> elem in neededOpenings)
         {
@@ -266,7 +265,7 @@ public partial class VerkleTree
         }
 
         rootPoint = queries[0].NodeCommitPoint;
-        foreach (VerkleProverQuery query in queries)
+        foreach (VerkleProverQuerySerialized query in queries)
         {
             if (query.NodeCommitPoint == rootPoint) continue;
 
@@ -275,9 +274,7 @@ public partial class VerkleTree
         }
 
         MultiProof proofConstructor = new(CRS.Instance, PreComputedWeights.Instance);
-
-        Transcript proverTranscript = new("vt");
-        VerkleProofStruct proof = proofConstructor.MakeMultiProof(proverTranscript, queries);
+        VerkleProofStructSerialized proof = proofConstructor.MakeMultiProofSerialized(queries.ToArray());
 
         return new VerkleProof
         {
@@ -289,18 +286,18 @@ public partial class VerkleTree
             }
         };
     }
-
-    private void AddBranchCommitmentsOpening(byte[] branchPath, IEnumerable<byte> branchChild,
-        List<VerkleProverQuery> queries, Hash256? rootHash)
+    private void AddBranchCommitmentsOpening(byte[] branchPath, IEnumerable<byte> branchChild, List<VerkleProverQuerySerialized> queries, Hash256? rootHash)
     {
         if (!ProofBranchPolynomialCache.TryGetValue(branchPath, out FrE[] poly)) throw new EvaluateException();
         InternalNode? node = GetInternalNode(branchPath, rootHash);
-        queries.AddRange(branchChild.Select(childIndex => new VerkleProverQuery(new LagrangeBasis(poly),
-            node!.InternalCommitment.Point, childIndex, poly[childIndex])));
+        byte[][] polyBytes = poly.Select(p => p.ToBytes()).ToArray();
+        queries.AddRange(branchChild.Select(childIndex => new VerkleProverQuerySerialized(
+            polyBytes, node!.InternalCommitment.Point.ToBytesUncompressedLittleEndian(), childIndex, poly[childIndex].ToBytes()
+        )));
     }
 
     private bool AddStemCommitmentsOpenings(InternalNode? suffix, HashSet<byte> stemChild,
-        List<VerkleProverQuery> queries, bool addLeafOpenings, Hash256? rootHash)
+        List<VerkleProverQuerySerialized> queries, bool addLeafOpenings, Hash256? rootHash)
     {
         var stemPath = suffix!.Stem!.Bytes;
         AddExtensionCommitmentOpenings(stemPath, addLeafOpenings ? stemChild : new byte[] { }, suffix, queries);
@@ -327,34 +324,33 @@ public partial class VerkleTree
             var offset = valueIndex < 128 ? 0 : 128;
 
             Banderwagon commitment;
-            FrE[] poly;
+            byte[][] polyBytes;
             switch (offset)
             {
                 case 0:
                     commitment = suffix.C1.Point;
-                    poly = c1Hashes.ToArray();
+                    polyBytes = c1Hashes.Select(p => p.ToBytes()).ToArray();
                     break;
                 case 128:
                     commitment = suffix.C2.Point;
-                    poly = c2Hashes.ToArray();
+                    polyBytes = c2Hashes.Select(p => p.ToBytes()).ToArray();
                     break;
                 default:
                     throw new Exception("unreachable");
             }
 
-            VerkleProverQuery openAtValLow = new(new LagrangeBasis(poly), commitment, (byte)valueLowerIndex, valueLow);
-            VerkleProverQuery openAtValUpper =
-                new(new LagrangeBasis(poly), commitment, (byte)valueUpperIndex, valueHigh);
+            VerkleProverQuerySerialized openAtValLow = new(polyBytes, commitment.ToBytesUncompressedLittleEndian(), (byte)valueLowerIndex, valueLow.ToBytes());
+            VerkleProverQuerySerialized openAtValUpper =
+                new(polyBytes, commitment.ToBytesUncompressedLittleEndian(), (byte)valueUpperIndex, valueHigh.ToBytes());
 
             queries.Add(openAtValLow);
             queries.Add(openAtValUpper);
         }
-
         return false;
     }
 
     private static void AddExtensionCommitmentOpenings(Stem stem, IEnumerable<byte> value, InternalNode suffix,
-        List<VerkleProverQuery> queries)
+        List<VerkleProverQuerySerialized> proverQueries)
     {
         var extPoly = new FrE[256];
         for (var i = 0; i < 256; i++) extPoly[i] = FrE.Zero;
@@ -363,11 +359,12 @@ public partial class VerkleTree
         extPoly[2] = suffix.C1!.PointAsField;
         extPoly[3] = suffix.C2!.PointAsField;
 
-        VerkleProverQuery openAtOne = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 0, FrE.One);
-        VerkleProverQuery openAtStem = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 1,
-            FrE.FromBytesReduced(stem.Bytes.Reverse().ToArray()));
-        queries.Add(openAtOne);
-        queries.Add(openAtStem);
+        byte[][] polyBytes = extPoly.Select(p => p.ToBytes()).ToArray();
+        VerkleProverQuerySerialized openAtOne = new(polyBytes, suffix.InternalCommitment.Point.ToBytesUncompressedLittleEndian(), 0, FrE.One.ToBytes());
+        VerkleProverQuerySerialized openAtStem = new(polyBytes, suffix.InternalCommitment.Point.ToBytesUncompressedLittleEndian(),
+            1, FrE.FromBytesReduced(stem.Bytes.Reverse().ToArray()).ToBytes());
+        proverQueries.Add(openAtOne);
+        proverQueries.Add(openAtStem);
 
         var openC1 = false;
         var openC2 = false;
@@ -377,16 +374,16 @@ public partial class VerkleTree
 
         if (openC1)
         {
-            VerkleProverQuery openAtC1 = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 2,
-                suffix.C1.PointAsField);
-            queries.Add(openAtC1);
+            VerkleProverQuerySerialized openAtC1 = new(polyBytes, suffix.InternalCommitment.Point.ToBytesUncompressedLittleEndian(), 2,
+                suffix.C1!.PointAsField.ToBytes());
+            proverQueries.Add(openAtC1);
         }
 
         if (openC2)
         {
-            VerkleProverQuery openAtC2 = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 3,
-                suffix.C2.PointAsField);
-            queries.Add(openAtC2);
+            VerkleProverQuerySerialized openAtC2 = new(polyBytes, suffix.InternalCommitment.Point.ToBytesUncompressedLittleEndian(), 3,
+                suffix.C2!.PointAsField.ToBytes());
+            proverQueries.Add(openAtC2);
         }
     }
 

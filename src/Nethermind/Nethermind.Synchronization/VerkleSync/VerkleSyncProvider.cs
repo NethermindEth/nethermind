@@ -68,7 +68,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         PathWithSubTree[] subTrees, byte[]? proofs = null, Stem? limitStem = null)
     {
         limitStem ??= Keccak.MaxValue.Bytes[..31].ToArray();
-        Banderwagon rootPoint = Banderwagon.FromBytes(expectedRootHash.Bytes.ToArray()) ?? throw new Exception("root point invalid");
+        byte[] rootPoint = expectedRootHash.Bytes.ToArray();
         IVerkleTreeStore store = _trieStorePool.Get();
         try
         {
@@ -106,7 +106,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
     }
 
 
-    public AddRangeResult AddSubTreeRange(long blockNumber, Banderwagon rootPoint, byte[] startingStem,
+    public AddRangeResult AddSubTreeRange(long blockNumber, byte[] rootPoint, byte[] startingStem,
         PathWithSubTree[] subTrees, VerkleProof proof, byte[] limitStem)
     {
         IVerkleTreeStore store = _trieStorePool.Get();
@@ -118,7 +118,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         return AddRangeResult.OK;
     }
 
-    public bool HealTheTreeFromExecutionWitness(ExecutionWitness execWitness, Banderwagon root)
+    public bool HealTheTreeFromExecutionWitness(ExecutionWitness execWitness, byte[] root)
     {
         IVerkleTreeStore store = _trieStorePool.Get();
         VerkleTree tree = new(store, LimboLogs.Instance);

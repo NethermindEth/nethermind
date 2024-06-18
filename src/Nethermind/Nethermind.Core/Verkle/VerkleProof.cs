@@ -23,8 +23,8 @@ public enum ExtPresent : byte
 public struct VerkleProof
 {
     public VerificationHint VerifyHint;
-    public Banderwagon[] CommsSorted;
-    public VerkleProofStruct Proof;
+    public byte[][] CommsSorted;
+    public VerkleProofStructSerialized Proof;
 
     public override string ToString()
     {
@@ -33,9 +33,9 @@ public struct VerkleProof
         stringBuilder.Append("\n###[Verify Hint]###\n");
         stringBuilder.Append(VerifyHint.ToString());
         stringBuilder.Append("\n###[Comms Sorted]###\n");
-        foreach (Banderwagon comm in CommsSorted)
+        foreach (byte[] comm in CommsSorted)
         {
-            stringBuilder.AppendJoin(", ", comm.ToBytesLittleEndian().Reverse().ToArray());
+            stringBuilder.AppendJoin(", ", comm.Reverse().ToArray());
             stringBuilder.Append('\n');
         }
         stringBuilder.Append("\n###[Inner Proof]###\n");
@@ -49,9 +49,9 @@ public struct VerkleProof
         encoded.AddRange(VerifyHint.Encode());
 
         encoded.AddRange(CommsSorted.Length.ToByteArrayLittleEndian());
-        foreach (Banderwagon comm in CommsSorted)
+        foreach (byte[] comm in CommsSorted)
         {
-            encoded.AddRange(comm.ToBytesLittleEndian().Reverse());
+            encoded.AddRange(comm.Reverse());
         }
 
         encoded.AddRange(Proof.Encode());
@@ -111,7 +111,7 @@ public struct VerificationHint
 public struct UpdateHint
 {
     public Dictionary<Stem, (ExtPresent, byte)> DepthAndExtByStem { get; set; }
-    public SpanDictionary<byte, Banderwagon> CommByPath { get; set; }
+    public SpanDictionary<byte, byte[]> CommByPath { get; set; }
     public SortedDictionary<byte[], Stem> DifferentStemNoProof { get; set; }
 }
 

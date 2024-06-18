@@ -46,7 +46,7 @@ public partial class VerkleTree
 
     private static bool VerifyVerkleProof(
         ExecutionWitness execWitness,
-        Banderwagon root,
+        byte[] root,
         [NotNullWhen(true)] out UpdateHint? updateHint)
     {
         // var logg = SimpleConsoleLogger.Instance;
@@ -55,7 +55,7 @@ public partial class VerkleTree
         var numberOfStems = verkleProof.DepthExtensionPresent.Length;
 
         // sorted commitments including root
-        var commSortedByPath = new Banderwagon[verkleProof.CommitmentsByPath.Length + 1];
+        var commSortedByPath = new byte[verkleProof.CommitmentsByPath.Length + 1][];
         commSortedByPath[0] = root;
         verkleProof.CommitmentsByPath.CopyTo(commSortedByPath, 1);
 
@@ -174,11 +174,11 @@ public partial class VerkleTree
             }
         }
 
-        SpanDictionary<byte, Banderwagon> commByPath = new(Bytes.SpanEqualityComparer);
+        SpanDictionary<byte, byte[]> commByPath = new(Bytes.SpanEqualityComparer);
         int idx = 0;
         foreach (var path in allPaths) commByPath[path] = commSortedByPath[idx++];
 
-        var proofStruct = new VerkleProofStruct(verkleProof.IpaProof, verkleProof.D);
+        var proofStruct = new VerkleProofStructSerialized(verkleProof.IpaProof, verkleProof.D);
         var isTrue = VerifyVerkleProofStruct(proofStruct, allPathsAndZs, leafValuesByPathAndZ, commByPath);
 
         updateHint = new UpdateHint
@@ -193,15 +193,15 @@ public partial class VerkleTree
 
 
     public static bool VerifyVerkleProof(
-        IpaProofStruct ipaProof,
-        Banderwagon d,
-        Banderwagon[] commitmentsSorted,
+        IpaProofStructSerialized ipaProof,
+        byte[] d,
+        byte[][] commitmentsSorted,
         byte[] depths,
         ExtPresent[] extensionPresent,
         Stem[] differentStemNoProof,
         List<byte[]> keys,
         List<byte[]?> values,
-        Banderwagon root,
+        byte[] root,
         [NotNullWhen(true)] out UpdateHint? updateHint)
     {
         updateHint = null;
@@ -209,7 +209,7 @@ public partial class VerkleTree
         var numberOfStems = depths.Length;
 
         // sorted commitments including root
-        List<Banderwagon> commSortedByPath = new(commitmentsSorted.Length + 1) { root };
+        List<byte[]> commSortedByPath = new(commitmentsSorted.Length + 1) { root };
         commSortedByPath.AddRange(commitmentsSorted);
 
         Stem[] stems = GetStemsFromKeys(CollectionsMarshal.AsSpan(keys), numberOfStems);
@@ -335,10 +335,10 @@ public partial class VerkleTree
             }
         }
 
-        SpanDictionary<byte, Banderwagon> commByPath = new(Bytes.SpanEqualityComparer);
-        foreach ((byte[] path, Banderwagon comm) in allPaths.Zip(commSortedByPath)) commByPath[path] = comm;
+        SpanDictionary<byte, byte[]> commByPath = new(Bytes.SpanEqualityComparer);
+        foreach ((byte[] path, byte[] comm) in allPaths.Zip(commSortedByPath)) commByPath[path] = comm;
 
-        var isTrue = VerifyVerkleProofStruct(new VerkleProofStruct(ipaProof, d), allPathsAndZs, leafValuesByPathAndZ,
+        var isTrue = VerifyVerkleProofStruct(new VerkleProofStructSerialized(ipaProof, d), allPathsAndZs, leafValuesByPathAndZ,
             commByPath);
         updateHint = new UpdateHint
         {
@@ -350,19 +350,19 @@ public partial class VerkleTree
         return isTrue;
     }
 
-    public static bool VerifyVerkleProof(VerkleProof proof, List<byte[]> keys, List<byte[]?> values, Banderwagon root,
+    public static bool VerifyVerkleProof(VerkleProof proof, List<byte[]> keys, List<byte[]?> values, byte[] root,
         [NotNullWhen(true)] out UpdateHint? updateHint)
     {
-        return VerifyVerkleProof(proof.Proof.IpaProof, proof.Proof.D, proof.CommsSorted, proof.VerifyHint.Depths,
+        return VerifyVerkleProof(proof.Proof.IpaProofSerialized, proof.Proof.D, proof.CommsSorted, proof.VerifyHint.Depths,
             proof.VerifyHint.ExtensionPresent, proof.VerifyHint.DifferentStemNoProof.Select(x => new Stem(x)).ToArray(),
             keys, values, root,
             out updateHint);
     }
 
-    private static bool VerifyVerkleProofStruct(VerkleProofStruct proof, SortedSet<(byte[], byte)> allPathsAndZs,
-        Dictionary<(byte[], byte), FrE> leafValuesByPathAndZ, SpanDictionary<byte, Banderwagon> commByPath)
+    private static bool VerifyVerkleProofStruct(VerkleProofStructSerialized proof, SortedSet<(byte[], byte)> allPathsAndZs,
+        Dictionary<(byte[], byte), FrE> leafValuesByPathAndZ, SpanDictionary<byte, byte[]> commByPath)
     {
-        var comms = new Banderwagon[allPathsAndZs.Count];
+        var comms = new byte[allPathsAndZs.Count][];
         var index = 0;
         foreach ((byte[] path, var z) in allPathsAndZs) comms[index++] = commByPath[path];
 
@@ -372,18 +372,18 @@ public partial class VerkleTree
             byte[] childPath = [.. path.ToArray(), z];
 
             if (!leafValuesByPathAndZ.TryGetValue((path, z), out FrE y))
-                y = !commByPath.TryGetValue(childPath, out Banderwagon yPoint) ? FrE.Zero : yPoint.MapToScalarField();
+                y = !commByPath.TryGetValue(childPath, out byte[] yPoint) ? FrE.Zero : Banderwagon.FromBytesUncompressedUnchecked(yPoint).MapToScalarField();
             ysByPathAndZ.Add((path.ToArray(), z), y);
         }
 
         IEnumerable<byte> zs = allPathsAndZs.Select(elem => elem.Item2);
         SortedDictionary<(byte[], byte), FrE>.ValueCollection ys = ysByPathAndZ.Values;
 
-        List<VerkleVerifierQuery> queries = new(comms.Length);
+        List<VerkleVerifierQuerySerialized> queries = new(comms.Length);
 
-        foreach (((FrE y, var z), Banderwagon comm) in ys.Zip(zs).Zip(comms))
+        foreach (((FrE y, var z), byte[] comm) in ys.Zip(zs).Zip(comms))
         {
-            VerkleVerifierQuery query = new(comm, z, y);
+            VerkleVerifierQuerySerialized query = new(comm, z, y.ToBytes());
             queries.Add(query);
         }
         // Console.WriteLine("Verifier Query");
@@ -392,9 +392,8 @@ public partial class VerkleTree
         //     Console.WriteLine($"{query.NodeCommitPoint.ToBytes().ToHexString()}:{query.ChildIndex}:{query.ChildHash.ToBytes().ToHexString()}");
         // }
 
-        Transcript proverTranscript = new("vt");
         MultiProof proofVerifier = new(CRS.Instance, PreComputedWeights.Instance);
 
-        return proofVerifier.CheckMultiProof(proverTranscript, queries.ToArray(), proof);
+        return proofVerifier.CheckMultiProofSerialized(queries.ToArray(), proof);
     }
 }
