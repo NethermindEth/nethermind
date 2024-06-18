@@ -107,9 +107,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             options |= ProcessingOptions.StoreReceipts;
         }
 
-        if (_blockProcessor.CanProcessStatelessBlock)
-            options |= ProcessingOptions.StatelessProcessing;
-
         if (blockEventArgs.Block is not null)
         {
             Enqueue(blockEventArgs.Block, options);
@@ -414,7 +411,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (updateHead)
         {
             if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-            _blockTree.UpdateMainChain(processingBranch.Blocks, true);
+            bool wereProcessed = processingBranch.Blocks[0].IsGenesis;
+            wereProcessed |= !options.ContainsFlag(ProcessingOptions.StatelessProcessing);;
+            _blockTree.UpdateMainChain(processingBranch.Blocks, wereProcessed);
         }
 
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
@@ -611,7 +610,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         BlockHeader branchingPoint = null;
-        List<Block> blocksToBeAddedToMain = new();
+        List<Block> blocksToBeAddedToMain = [];
 
         bool branchingCondition;
         bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
