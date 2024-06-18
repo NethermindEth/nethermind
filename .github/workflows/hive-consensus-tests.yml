@@ -71,6 +71,13 @@ jobs:
         echo "skip_docker_build=$skip_docker_build" >> $GITHUB_OUTPUT
         echo "skip_wait_for_docker=$skip_wait_for_docker" >> $GITHUB_OUTPUT
 
+    - name: Authenticate App
+      id: gh-app
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ vars.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
     - name: Trigger Docker Build Action with Cleaned Ref
       if: steps.check_conditions.outputs.skip_docker_build != 'true'
       uses: benc-uk/workflow-dispatch@v1
@@ -79,7 +86,7 @@ jobs:
       with:
           workflow: publish-docker.yml
           ref: "${{ github.ref }}"
-          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          token: "${{ steps.gh-app.outputs.token }}"
           inputs: '{
               "tag": "${{ env.CLEAN_REF }}",
               "dockerfile": "Dockerfile",
@@ -89,7 +96,7 @@ jobs:
     - name: Wait for Docker Build Action to complete
       if: steps.check_conditions.outputs.skip_wait_for_docker != 'true'
       env:
-        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
         WORKFLOW_ID: 'publish-docker.yml'
         MAX_WAIT_MINUTES: '5'
         INTERVAL: '5'

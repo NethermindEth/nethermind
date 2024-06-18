@@ -98,11 +98,17 @@ jobs:
     env:
       FORMULA: nethermind.rb
     steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Check out homebrew-nethermind repository
         uses: actions/checkout@v4
         with:
           repository: NethermindEth/homebrew-nethermind
-          token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          token: ${{ steps.gh-app.outputs.token }}
       - name: Update formula file
         run: |
           json=$(curl -sL ${{ github.event.release.assets_url }})
@@ -117,7 +123,7 @@ jobs:
           awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$arm64_hash'\""); } 1' $FORMULA
       - name: Submit package
         env:
-          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
           head_branch=feature/v${{ github.event.release.tag_name }}-${{ github.run_number }}-${{ github.run_attempt }}
           message="Update for v${{ github.event.release.tag_name }}"
