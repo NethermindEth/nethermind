@@ -244,7 +244,7 @@ namespace Nethermind.Blockchain.Test
         [TestCase(512)]
         [TestCase(8192)]
         [TestCase(8193)]
-        public void Eip2935_init_block_history_Eip7709_disabled_and_then_get_hash(int chainLength)
+        public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash(int chainLength)
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
             BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
@@ -261,9 +261,6 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, specProvider, worldState, LimboLogs.Instance);
             BlockhashStore store = new(specProvider, worldState);
 
-            // store.ApplyHistoryBlockHashes(current.Header);
-            worldState.Commit(Prague.Instance);
-
             Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1);
             Assert.That(result, Is.EqualTo(head?.Hash));
             AssertGenesisHash(Prague.Instance, provider, current.Header, genesis.Hash);
@@ -273,7 +270,7 @@ namespace Nethermind.Blockchain.Test
             current = Build.A.Block.WithParent(head!).TestObject;
             tree.SuggestHeader(current.Header);
 
-            store.ApplyHistoryBlockHashes(current.Header);
+            store.ApplyBlockhashStateChanges(current.Header);
             result = provider.GetBlockhash(current.Header, chainLength);
             Assert.That(result, Is.EqualTo(head?.Hash));
 

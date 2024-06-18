@@ -19,7 +19,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
 {
     private static readonly byte[] EmptyBytes = [0];
 
-    public void ApplyHistoryBlockHashes(BlockHeader blockHeader)
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader)
     {
         IReleaseSpec spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
@@ -27,7 +27,10 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         if (!worldState.AccountExists(eip2935Account)) return;
 
-        AddParentBlockHashToState(blockHeader, eip2935Account);
+        Hash256 parentBlockHash = blockHeader.ParentHash;
+        var parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
+        StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
+        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
@@ -39,17 +42,9 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
             return null;
         }
         var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
-        Address eip2935Account = spec.Eip2935ContractAddress;
+        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
         return data.SequenceEqual(EmptyBytes) ? null : new Hash256(data);
-    }
-
-    private void AddParentBlockHashToState(BlockHeader blockHeader, Address eip2935Account)
-    {
-        Hash256 parentBlockHash = blockHeader.ParentHash;
-        var blockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
-        StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 }
