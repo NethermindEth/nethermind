@@ -277,11 +277,11 @@ jobs:
         fi
 
     - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      id: gh-app
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ vars.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
