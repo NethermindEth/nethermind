@@ -285,15 +285,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             using GetBlockHeadersMessage message = getBlockHeadersMessage;
             Metrics.Eth62GetBlockHeadersReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
-            if (Logger.IsTrace)
-            {
-                Logger.Trace($"Received headers request from {Session.Node:c}:");
-                Logger.Trace($"  MaxHeaders: {message.MaxHeaders}");
-                Logger.Trace($"  Reverse: {message.Reverse}");
-                Logger.Trace($"  Skip: {message.Skip}");
-                Logger.Trace($"  StartingBlockhash: {message.StartBlockHash}");
-                Logger.Trace($"  StartingBlockNumber: {message.StartBlockNumber}");
-            }
+            Logger.Info($"Received headers request from {Session.Node:c}:");
+            Logger.Info($"  MaxHeaders: {message.MaxHeaders}");
+            Logger.Info($"  Reverse: {message.Reverse}");
+            Logger.Info($"  Skip: {message.Skip}");
+            Logger.Info($"  StartingBlockhash: {message.StartBlockHash}");
+            Logger.Info($"  StartingBlockNumber: {message.StartBlockNumber}");
+
 
             // // to clearly state that this client is an ETH client and not ETC (and avoid disconnections on reversed sync)
             // // also to improve performance as this is the most common request
@@ -311,7 +309,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             BlockHeadersMessage resp = await FulfillBlockHeadersRequest(message, cancellationToken);
             stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            Logger.Info($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
 
             return resp;
         }
