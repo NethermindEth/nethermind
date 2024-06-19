@@ -27,8 +27,7 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
-        public static readonly byte[] ZeroByteArray = [0];
-        public static readonly ReadOnlyMemory<byte> ZeroByte = ZeroByteArray;
+        public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
