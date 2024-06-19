@@ -137,10 +137,13 @@ namespace Ethereum.Test.Base
             bool isValid = _txValidator.IsWellFormed(test.Transaction, spec) && IsValidBlock(block, specProvider);
 
             if (isValid)
+            {
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+            }
+
             stopwatch.Stop();
 
-            stateProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
             stateProvider.CommitTree(1);
 
             // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
@@ -148,6 +151,7 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
+
             stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
 
             stateProvider.RecalculateStateRoot();

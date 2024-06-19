@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,14 +28,7 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 
-using System.Collections.Frozen;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
-
 using Int256;
-
-using Nethermind.Core.Collections;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -2410,7 +2404,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         bool accountExists = _state.AccountExists(contractAddress);
         if (accountExists && (_codeInfoRepository.GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 ||
-                              _state.GetNonce(contractAddress) != 0))
+                              _state.GetNonce(contractAddress) != 0 || _worldState.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash))
         {
             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
             if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");

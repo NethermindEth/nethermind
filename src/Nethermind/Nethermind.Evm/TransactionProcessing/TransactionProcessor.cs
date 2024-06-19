@@ -187,20 +187,29 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
             {
-                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
-                Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
-                Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
+                try
+                {
+                    float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
+                    if (float.IsInfinity(gasPrice))
+                    {
+                        return;
+                    }
 
-                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
+                    Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
+                    Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
 
-                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
-                Metrics.Transactions++;
+                    Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
+                    Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
 
-                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                Metrics.BlockTransactions++;
+                    Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
+                    Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                    Metrics.Transactions++;
+
+                    Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
+                    Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                    Metrics.BlockTransactions++;
+                }
+                catch { }
             }
         }
 
@@ -588,7 +597,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 // TODO: verify what should happen if code info is a precompile
                 // (but this would generally be a hash collision)
-                if (codeIsNotEmpty || accountNonceIsNotZero)
+                if (codeIsNotEmpty || accountNonceIsNotZero || WorldState.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash)
                 {
                     if (Logger.IsTrace)
                     {
