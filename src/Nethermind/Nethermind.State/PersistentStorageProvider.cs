@@ -428,7 +428,14 @@ namespace Nethermind.State
             base.ClearStorage(address);
 
             // Bit heavy-handed, but we need to clear all the cache for that address
-            _blockCache.Remove(address);
+            if (_blockCache.TryGetValue(address, out Dictionary<UInt256, byte[]> values))
+            {
+                foreach (UInt256 storageSlot in values.Keys)
+                {
+                    ref var value = ref CollectionsMarshal.GetValueRefOrNullRef(values, storageSlot);
+                    value = Bytes.ZeroByteArray;
+                }
+            }
 
             // here it is important to make sure that we will not reuse the same tree when the contract is revived
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
