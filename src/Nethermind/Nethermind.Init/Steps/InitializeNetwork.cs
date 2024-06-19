@@ -190,8 +190,6 @@ public class InitializeNetwork : IStep
         _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
 
-        _api.VerkleSyncServer = new VerkleSyncServer(_api.VerkleTreeStore!, _api.LogManager);
-
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
         {
@@ -519,11 +517,17 @@ public class InitializeNetwork : IStep
             snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
         }
 
+        VerkleSyncServer? verkleServer = null;
+        if (_syncConfig.VerkleSync)
+        {
+            verkleServer = new VerkleSyncServer(_api.VerkleTreeStore!, _api.LogManager);
+        }
+
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
             _api.BackgroundTaskScheduler,
-            _api.VerkleSyncServer,
+            verkleServer,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,
@@ -542,6 +546,11 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
+
+        if (_syncConfig.VerkleSync)
+        {
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Verkle, 1));
         }
 
         if (_syncConfig.WitnessProtocolEnabled)
