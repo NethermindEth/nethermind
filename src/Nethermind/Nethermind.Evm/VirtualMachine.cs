@@ -54,6 +54,8 @@ public class VirtualMachine : IVirtualMachine
 
     internal static readonly byte[] BytesZero = { 0 };
 
+    public static bool TrackSStore { get; set; }
+
     internal static readonly byte[] BytesZero32 =
     {
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -2661,141 +2663,162 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         Metrics.IncrementSStoreOpcode();
 
-        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
-        // fail fast before the first storage read if gas is not enough even for reset
-        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
-        if (spec.UseNetGasMeteringWithAStipendFix)
+        long startGas = gasAvailable;
+        try
         {
-            if (typeof(TTracingRefunds) == typeof(IsTracing))
-                _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-            if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
-        }
+            if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+            // fail fast before the first storage read if gas is not enough even for reset
+            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+                return EvmExceptionType.OutOfGas;
 
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
-
-        StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
-
-        if (!ChargeStorageAccessGas(
-                ref gasAvailable,
-                vmState,
-                in storageCell,
-                StorageAccessType.SSTORE,
-                spec)) return EvmExceptionType.OutOfGas;
-
-        ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
-        // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
-        bool currentIsZero = currentValue.IsZero();
-
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
-        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
-
-        if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
-        {
-            if (newIsZero)
+            if (spec.UseNetGasMeteringWithAStipendFix)
             {
-                if (!newSameAsCurrent)
+                if (typeof(TTracingRefunds) == typeof(IsTracing))
+                    _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
+            }
+
+            if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+            ReadOnlySpan<byte> bytes = stack.PopWord256();
+            bool newIsZero = bytes.IsZero();
+            bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+
+            if (TrackSStore) _logger.Warn($"SSTORE new value: {bytes.ToHexString()}");
+
+            StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
+
+            if (!ChargeStorageAccessGas(
+                    ref gasAvailable,
+                    vmState,
+                    in storageCell,
+                    StorageAccessType.SSTORE,
+                    spec)) return EvmExceptionType.OutOfGas;
+
+            ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
+            // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
+            bool currentIsZero = currentValue.IsZero();
+
+            if (TrackSStore) _logger.Warn($"SSTORE current value: {currentValue.ToHexString()}");
+
+            bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+            long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+
+            if (TrackSStore) _logger.Warn($"spec.IsEip3529Enabled: {sClearRefunds}; spec.UseNetGasMetering: {spec.UseNetGasMetering}");
+
+            if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
+            {
+                if (newIsZero)
                 {
-                    vmState.Refund += sClearRefunds;
-                    if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
-                }
-            }
-            else if (currentIsZero)
-            {
-                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-            }
-        }
-        else // net metered
-        {
-            if (newSameAsCurrent)
-            {
-                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-            }
-            else // net metered, C != N
-            {
-                Span<byte> originalValue = _state.GetOriginal(in storageCell);
-                bool originalIsZero = originalValue.IsZero();
-
-                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
-                if (currentSameAsOriginal)
-                {
-                    if (currentIsZero)
+                    if (!newSameAsCurrent)
                     {
-                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-                    }
-                    else // net metered, current == original != new, !currentIsZero
-                    {
-                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
-                        if (newIsZero)
-                        {
-                            vmState.Refund += sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
-                        }
+                        vmState.Refund += sClearRefunds;
+                        if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
                     }
                 }
-                else // net metered, new != current != original
+                else if (currentIsZero)
                 {
-                    long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                    if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+                        return EvmExceptionType.OutOfGas;
+                }
+            }
+            else // net metered
+            {
+                if (newSameAsCurrent)
+                {
+                    if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                }
+                else // net metered, C != N
+                {
+                    Span<byte> originalValue = _state.GetOriginal(in storageCell);
+                    if (TrackSStore) _logger.Warn($"SSTORE original value: {currentValue.ToHexString()}");
+                    bool originalIsZero = originalValue.IsZero();
 
-                    if (!originalIsZero) // net metered, new != current != original != 0
+                    bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                    if (currentSameAsOriginal)
                     {
                         if (currentIsZero)
                         {
-                            vmState.Refund -= sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(-sClearRefunds);
+                            if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return EvmExceptionType.OutOfGas;
                         }
-
-                        if (newIsZero)
+                        else // net metered, current == original != new, !currentIsZero
                         {
-                            vmState.Refund += sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+                                return EvmExceptionType.OutOfGas;
+
+                            if (newIsZero)
+                            {
+                                vmState.Refund += sClearRefunds;
+                                if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            }
                         }
                     }
-
-                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
-                    if (newSameAsOriginal)
+                    else // net metered, new != current != original
                     {
-                        long refundFromReversal;
-                        if (originalIsZero)
+                        long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
+                        if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+                        if (!originalIsZero) // net metered, new != current != original != 0
                         {
-                            refundFromReversal = spec.GetSetReversalRefund();
-                        }
-                        else
-                        {
-                            refundFromReversal = spec.GetClearReversalRefund();
+                            if (currentIsZero)
+                            {
+                                vmState.Refund -= sClearRefunds;
+                                if (typeof(TTracingRefunds) == typeof(IsTracing))
+                                    _txTracer.ReportRefund(-sClearRefunds);
+                            }
+
+                            if (newIsZero)
+                            {
+                                vmState.Refund += sClearRefunds;
+                                if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            }
                         }
 
-                        vmState.Refund += refundFromReversal;
-                        if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(refundFromReversal);
+                        bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                        if (newSameAsOriginal)
+                        {
+                            long refundFromReversal;
+                            if (originalIsZero)
+                            {
+                                refundFromReversal = spec.GetSetReversalRefund();
+                            }
+                            else
+                            {
+                                refundFromReversal = spec.GetClearReversalRefund();
+                            }
+
+                            vmState.Refund += refundFromReversal;
+                            if (typeof(TTracingRefunds) == typeof(IsTracing))
+                                _txTracer.ReportRefund(refundFromReversal);
+                        }
                     }
                 }
             }
-        }
 
-        if (!newSameAsCurrent)
+            if (!newSameAsCurrent)
+            {
+                _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            }
+
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+            {
+                ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
+                byte[] storageBytes = new byte[32]; // do not stackalloc here
+                storageCell.Index.ToBigEndian(storageBytes);
+                _txTracer.ReportStorageChange(storageBytes, valueToStore);
+            }
+
+            if (typeof(TTracingStorage) == typeof(IsTracing))
+            {
+                _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            }
+
+            return EvmExceptionType.None;
+        }
+        finally
         {
-            _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            long gasUsed = startGas - gasAvailable;
+            if (TrackSStore) _logger.Warn($"SSTORE gas used: {gasUsed}");
         }
-
-        if (typeof(TTracingInstructions) == typeof(IsTracing))
-        {
-            ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
-            byte[] storageBytes = new byte[32]; // do not stackalloc here
-            storageCell.Index.ToBigEndian(storageBytes);
-            _txTracer.ReportStorageChange(storageBytes, valueToStore);
-        }
-
-        if (typeof(TTracingStorage) == typeof(IsTracing))
-        {
-            _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
-        }
-
-        return EvmExceptionType.None;
     }
 
     private CallResult GetFailureReturn<TTracingInstructions>(long gasAvailable, EvmExceptionType exceptionType)

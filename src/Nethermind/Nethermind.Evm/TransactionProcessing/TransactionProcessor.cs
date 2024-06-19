@@ -100,84 +100,101 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
-            BlockHeader header = blCtx.Header;
-            IReleaseSpec spec = SpecProvider.GetSpec(header);
-            if (tx.IsSystem())
-                spec = new SystemTransactionReleaseSpec(spec);
-
-            // restore is CallAndRestore - previous call, we will restore state after the execution
-            bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit thee state after execution
-            // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
-            // we commit only after all block is constructed
-            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
-
-            TransactionResult result;
-            if (!(result = ValidateStatic(tx, header, spec, tracer, opts, out long intrinsicGas))) return result;
-
-            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
-
-            UpdateMetrics(opts, effectiveGasPrice);
-
-            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
-
-            if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
-            if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))) return result;
-            if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
-
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
-
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
-
-            long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
-            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
-
-            // Finalize
-            if (restore)
+            TrackSStore = !tx.IsSystem() && tx.Hash == new Hash256("0xda350e90321e158ab4394f41c284088fbdd03c27e4c1e9a693a1dfe73c5b1e2a");
+            try
             {
-                WorldState.Reset();
-                if (deleteCallerAccount)
-                {
-                    WorldState.DeleteAccount(tx.SenderAddress);
-                }
-                else
-                {
-                    if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                        WorldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
-                    if (!tx.IsSystem())
-                        WorldState.DecrementNonce(tx.SenderAddress);
 
-                    WorldState.Commit(spec);
+                BlockHeader header = blCtx.Header;
+                IReleaseSpec spec = SpecProvider.GetSpec(header);
+                if (tx.IsSystem())
+                    spec = new SystemTransactionReleaseSpec(spec);
+
+                // restore is CallAndRestore - previous call, we will restore state after the execution
+                bool restore = opts.HasFlag(ExecutionOptions.Restore);
+                // commit - is for standard execute, we will commit thee state after execution
+                // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
+                // we commit only after all block is constructed
+                bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
+
+                TransactionResult result;
+                if (!(result = ValidateStatic(tx, header, spec, tracer, opts, out long intrinsicGas))) return result;
+
+                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
+
+                UpdateMetrics(opts, effectiveGasPrice);
+
+                bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
+
+                if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
+                if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas,
+                        out UInt256 senderReservedGasPayment))) return result;
+                if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
+
+                if (commit)
+                    WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance,
+                        commitStorageRoots: false);
+
+                ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
+
+                long gasAvailable = tx.GasLimit - intrinsicGas;
+                ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate,
+                    out long spentGas, out byte statusCode);
+                PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
+
+                // Finalize
+                if (restore)
+                {
+                    WorldState.Reset();
+                    if (deleteCallerAccount)
+                    {
+                        WorldState.DeleteAccount(tx.SenderAddress);
+                    }
+                    else
+                    {
+                        if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                            WorldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+                        if (!tx.IsSystem())
+                            WorldState.DecrementNonce(tx.SenderAddress);
+
+                        WorldState.Commit(spec);
+                    }
                 }
+                else if (commit)
+                {
+                    WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance,
+                        commitStorageRoots: !spec.IsEip658Enabled);
+                }
+
+                if (tracer.IsTracingReceipt)
+                {
+                    Hash256 stateRoot = null;
+                    if (!spec.IsEip658Enabled)
+                    {
+                        WorldState.RecalculateStateRoot();
+                        stateRoot = WorldState.StateRoot;
+                    }
+
+                    if (statusCode == StatusCode.Failure)
+                    {
+                        byte[] output = (substate?.ShouldRevert ?? false)
+                            ? substate.Output.ToArray()
+                            : Array.Empty<byte>();
+                        tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
+                    }
+                    else
+                    {
+                        LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
+                        tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs,
+                            stateRoot);
+                    }
+                }
+
+                return TransactionResult.Ok;
             }
-            else if (commit)
+            finally
             {
-                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitStorageRoots: !spec.IsEip658Enabled);
+                TrackSStore = false;
             }
-
-            if (tracer.IsTracingReceipt)
-            {
-                Hash256 stateRoot = null;
-                if (!spec.IsEip658Enabled)
-                {
-                    WorldState.RecalculateStateRoot();
-                    stateRoot = WorldState.StateRoot;
-                }
-
-                if (statusCode == StatusCode.Failure)
-                {
-                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
-                }
-                else
-                {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
-                }
-            }
-
-            return TransactionResult.Ok;
         }
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
