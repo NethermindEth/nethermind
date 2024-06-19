@@ -53,6 +53,6 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
         Metrics.PointEvaluationPrecompile++;
         return IsValid(inputData)
             ? (PointEvaluationSuccessfulResponse, true)
-            : (default, false);
+            : IPrecompile.Failure;
     }
 }

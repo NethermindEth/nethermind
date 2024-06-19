@@ -36,7 +36,8 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         IAuRaValidator? validator,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
-        ContractRewriter? contractRewriter = null
+        ContractRewriter? contractRewriter = null,
+        IBlockCachePreWarmer? preWarmer = null
     ) : base(
             specProvider,
             blockValidator,
@@ -51,7 +52,8 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             validator,
             txFilter,
             gasLimitOverride,
-            contractRewriter
+            contractRewriter,
+            preWarmer
         )
     { }
 

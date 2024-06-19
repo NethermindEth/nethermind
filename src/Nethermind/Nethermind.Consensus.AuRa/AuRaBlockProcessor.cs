@@ -48,7 +48,8 @@ namespace Nethermind.Consensus.AuRa
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null)
+            ContractRewriter? contractRewriter = null,
+            IBlockCachePreWarmer? preWarmer = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -59,7 +60,8 @@ namespace Nethermind.Consensus.AuRa
                 new BlockhashStore(blockTree, specProvider, stateProvider),
                 logManager,
                 beaconBlockRootProcessor,
-                withdrawalProcessor)
+                withdrawalProcessor,
+                preWarmer: preWarmer)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
