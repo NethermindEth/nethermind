@@ -17,5 +17,5 @@ public class SubTreeRangeMessage : VerkleMessageBase
     /// <summary>
     /// Verkle Proof
     /// </summary>
-    public byte[] Proofs { get; set; }
+    public byte[]? Proofs { get; set; }
 }

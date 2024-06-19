@@ -32,8 +32,8 @@ public class VerkleSyncServer(IVerkleTreeStore treeStore, ILogManager logManager
         var nodes = _store.GetLeafRangeIterator(startingStem, limitStem ?? Stem.MaxValue, rootHash, byteLimit).ToList();
         watch.Stop();
 
-        if(_logger.IsTrace) _logger.Trace($"VerkleSyncServer - GetSubTreeRanges - RH:{rootHash} S:{startingStem} L:{limitStem} Bytes:{byteLimit}");
-        if(_logger.IsTrace) _logger.Trace($"VerkleSyncServer - GetSubTreeRanges - Count - {nodes.Count} time: {watch.Elapsed}");
+        _logger.Info($"VerkleSyncServer - GetSubTreeRanges - RH:{rootHash} S:{startingStem} L:{limitStem} Bytes:{byteLimit}");
+        _logger.Info($"VerkleSyncServer - GetSubTreeRanges - Count - {nodes.Count} time: {watch.Elapsed}");
 
         if (nodes.Count == 0) return (nodes, null);
 
@@ -43,7 +43,7 @@ public class VerkleSyncServer(IVerkleTreeStore treeStore, ILogManager logManager
         VerkleProof vProof = tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out _, rootHash);
         watch.Stop();
 
-        if(_logger.IsTrace) _logger.Trace($"VerkleSyncServer - GetSubTreeRanges - Proof Generated time: {watch.Elapsed}");
+        _logger.Info($"VerkleSyncServer - GetSubTreeRanges - Proof Generated time: {watch.Elapsed}");
         // TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
         return (nodes, vProof);
     }
