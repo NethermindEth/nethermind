@@ -23,9 +23,75 @@ using System.Net;
 using Nethermind.Core;
 using Nethermind.Api;
 using System.Collections.Concurrent;
+using System.Net.Sockets;
+using DotNetty.Buffers;
+using DotNetty.Transport.Channels.Sockets;
+using Lantern.Discv5.WireProtocol.Messages;
+using Lantern.Discv5.WireProtocol.Packet;
+using Lantern.Discv5.WireProtocol.Packet.Handlers;
+using Lantern.Discv5.WireProtocol.Packet.Types;
 using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Network.Discovery;
+
+public class PacketManagerWithDiscoveryV4 : IPacketManager
+{
+    private readonly IPacketManager _packetManager;
+    private readonly IPacketProcessor _packetProcessor;
+    private readonly NettyDiscoveryHandler _nettyDiscoveryHandler;
+
+    public PacketManagerWithDiscoveryV4(
+        IPacketManager packetManager, IPacketProcessor packetProcessor, NettyDiscoveryHandler nettyDiscoveryHandler
+    )
+    {
+        _packetManager = packetManager;
+        _packetProcessor = packetProcessor;
+        _nettyDiscoveryHandler = nettyDiscoveryHandler;
+    }
+
+    public Task<byte[]?> SendPacket(IEnr dest, MessageType messageType, bool isLookup, params object[] args) =>
+        _packetManager.SendPacket(dest, messageType, isLookup, args);
+
+    public Task HandleReceivedPacket(UdpReceiveResult packet)
+    {
+        if (IsDiscoveryV5Packet(packet))
+        {
+            return _packetManager.HandleReceivedPacket(packet);
+        }
+        else
+        {
+            // TODO figure out addresses differences
+            _nettyDiscoveryHandler.HandleReceivedPacket(packet.Buffer, );
+        }
+    }
+
+    private EndPoint ToEndPoint()
+
+    // TODO find a faster/simpler/more-reliable way
+    private bool IsDiscoveryV5Packet(UdpReceiveResult packet)
+    {
+        try
+        {
+            return Enum.IsDefined((PacketType) _packetProcessor.GetStaticHeader(packet.Buffer).Flag);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+}
+
+public class DiscoveryV4PacketHandler(NettyDiscoveryHandler nettyHandler) : IPacketHandler
+{
+    private readonly NettyDiscoveryHandler _nettyHandler = nettyHandler;
+
+    public PacketType PacketType => throw new NotSupportedException($"No packet type for {nameof(DiscoveryV4PacketHandler)}.");
+
+    public Task HandlePacket(UdpReceiveResult returnedResult)
+    {
+
+    }
+}
 
 public class DiscoveryV5App : IDiscoveryApp
 {

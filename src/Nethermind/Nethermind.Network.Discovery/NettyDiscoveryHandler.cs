@@ -106,14 +106,10 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
     }
-    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
-    {
-        IByteBuffer content = packet.Content;
-        EndPoint address = packet.Sender;
 
-        int size = content.ReadableBytes;
-        byte[] msgBytes = new byte[size];
-        content.ReadBytes(msgBytes);
+    public void HandleReceivedPacket(byte[] msgBytes, EndPoint address, EndPoint remoteAddress)
+    {
+        int size = msgBytes.Length;
 
         Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msgBytes.Length);
 
@@ -150,7 +146,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         {
             ReportMsgByType(msg, size);
 
-            if (!ValidateMsg(msg, type, address, ctx, packet, size))
+            if (!ValidateMsg(msg, type, address, remoteAddress, packet, size))
                 return;
 
             // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
@@ -165,6 +161,18 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         {
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while processing message, type: {type}, sender: {address}, message: {msg}", e);
         }
+    }
+
+    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
+    {
+        IByteBuffer content = packet.Content;
+        EndPoint address = packet.Sender;
+
+        int size = content.ReadableBytes;
+        byte[] msgBytes = new byte[size];
+        content.ReadBytes(msgBytes);
+
+        HandleReceivedPacket(msgBytes, address, ctx.Channel.RemoteAddress);
     }
 
     private DiscoveryMsg Deserialize(MsgType type, byte[] msg)
@@ -195,7 +203,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         };
     }
 
-    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet, int size)
+    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, EndPoint remoteAddress, DatagramPacket packet, int size)
     {
         long timeToExpire = msg.ExpirationTime - _timestamper.UnixTime.SecondsLong;
         if (timeToExpire < 0)
@@ -215,14 +223,14 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         if (!msg.FarAddress.Equals((IPEndPoint)packet.Sender))
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} has incorrect far address", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {remoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (msg.FarPublicKey is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} has null far public key", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress} but was {remoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
