@@ -13,11 +13,9 @@ public static class VerkleProofExtensions
 {
     public static byte[] EncodeRlp(this VerkleProof proof)
     {
-        Console.WriteLine($"THis is encoding rlp for proofs");
         if (proof.CommsSorted is null || proof.CommsSorted.Length == 0) return Array.Empty<byte>();
         VerkleProofSerializer ser = VerkleProofSerializer.Instance;
         var encodedData = new RlpStream(Rlp.LengthOfSequence(ser.GetLength(proof, RlpBehaviors.None)));
-        Console.WriteLine($"THis is encoding rlp for proofs - actual encoding");
         ser.Encode(encodedData, proof);
         return encodedData.Data.ToArray()!;
     }
