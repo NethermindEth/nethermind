@@ -214,7 +214,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         return new LeafNodesMessage();
     }
 
-    protected SubTreeRangeMessage FulfillSubTreeRangeMessage(GetSubTreeRangeMessage getAccountRangeMessage)
+    private SubTreeRangeMessage FulfillSubTreeRangeMessage(GetSubTreeRangeMessage getAccountRangeMessage)
     {
         if (_syncServer is null)
         {
@@ -227,11 +227,11 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         }
 
         SubTreeRange? accountRange = getAccountRangeMessage.SubTreeRange;
-        (List<PathWithSubTree>, VerkleProof) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
-            accountRange.LimitStem, getAccountRangeMessage.ResponseBytes, out _);
+        (List<PathWithSubTree>, VerkleProof?) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
+            accountRange.LimitStem, getAccountRangeMessage.ResponseBytes);
         SubTreeRangeMessage? response = new();
         response.PathsWithSubTrees = data.Item1.ToArray();
-        response.Proofs = data.Item2.EncodeRlp();
+        if (data.Item2 is not null) response.Proofs = data.Item2.Value.EncodeRlp();
 
         // TestSubTreeRangeMessageEncoding(accountRange.RootHash, accountRange.StartingStem, response);
 
@@ -252,11 +252,16 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
             subTreeRangeMessageSerializer.Serialize(buffer, response);
             SubTreeRangeMessage? decode = subTreeRangeMessageSerializer.Deserialize(buffer);
 
-            var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
-            var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
-            var isCorrect = localTree.CreateStatelessTreeFromRange(
-                verkleProofSerializer.Decode(new RlpStream(decode.Proofs)), rootPoint, startingStem,
-                decode.PathsWithSubTrees[^1].Path, decode.PathsWithSubTrees);
+            bool isCorrect = true;
+            if (decode.PathsWithSubTrees.Length != 0)
+            {
+                var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
+                var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
+                isCorrect = localTree.CreateStatelessTreeFromRange(
+                    verkleProofSerializer.Decode(new RlpStream(decode.Proofs)), rootPoint, startingStem,
+                    decode.PathsWithSubTrees[^1].Path, decode.PathsWithSubTrees);
+            }
+
             Logger.Info(!isCorrect
                 ? $"FulfillSubTreeRangeMessage: SubTreeRangeMessage encoding-decoding and verification: FAILED"
                 : $"FulfillSubTreeRangeMessage: SubTreeRangeMessage encoding-decoding and verification: SUCCESS");

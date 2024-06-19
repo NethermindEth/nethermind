@@ -66,6 +66,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
     public AddRangeResult AddSubTreeRange(long blockNumber, Hash256 expectedRootHash, Stem startingStem,
         PathWithSubTree[] subTrees, byte[]? proofs = null, Stem? limitStem = null)
     {
+        // if we are coming here, then we can assume subTree.Length != 0
         limitStem ??= Keccak.MaxValue.Bytes[..31].ToArray();
         Banderwagon rootPoint = Banderwagon.FromBytes(expectedRootHash.Bytes.ToArray()) ?? throw new Exception("root point invalid");
         IVerkleTreeStore store = _trieStorePool.Get();
@@ -78,6 +79,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
                 var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), _logManager);
                 var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
                 var isCorrect = localTree.CreateStatelessTreeFromRange(vProof, rootPoint, startingStem, subTrees[^1].Path, subTrees);
+
                 if (!isCorrect)
                 {
                     _logger.Error(
@@ -89,7 +91,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
             }
             catch (Exception e)
             {
-                _logger.Error($"AddSubTreeRange: {blockNumber} {expectedRootHash} {startingStem}");
+                _logger.Error($"AddSubTreeRange: {blockNumber} {expectedRootHash} {startingStem} {subTrees.Length}");
                 _logger.Error("something broke during sync", e);
                 throw;
             }
