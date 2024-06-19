@@ -104,6 +104,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "homebrew-nethermind"
 
       - name: Check out homebrew-nethermind repository
         uses: actions/checkout@v4
