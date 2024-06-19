@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using System.Buffers.Binary;
 
 namespace Nethermind.Blockchain
 {
@@ -134,6 +135,16 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _logIndexDb = logIndexDb ?? throw new ArgumentNullException(nameof(logIndexDb));
+
+            // Adding value in the database
+
+            Address x = Address.Zero;
+            Span<byte> key = stackalloc byte[24];
+            x.Bytes.CopyTo(key);
+            Span<byte> last4bytes = key[20..];
+            BinaryPrimitives.WriteInt32BigEndian(last4bytes, 10_000_00);
+            byte[] value = [1, 2, 3, 4, 5];
+            _logIndexDb.PutSpan(key, value);
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
