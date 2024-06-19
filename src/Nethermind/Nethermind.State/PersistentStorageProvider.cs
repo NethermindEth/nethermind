@@ -432,8 +432,7 @@ namespace Nethermind.State
             {
                 foreach (UInt256 storageSlot in values.Keys)
                 {
-                    ref var value = ref CollectionsMarshal.GetValueRefOrNullRef(values, storageSlot);
-                    value = StorageTree.EmptyBytes;
+                    values[storageSlot] = StorageTree.EmptyBytes;
                 }
             }
 
