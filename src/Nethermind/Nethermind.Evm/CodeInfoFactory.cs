@@ -9,7 +9,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public static class CodeInfoFactory
 {
-    public static bool CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy validationRules = EvmObjectFormat.ValidationStrategy.Validate)
+    public static bool CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy validationRules = EvmObjectFormat.ValidationStrategy.ExractHeader)
     {
         codeinfo = new CodeInfo(code);
         if (spec.IsEofEnabled && code.Span.StartsWith(EvmObjectFormat.MAGIC))

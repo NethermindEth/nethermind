@@ -58,12 +58,12 @@ namespace Nethermind.Evm.CodeAnalysis
             }
         }
 
-        public SectionHeader SectionOffset(int idx)
+        public SectionHeader CodeSectionOffset(int idx)
         {
             throw new NotImplementedException();
         }
 
-        public SectionHeader? ContainerOffset(int idx)
+        public SectionHeader? ContainerSectionOffset(int idx)
         {
             throw new NotImplementedException();
         }

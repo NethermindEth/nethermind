@@ -783,7 +783,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         int programCounter = vmState.ProgramCounter;
         int sectionIndex = vmState.FunctionIndex;
 
-        ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection(0).Span;
+        ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
         ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
 
         EvmExceptionType exceptionType = EvmExceptionType.None;
@@ -2233,7 +2233,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         };
 
                         sectionIndex = index;
-                        (programCounter, _) = env.CodeInfo.SectionOffset(index);
+                        programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
                         break;
                     }
 
@@ -2254,7 +2254,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
 
                         sectionIndex = index;
-                        (programCounter, _) = env.CodeInfo.SectionOffset(index);
+                        (programCounter, _) = env.CodeInfo.CodeSectionOffset(index);
                         break;
                     }
                 case Instruction.RETF:
@@ -2990,7 +2990,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.None);
+        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.ExractHeader);
 
         ExecutionEnvironment callEnv = new
         (
@@ -3139,7 +3139,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
-        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.None);
+        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.ExractHeader);
         if(codeinfo is CodeInfo classicalCode)
         {
             classicalCode.AnalyseInBackgroundIfRequired();

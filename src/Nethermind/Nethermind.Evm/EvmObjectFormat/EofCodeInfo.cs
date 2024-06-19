@@ -19,25 +19,21 @@ public class EofCodeInfo : ICodeInfo
     public int Version => _header.Version;
     public bool IsEmpty => _codeInfo.IsEmpty;
     public ReadOnlyMemory<byte> TypeSection { get; }
-    public ReadOnlyMemory<byte> CodeSection(int index)
-    {
-        var offset = SectionOffset(index);
-        return MachineCode.Slice(offset.Start, offset.Size);
-    }
+    public ReadOnlyMemory<byte> CodeSection { get;  }
     public ReadOnlyMemory<byte> DataSection { get; }
 
     public ReadOnlyMemory<byte> ContainerSection(int index)
     {
-        var offset = ContainerOffset(index);
+        var offset = ContainerSectionOffset(index);
         if (offset  is null)
             return Memory<byte>.Empty;
         else
         {
-            return MachineCode.Slice(offset.Value.Start, offset.Value.Size);
+            return MachineCode.Slice(_header.ContainerSection.Value.Start + offset.Value.Start, offset.Value.Size);
         }
     }
-    public SectionHeader SectionOffset(int sectionId) => _header.CodeSections[sectionId];
-    public SectionHeader? ContainerOffset(int containerId) =>
+    public SectionHeader CodeSectionOffset(int sectionId) => _header.CodeSections[sectionId];
+    public SectionHeader? ContainerSectionOffset(int containerId) =>
         _header.ContainerSection is null
             ? null
             : _header.ContainerSection.Value[containerId];
@@ -59,5 +55,6 @@ public class EofCodeInfo : ICodeInfo
         _header = header;
         TypeSection = MachineCode.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
         DataSection = MachineCode.Slice(_header.DataSection.Start, _header.DataSection.Size);
+        CodeSection = MachineCode.Slice(_header.CodeSections.Start, _header.CodeSections.Size);
     }
 }

@@ -58,6 +58,7 @@ public static class EvmObjectFormat
         ValidateFullBody = Validate | 4,
         ValidateInitcodeMode = Validate | 8,
         AllowTrailingBytes = Validate | 16,
+        ExractHeader = 32,
 
     }
 
@@ -114,17 +115,17 @@ public static class EvmObjectFormat
             && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
             && handler.TryParseEofHeader(container, out header))
         {
-            EofHeader h = header.Value;
-            if (handler.ValidateBody(container, h, strategy))
+            bool validateBody = strategy.HasFlag(ValidationStrategy.Validate);
+            if (validateBody && handler.ValidateBody(container, header.Value, strategy))
             {
-                if(strategy.HasFlag(ValidationStrategy.ValidateSubContainers) && header?.ContainerSection?.Count > 0)
+                if (strategy.HasFlag(ValidationStrategy.ValidateSubContainers) && header?.ContainerSection?.Count > 0)
                 {
                     int containerSize = header.Value.ContainerSection.Value.Count;
 
                     for (int i = 0; i < containerSize; i++)
                     {
                         ReadOnlySpan<byte> subContainer = container.Slice(header.Value.ContainerSection.Value.Start + header.Value.ContainerSection.Value[i].Start, header.Value.ContainerSection.Value[i].Size);
-                        if(!IsValidEof(subContainer, strategy, out _))
+                        if (!IsValidEof(subContainer, strategy, out _))
                         {
                             return false;
                         }
@@ -133,6 +134,7 @@ public static class EvmObjectFormat
                 }
                 return true;
             }
+            return !validateBody;
         }
 
         header = null;
@@ -198,7 +200,7 @@ public static class EvmObjectFormat
 
         internal const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
         internal const int MAX_STACK_HEIGHT_LENGTH = 2;
-        internal const ushort MAX_STACK_HEIGHT = 0x3FF;
+        internal const ushort MAX_STACK_HEIGHT = 0x400;
 
         internal const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
         internal const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;

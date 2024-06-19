@@ -62,7 +62,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private static readonly FrozenDictionary<AddressAsKey, ICodeInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
+    private readonly FrozenDictionary<AddressAsKey, ICodeInfo> _localPrecompiles;
 
     private static FrozenDictionary<AddressAsKey, ICodeInfo> InitializePrecompiledContracts()
     {
@@ -103,7 +103,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
         if (codeSource.IsPrecompile(vmSpec))
@@ -128,7 +127,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            CodeInfoFactory.CreateCodeInfo(code, vmSpec, out cachedCodeInfo, EOF.EvmObjectFormat.ValidationStrategy.None);
+            CodeInfoFactory.CreateCodeInfo(code, vmSpec, out cachedCodeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
             if(cachedCodeInfo is CodeInfo eof0CodeInfo)
                 eof0CodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
@@ -152,7 +151,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (!_codeCache.TryGet(codeHash, out ICodeInfo? codeInfo))
         {
-            CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out codeInfo, EOF.EvmObjectFormat.ValidationStrategy.None);
+            CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out codeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
 
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
@@ -164,7 +163,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        CodeInfoFactory.CreateCodeInfo(code, spec, out ICodeInfo codeInfo, EOF.EvmObjectFormat.ValidationStrategy.None);
+        CodeInfoFactory.CreateCodeInfo(code, spec, out ICodeInfo codeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
         if(codeInfo is CodeInfo eof0CodeInfo)
                 eof0CodeInfo.AnalyseInBackgroundIfRequired();
 
@@ -173,10 +172,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         _codeCache.Set(codeHash, codeInfo);
     }
 
-    private CodeInfo CreateCachedPrecompile(
-        in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
+    private ICodeInfo CreateCachedPrecompile(
+        in KeyValuePair<AddressAsKey, ICodeInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
-        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+        new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
     private class CachedPrecompile(
         Address address,

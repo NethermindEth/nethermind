@@ -18,44 +18,34 @@ public struct EofHeader()
     public required CompoundSectionHeader? ContainerSection;
 }
 
-public readonly record struct SectionHeader(int Start, ushort Size)
+public record struct SectionHeader(int Start, ushort Size)
 {
     public int EndOffset => Start + Size;
 }
 
-public readonly record struct CompoundSectionHeader(int Start, int[] SubSectionsSizes)
+public record struct CompoundSectionHeader(int Start, int[] SubSectionsSizes)
 {
     public readonly int EndOffset = Start + SubSectionsSizes.Sum();
     public int Size => EndOffset - Start;
     public int Count => SubSectionsSizes.Length;
 
-    /*
-    private readonly int[] subSectionsSizesAcc;
-    private readonly int[] SubSectionsSizesAcc
+    private int[] subSectionsSizesAcc;
+    private int[] SubSectionsSizesAcc
     {
-        init
+        get
         {
             if(subSectionsSizesAcc is null) {
                 subSectionsSizesAcc = new int[SubSectionsSizes.Length];
-            }
-
-            for (var i = 0; i < SubSectionsSizes.Length; i++)
-            {
-                if(i == 0)
-                {
-                    subSectionsSizesAcc[i] = 0;
-                } else
+                subSectionsSizesAcc[0] = 0;
+                for (var i = 1; i < SubSectionsSizes.Length; i++)
                 {
                     subSectionsSizesAcc[i] = subSectionsSizesAcc[i - 1] + SubSectionsSizes[i];
                 }
             }
-        }
 
-        get => subSectionsSizesAcc;
+            return subSectionsSizesAcc;
+        }
     }
 
     public SectionHeader this[int i] => new SectionHeader(Start: SubSectionsSizesAcc[i], Size: (ushort)SubSectionsSizes[i]);
-    */
-    // returns a subsection with localized indexing [0, size] ==> 0 is local to the section not the entire bytecode
-    public SectionHeader this[int i] => new SectionHeader(Start: SubSectionsSizes[..i].Sum(), Size: (ushort)SubSectionsSizes[i]);
 }
