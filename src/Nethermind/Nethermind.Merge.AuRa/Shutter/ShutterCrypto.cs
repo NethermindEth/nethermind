@@ -98,10 +98,21 @@ internal class ShutterCrypto
             c3.Add(new(c3Bytes[(i * 32)..((i + 1) * 32)]));
         }
 
+        G2 c1;
+
+        try
+        {
+            c1 = new G2(bytes[1..(1 + 192)].ToArray());
+        }
+        catch (ApplicationException e)
+        {
+            throw new ShutterCryptoException($"Encrypted Shutter message had invalid c1: {e}");
+        }
+
         return new()
         {
             VersionId = bytes[0],
-            c1 = new G2(bytes[1..(1 + 192)].ToArray()),
+            c1 = c1,
             c2 = new Bytes32(bytes[(1 + 192)..(1 + 192 + 32)]),
             c3 = c3
         };

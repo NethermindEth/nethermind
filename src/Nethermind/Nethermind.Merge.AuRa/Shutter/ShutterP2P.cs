@@ -88,7 +88,15 @@ public class ShutterP2P
 
                 while (_msgQueue.Reader.TryRead(out var msg))
                 {
-                    ProcessP2PMessage(msg);
+                    try
+                    {
+                        ProcessP2PMessage(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        throw new Exception($"Shutter processing thread error: {e}");
+                    }
+
                     lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                 }
 
