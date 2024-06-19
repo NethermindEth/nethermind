@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain
         private readonly IHeaderStore _headerStore;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
+        private readonly IDb _logIndexDb;
         private readonly IBlockStore _badBlockStore;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
@@ -118,7 +119,8 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            IDb? logIndexDb = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -131,6 +133,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _logIndexDb = logIndexDb ?? throw new ArgumentNullException(nameof(logIndexDb));
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
