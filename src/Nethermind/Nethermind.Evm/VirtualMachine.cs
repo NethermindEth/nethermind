@@ -20,6 +20,7 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
+using System.Text;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
@@ -2664,6 +2665,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Metrics.IncrementSStoreOpcode();
 
         long startGas = gasAvailable;
+        StringBuilder? builder = TrackSStore ? new StringBuilder() : null;
         try
         {
             if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
@@ -2683,9 +2685,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             bool newIsZero = bytes.IsZero();
             bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
-            if (TrackSStore) _logger.Warn($"SSTORE new value: {bytes.ToHexString()}");
-
             StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
+
+            if (TrackSStore) builder!.AppendLine($"SSTORE new value: {bytes.ToHexString()} in {storageCell.Address}:{storageCell.Index}");
 
             if (!ChargeStorageAccessGas(
                     ref gasAvailable,
@@ -2698,12 +2700,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
             bool currentIsZero = currentValue.IsZero();
 
-            if (TrackSStore) _logger.Warn($"SSTORE current value: {currentValue.ToHexString()}");
+            if (TrackSStore) builder!.AppendLine($"SSTORE current value: {currentValue.ToHexString()}");
 
             bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
             long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
-            if (TrackSStore) _logger.Warn($"spec.IsEip3529Enabled: {sClearRefunds}; spec.UseNetGasMetering: {spec.UseNetGasMetering}");
+            if (TrackSStore)builder!.AppendLine($"spec.IsEip3529Enabled: {sClearRefunds}; spec.UseNetGasMetering: {spec.UseNetGasMetering}");
 
             if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
             {
@@ -2730,7 +2732,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 else // net metered, C != N
                 {
                     Span<byte> originalValue = _state.GetOriginal(in storageCell);
-                    if (TrackSStore) _logger.Warn($"SSTORE original value: {currentValue.ToHexString()}");
+                    if (TrackSStore) builder!.AppendLine($"SSTORE original value: {currentValue.ToHexString()}");
                     bool originalIsZero = originalValue.IsZero();
 
                     bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
@@ -2816,8 +2818,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         finally
         {
-            long gasUsed = startGas - gasAvailable;
-            if (TrackSStore) _logger.Warn($"SSTORE gas used: {gasUsed}");
+            if (TrackSStore)
+            {
+                long gasUsed = startGas - gasAvailable;
+                builder!.AppendLine($"SSTORE gas used: {gasUsed}");
+                _logger.Warn(builder.ToString());
+            }
         }
     }
 
