@@ -14,74 +14,64 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
-public class ShutterEon
+public class ShutterEon(
+    IReadOnlyBlockTree readOnlyBlockTree,
+    ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+    IAbiEncoder abiEncoder,
+    IAuraConfig auraConfig,
+    ILogger logger)
 {
     private Info? _info;
-    private readonly IReadOnlyBlockTree _readOnlyBlockTree;
-    private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
-    private readonly IAbiEncoder _abiEncoder;
-    private readonly ILogger _logger;
-    private readonly Address KeyBroadcastContractAddress;
-    private readonly Address KeyperSetManagerContractAddress;
+    private readonly Address _keyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
+    private readonly Address _keyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
 
-    public ShutterEon(IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogger logger)
-    {
-        _readOnlyBlockTree = readOnlyBlockTree;
-        _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
-        _abiEncoder = abiEncoder;
-        _logger = logger;
-        KeyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
-        KeyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
-    }
-
-    public Info? GetCurrentEonInfo()
-    {
-        return _info;
-    }
+    public Info? GetCurrentEonInfo() => _info;
 
     public void Update(BlockHeader header)
     {
-        Hash256 stateRoot = _readOnlyBlockTree.Head!.StateRoot!;
-        ITransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(stateRoot).TransactionProcessor;
+        Hash256 stateRoot = readOnlyBlockTree.Head!.StateRoot!;
+        using IReadOnlyTxProcessingScope scope = readOnlyTxProcessingEnvFactory.Create().Build(stateRoot);
+        ITransactionProcessor processor = scope.TransactionProcessor;
 
         try
         {
-            KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
+            KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress);
             ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
 
             if (_info is null || _info.Value.Eon != eon)
             {
                 Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
-                KeyperSetContract keyperSetContract = new(readOnlyTransactionProcessor, _abiEncoder, keyperSetContractAddress);
+                KeyperSetContract keyperSetContract = new(processor, abiEncoder, keyperSetContractAddress);
 
-                if (!keyperSetContract.IsFinalized(header))
+                if (keyperSetContract.IsFinalized(header))
                 {
-                    if (_logger.IsError) _logger.Error("Cannot use unfinalised keyper set contract.");
-                    return;
+                    ulong threshold = keyperSetContract.GetThreshold(header);
+                    Address[] addresses = keyperSetContract.GetMembers(header);
+
+                    KeyBroadcastContract keyBroadcastContract = new(processor, abiEncoder, _keyBroadcastContractAddress);
+                    byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(readOnlyBlockTree.Head!.Header, eon);
+                    Bls.P2 key = new(eonKeyBytes);
+
+                    // update atomically
+                    _info = new()
+                    {
+                        Eon = eon,
+                        Key = key,
+                        Threshold = threshold,
+                        Addresses = addresses
+                    };
+
+                    if (logger.IsInfo) logger.Info($"Shutter eon: {_info.Value.Eon} threshold: {_info.Value.Threshold} #keypers: {_info.Value.Addresses.Length}");
                 }
-
-                ulong threshold = keyperSetContract.GetThreshold(header);
-                Address[] addresses = keyperSetContract.GetMembers(header);
-
-                KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
-                byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
-                Bls.P2 key = new(eonKeyBytes);
-
-                // update atomically
-                _info = new()
+                else
                 {
-                    Eon = eon,
-                    Key = key,
-                    Threshold = threshold,
-                    Addresses = addresses
-                };
-
-                if (_logger.IsInfo) _logger.Info($"Shutter eon: {_info.Value.Eon} threshold: {_info.Value.Threshold} #keypers: {_info.Value.Addresses.Length}");
+                    if (logger.IsError) logger.Error("Cannot use unfinalised keyper set contract.");
+                }
             }
         }
         catch (AbiException e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Error when calling Shutter Keyper contracts: {e}");
+            if (logger.IsDebug) logger.Error($"Error when calling Shutter Keyper contracts", e);
         }
     }
 
