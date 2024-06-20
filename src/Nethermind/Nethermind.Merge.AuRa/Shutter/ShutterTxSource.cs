@@ -251,6 +251,10 @@ public class ShutterTxSource : ITxSource
             }
 
             byte[] encodedTransaction = ShutterCrypto.Decrypt(encryptedMessage, key);
+
+            // todo: remove after using for testing
+            if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter message: {Convert.ToHexString(encodedTransaction)}");
+
             Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction.AsSpan());
             // todo: test sending transactions with bad signatures to see if secp segfaults
             transaction.SenderAddress = _ethereumEcdsa.RecoverAddress(transaction, true);
