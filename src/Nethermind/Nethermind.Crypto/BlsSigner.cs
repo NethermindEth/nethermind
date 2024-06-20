@@ -26,7 +26,7 @@ public class BlsSigner
         return s;
     }
 
-    public static bool Verify(PublicKey publicKey, Signature signature, ReadOnlySpan<byte> message)
+    public static bool Verify(PublicKey publicKey, Signature signature, in byte[] message)
     {
         try
         {
@@ -34,7 +34,7 @@ public class BlsSigner
             GT p1 = new(sig, G1.generator());
 
             G2 m = new();
-            m.hash_to(message.ToArray(), Cryptosuite);
+            m.hash_to(message, Cryptosuite);
             G1 pk = new(publicKey.Bytes);
             GT p2 = new(m, pk);
 

@@ -268,7 +268,7 @@ internal static class ShutterCrypto
         BlsSigner.Signature sig = new() { Bytes = sigBytes };
         Hash256 h = Keccak.Compute(msgBytes);
 
-        return BlsSigner.Verify(pk, sig, h.Bytes);
+        return BlsSigner.Verify(pk, sig, h.BytesToArray());
     }
 
     private static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages)
