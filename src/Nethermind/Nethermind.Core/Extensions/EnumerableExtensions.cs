@@ -15,19 +15,6 @@ namespace Nethermind.Core.Extensions
         public static IEnumerable<(T item, int index)> WithIndex<T>(this IEnumerable<T> self) =>
             self.Select((item, index) => (item, index));
 
-        public static IEnumerable<TSource> Skip<TSource>(this IEnumerable<TSource> source, ulong count)
-        {
-            IEnumerable<TSource> res = source;
-
-            while (count > int.MaxValue)
-            {
-                res = res.Skip(int.MaxValue);
-                count -= int.MaxValue;
-            }
-            res = source.Skip((int)count);
-            return res;
-        }
-
         public static ArrayPoolList<T> ToPooledList<T>(this IEnumerable<T> enumerable, int count) => new(count, enumerable);
         public static ArrayPoolList<T> ToPooledList<T>(this IReadOnlyCollection<T> collection) => new(collection.Count, collection);
     }

@@ -41,6 +41,8 @@ namespace Nethermind.Merge.AuRa
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
         protected override bool MergeEnabled => ShouldRunSteps(_api);
 
+        public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
+
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
@@ -107,7 +109,7 @@ namespace Nethermind.Merge.AuRa
                 }
                 catch (Exception e)
                 {
-                    throw new Exception($"Could not load Shutter validator info file: {e}");
+                    throw new ShutterLoadingException("Could not load Shutter validator info file", e);
                 }
 
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();

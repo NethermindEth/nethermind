@@ -136,7 +136,7 @@ public class ShutterTxSource : ITxSource
 
     private IEnumerable<Transaction> DecryptSequencedTransactions(IEnumerable<SequencedTransaction> sequencedTransactions, Dto.DecryptionKeys decryptionKeys)
     {
-        // order by identity preimage to match decryption keys
+        // order by identity preimage to match decryption keys and skip placeholder key
         IEnumerable<(int, Transaction?)> unorderedTransactions = sequencedTransactions
             .Select((x, index) => x with { Index = index })
             .OrderBy(x => x.IdentityPreimage, Bytes.Comparer)
@@ -166,6 +166,7 @@ public class ShutterTxSource : ITxSource
             return false;
         }
 
+        // skip placeholder transaction
         foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
         {
             G1 dk, identity;
@@ -284,7 +285,7 @@ public class ShutterTxSource : ITxSource
         IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon);
         if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract for this eon.");
 
-        events = events.Skip(txPointer);
+        events = events.Skip((int)txPointer);
 
         List<SequencedTransaction> txs = [];
         UInt256 totalGas = 0;
