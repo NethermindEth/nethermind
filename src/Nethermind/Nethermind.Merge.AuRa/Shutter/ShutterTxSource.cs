@@ -256,7 +256,7 @@ public class ShutterTxSource : ITxSource
         G1 key;
         try
         {
-            key = new(decryptionKey.Key_.ToArray());;
+            key = new(decryptionKey.Key_.ToArray()); ;
         }
         catch (ApplicationException e)
         {
