@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Json;

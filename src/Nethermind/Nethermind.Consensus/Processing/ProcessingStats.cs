@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.Processing
             _runMicroseconds = (_runningMicroseconds - _lastElapsedRunningMicroseconds);
 
             long reportMs = _reportMs = Environment.TickCount64;
-            if (reportMs - _lastReportMs > 1000)
+            if (reportMs - _lastReportMs > 1000 || _logger.IsDebug)
             {
                 _lastReportMs = _reportMs;
                 _lastBlock = block;

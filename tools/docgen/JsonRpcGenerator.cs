@@ -6,7 +6,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.JsonRpc.Modules.Witness;
 using Newtonsoft.Json;
 
 namespace Nethermind.DocGen;
@@ -23,8 +22,7 @@ internal static class JsonRpcGenerator
             typeof(IEvmRpcModule).FullName,
             typeof(IRpcModule).FullName,
             typeof(IRpcRpcModule).FullName,
-            typeof(ISubscribeRpcModule).FullName,
-            typeof(IWitnessRpcModule).FullName
+            typeof(ISubscribeRpcModule).FullName
         };
         var types = new[] { "Nethermind.JsonRpc", "Nethermind.Consensus.Clique" }
             .SelectMany(a => Assembly.Load(a).GetTypes())
