@@ -251,19 +251,12 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IEnr[] GetStartingNodes()
         {
-            IEnr[] activeNodes = _discv5Protocol.GetActiveNodes.ToArray();
-            if (activeNodes.Length != 0)
-            {
-                return activeNodes;
-            }
             return _discv5Protocol.GetAllNodes.ToArray();
         }
 
         Random random = new();
         await _discv5Protocol!.InitAsync();
 
-        // temporary fix: give discv5 time to initialize
-        await Task.Delay(10_000);
 
         if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
 
@@ -282,10 +275,14 @@ public class DiscoveryV5App : IDiscoveryApp
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn) _logger.Warn($"Custom random walk failed with {ex.Message} at {ex.StackTrace}.");
+                if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
             }
+
+            if (_api.PeerManager?.ActivePeers.Any() == true)
+            {
             await Task.Delay(_discoveryConfig.DiscoveryInterval, _appShutdownSource.Token);
         }
+    }
     }
 
     public async Task StopAsync()
