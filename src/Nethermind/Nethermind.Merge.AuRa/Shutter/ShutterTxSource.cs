@@ -260,28 +260,25 @@ public class ShutterTxSource : ITxSource
         catch (ShutterCrypto.ShutterCryptoException e)
         {
             if (_logger.IsDebug) _logger.Error($"Could not decode encrypted Shutter transaction", e);
-            return null;
         }
         catch (Bls.Exception e)
         {
             if (_logger.IsDebug) _logger.Error("Could not decrypt Shutter transaction with invalid key", e);
-            return null;
         }
         catch (RlpException e)
         {
             if (_logger.IsDebug) _logger.Error("Could not decode decrypted Shutter transaction", e);
-            return null;
         }
         catch (ArgumentException e)
         {
             if (_logger.IsDebug) _logger.Error("Could not recover Shutter transaction sender address", e);
-            return null;
         }
         catch (InvalidDataException e)
         {
             if (_logger.IsDebug) _logger.Error("Decrypted Shutter transaction had no signature", e);
-            return null;
         }
+        
+        return null;
     }
 
     private List<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
