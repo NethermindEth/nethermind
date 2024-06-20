@@ -309,18 +309,6 @@ public class InitializeNetwork : IStep
         SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
         NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
 
-        if (discoveryConfig.Discv5Enabled)
-        {
-            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
-                "EnrDiscoveryDB",
-                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
-                _api.LogManager);
-
-            _api.DiscoveryApp = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
-            _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
-            return;
-        }
-
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
         IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
             _api.MessageSerializationService,
@@ -379,6 +367,18 @@ public class InitializeNetwork : IStep
             discoveryConfig,
             _api.Timestamper,
             _api.LogManager);
+
+        if (discoveryConfig.Discv5Enabled)
+        {
+            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
+                "EnrDiscoveryDB",
+                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
+                _api.LogManager);
+
+            _api.DiscoveryApp = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
+            _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+            return;
+        }
 
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
     }

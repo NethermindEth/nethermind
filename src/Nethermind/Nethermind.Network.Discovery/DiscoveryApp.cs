@@ -165,7 +165,7 @@ public class DiscoveryApp : IDiscoveryApp
     private void InitializeChannel(IDatagramChannel channel)
     {
         _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService,
-            _timestamper, _logManager);
+            _timestamper, _logManager, null);
         _discoveryManager.MsgSender = _discoveryHandler;
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 

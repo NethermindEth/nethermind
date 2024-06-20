@@ -7,6 +7,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
+using Lantern.Discv5.WireProtocol.Packet;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -21,19 +22,22 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
     private readonly IDatagramChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
+    private readonly IPacketManager? _packetManagerV5;
 
     public NettyDiscoveryHandler(
         IDiscoveryManager? discoveryManager,
         IDatagramChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
-        ILogManager? logManager)
+        ILogManager? logManager,
+        IPacketManager? packetManagerV5)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        _packetManagerV5 = packetManagerV5;
     }
 
     public override void ChannelActive(IChannelHandlerContext context)
@@ -107,9 +111,14 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
     }
 
-    public void HandleReceivedPacket(byte[] msgBytes, EndPoint address, EndPoint remoteAddress)
+    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
     {
-        int size = msgBytes.Length;
+        IByteBuffer content = packet.Content;
+        EndPoint address = packet.Sender;
+
+        int size = content.ReadableBytes;
+        byte[] msgBytes = new byte[size];
+        content.ReadBytes(msgBytes);
 
         Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msgBytes.Length);
 
@@ -146,7 +155,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         {
             ReportMsgByType(msg, size);
 
-            if (!ValidateMsg(msg, type, address, remoteAddress, packet, size))
+            if (!ValidateMsg(msg, type, address, ctx, packet, size))
                 return;
 
             // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
@@ -163,16 +172,18 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         }
     }
 
-    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
+    // TODO find a faster/simpler/more-reliable way
+    private bool IsDiscoveryV5Packet(UdpReceiveResult packet)
     {
-        IByteBuffer content = packet.Content;
-        EndPoint address = packet.Sender;
-
-        int size = content.ReadableBytes;
-        byte[] msgBytes = new byte[size];
-        content.ReadBytes(msgBytes);
-
-        HandleReceivedPacket(msgBytes, address, ctx.Channel.RemoteAddress);
+        try
+        {
+            //return Enum.IsDefined((PacketType) _packetProcessor.GetStaticHeader(packet.Buffer).Flag);
+            return false;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private DiscoveryMsg Deserialize(MsgType type, byte[] msg)
@@ -203,7 +214,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         };
     }
 
-    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, EndPoint remoteAddress, DatagramPacket packet, int size)
+    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet, int size)
     {
         long timeToExpire = msg.ExpirationTime - _timestamper.UnixTime.SecondsLong;
         if (timeToExpire < 0)
@@ -223,14 +234,14 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         if (!msg.FarAddress.Equals((IPEndPoint)packet.Sender))
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} has incorrect far address", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {remoteAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (msg.FarPublicKey is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} has null far public key", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress} but was {remoteAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
