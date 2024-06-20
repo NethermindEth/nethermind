@@ -24,7 +24,6 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);
 
-    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254PairingPrecompile++;

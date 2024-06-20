@@ -101,7 +101,7 @@ public class NodeTable : INodeTable
 
         public Node Current { get; private set; }
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
@@ -131,13 +131,13 @@ public class NodeTable : INodeTable
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose() => _itemEnumerator.Dispose();
+        public readonly void Dispose() => _itemEnumerator.Dispose();
 
-        public ClosestNodesEnumerator GetEnumerator() => this;
+        public readonly ClosestNodesEnumerator GetEnumerator() => this;
 
-        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+        readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
 
-        IEnumerator IEnumerable.GetEnumerator() => this;
+        readonly IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
     public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId)
@@ -182,9 +182,9 @@ public class NodeTable : INodeTable
 
         public readonly int Count => _sortedNodes.Count;
 
-        public Node Current => _sortedNodes[_currentIndex];
+        public readonly Node Current => _sortedNodes[_currentIndex];
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
@@ -197,15 +197,15 @@ public class NodeTable : INodeTable
         }
 
         void IEnumerator.Reset() => throw new NotSupportedException();
-        public void Dispose()
+        public readonly void Dispose()
         {
             _sortedNodes.Dispose();
         }
 
-        public ClosestNodesFromNodeEnumerator GetEnumerator() => this;
-        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+        public readonly ClosestNodesFromNodeEnumerator GetEnumerator() => this;
+        readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
 
-        IEnumerator IEnumerable.GetEnumerator() => this;
+        readonly IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
     public void Initialize(PublicKey masterNodeKey)

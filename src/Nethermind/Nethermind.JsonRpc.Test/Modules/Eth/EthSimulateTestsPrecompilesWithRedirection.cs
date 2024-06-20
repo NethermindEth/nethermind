@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -9,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -189,8 +187,8 @@ public class EthSimulateTestsPrecompilesWithRedirection
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        using ArrayPoolList<byte> addressBytes = result.Data[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
-        Address resultingAddress = new(addressBytes.ToArray());
+        byte[] addressBytes = result.Data[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
+        Address resultingAddress = new(addressBytes);
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressA));
     }
 }
