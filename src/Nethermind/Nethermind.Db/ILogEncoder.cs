@@ -5,6 +5,6 @@ namespace Nethermind.Db
 {
     public interface ILogEncoder<T>
     {
-        T Encode(Span<byte> bytes);
+        void Encode(Span<byte> bytes, T output);
     }
 }
