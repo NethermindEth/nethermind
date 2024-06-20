@@ -160,7 +160,8 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
         var cancellationToken = cancellationTokenSource.Token;
-        try {
+        try
+        {
             var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
 
             if (blockTrace is null)
@@ -169,7 +170,9 @@ public class DebugRpcModule : IDebugRpcModule
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
-        } catch (RlpException e) {
+        }
+        catch (RlpException e)
+        {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Error decoding block parameter: {e.Message}", ErrorCodes.InvalidInput);
         }
     }
