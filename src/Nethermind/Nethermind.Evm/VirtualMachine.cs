@@ -46,7 +46,6 @@ public class VirtualMachine : IVirtualMachine
     public const int MaxCallDepth = 1024;
     internal static FrozenDictionary<AddressAsKey, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
     internal static CodeLruCache CodeCache { get; } = new();
-    internal static CodeLruCache AuthorizationCodeCache { get; } = new();
 
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     internal static ref readonly UInt256 P255 => ref P255Int;
@@ -188,10 +187,6 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct NotTracing : IIsTracing { }
     public readonly struct IsTracing : IIsTracing { }
 
-    internal sealed class AuthorizedCodeLruCache
-    {
-
-    }
     internal sealed class CodeLruCache
     {
         private const int CacheCount = 16;
@@ -538,15 +533,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
     {
-        InsertCode(code, callCodeOwner, _state, spec);
-    }
-    public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IWorldState state, IReleaseSpec spec)
-    {
         var codeInfo = new CodeInfo(code);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
-        state.InsertCode(callCodeOwner, codeHash, code, spec);
+        _state.InsertCode(callCodeOwner, codeHash, code, spec);
         CodeCache.Set(codeHash, codeInfo);
     }
 

@@ -117,8 +117,10 @@ namespace Nethermind.Evm.Test
             Test(Shanghai.Instance, true);
             Test(Cancun.Instance, true);
         }
-        public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> SetCodeTestCaseSource()
+        public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
         {
+            yield return (
+                [], 0);
             yield return (
                 [new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
@@ -171,11 +173,11 @@ namespace Nethermind.Evm.Test
                ],
                GasCostOf.PerAuthBaseCost * 3);
         }
-        [TestCaseSource(nameof(SetCodeTestCaseSource))]
-        public void Calculate_TxHasSetCode_ReturnsExpectedCostOfTx((AuthorizationTuple[] ContractCodes, long ExpectedCost) testCase)
+        [TestCaseSource(nameof(AuthorizationListTestCaseSource))]
+        public void Calculate_TxHasAuthorizationList_ReturnsExpectedCostOfTx((AuthorizationTuple[] AuthorizationList, long ExpectedCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
-                .WithSetCode(testCase.ContractCodes)
+                .WithSetCode(testCase.AuthorizationList)
                 .TestObject;
 
             IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
@@ -183,7 +185,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Calculate_TxHasSetCodeBeforePrague_ThrowsInvalidDataException()
+        public void Calculate_TxHasAuthorizationListBeforePrague_ThrowsInvalidDataException()
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
                 .WithSetCode(

@@ -555,11 +555,6 @@ namespace Nethermind.Evm.TransactionProcessing
                             tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                     }
 
-                    foreach(Address toBeRemoved in env.AuthorizedAddresses)
-                    {
-                        VirtualMachine.InsertCode(Array.Empty<byte>(), toBeRemoved, spec);
-                    }
-
                     statusCode = StatusCode.Success;
                 }
 

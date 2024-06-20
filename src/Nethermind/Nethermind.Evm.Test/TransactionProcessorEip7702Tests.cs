@@ -122,6 +122,50 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(expectedStorageValue));
     }
 
+    public static IEnumerable<object[]> t()
+    {
+        //Base case 
+        yield return new object[] { 1ul, (UInt256)0, TestItem.AddressA.Bytes };
+        //Wrong nonce
+        yield return new object[] { 1ul, (UInt256)1, new[] { (byte)0x0 } };
+        //Null nonce means it should be ignored
+        yield return new object[] { 1ul, null, TestItem.AddressA.Bytes };
+        //Wrong chain id
+        yield return new object[] { 2ul, (UInt256)0, new[] { (byte)0x0 } };
+    }
+
+    [TestCaseSource(nameof(DifferentCommitValues))]
+    public void Execute_TxHasDifferentAmountOfCommitMessages_UsedGasIsExpected(ulong chainId, UInt256? nonce, byte[] expectedStorageValue)
+    {
+        PrivateKey relayer = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(relayer.Address, 1.Ether());
+        //Save caller in storage slot 0
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.CALLER)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithSetCode(CreateAuthorizationTuple(signer, chainId, codeSource, nonce))
+            .SignedAndResolved(_ethereumEcdsa, relayer, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(expectedStorageValue));
+    }
+
     private void DeployCode(Address codeSource, byte[] code)
     {
         _stateProvider.CreateAccount(codeSource, 0);
