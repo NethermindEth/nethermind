@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Filters;
@@ -12,29 +11,27 @@ using Nethermind.Core;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 
-[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
-
 namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
 public class SequencerContract : Contract
 {
     private readonly ILogFinder _logFinder;
     private readonly LogFilter _logFilter;
-    private readonly AbiEncodingInfo TransactionSubmittedAbi;
+    private readonly AbiEncodingInfo _transactionSubmittedAbi;
 
     public SequencerContract(string contractAddress, ILogFinder logFinder, IFilterStore filterStore)
         : base(null, new(contractAddress), null)
     {
-        TransactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
-        IEnumerable<object> topics = new List<object>() { TransactionSubmittedAbi.Signature.Hash };
+        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
+        IEnumerable<object> topics = new List<object>() { _transactionSubmittedAbi.Signature.Hash };
         _logFinder = logFinder;
         _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, contractAddress, topics);
     }
 
     public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents()
     {
-        IEnumerable<IFilterLog> logs = _logFinder!.FindLogs(_logFilter!);
-        return logs.Select(log => ParseTransactionSubmitted(AbiEncoder.Decode(AbiEncodingStyle.None, TransactionSubmittedAbi.Signature, log.Data)));
+        IEnumerable<FilterLog> logs = _logFinder!.FindLogs(_logFilter!);
+        return logs.Select(log => ParseTransactionSubmitted(AbiEncoder.Decode(AbiEncodingStyle.None, _transactionSubmittedAbi.Signature, log.Data)));
     }
 
     public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon)

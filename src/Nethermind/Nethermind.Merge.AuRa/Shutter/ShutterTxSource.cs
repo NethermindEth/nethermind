@@ -226,11 +226,10 @@ public class ShutterTxSource : ITxSource
     private bool IsRegistered(BlockHeader parent)
     {
         ITransactionProcessor readOnlyTransactionProcessor = _envFactory.Create().Build(parent.StateRoot!).TransactionProcessor;
-        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
+        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress, _logger, _specProvider.ChainId, _auraConfig.ShutterValidatorRegistryMessageVersion);
         if (!validatorRegistryContract!.IsRegistered(parent, _validatorsInfo, out HashSet<ulong> unregistered))
         {
-            string unregisteredList = unregistered.Aggregate("", (acc, validatorIndex) => acc == "" ? validatorIndex.ToString() : acc + ", " + validatorIndex);
-            if (_logger.IsError) _logger.Error("Validators not registered to Shutter with the following indices: [" + unregisteredList + "]");
+            if (_logger.IsError) _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
             return false;
         }
         return true;
@@ -238,7 +237,6 @@ public class ShutterTxSource : ITxSource
 
     private Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, Dto.Key decryptionKey)
     {
-
         try
         {
             ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
@@ -277,7 +275,7 @@ public class ShutterTxSource : ITxSource
         {
             if (_logger.IsDebug) _logger.Error("Decrypted Shutter transaction had no signature", e);
         }
-        
+
         return null;
     }
 

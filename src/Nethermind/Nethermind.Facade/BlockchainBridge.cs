@@ -300,9 +300,9 @@ namespace Nethermind.Facade
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
-        public IFilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
+        public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
-        public IEnumerable<IFilterLog> GetLogs(
+        public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
             object? address = null,
@@ -322,7 +322,7 @@ namespace Nethermind.Facade
             return _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
         }
 
-        public IEnumerable<IFilterLog> GetLogs(
+        public IEnumerable<FilterLog> GetLogs(
             LogFilter filter,
             BlockHeader fromBlock,
             BlockHeader toBlock,
@@ -331,7 +331,7 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        public bool TryGetLogs(int filterId, out IEnumerable<IFilterLog> filterLogs, CancellationToken cancellationToken = default)
+        public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
         {
             LogFilter? filter;
             filterLogs = null;
@@ -364,7 +364,7 @@ namespace Nethermind.Facade
         }
 
         public void UninstallFilter(int filterId) => _filterStore.RemoveFilter(filterId);
-        public IFilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
+        public FilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
         public Hash256[] GetBlockFilterChanges(int filterId) => _filterManager.PollBlockHashes(filterId);
 
         public void RecoverTxSenders(Block block)
@@ -404,12 +404,12 @@ namespace Nethermind.Facade
             return _stateReader.HasStateForRoot(stateRoot);
         }
 
-        public IEnumerable<IFilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        public IEnumerable<IFilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, cancellationToken);
         }

@@ -3,14 +3,11 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using static Nethermind.Merge.AuRa.Shutter.Contracts.IValidatorRegistryContract;
 using System.Collections.Generic;
@@ -22,13 +19,15 @@ public class ValidatorRegistryContract(
     ITransactionProcessor transactionProcessor,
     IAbiEncoder abiEncoder,
     Address contractAddress,
-    IAuraConfig auraConfig,
-    ISpecProvider specProvider,
-    ILogger logger)
+    ILogger logger,
+    ulong chainId,
+    ulong messageVersion)
     : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
 {
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
+    private readonly ulong _chainId = chainId;
+    private readonly ulong _messageVersion = messageVersion;
 
     public UInt256 GetNumUpdates(BlockHeader blockHeader) => (UInt256)Call(blockHeader, getNumUpdates, Address.Zero, [])[0];
 
@@ -65,15 +64,15 @@ public class ValidatorRegistryContract(
                 continue;
             }
 
-            if (msg.Version != auraConfig.ShutterValidatorRegistryMessageVersion)
+            if (msg.Version != _messageVersion)
             {
-                if (logger.IsDebug) logger.Debug($"Registration message has wrong version ({msg.Version}) should be {auraConfig.ShutterValidatorRegistryMessageVersion}");
+                if (logger.IsDebug) logger.Debug($"Registration message has wrong version ({msg.Version}) should be {_messageVersion}");
                 continue;
             }
 
-            if (msg.ChainId != specProvider.ChainId)
+            if (msg.ChainId != _chainId)
             {
-                if (logger.IsDebug) logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {specProvider.ChainId}");
+                if (logger.IsDebug) logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {_chainId}");
                 continue;
             }
 

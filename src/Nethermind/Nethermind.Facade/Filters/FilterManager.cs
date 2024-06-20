@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterManager : IFilterManager
     {
-        private readonly ConcurrentDictionary<int, List<IFilterLog>> _logs =
+        private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
             new();
 
         private readonly ConcurrentDictionary<int, List<Hash256>> _blockHashes =
@@ -97,10 +97,10 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        public IFilterLog[] GetLogs(int filterId)
+        public FilterLog[] GetLogs(int filterId)
         {
-            _logs.TryGetValue(filterId, out List<IFilterLog> logs);
-            return logs?.ToArray() ?? Array.Empty<IFilterLog>();
+            _logs.TryGetValue(filterId, out List<FilterLog> logs);
+            return logs?.ToArray() ?? Array.Empty<FilterLog>();
         }
 
         public Hash256[] GetBlocksHashes(int filterId)
@@ -130,11 +130,11 @@ namespace Nethermind.Blockchain.Filters
             return existingBlockHashes;
         }
 
-        public IFilterLog[] PollLogs(int filterId)
+        public FilterLog[] PollLogs(int filterId)
         {
             if (!_logs.TryGetValue(filterId, out var logs))
             {
-                return Array.Empty<IFilterLog>();
+                return Array.Empty<FilterLog>();
             }
 
             var existingLogs = logs.ToArray();
@@ -198,11 +198,11 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            List<IFilterLog> logs = _logs.GetOrAdd(filter.Id, i => new List<IFilterLog>());
+            List<FilterLog> logs = _logs.GetOrAdd(filter.Id, i => new List<FilterLog>());
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 LogEntry? logEntry = txReceipt.Logs[i];
-                IFilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, i);
+                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, i);
                 if (filterLog is not null)
                 {
                     logs.Add(filterLog);
@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
-        private static IFilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
+        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)

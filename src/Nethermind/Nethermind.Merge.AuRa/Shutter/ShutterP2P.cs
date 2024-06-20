@@ -29,6 +29,9 @@ public class ShutterP2P(
     private PubsubRouter? _router;
     private ServiceProvider? _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
+    private const int DisconnectionLogTimeout = 60 * 5;
+
+    public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public void Start(in IEnumerable<string> p2pAddresses)
     {
@@ -88,7 +91,7 @@ public class ShutterP2P(
                     }
                     catch (Exception e)
                     {
-                        throw new Exception("Shutter processing thread error", e);
+                        throw new ShutterP2PException("Shutter processing thread error", e);
                     }
 
                     lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -97,7 +100,7 @@ public class ShutterP2P(
                 long oldDelta = delta;
                 delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
 
-                if (delta > 0 && delta % (60 * 5) == 0 && delta != oldDelta)
+                if (delta > 0 && delta % DisconnectionLogTimeout == 0 && delta != oldDelta)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }

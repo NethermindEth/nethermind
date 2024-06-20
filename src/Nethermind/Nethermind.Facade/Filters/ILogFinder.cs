@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Find
 {
     public interface ILogFinder
     {
-        IEnumerable<IFilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
-        IEnumerable<IFilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
+        IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
+        IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
     }
 }
