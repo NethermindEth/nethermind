@@ -28,25 +28,23 @@ public class BlsSigner
 
     public static bool Verify(PublicKey publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
-        G2? sig;
         try
         {
-            sig = new(signature.Bytes);
+            G2 sig = new(signature.Bytes);
+            GT p1 = new(sig, G1.generator());
+
+            G2 m = new();
+            m.hash_to(message.ToArray(), Cryptosuite);
+            G1 pk = new(publicKey.Bytes);
+            GT p2 = new(m, pk);
+
+            return GT.finalverify(p1, p2);
         }
-        catch (ApplicationException)
+        catch (Bls.Exception)
         {
             // point not on curve
             return false;
         }
-
-        GT p1 = new(sig.Value, G1.generator());
-
-        G2 m = new();
-        m.hash_to(message.ToArray(), Cryptosuite);
-        G1 pk = new(publicKey.Bytes);
-        GT p2 = new(m, pk);
-
-        return GT.finalverify(p1, p2);
     }
 
     public static PublicKey GetPublicKey(PrivateKey privateKey)

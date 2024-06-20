@@ -178,7 +178,7 @@ public class ShutterTxSource : ITxSource
                 dk = new(key.Key_.ToArray());
                 identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
             }
-            catch (ApplicationException e)
+            catch (Bls.Exception e)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: {e}.");
                 return false;
@@ -256,9 +256,9 @@ public class ShutterTxSource : ITxSource
         G1 key;
         try
         {
-            key = new(decryptionKey.Key_.ToArray()); ;
+            key = new(decryptionKey.Key_.ToArray());;
         }
-        catch (ApplicationException e)
+        catch (Bls.Exception e)
         {
             if (_logger.IsDebug) _logger.Debug($"Could not decrypt Shutter transaction with invalid key: {e}");
             return null;
