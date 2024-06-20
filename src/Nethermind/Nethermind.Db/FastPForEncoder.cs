@@ -4,11 +4,7 @@ using System.Runtime.Intrinsics;
 
 namespace Nethermind.Db
 {
-<<<<<<< HEAD
-    public sealed unsafe class FastPForEncoder : ILogEncoder<byte[]>
-=======
     public sealed unsafe class FastPForEncoder : ILogEncoder<long, byte>
->>>>>>> b9db80c16 (WIP FastPForEncoder)
     {
         private int _blocksize;
 
@@ -16,11 +12,7 @@ namespace Nethermind.Db
         {
             _blocksize = blocksize;
         }
-<<<<<<< HEAD
-        public void Encode(Span<byte> value, byte[] output)
-=======
         public void Encode(Span<long> value, byte[] output)
->>>>>>> b9db80c16 (WIP FastPForEncoder)
         {
 
             var prev = Vector256.Create((long)value[0]);
