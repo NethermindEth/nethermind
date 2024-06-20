@@ -4,7 +4,11 @@ using System.Runtime.Intrinsics;
 
 namespace Nethermind.Db
 {
+<<<<<<< HEAD
     public sealed unsafe class FastPForEncoder : ILogEncoder<byte[]>
+=======
+    public sealed unsafe class FastPForEncoder : ILogEncoder<long, byte>
+>>>>>>> b9db80c16 (WIP FastPForEncoder)
     {
         private int _blocksize;
 
@@ -12,7 +16,11 @@ namespace Nethermind.Db
         {
             _blocksize = blocksize;
         }
+<<<<<<< HEAD
         public void Encode(Span<byte> value, byte[] output)
+=======
+        public void Encode(Span<long> value, byte[] output)
+>>>>>>> b9db80c16 (WIP FastPForEncoder)
         {
 
             var prev = Vector256.Create((long)value[0]);
@@ -22,13 +30,13 @@ namespace Nethermind.Db
             fixed (long* _entries = value)
             fixed (byte* _entriesbytes = output)
             {
-                for (; i + _blocksize < value.Length; i += _blocksize)
+                for (; i + _blocksize <= value.Length; i += _blocksize)
                 {
                     int j = 0;
 
                     for (; j < _blocksize; j += Vector256<long>.Count)
                     {
-                        var cur = Vector256.Load<long>(ref value[i + j]);
+                        var cur = Vector256.Load(_entries + i + j);
 
                         var curShuffled = Vector256.Shuffle(cur, Vector256.Create(0, 0, 1, 2)) & Vector256.Create(0, -1, -1, -1);
                         var prevShuffled = Vector256.Shuffle(prev, Vector256.Create(3, 3, 3, 3)) & Vector256.Create(-1, 0, 0, 0);

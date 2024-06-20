@@ -21,8 +21,8 @@ namespace Nethermind.Db.Test
             x.Bytes.CopyTo(key);
             Span<byte> last4bytes = key[20..];
             BinaryPrimitives.WriteInt32BigEndian(last4bytes, 10_000_00);
-            Span<byte> value = [1, 2, 3, 4, 5];
-            ILogEncoder<byte[]> encoder = new FastPForEncoder(4);
+            Span<long> value = [1, 2, 3, 4];
+            ILogEncoder<long, byte> encoder = new FastPForEncoder(4);
             byte[] encoded = new byte[value.Length];
             encoder.Encode(value, encoded);
 
