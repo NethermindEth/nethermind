@@ -22,6 +22,7 @@ using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Serialization.Rlp;
 using System;
 using Nethermind.Network;
+using System.Linq;
 
 namespace Nethermind.Evm.Test;
 
@@ -64,7 +65,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithSetCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
             .SignedAndResolved(_ethereumEcdsa, relayer, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -109,7 +110,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithSetCode(CreateAuthorizationTuple(signer,chainId, codeSource, nonce))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer,chainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, relayer, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -122,38 +123,86 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(expectedStorageValue));
     }
 
-    public static IEnumerable<object[]> t()
-    {
-        //Base case 
-        yield return new object[] { 1ul, (UInt256)0, TestItem.AddressA.Bytes };
-        //Wrong nonce
-        yield return new object[] { 1ul, (UInt256)1, new[] { (byte)0x0 } };
-        //Null nonce means it should be ignored
-        yield return new object[] { 1ul, null, TestItem.AddressA.Bytes };
-        //Wrong chain id
-        yield return new object[] { 2ul, (UInt256)0, new[] { (byte)0x0 } };
-    }
-
-    [TestCaseSource(nameof(DifferentCommitValues))]
-    public void Execute_TxHasDifferentAmountOfCommitMessages_UsedGasIsExpected(ulong chainId, UInt256? nonce, byte[] expectedStorageValue)
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(10)]
+    [TestCase(99)]
+    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(int count)
     {
         PrivateKey relayer = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
-        Address codeSource = TestItem.AddressC;
         _stateProvider.CreateAccount(relayer.Address, 1.Ether());
-        //Save caller in storage slot 0
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.CALLER)
+        
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(GasCostOf.Transaction + GasCostOf.PerAuthBaseCost * count)
+            .WithAuthorizationCode(Enumerable.Range(0, count)
+                                             .Select(i => CreateAuthorizationTuple(
+                                                 signer,
+                                                 _specProvider.ChainId,
+                                                 //Copy empty code so will not add to gas cost
+                                                 TestItem.AddressC,
+                                                 null)))
+            .SignedAndResolved(_ethereumEcdsa, relayer, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(100000000).TestObject;
+
+        CallOutputTracer tracer = new();
+
+        _transactionProcessor.Execute(tx, block.Header, tracer);
+
+        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseCost * count));
+    }
+
+    [TestCase(false, 1)]
+    [TestCase(true, 2)]
+    public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyFirstInstanceIsUsed(bool reverseOrder, int expectedStoredValue)
+    {        
+        PrivateKey relayer = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address firstCodeSource = TestItem.AddressC;
+        Address secondCodeSource = TestItem.AddressD;
+        _stateProvider.CreateAccount(relayer.Address, 1.Ether());
+        
+        byte[] firstCode = Prepare.EvmCode
+            .PushData(1)
             .Op(Instruction.PUSH0)
             .Op(Instruction.SSTORE)
             .Done;
-        DeployCode(codeSource, code);
+        DeployCode(firstCodeSource, firstCode);
 
+        byte[] secondCode = Prepare.EvmCode
+            .PushData(2)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(secondCodeSource, secondCode);
+
+        IEnumerable<AuthorizationTuple> authList = [
+                        CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    firstCodeSource,
+                    null),
+                CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    secondCodeSource,
+                    null),
+            ];
+        if (reverseOrder)
+        {
+            authList = authList.Reverse();
+        }
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithSetCode(CreateAuthorizationTuple(signer, chainId, codeSource, nonce))
+            .WithAuthorizationCode(authList)
             .SignedAndResolved(_ethereumEcdsa, relayer, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -163,7 +212,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(expectedStorageValue));
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { expectedStoredValue }));
     }
 
     private void DeployCode(Address codeSource, byte[] code)

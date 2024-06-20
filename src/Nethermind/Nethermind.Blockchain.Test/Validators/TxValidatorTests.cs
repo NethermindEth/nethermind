@@ -533,10 +533,10 @@ public class TxValidatorTests
     }
 
     [Test]
-    public void IsWellFormed_ContractCodeTxInCancunSpec_ReturnsFalse()
+    public void IsWellFormed_AuthorizationListTxInCancunSpec_ReturnsFalse()
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
-            .WithSetCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
+            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
             .WithMaxFeePerGas(100000)
             .WithGasLimit(1000000)
             .WithChainId(TestBlockchainIds.ChainId)
@@ -549,10 +549,10 @@ public class TxValidatorTests
     }
     
     [Test]
-    public void IsWellFormed_ContractCodeTxInPragueSpec_ReturnsTrue()
+    public void IsWellFormed_AuthorizationListTxInPragueSpec_ReturnsTrue()
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
-            .WithSetCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
+            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
             .WithMaxFeePerGas(100000)
             .WithGasLimit(1000000)
             .WithChainId(TestBlockchainIds.ChainId)

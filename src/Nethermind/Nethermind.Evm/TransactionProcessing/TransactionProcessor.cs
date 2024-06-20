@@ -610,7 +610,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 CodeInfo codeToBeInserted = VirtualMachine.GetCachedCodeInfo(WorldState, authTuple.CodeAddress, spec);
                 //TODO should we do insert if code is empty?
-                authorizedCache.Add(authority, codeToBeInserted);
+                if (!authorizedCache.ContainsKey(authority))
+                    authorizedCache.Add(authority, codeToBeInserted);
             }
         }
 

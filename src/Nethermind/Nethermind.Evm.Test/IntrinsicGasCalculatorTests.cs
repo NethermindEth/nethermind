@@ -177,7 +177,7 @@ namespace Nethermind.Evm.Test
         public void Calculate_TxHasAuthorizationList_ReturnsExpectedCostOfTx((AuthorizationTuple[] AuthorizationList, long ExpectedCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
-                .WithSetCode(testCase.AuthorizationList)
+                .WithAuthorizationCode(testCase.AuthorizationList)
                 .TestObject;
 
             IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
@@ -188,7 +188,7 @@ namespace Nethermind.Evm.Test
         public void Calculate_TxHasAuthorizationListBeforePrague_ThrowsInvalidDataException()
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
-                .WithSetCode(
+                .WithAuthorizationCode(
                 new AuthorizationTuple(
                     0,
                     TestItem.AddressF,

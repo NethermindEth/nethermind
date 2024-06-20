@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.SetCode)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .WithSetCode([new AuthorizationTuple(0, TestItem.AddressF, 0, 0, [], [])])
+                .WithAuthorizationCode([new AuthorizationTuple(0, TestItem.AddressF, 0, 0, [], [])])
                 .SignedAndResolved(), "EIP 7702 first test case");
         }
 
@@ -401,7 +401,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.SetCode)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .WithSetCode(setCodeAuthorizations)
+                .WithAuthorizationCode(setCodeAuthorizations)
                 .SignedAndResolved().TestObject;
             RlpStream rlpStream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, tx);
