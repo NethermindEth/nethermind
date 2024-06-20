@@ -14,32 +14,23 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using static Nethermind.Merge.AuRa.Shutter.Contracts.IValidatorRegistryContract;
 using System.Collections.Generic;
-
-[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
-public class ValidatorRegistryContract : CallableContract, IValidatorRegistryContract
+public class ValidatorRegistryContract(
+    ITransactionProcessor transactionProcessor,
+    IAbiEncoder abiEncoder,
+    Address contractAddress,
+    IAuraConfig auraConfig,
+    ISpecProvider specProvider,
+    ILogger logger)
+    : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
 {
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
-    private readonly IAuraConfig _auraConfig;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, IAuraConfig auraConfig, ISpecProvider specProvider, ILogger logger)
-        : base(transactionProcessor, abiEncoder, contractAddress)
-    {
-        _auraConfig = auraConfig;
-        _specProvider = specProvider;
-        _logger = logger;
-    }
-
-    public UInt256 GetNumUpdates(BlockHeader blockHeader)
-    {
-        object[] res = Call(blockHeader, getNumUpdates, Address.Zero, []);
-        return (UInt256)res[0];
-    }
+    public UInt256 GetNumUpdates(BlockHeader blockHeader) => (UInt256)Call(blockHeader, getNumUpdates, Address.Zero, [])[0];
 
     public Update GetUpdate(BlockHeader blockHeader, in UInt256 i)
     {
@@ -56,14 +47,14 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     {
         Dictionary<ulong, ulong?> nonces = [];
         unregistered = [];
-        foreach (var validatorInfo in validatorsInfo)
+        foreach (KeyValuePair<ulong, byte[]> validatorInfo in validatorsInfo)
         {
             nonces.Add(validatorInfo.Key, null);
             unregistered.Add(validatorInfo.Key);
         }
 
-        UInt256 updates = GetNumUpdates(blockHeader);
-        for (UInt256 i = 0; i < updates; i++)
+        uint updates = (uint)GetNumUpdates(blockHeader);
+        for (uint i = 0; i < updates; i++)
         {
             Update update = GetUpdate(blockHeader, updates - i - 1);
             Message msg = new(update.Message.AsSpan()[..46]);
@@ -74,29 +65,33 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
                 continue;
             }
 
-            if (msg.Version != _auraConfig.ShutterValidatorRegistryMessageVersion)
+            if (msg.Version != auraConfig.ShutterValidatorRegistryMessageVersion)
             {
-                if (_logger.IsDebug) _logger.Debug("Registration message has wrong version (" + msg.Version + ") should be " + _auraConfig.ShutterValidatorRegistryMessageVersion);
+                if (logger.IsDebug) logger.Debug($"Registration message has wrong version ({msg.Version}) should be {auraConfig.ShutterValidatorRegistryMessageVersion}");
                 continue;
             }
-            else if (msg.ChainId != _specProvider.ChainId)
+
+            if (msg.ChainId != specProvider.ChainId)
             {
-                if (_logger.IsDebug) _logger.Debug("Registration message has incorrect chain ID (" + msg.ChainId + ") should be " + _specProvider.ChainId);
+                if (logger.IsDebug) logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {specProvider.ChainId}");
                 continue;
             }
-            else if (msg.ContractAddress != ContractAddress)
+
+            if (!msg.ContractAddress.SequenceEqual(ContractAddress!.Bytes))
             {
-                if (_logger.IsDebug) _logger.Debug("Registration message contains an invalid contract address (" + msg.ContractAddress + ") should be " + ContractAddress);
+                if (logger.IsDebug) logger.Debug($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
                 continue;
             }
-            else if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
+
+            if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
             {
-                if (_logger.IsDebug) _logger.Debug("Registration message has incorrect nonce (" + msg.Nonce + ") should be " + nonces[msg.ValidatorIndex]);
+                if (logger.IsDebug) logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
                 continue;
             }
-            else if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo[msg.ValidatorIndex], update.Signature, update.Message))
+
+            if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo[msg.ValidatorIndex], update.Signature, update.Message))
             {
-                if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
+                if (logger.IsDebug) logger.Debug("Registration message has invalid signature.");
                 continue;
             }
 
@@ -116,11 +111,11 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return unregistered.Count == 0;
     }
 
-    internal class Message
+    private ref struct Message
     {
         public readonly byte Version;
         public readonly ulong ChainId;
-        public readonly Address ContractAddress;
+        public readonly ReadOnlySpan<byte> ContractAddress;
         public readonly ulong ValidatorIndex;
         public readonly ulong Nonce;
         public readonly bool IsRegistration;
@@ -134,7 +129,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
             Version = encodedMessage[0];
             ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[1..]);
-            ContractAddress = new Address(encodedMessage[9..29].ToArray());
+            ContractAddress = encodedMessage[9..29];
             ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..]);
             Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[37..]);
             IsRegistration = encodedMessage[45] == 1;
