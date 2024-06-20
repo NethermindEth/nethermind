@@ -36,8 +36,8 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IVirtualMachine VirtualMachine { get; private init; }
         private readonly ICodeInfoRepository _codeInfoRepository;
 
-        private AuthorizationListDecoder _authorizationListDecoder = new();
-        private Dictionary<Address, CodeInfo> _authorizationCodeCache = new();
+        private readonly AuthorizationListDecoder _authorizationListDecoder = new();
+        private readonly AuthorizedCodeInfoRepository _authorizedCodeInfoRepository;
 
         [Flags]
         protected enum ExecutionOptions
@@ -86,7 +86,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-
+            _authorizedCodeInfoRepository = new(codeInfoRepository);
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -137,15 +137,15 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-                BuildAuthorizedCodeCache(tx.AuthorizationList, _authorizationCodeCache, spec);
+                BuildAuthorizedCodeCache(tx.AuthorizationList, _authorizedCodeInfoRepository, spec);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _authorizationCodeCache);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _authorizedCodeInfoRepository);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
-            _authorizationCodeCache.Clear();
+            _authorizedCodeInfoRepository.ClearAuthorizations();
 
             // Finalize
             if (restore)
@@ -414,7 +414,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in BlockExecutionContext blCtx,
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
-            IDictionary<Address, CodeInfo> authorizedCode)
+            AuthorizedCodeInfoRepository authorizedCode)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
@@ -423,7 +423,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : _codeInfoRepository.GetAuthorizedOrCachedCodeInfo(authorizedCode, WorldState, recipient, spec);
+                : _authorizedCodeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -497,7 +497,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(header.GasBeneficiary);
                     }
 
-                    foreach (Address authorized in env.TxExecutionContext.AuthorizedCode.Keys)
+                    foreach (Address authorized in env.TxExecutionContext.AuthorizedCode.AuthorizedAddresses)
                     {
                         state.WarmUp(authorized);
                     }
@@ -574,16 +574,15 @@ namespace Nethermind.Evm.TransactionProcessing
         }
         /// <summary>
         /// eip-7702
-        /// Build a cache from tx authorization_list authorized by signature.  
+        /// Build a cache from transaction authorization_list authorized by signature.  
         /// </summary>
         /// <param name="state"></param>
         /// <param name="authorizations"></param>
         /// <param name="spec"></param>
         /// <exception cref="RlpException"></exception>
-        private void BuildAuthorizedCodeCache(AuthorizationTuple[] authorizations, IDictionary<Address, CodeInfo> authorizedCache, IReleaseSpec spec)
+        private void BuildAuthorizedCodeCache(AuthorizationTuple[] authorizations, AuthorizedCodeInfoRepository authorizedCache, IReleaseSpec spec)
         {
-            if (authorizedCache.Any())
-                authorizedCache.Clear();
+            authorizedCache.ClearAuthorizations();
 
             Span<byte> encoded = stackalloc byte[128];
             encoded[0] = Eip7702Constants.Magic;
@@ -611,10 +610,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) nonce ({authTuple.Nonce}) does not match.");
                     continue;
                 }
-                CodeInfo codeToBeInserted = _codeInfoRepository.GetCachedCodeInfo(WorldState, authTuple.CodeAddress, spec);
                 //TODO should we do insert if code is empty?
-                if (!authorizedCache.ContainsKey(authority))
-                    authorizedCache.Add(authority, codeToBeInserted);
+                authorizedCache.CopyCodeAndOverwrite(WorldState, authTuple.CodeAddress, authority, spec);
             }
         }
 

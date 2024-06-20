@@ -16,9 +16,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
-    public CodeInfo GetAuthorizedOrCachedCodeInfo(IDictionary<Address, CodeInfo> authorizedCode, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
-        GetCachedCodeInfo(worldState, codeSource, vmSpec);
-
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
         _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result
@@ -28,7 +25,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(state, code, codeOwner, spec);
-
 
     public void SetCodeOverwrite(
         IWorldState worldState,
@@ -43,5 +39,27 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         }
 
         _codeOverwrites[key] = value;
+    }
+
+    /// <summary>
+    /// Copy code from <paramref name="codeSource"/> and set it to override <paramref name="target"/>.
+    /// Main use for this is for https://eips.ethereum.org/EIPS/eip-7702
+    /// </summary>
+    /// <param name="code"></param>
+    public void CopyCodeAndOverwrite(
+        IWorldState worldState,
+        Address codeSource,
+        Address target,
+        IReleaseSpec vmSpec)
+    {
+        if (!_codeOverwrites.ContainsKey(target))
+        {
+            _codeOverwrites.Add(target, GetCachedCodeInfo(worldState, codeSource, vmSpec));
+        }
+    }
+
+    public void ClearOverwrites()
+    {
+        _codeOverwrites.Clear();
     }
 }

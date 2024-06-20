@@ -1326,7 +1326,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ReadOnlyMemory<byte> externalCode = _codeInfoRepository.GetAuthorizedOrCachedCodeInfo(txCtx.AuthorizedCode, _worldState, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = txCtx.AuthorizedCode.GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2034,9 +2034,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IDictionary<Address, CodeInfo> authorizedCode, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
+    private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        ReadOnlyMemory<byte> accountCode = _codeInfoRepository.GetAuthorizedOrCachedCodeInfo(authorizedCode, _worldState, address, spec).MachineCode;
+        ReadOnlyMemory<byte> accountCode = codeInfoRepository.GetCachedCodeInfo(_worldState, address, spec).MachineCode;
         UInt256 result = (UInt256)accountCode.Span.Length;
         stack.PushUInt256(in result);
     }
@@ -2114,7 +2114,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
         
-        CodeInfo codeInfo = _codeInfoRepository.GetAuthorizedOrCachedCodeInfo(vmState.Env.TxExecutionContext.AuthorizedCode, _worldState, codeSource, spec);
+        CodeInfo codeInfo = vmState.Env.TxExecutionContext.AuthorizedCode.GetCachedCodeInfo(_worldState, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)

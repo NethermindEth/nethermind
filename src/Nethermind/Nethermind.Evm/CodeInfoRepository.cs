@@ -63,6 +63,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
+    private static readonly Dictionary<Address, CodeInfo> _authorizedCodeCache = new();
 
     private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
     {
@@ -146,19 +147,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    /// <summary>
-    /// Lookup for code from authorization_list and state. See <see cref="https://eips.ethereum.org/EIPS/eip-7702"/>.
-    /// </summary>
-    /// <param name="code"></param>
-    public CodeInfo GetAuthorizedOrCachedCodeInfo(IDictionary<Address, CodeInfo> authorizedCode, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
-    {
-        if (vmSpec.IsAuthorizationListEnabled && authorizedCode.ContainsKey(codeSource))
-        {
-            return authorizedCode[codeSource];
-        }
-        return GetCachedCodeInfo(worldState, codeSource, vmSpec);
-    }
-
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
     {
         if (!_codeCache.TryGet(codeHash, out CodeInfo? codeInfo))
@@ -171,7 +159,6 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         return codeInfo;
     }
-
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
