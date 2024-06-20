@@ -371,9 +371,9 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell.Index, out exists);
             if (!exists)
             {
-                value = _populatePreBlockCache ?
-                    LoadFromTreePopulatePrewarmCache(in storageCell) :
-                    LoadFromTreeReadPreWarmCache(in storageCell);
+                value = !_populatePreBlockCache ?
+                    LoadFromTreeReadPreWarmCache(in storageCell) :
+                    LoadFromTreePopulatePrewarmCache(in storageCell);
             }
             else
             {

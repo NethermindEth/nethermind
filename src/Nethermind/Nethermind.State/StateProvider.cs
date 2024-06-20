@@ -671,9 +671,9 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                account = _populatePreBlockCache ?
-                    GetStatePopulatePrewarmCache(addressAsKey) :
-                    GetStateReadPreWarmCache(addressAsKey);
+                account = !_populatePreBlockCache ?
+                    GetStateReadPreWarmCache(addressAsKey) :
+                    GetStatePopulatePrewarmCache(addressAsKey);
             }
             else
             {
