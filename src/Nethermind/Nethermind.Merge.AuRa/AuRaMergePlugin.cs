@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -22,8 +20,8 @@ using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Consensus.Processing;
-using Nethermind.Libp2p.Core.Enums;
 using Multiformats.Address;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -177,13 +175,8 @@ namespace Nethermind.Merge.AuRa
 
         private Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)
         {
-            string validatorsInfoRaw = File.ReadAllText(fp);
-            Dictionary<ulong, string>? validatorsInfoParsed = JsonSerializer.Deserialize<Dictionary<ulong, string>>(JsonDocument.Parse(validatorsInfoRaw));
-            if (validatorsInfoParsed is null)
-            {
-                throw new JsonException("Invalid JSON document format, should be (index, public key) pairs.");
-            }
-            return validatorsInfoParsed.ToDictionary(x => x.Key, x => Convert.FromHexString(x.Value.AsSpan()[2..]));
+            FileStream fstream = new FileStream(fp, FileMode.Open, FileAccess.Read, FileShare.None);
+            return new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
         }
     }
 }
