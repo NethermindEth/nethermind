@@ -16,6 +16,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
+    public CodeInfo GetAuthorizedOrCachedCodeInfo(IDictionary<Address, CodeInfo> authorizedCode, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
+        GetCachedCodeInfo(worldState, codeSource, vmSpec);
+
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
         _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -12,6 +13,7 @@ namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
 {
+    CodeInfo GetAuthorizedOrCachedCodeInfo(IDictionary<Address, CodeInfo> authorizedCode, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
     CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
     CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);

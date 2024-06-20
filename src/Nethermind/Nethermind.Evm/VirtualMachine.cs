@@ -26,15 +26,8 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
-
-using System.Collections.Frozen;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
-
 using Int256;
-
-using Nethermind.Core.Collections;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -74,14 +67,6 @@ public class VirtualMachine : IVirtualMachine
         _evm = logger.IsTrace
             ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, logger)
             : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, logger);
-    }
-
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
-        => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
-
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
-    {
-        _evm.InsertCode(code, codeOwner, spec);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -1341,7 +1326,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ReadOnlyMemory<byte> externalCode = GetAuthorizedOrCachedCodeInfo(txCtx.AuthorizedCode, _worldState, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = _codeInfoRepository.GetAuthorizedOrCachedCodeInfo(txCtx.AuthorizedCode, _worldState, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2051,8 +2036,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IDictionary<Address, CodeInfo> authorizedCode, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        
-        int codeLength = GetAuthorizedOrCachedCodeInfo(authorizedCode, _worldState, address, spec).MachineCode.Span.Length;
+        ReadOnlyMemory<byte> accountCode = _codeInfoRepository.GetAuthorizedOrCachedCodeInfo(authorizedCode, _worldState, address, spec).MachineCode;
         UInt256 result = (UInt256)accountCode.Span.Length;
         stack.PushUInt256(in result);
     }

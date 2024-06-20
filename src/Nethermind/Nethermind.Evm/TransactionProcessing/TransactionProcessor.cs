@@ -574,7 +574,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
         /// <summary>
         /// eip-7702
-        /// Insert temporary code into EOA's authorized by signature.  
+        /// Build a cache from tx authorization_list authorized by signature.  
         /// </summary>
         /// <param name="state"></param>
         /// <param name="authorizations"></param>
@@ -600,7 +600,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 stream.Data.AsSpan().CopyTo(encoded.Slice(1));
                 Address authority = Ecdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
 
-                CodeInfo authorityCodeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, authority, spec);
+                CodeInfo authorityCodeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, authority, spec);
                 if (authorityCodeInfo.MachineCode.Length > 0)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) has code deployed.");
@@ -611,7 +611,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) nonce ({authTuple.Nonce}) does not match.");
                     continue;
                 }
-                CodeInfo codeToBeInserted = VirtualMachine.GetCachedCodeInfo(WorldState, authTuple.CodeAddress, spec);
+                CodeInfo codeToBeInserted = _codeInfoRepository.GetCachedCodeInfo(WorldState, authTuple.CodeAddress, spec);
                 //TODO should we do insert if code is empty?
                 if (!authorizedCache.ContainsKey(authority))
                     authorizedCache.Add(authority, codeToBeInserted);

@@ -21,7 +21,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Serialization.Rlp;
 using System;
-using Nethermind.Network;
 using System.Linq;
 
 namespace Nethermind.Evm.Test;
@@ -41,18 +40,19 @@ internal class TransactionProcessorEip7702Tests
         _specProvider = new TestSpecProvider(Prague.Instance);
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
+        CodeInfoRepository codeInfoRepository = new();
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
 
     [Test]
     public void Execute_TxHasAuthorizationWithCodeThatSavesCallerAddress_ExpectedAddressIsSaved()
     {
-        PrivateKey relayer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(relayer.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
             .Op(Instruction.CALLER)
@@ -66,7 +66,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
             .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
-            .SignedAndResolved(_ethereumEcdsa, relayer, true)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
@@ -77,7 +77,79 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
-        Assert.That(new Address(cell.ToArray()), Is.EqualTo(relayer.Address));
+        Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
+    }
+
+    [Test]
+    public void Execute_TxHasAuthorizationCodeButAuthorityHasCode_NoAuthorizedCodeIsExecuted()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        //Save caller in storage slot 0
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.CALLER)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(codeSource, code);
+        DeployCode(signer.Address, Prepare.EvmCode.Op(Instruction.GAS).Done);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+
+        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+
+        Assert.That(cell.ToArray(), Is.EquivalentTo(new[] { 0x0 }));
+    }
+
+    public static IEnumerable<object[]> SenderSignerCases()
+    {
+        yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB };
+        yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyA };
+    }
+    [TestCaseSource(nameof(SenderSignerCases))]
+    public void Execute_SenderAndSignerIsTheSameOrNotWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer)
+    {
+        Address codeSource = TestItem.AddressB;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        //Save caller in storage slot 0
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.CALLER)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+
+        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+
+        Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
     }
     public static IEnumerable<object[]> DifferentCommitValues()
     {
@@ -94,10 +166,10 @@ internal class TransactionProcessorEip7702Tests
     [TestCaseSource(nameof(DifferentCommitValues))]
     public void Execute_CommitMessageHasDifferentData_ExpectedAddressIsSavedInStorageSlot(ulong chainId, UInt256? nonce, byte[] expectedStorageValue)
     {
-        PrivateKey relayer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        _stateProvider.CreateAccount(relayer.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
             .Op(Instruction.CALLER)
@@ -111,7 +183,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
             .WithAuthorizationCode(CreateAuthorizationTuple(signer,chainId, codeSource, nonce))
-            .SignedAndResolved(_ethereumEcdsa, relayer, true)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
@@ -129,9 +201,9 @@ internal class TransactionProcessorEip7702Tests
     [TestCase(99)]
     public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(int count)
     {
-        PrivateKey relayer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
-        _stateProvider.CreateAccount(relayer.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
         
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -144,7 +216,7 @@ internal class TransactionProcessorEip7702Tests
                                                  //Copy empty code so will not add to gas cost
                                                  TestItem.AddressC,
                                                  null)))
-            .SignedAndResolved(_ethereumEcdsa, relayer, true)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
@@ -158,15 +230,57 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseCost * count));
     }
 
+    [Test]
+    public void Execute_TxAuthorizationListWithBALANCE_WarmAccountReadGasIsCharged()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        byte[] code = Prepare.EvmCode
+            .PushData(signer.Address)
+            .Op(Instruction.BALANCE)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(
+                CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    codeSource,
+                    null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(100000000).TestObject;
+
+        CallOutputTracer tracer = new();
+        
+        _transactionProcessor.Execute(tx, block.Header, tracer);
+        //Tx should only be charged for warm state read
+        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction
+            + GasCostOf.PerAuthBaseCost
+            + Prague.Instance.GetBalanceCost()
+            + GasCostOf.WarmStateRead
+            + GasCostOf.VeryLow));
+    }
+
     [TestCase(false, 1)]
     [TestCase(true, 2)]
     public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyFirstInstanceIsUsed(bool reverseOrder, int expectedStoredValue)
     {        
-        PrivateKey relayer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address firstCodeSource = TestItem.AddressC;
         Address secondCodeSource = TestItem.AddressD;
-        _stateProvider.CreateAccount(relayer.Address, 1.Ether());
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
         
         byte[] firstCode = Prepare.EvmCode
             .PushData(1)
@@ -183,12 +297,12 @@ internal class TransactionProcessorEip7702Tests
         DeployCode(secondCodeSource, secondCode);
 
         IEnumerable<AuthorizationTuple> authList = [
-                        CreateAuthorizationTuple(
+            CreateAuthorizationTuple(
                     signer,
                     _specProvider.ChainId,
                     firstCodeSource,
                     null),
-                CreateAuthorizationTuple(
+            CreateAuthorizationTuple(
                     signer,
                     _specProvider.ChainId,
                     secondCodeSource,
@@ -203,7 +317,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
             .WithAuthorizationCode(authList)
-            .SignedAndResolved(_ethereumEcdsa, relayer, true)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
@@ -215,9 +329,56 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { expectedStoredValue }));
     }
 
+    [TestCase]
+    public void Execute_FirstTxHasAuthorizedCodeThatIncrementsAndSecondDoesNot_StorageSlotIsOnlyIncrementedOnce()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        //Increment 1 everytime it's called 
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SLOAD)
+            .PushData(1)
+            .Op(Instruction.ADD)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx1 = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    codeSource,
+                    null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Transaction tx2 = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithNonce(1)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx1,tx2)
+            .WithGasLimit(10000000).TestObject;
+
+        _transactionProcessor.Execute(tx1, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.Execute(tx2, block.Header, NullTxTracer.Instance);
+
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
+    }
+
     private void DeployCode(Address codeSource, byte[] code)
     {
-        _stateProvider.CreateAccount(codeSource, 0);
+        _stateProvider.CreateAccountIfNotExists(codeSource, 0);
         _stateProvider.InsertCode(codeSource, Keccak.Compute(code), code, _specProvider.GetSpec(MainnetSpecProvider.PragueActivation));
     }
 
