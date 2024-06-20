@@ -44,7 +44,7 @@ namespace Nethermind.State
         internal readonly StateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
-        public bool ReadOnlyPreWarmCaches { get; internal set; }
+        private readonly bool _populatePreBlockCache;
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
@@ -642,12 +642,14 @@ namespace Nethermind.State
         }
 
         public StateProvider(IScopedTrieStore? trieStore,
-            IKeyValueStore? codeDb,
-            ILogManager? logManager,
+            IKeyValueStore codeDb,
+            ILogManager logManager,
             StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null)
+            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
+            bool populatePreBlockCache = true)
         {
             _preBlockCache = preBlockCache;
+            _populatePreBlockCache = populatePreBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _tree = stateTree ?? new StateTree(trieStore, logManager);
@@ -669,9 +671,9 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                account = ReadOnlyPreWarmCaches ?
-                    GetStateReadOnlyPreWarm(addressAsKey) :
-                    GetStateUpdatePrewarm(addressAsKey);
+                account = _populatePreBlockCache ?
+                    GetStatePopulatePrewarmCache(addressAsKey) :
+                    GetStateReadPreWarmCache(addressAsKey);
             }
             else
             {
@@ -680,7 +682,7 @@ namespace Nethermind.State
             return account;
         }
 
-        private Account? GetStateUpdatePrewarm(AddressAsKey addressAsKey)
+        private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
         {
             long priorReads = Metrics.ThreadLocalStateTreeReads;
             Account? account = _preBlockCache is not null
@@ -694,7 +696,7 @@ namespace Nethermind.State
             return account;
         }
 
-        private Account? GetStateReadOnlyPreWarm(AddressAsKey addressAsKey)
+        private Account? GetStateReadPreWarmCache(AddressAsKey addressAsKey)
         {
             if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
             {

@@ -80,7 +80,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void RecalculateStateRoot();
 
     new Hash256 StateRoot { get; set; }
-    bool ReadOnlyPreWarmCaches { set; }
 
     void DeleteAccount(Address address);
 
