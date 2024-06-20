@@ -66,6 +66,7 @@ namespace Nethermind.State
         }
 
         public Hash256 StateRoot { get; set; } = null!;
+        public bool ReadOnlyPreWarmCaches { get; internal set; }
 
         /// <summary>
         /// Reset the storage state
@@ -368,17 +369,9 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell.Index, out exists);
             if (!exists)
             {
-                long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
-
-                value = _preBlockCache is not null
-                    ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
-                    : _loadFromTree(storageCell);
-
-                if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
-                {
-                    // Read from Concurrent Cache
-                    Db.Metrics.IncrementStorageTreeCache();
-                }
+                value = ReadOnlyPreWarmCaches ?
+                    LoadFromTreeReadOnlyPreWarm(in storageCell) :
+                    LoadFromTreeUpdatePrewarm(in storageCell);
             }
             else
             {
@@ -386,6 +379,35 @@ namespace Nethermind.State
             }
 
             if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
+            return value;
+        }
+
+        private byte[] LoadFromTreeUpdatePrewarm(in StorageCell storageCell)
+        {
+            long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
+
+            byte[] value = _preBlockCache is not null
+                ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
+                : _loadFromTree(storageCell);
+
+            if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
+            {
+                // Read from Concurrent Cache
+                Db.Metrics.IncrementStorageTreeCache();
+            }
+            return value;
+        }
+
+        private byte[] LoadFromTreeReadOnlyPreWarm(in StorageCell storageCell)
+        {
+            if (_preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
+            {
+                Db.Metrics.IncrementStorageTreeCache();
+            }
+            else
+            {
+                value = _loadFromTree(storageCell);
+            }
             return value;
         }
 

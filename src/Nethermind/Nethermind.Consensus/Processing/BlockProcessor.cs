@@ -106,6 +106,9 @@ public partial class BlockProcessor : IBlockProcessor
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
+
+        // Main thread should only read from prewarm caches, not spend extra time updating them.
+        _stateProvider.ReadOnlyPreWarmCaches = BlockchainProcessor.IsMainProcessingThread;
         try
         {
             for (int i = 0; i < blocksCount; i++)

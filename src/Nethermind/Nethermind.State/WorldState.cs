@@ -68,6 +68,15 @@ namespace Nethermind.State
         {
         }
 
+        public bool ReadOnlyPreWarmCaches
+        {
+            set
+            {
+                _stateProvider.ReadOnlyPreWarmCaches = value;
+                _persistentStorageProvider.ReadOnlyPreWarmCaches = value;
+            }
+        }
+
         public Account GetAccount(Address address)
         {
             return _stateProvider.GetAccount(address);

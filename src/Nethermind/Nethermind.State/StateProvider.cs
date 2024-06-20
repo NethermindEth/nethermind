@@ -44,6 +44,8 @@ namespace Nethermind.State
         internal readonly StateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
+        public bool ReadOnlyPreWarmCaches { get; internal set; }
+
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
             ArgumentNullException.ThrowIfNull(visitor);
@@ -667,19 +669,40 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                long priorReads = Metrics.ThreadLocalStateTreeReads;
-                account = _preBlockCache is not null
-                    ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
-                    : _getStateFromTrie(addressAsKey);
-
-                if (Metrics.ThreadLocalStateTreeReads == priorReads)
-                {
-                    Metrics.IncrementStateTreeCacheHits();
-                }
+                account = ReadOnlyPreWarmCaches ?
+                    GetStateReadOnlyPreWarm(addressAsKey) :
+                    GetStateUpdatePrewarm(addressAsKey);
             }
             else
             {
                 Metrics.IncrementStateTreeCacheHits();
+            }
+            return account;
+        }
+
+        private Account? GetStateUpdatePrewarm(AddressAsKey addressAsKey)
+        {
+            long priorReads = Metrics.ThreadLocalStateTreeReads;
+            Account? account = _preBlockCache is not null
+                ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
+                : _getStateFromTrie(addressAsKey);
+
+            if (Metrics.ThreadLocalStateTreeReads == priorReads)
+            {
+                Metrics.IncrementStateTreeCacheHits();
+            }
+            return account;
+        }
+
+        private Account? GetStateReadOnlyPreWarm(AddressAsKey addressAsKey)
+        {
+            if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
+            {
+                Metrics.IncrementStateTreeCacheHits();
+            }
+            else
+            {
+                account = _getStateFromTrie(addressAsKey);
             }
             return account;
         }
