@@ -95,7 +95,7 @@ public static class IntrinsicGasCalculator
             }
 
             if (authorizationList.Length == 0) return contractCodeCost;
-                contractCodeCost += GasCostOf.PerAuthBaseCost * authorizationList.Length;
+            contractCodeCost += GasCostOf.PerAuthBaseCost * authorizationList.Length;
         }
         return contractCodeCost;
     }

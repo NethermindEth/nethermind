@@ -139,7 +139,7 @@ namespace Nethermind.Evm.Test
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10)),
-                new AuthorizationTuple(
+                   new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
@@ -156,14 +156,14 @@ namespace Nethermind.Evm.Test
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10)),
-                new AuthorizationTuple(
+                   new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10)),
-                new AuthorizationTuple(
+                   new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     new UInt256(TestContext.CurrentContext.Random.NextBytes(32)),

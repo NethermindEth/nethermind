@@ -112,7 +112,7 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
             }
             else
             {
-                stream.StartSequence(0);                
+                stream.StartSequence(0);
             }
             stream.Encode(setCode.AuthoritySignature.V);
             stream.Encode(setCode.AuthoritySignature.R);
@@ -127,7 +127,7 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
         RlpStream stream = new RlpStream(totalLength);
         EncodeForCommitMessage(stream, chainId, codeAddress, nonce);
         return stream;
-    } 
+    }
 
     public void EncodeForCommitMessage(RlpStream stream, ulong chainId, Address codeAddress, UInt256? nonce)
     {

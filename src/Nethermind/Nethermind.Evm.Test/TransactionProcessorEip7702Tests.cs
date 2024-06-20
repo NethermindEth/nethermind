@@ -156,9 +156,9 @@ internal class TransactionProcessorEip7702Tests
         //Base case 
         yield return new object[] { 1ul, (UInt256)0, TestItem.AddressA.Bytes };
         //Wrong nonce
-        yield return new object[] { 1ul, (UInt256)1, new[] { (byte)0x0 }};
+        yield return new object[] { 1ul, (UInt256)1, new[] { (byte)0x0 } };
         //Null nonce means it should be ignored
-        yield return new object[] { 1ul, null, TestItem.AddressA.Bytes};
+        yield return new object[] { 1ul, null, TestItem.AddressA.Bytes };
         //Wrong chain id
         yield return new object[] { 2ul, (UInt256)0, new[] { (byte)0x0 } };
     }
@@ -182,7 +182,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer,chainId, codeSource, nonce))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, chainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -204,7 +204,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
-        
+
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
@@ -262,7 +262,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(100000000).TestObject;
 
         CallOutputTracer tracer = new();
-        
+
         _transactionProcessor.Execute(tx, block.Header, tracer);
         //Tx should only be charged for warm state read
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction
@@ -275,13 +275,13 @@ internal class TransactionProcessorEip7702Tests
     [TestCase(false, 1)]
     [TestCase(true, 2)]
     public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyFirstInstanceIsUsed(bool reverseOrder, int expectedStoredValue)
-    {        
+    {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address firstCodeSource = TestItem.AddressC;
         Address secondCodeSource = TestItem.AddressD;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
-        
+
         byte[] firstCode = Prepare.EvmCode
             .PushData(1)
             .Op(Instruction.PUSH0)
@@ -307,7 +307,7 @@ internal class TransactionProcessorEip7702Tests
                     _specProvider.ChainId,
                     secondCodeSource,
                     null),
-            ];
+        ];
         if (reverseOrder)
         {
             authList = authList.Reverse();
@@ -367,7 +367,7 @@ internal class TransactionProcessorEip7702Tests
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
-            .WithTransactions(tx1,tx2)
+            .WithTransactions(tx1, tx2)
             .WithGasLimit(10000000).TestObject;
 
         _transactionProcessor.Execute(tx1, block.Header, NullTxTracer.Instance);

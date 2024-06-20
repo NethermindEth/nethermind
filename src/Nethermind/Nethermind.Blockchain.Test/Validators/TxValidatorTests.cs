@@ -547,7 +547,7 @@ public class TxValidatorTests
 
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out _), Is.False);
     }
-    
+
     [Test]
     public void IsWellFormed_AuthorizationListTxInPragueSpec_ReturnsTrue()
     {

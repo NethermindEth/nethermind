@@ -1306,7 +1306,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 break;
                             }
                         }
-                        
+
                         InstructionExtCodeSize(address, ref stack, txCtx.AuthorizedCode, spec);
                         break;
                     }
@@ -2113,7 +2113,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-        
+
         CodeInfo codeInfo = vmState.Env.TxExecutionContext.AuthorizedCode.GetCachedCodeInfo(_worldState, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
 
