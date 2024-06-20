@@ -33,7 +33,7 @@ internal static class ShutterCrypto
         public byte VersionId;
         public G2 C1;
         public Bytes32 C2;
-        public IEnumerable<Bytes32> C3;
+        public Bytes32[] C3;
     }
 
     public class ShutterCryptoException(string message, Exception? innerException = null) : Exception(message, innerException);
@@ -49,8 +49,12 @@ internal static class ShutterCrypto
     public static byte[] Decrypt(EncryptedMessage encryptedMessage, G1 key)
     {
         Bytes32 sigma = RecoverSigma(encryptedMessage, key);
-        IEnumerable<Bytes32> keys = ComputeBlockKeys(sigma, encryptedMessage.C3.Count());
-        IEnumerable<Bytes32> decryptedBlocks = keys.Zip(encryptedMessage.C3, XorBlocks);
+        Bytes32[] keys = ComputeBlockKeys(sigma, encryptedMessage.C3.Count());
+        for (int i = 0; i < keys.Length; i++)
+        {
+            XorBlocks(keys[i], encryptedMessage.C3[i]);
+        }
+        Bytes32[] decryptedBlocks = keys.Zip(encryptedMessage.C3, XorBlocks).ToArray();
         byte[] msg = UnpadAndJoin(decryptedBlocks);
 
         ComputeR(sigma, msg, out UInt256 r);
@@ -63,14 +67,14 @@ internal static class ShutterCrypto
 
         return msg;
 
-        static byte[] UnpadAndJoin(IEnumerable<Bytes32> blocks)
+        static byte[] UnpadAndJoin(in Bytes32[] blocks)
         {
             if (blocks.IsNullOrEmpty())
             {
                 return [];
             }
 
-            Bytes32 lastBlock = blocks.Last();
+            Bytes32 lastBlock = blocks[^1];
             byte n = lastBlock.Unwrap().Last();
 
             if (n == 0 || n > 32)
@@ -78,16 +82,16 @@ internal static class ShutterCrypto
                 throw new ShutterCryptoException("Invalid padding length");
             }
 
-            byte[] res = new byte[blocks.Count() * 32 - n];
+            byte[] res = new byte[blocks.Length * 32 - n];
 
-            for (int i = 0; i < blocks.Count() - 1; i++)
+            for (int i = 0; i < blocks.Length - 1; i++)
             {
                 blocks.ElementAt(i).Unwrap().CopyTo(res.AsSpan()[(i * 32)..]);
             }
 
             for (int i = 0; i < 32 - n; i++)
             {
-                res[(blocks.Count() - 1) * 32 + i] = lastBlock.Unwrap()[i];
+                res[(blocks.Length - 1) * 32 + i] = lastBlock.Unwrap()[i];
             }
 
             return res;
@@ -103,10 +107,10 @@ internal static class ShutterCrypto
 
         // todo: change once shutter swaps to blst
         // ReadOnlySpan<byte> c3Bytes = bytes[(1 + 96 + 32)..];
-        // List<Bytes32> c3 = [];
+        // Bytes32[] c3 = new Bytes32[c3Bytes.Length / 32];
         // for (int i = 0; i < c3Bytes.Length / 32; i++)
         // {
-        //     c3.Add(new(c3Bytes[(i * 32)..((i + 1) * 32)]));
+        //     c3[i] = new(c3Bytes[(i * 32)..((i + 1) * 32)]);
         // }
 
         // return new()
@@ -118,10 +122,10 @@ internal static class ShutterCrypto
         // };
 
         ReadOnlySpan<byte> c3Bytes = bytes[(1 + 192 + 32)..];
-        List<Bytes32> c3 = [];
+        Bytes32[] c3 = new Bytes32[c3Bytes.Length / 32];
         for (int i = 0; i < c3Bytes.Length / 32; i++)
         {
-            c3.Add(new(c3Bytes[(i * 32)..((i + 1) * 32)]));
+            c3[i] = new(c3Bytes[(i * 32)..((i + 1) * 32)]);
         }
 
         try
@@ -159,10 +163,14 @@ internal static class ShutterCrypto
 
     private static G2 ComputeC1(UInt256 r) => G2.generator().mult(r.ToLittleEndian());
 
-    private static IEnumerable<Bytes32> ComputeBlockKeys(Bytes32 sigma, int n) =>
-        Enumerable.Range(0, n).Select(x =>
+    private static Bytes32[] ComputeBlockKeys(Bytes32 sigma, int n)
+    {
+        Bytes32[] blocks = new Bytes32[n];
+        Span<byte> preimageBuf = stackalloc byte[36];
+        Span<byte> suffix = stackalloc byte[4];
+
+        for (int x = 0; x < n; x++)
         {
-            Span<byte> suffix = stackalloc byte[4];
             BinaryPrimitives.WriteUInt32BigEndian(suffix, (uint)x);
             int suffixLength = 4;
             for (int i = 0; i < 3; i++)
@@ -173,11 +181,14 @@ internal static class ShutterCrypto
                 }
                 suffixLength--;
             }
-            Span<byte> preimage = stackalloc byte[32 + suffixLength];
+            Span<byte> preimage = preimageBuf[..(32 + suffixLength)];
             sigma.Unwrap().CopyTo(preimage);
             suffix[(4 - suffixLength)..4].CopyTo(preimage[32..]);
-            return Hash4(preimage);
-        });
+            blocks[x] = Hash4(preimage);
+        }
+
+        return blocks;
+    }
 
     private static Bytes32 XorBlocks(Bytes32 x, Bytes32 y) => new(x.Unwrap().Xor(y.Unwrap()));
 
@@ -339,24 +350,31 @@ internal static class ShutterCrypto
         return XorBlocks(sigma, key);
     }
 
-    private static IEnumerable<Bytes32> ComputeC3(List<Bytes32> messageBlocks, Bytes32 sigma)
+    private static Bytes32[] ComputeC3(in Bytes32[] messageBlocks, Bytes32 sigma)
     {
-        IEnumerable<Bytes32> keys = ComputeBlockKeys(sigma, messageBlocks.Count);
-        return keys.Zip(messageBlocks, XorBlocks);
+        // keys ^ msgs = blocks
+        Bytes32[] blocks = ComputeBlockKeys(sigma, messageBlocks.Length);
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            blocks[i] = XorBlocks(blocks[i], messageBlocks[i]);
+        }
+        return blocks;
     }
 
-    private static List<Bytes32> PadAndSplit(ReadOnlySpan<byte> bytes)
+    private static Bytes32[] PadAndSplit(ReadOnlySpan<byte> bytes)
     {
-        List<Bytes32> res = [];
         int n = 32 - (bytes.Length % 32);
+
         Span<byte> padded = stackalloc byte[bytes.Length + n];
         padded.Fill((byte)n);
         bytes.CopyTo(padded);
 
+        Bytes32[] res = new Bytes32[padded.Length / 32];
+
         for (int i = 0; i < padded.Length / 32; i++)
         {
             int offset = i * 32;
-            res.Add(new(padded[offset..(offset + 32)]));
+            res[i] = new(padded[offset..(offset + 32)]);
         }
         return res;
     }
