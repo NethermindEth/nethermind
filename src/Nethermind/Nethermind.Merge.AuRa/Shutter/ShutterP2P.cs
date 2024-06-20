@@ -74,35 +74,18 @@ public class ShutterP2P(
         _ = _router.RunAsync(peer, proto, token: _cancellationTokenSource.Token);
         ConnectToPeers(proto, p2pAddresses);
 
-        long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-        long delta = 0;
-
         Task.Run(async () =>
         {
-            for (; ; )
+            while (true)
             {
-                await Task.Delay(250);
-
-                while (_msgQueue.Reader.TryRead(out var msg))
+                var msg = await _msgQueue.Reader.ReadAsync();
+                try
                 {
-                    try
-                    {
-                        ProcessP2PMessage(msg);
-                    }
-                    catch (Exception e)
-                    {
-                        throw new ShutterP2PException("Shutter processing thread error", e);
-                    }
-
-                    lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                    ProcessP2PMessage(msg);
                 }
-
-                long oldDelta = delta;
-                delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-
-                if (delta > 0 && delta % DisconnectionLogTimeout == 0 && delta != oldDelta)
+                catch (Exception e)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
+                    throw new ShutterP2PException("Shutter processing thread error", e);
                 }
             }
         }, _cancellationTokenSource.Token);
