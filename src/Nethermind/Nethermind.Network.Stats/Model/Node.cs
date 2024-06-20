@@ -89,7 +89,7 @@ namespace Nethermind.Stats.Model
             SetIPEndPoint(address);
         }
 
-        private static string[] _ports = CreateCommonPortStrings();
+        private static readonly string[] _ports = CreateCommonPortStrings();
 
         private static string[] CreateCommonPortStrings()
         {
