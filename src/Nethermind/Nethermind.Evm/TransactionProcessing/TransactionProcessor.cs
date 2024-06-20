@@ -589,26 +589,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress))
+            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, WorldState))
             {
-                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, contractAddress, spec);
-                bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
-                bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
-
-                // TODO: verify what should happen if code info is a precompile
-                // (but this would generally be a hash collision)
-                if (codeIsNotEmpty || accountNonceIsNotZero || WorldState.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash)
+                if (Logger.IsTrace)
                 {
-                    if (Logger.IsTrace)
-                    {
-                        Logger.Trace($"Contract collision at {contractAddress}");
-                    }
-
-                    ThrowTransactionCollisionException();
+                    Logger.Trace($"Contract collision at {contractAddress}");
                 }
 
-                // we clean any existing storage (in case of a previously called self destruct)
-                WorldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                ThrowTransactionCollisionException();
             }
         }
 
