@@ -24,7 +24,7 @@ public class ZeroContentionCounter
         long total = 0;
         for (linkedSlot = _next.GetValue(linkedSlot); linkedSlot != null; linkedSlot = _next.GetValue(linkedSlot))
         {
-            total +=  (_value.GetValue(linkedSlot) as BoxedLong)!.Value;
+            total += (_value.GetValue(linkedSlot) as BoxedLong)!.Value;
         }
         return total;
     }

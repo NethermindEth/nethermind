@@ -25,7 +25,7 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
-        public static long StateTreeReads =>_stateTreeReads.GetTotalValue();
+        public static long StateTreeReads => _stateTreeReads.GetTotalValue();
         private static ZeroContentionCounter _stateTreeReads = new();
 
         [Description("Number of State Trie reads on thread.")]
