@@ -187,29 +187,22 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
             {
-                try
-                {
-                    float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
-                    if (float.IsInfinity(gasPrice))
-                    {
-                        return;
-                    }
+                // log2(3e38) ~ 127.8, if effectiveGasPrice is more than 128bit long it may lead to an overflow
+                float gasPrice = effectiveGasPrice[2] != 0 || effectiveGasPrice[3] != 0 ? 3e29f : (float)((double)effectiveGasPrice / 1_000_000_000.0);
 
-                    Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
-                    Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
+                Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
+                Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
 
-                    Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                    Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
+                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
+                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
 
-                    Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                    Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
-                    Metrics.Transactions++;
+                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
+                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                Metrics.Transactions++;
 
-                    Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                    Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                    Metrics.BlockTransactions++;
-                }
-                catch { }
+                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
+                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                Metrics.BlockTransactions++;
             }
         }
 
