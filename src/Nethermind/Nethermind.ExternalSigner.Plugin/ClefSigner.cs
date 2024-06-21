@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc;
 public class ClefSigner : IHeaderSigner, ISignerStore
 {
     private readonly IJsonRpcClient rpcClient;
-    private HeaderDecoder _headerDecoder;
+    private readonly HeaderDecoder _headerDecoder;
 
     private ClefSigner(IJsonRpcClient rpcClient, Address author)
     {

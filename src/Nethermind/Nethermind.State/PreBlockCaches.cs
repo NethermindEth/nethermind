@@ -21,7 +21,7 @@ public class PreBlockCaches
 
     public bool Clear()
     {
-        bool isDirty = StorageCache.Count > 0 || StateCache.Count > 0 || RlpCache.Count > 0;
+        bool isDirty = !StorageCache.IsEmpty || !StateCache.IsEmpty || !RlpCache.IsEmpty;
         if (isDirty)
         {
             StorageCache.Clear();
