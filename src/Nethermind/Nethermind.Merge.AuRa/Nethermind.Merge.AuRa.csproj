@@ -3,6 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.Merge.AuRa</RootNamespace>
     <Nullable>enable</Nullable>
+     <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
 
   <ItemGroup>
