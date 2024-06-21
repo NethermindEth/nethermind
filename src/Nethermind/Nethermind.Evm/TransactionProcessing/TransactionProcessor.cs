@@ -185,10 +185,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
-                // log2(3e38) ~ 127.8, if effectiveGasPrice is more than 128bit long it may lead to an overflow
-                float gasPrice = effectiveGasPrice[2] != 0 || effectiveGasPrice[3] != 0 ? 3e29f : (float)((double)effectiveGasPrice / 1_000_000_000.0);
+                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
 
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
                 Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
@@ -584,10 +583,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, WorldState))
             {
-                if (Logger.IsTrace)
-                {
-                    Logger.Trace($"Contract collision at {contractAddress}");
-                }
+                if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
                 ThrowTransactionCollisionException();
             }
