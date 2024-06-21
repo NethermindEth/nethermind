@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Dynamic.Core;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -32,7 +31,7 @@ using G1 = Bls.P1;
 
 public class ShutterTxSource : ITxSource
 {
-    private IEnumerable<Transaction> _loadedTransactions = [];
+    private Transaction[] _loadedTransactions = [];
     private ulong _loadedTransactionsSlot;
     private bool _validatorsRegistered;
     private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
@@ -134,22 +133,23 @@ public class ShutterTxSource : ITxSource
         return (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - genesisTimestamp) / 5) + 1;
     }
 
-    private IEnumerable<Transaction> DecryptSequencedTransactions(IEnumerable<SequencedTransaction> sequencedTransactions, Dto.DecryptionKeys decryptionKeys)
+    private Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, Dto.DecryptionKeys decryptionKeys)
     {
-        // order by identity preimage to match decryption keys and skip placeholder key
-        IEnumerable<(int, Transaction?)> unorderedTransactions = sequencedTransactions
-            .Select((x, index) => x with { Index = index })
-            .OrderBy(x => x.IdentityPreimage, Bytes.Comparer)
-            .Zip(decryptionKeys.Keys.Skip(1))
-            .Select(x => (x.Item1.Index, DecryptSequencedTransaction(x.Item1, x.Item2)));
+        using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
+        sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
 
-        // return decrypted transactions to original order
-        IEnumerable<Transaction> transactions = unorderedTransactions
-            .OrderBy(x => x.Item1)
-            .Select(x => x.Item2)
-            .OfType<Transaction>();
+        using ArrayPoolList<int> sortedKeyIndexes = new(sequencedTransactions.Count);
+        int keyIndex = 1;
+        foreach (SequencedTransaction transaction in sortedIndexes)
+        {
+            sortedKeyIndexes[transaction.Index] = keyIndex++;
+        }
 
-        return transactions;
+        return sequencedTransactions
+            .AsParallel()
+            .Select((t, i) => DecryptSequencedTransaction(t, decryptionKeys.Keys[sortedKeyIndexes[i]]))
+            .OfType<Transaction>()
+            .ToArray();
     }
 
     private bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys, in ShutterEon.Info eonInfo)
@@ -293,6 +293,7 @@ public class ShutterTxSource : ITxSource
 
         List<SequencedTransaction> txs = [];
         UInt256 totalGas = 0;
+        int index = 0;
 
         foreach (ISequencerContract.TransactionSubmitted e in events)
         {
@@ -308,6 +309,7 @@ public class ShutterTxSource : ITxSource
 
             SequencedTransaction sequencedTransaction = new()
             {
+                Index = index++,
                 Eon = eon,
                 EncryptedTransaction = e.EncryptedTransaction,
                 GasLimit = e.GasLimit,

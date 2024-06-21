@@ -28,9 +28,9 @@ public class SequencerContract : Contract
         _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, contractAddress, topics);
     }
 
-    public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents()
+    private IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents()
     {
-        IEnumerable<FilterLog> logs = _logFinder!.FindLogs(_logFilter!);
+        IEnumerable<FilterLog> logs = _logFinder.FindLogs(_logFilter);
         return logs.Select(log => ParseTransactionSubmitted(AbiEncoder.Decode(AbiEncodingStyle.None, _transactionSubmittedAbi.Signature, log.Data)));
     }
 
