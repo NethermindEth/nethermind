@@ -33,6 +33,7 @@ namespace Nethermind.Merge.AuRa
     {
         private AuRaNethermindApi? _auraApi;
         private IAuraConfig? _auraConfig;
+        private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
 
         public override string Name => "AuRaMerge";
@@ -46,6 +47,7 @@ namespace Nethermind.Merge.AuRa
             _api = nethermindApi;
             _auraConfig = _api.Config<IAuraConfig>();
             _mergeConfig = _api.Config<IMergeConfig>();
+            _shutterConfig = _api.Config<IShutterConfig>();
 
             if (MergeEnabled)
             {
@@ -96,14 +98,14 @@ namespace Nethermind.Merge.AuRa
 
             ShutterTxSource? shutterTxSource = null;
 
-            if (_auraConfig!.UseShutter)
+            if (_shutterConfig!.Enabled)
             {
-                ValidateShutterConfig(_auraConfig);
+                ValidateShutterConfig(_shutterConfig);
 
                 Dictionary<ulong, byte[]> validatorsInfo;
                 try
                 {
-                    validatorsInfo = LoadValidatorInfo(_auraConfig.ShutterValidatorInfoFile);
+                    validatorsInfo = LoadValidatorInfo(_shutterConfig.ValidatorInfoFile);
                 }
                 catch (Exception e)
                 {
@@ -113,14 +115,14 @@ namespace Nethermind.Merge.AuRa
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-                ShutterEon shutterEon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, logger);
+                ShutterEon shutterEon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
                 _api.BlockTree!.NewHeadBlock += (_, e) => shutterEon.Update(e.Block.Header);
 
                 // init Shutter transaction source
-                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.EthereumEcdsa!, shutterEon, validatorsInfo, _api.LogManager);
+                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, shutterEon, validatorsInfo, _api.LogManager);
 
-                _shutterP2P = new(shutterTxSource.OnDecryptionKeysReceived, _auraConfig, _api.LogManager);
-                _shutterP2P.Start(_auraConfig.ShutterKeyperP2PAddresses);
+                _shutterP2P = new(shutterTxSource.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
+                _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
@@ -138,29 +140,29 @@ namespace Nethermind.Merge.AuRa
             _ = base.DisposeAsync();
         }
 
-        private void ValidateShutterConfig(IAuraConfig auraConfig)
+        private void ValidateShutterConfig(IShutterConfig shutterConfig)
         {
-            if (auraConfig.ShutterSequencerContractAddress is null || !Address.TryParse(auraConfig.ShutterSequencerContractAddress, out _))
+            if (shutterConfig.SequencerContractAddress is null || !Address.TryParse(shutterConfig.SequencerContractAddress, out _))
             {
                 throw new ArgumentException("Must set Shutter sequencer contract address to valid address.");
             }
 
-            if (auraConfig.ShutterValidatorRegistryContractAddress is null || !Address.TryParse(auraConfig.ShutterValidatorRegistryContractAddress, out _))
+            if (shutterConfig.ValidatorRegistryContractAddress is null || !Address.TryParse(shutterConfig.ValidatorRegistryContractAddress, out _))
             {
                 throw new ArgumentException("Must set Shutter validator registry contract address to valid address.");
             }
 
-            if (auraConfig.ShutterKeyBroadcastContractAddress is null || !Address.TryParse(auraConfig.ShutterKeyBroadcastContractAddress, out _))
+            if (shutterConfig.KeyBroadcastContractAddress is null || !Address.TryParse(shutterConfig.KeyBroadcastContractAddress, out _))
             {
                 throw new ArgumentException("Must set Shutter key broadcast contract address to valid address.");
             }
 
-            if (auraConfig.ShutterKeyperSetManagerContractAddress is null || !Address.TryParse(auraConfig.ShutterKeyperSetManagerContractAddress, out _))
+            if (shutterConfig.KeyperSetManagerContractAddress is null || !Address.TryParse(shutterConfig.KeyperSetManagerContractAddress, out _))
             {
                 throw new ArgumentException("Must set Shutter keyper set manager contract address to valid address.");
             }
 
-            foreach (string addr in auraConfig.ShutterKeyperP2PAddresses)
+            foreach (string addr in shutterConfig.KeyperP2PAddresses)
             {
                 try
                 {

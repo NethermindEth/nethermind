@@ -37,7 +37,6 @@ public class ShutterTxSource : ITxSource
     private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ISpecProvider _specProvider;
-    private readonly IAuraConfig _auraConfig;
     private readonly ILogger _logger;
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private readonly SequencerContract _sequencerContract;
@@ -45,13 +44,14 @@ public class ShutterTxSource : ITxSource
     private readonly Address _validatorRegistryContractAddress;
     private readonly Dictionary<ulong, byte[]> _validatorsInfo;
     private readonly UInt256 _encryptedGasLimit;
+    private readonly ulong _validatorRegistryMessageVersion;
     private readonly ulong _instanceId;
 
     public ShutterTxSource(ILogFinder logFinder,
         IFilterStore filterStore,
         ReadOnlyTxProcessingEnvFactory envFactory,
         IAbiEncoder abiEncoder,
-        IAuraConfig auraConfig,
+        IShutterConfig shutterConfig,
         ISpecProvider specProvider,
         IEthereumEcdsa ethereumEcdsa,
         ShutterEon eon,
@@ -60,16 +60,16 @@ public class ShutterTxSource : ITxSource
     {
         _envFactory = envFactory;
         _abiEncoder = abiEncoder;
-        _auraConfig = auraConfig;
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
         _ethereumEcdsa = ethereumEcdsa;
         _eon = eon;
-        _sequencerContract = new(auraConfig.ShutterSequencerContractAddress, logFinder, filterStore);
-        _validatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
+        _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder, filterStore);
+        _validatorRegistryContractAddress = new(shutterConfig.ValidatorRegistryContractAddress);
         _validatorsInfo = validatorsInfo;
-        _encryptedGasLimit = _auraConfig.ShutterEncryptedGasLimit;
-        _instanceId = _auraConfig.ShutterInstanceID;
+        _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
+        _validatorRegistryMessageVersion = shutterConfig.ValidatorRegistryMessageVersion;
+        _instanceId = shutterConfig.InstanceID;
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
@@ -227,7 +227,7 @@ public class ShutterTxSource : ITxSource
     private bool IsRegistered(BlockHeader parent)
     {
         ITransactionProcessor readOnlyTransactionProcessor = _envFactory.Create().Build(parent.StateRoot!).TransactionProcessor;
-        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress, _logger, _specProvider.ChainId, _auraConfig.ShutterValidatorRegistryMessageVersion);
+        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress, _logger, _specProvider.ChainId, _validatorRegistryMessageVersion);
         if (!validatorRegistryContract!.IsRegistered(parent, _validatorsInfo, out HashSet<ulong> unregistered))
         {
             if (_logger.IsError) _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");

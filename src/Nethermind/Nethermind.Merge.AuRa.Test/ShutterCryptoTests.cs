@@ -9,9 +9,6 @@ using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Shutter;
 using NUnit.Framework;
 using Nethermind.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Core.Test;
 
 namespace Nethermind.Merge.AuRa.Test;
 

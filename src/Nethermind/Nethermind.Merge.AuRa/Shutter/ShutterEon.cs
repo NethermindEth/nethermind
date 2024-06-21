@@ -18,12 +18,12 @@ public class ShutterEon(
     IReadOnlyBlockTree readOnlyBlockTree,
     ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     IAbiEncoder abiEncoder,
-    IAuraConfig auraConfig,
+    IShutterConfig shutterConfig,
     ILogger logger)
 {
     private Info? _info;
-    private readonly Address _keyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
-    private readonly Address _keyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
+    private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress);
+    private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress);
 
     public Info? GetCurrentEonInfo() => _info;
 

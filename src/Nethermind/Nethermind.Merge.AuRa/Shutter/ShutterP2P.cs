@@ -21,7 +21,7 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterP2P(
     Action<Dto.DecryptionKeys> onDecryptionKeysReceived,
-    IAuraConfig auraConfig,
+    IShutterConfig shutterConfig,
     ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
@@ -29,7 +29,6 @@ public class ShutterP2P(
     private PubsubRouter? _router;
     private ServiceProvider? _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
-    private const int DisconnectionLogTimeout = 60 * 5;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -39,8 +38,8 @@ public class ShutterP2P(
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
             {
-                ProtocolVersion = auraConfig.ShutterP2PProtocolVersion,
-                AgentVersion = auraConfig.ShutterP2PAgentVersion
+                ProtocolVersion = shutterConfig.P2PProtocolVersion,
+                AgentVersion = shutterConfig.P2PAgentVersion
             })
             .AddSingleton(new Settings()
             {
@@ -57,7 +56,7 @@ public class ShutterP2P(
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + auraConfig.ShutterP2PPort);
+        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + shutterConfig.P2PPort);
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {peer.Address}");
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
