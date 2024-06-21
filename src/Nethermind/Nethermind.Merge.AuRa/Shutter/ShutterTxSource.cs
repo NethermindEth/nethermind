@@ -24,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using System.IO;
 using Google.Protobuf;
+using Nethermind.Consensus.Validators;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -118,6 +119,10 @@ public class ShutterTxSource : ITxSource
 
             _loadedTransactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys);
             _loadedTransactionsSlot = decryptionKeys.Gnosis.Slot;
+
+            // todo: is it safe to get final spec here? maybe use block number
+            TxValidator txValidator = new(_specProvider.ChainId);
+            _loadedTransactions = _loadedTransactions.Where(tx => txValidator.IsWellFormed(tx, _specProvider.GetFinalSpec())).ToArray();
 
             if (_logger.IsInfo)
             {
