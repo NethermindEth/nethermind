@@ -4,7 +4,7 @@ using System.Runtime.Intrinsics;
 
 namespace Nethermind.Db
 {
-    public sealed unsafe class FastPForEncoder : ILogEncoder<long, byte>
+    public sealed unsafe class FastPForEncoder : ILogEncoder<byte, byte>
     {
         private int _blocksize;
 
@@ -12,59 +12,44 @@ namespace Nethermind.Db
         {
             _blocksize = blocksize;
         }
-        public void Encode(Span<long> value, byte[] output)
+        public void Encode(Span<byte> value, byte[] output)
         {
 
-            var prev = Vector256.Create((long)value[0]);
+            var prev = Vector64.Create((sbyte)value[0]);
 
             int i = 0;
 
-            fixed (long* _entries = value)
-            fixed (byte* _entriesbytes = output)
+
+            fixed (byte* _entries = value)
+            fixed (byte* _entriesbytes = &output[0])
             {
+                byte* _tmpout = _entriesbytes;
                 for (; i + _blocksize <= value.Length; i += _blocksize)
                 {
                     int j = 0;
 
-                    for (; j < _blocksize; j += Vector256<long>.Count)
+                    for (; j < _blocksize; j += Vector64<sbyte>.Count)
                     {
-                        var cur = Vector256.Load(_entries + i + j);
+                        var cur = Vector64.Load((sbyte*)_entries + i + j);
 
-                        var curShuffled = Vector256.Shuffle(cur, Vector256.Create(0, 0, 1, 2)) & Vector256.Create(0, -1, -1, -1);
-                        var prevShuffled = Vector256.Shuffle(prev, Vector256.Create(3, 3, 3, 3)) & Vector256.Create(-1, 0, 0, 0);
-
-                        var mixed = Vector256.Shuffle(cur, Vector256.Create(0, 0, 1, 2)) & Vector256.Create(0, -1, -1, -1) |
-                                Vector256.Shuffle(prev, Vector256.Create(3, 3, 3, 3)) & Vector256.Create(-1, 0, 0, 0);
+                        var mixed = Vector64.Shuffle(cur, Vector64.Create(0, 0, 1, 2, 3, 4, 5, 6)) & Vector64.Create(0, -1, -1, -1, -1, -1, -1, -1) |
+                                Vector64.Shuffle(prev, Vector64.Create(7, 7, 7, 7, 7, 7, 7, 7)) & Vector64.Create(-1, 0, 0, 0, 0, 0, 0, 0);
                         prev = cur;
                         var delta = cur - mixed;
-                        Console.WriteLine("checking delta");
-                        Console.WriteLine(delta.ToString());
-                        var deltaInts = Vector256.Shuffle(delta.AsUInt32(), Vector256.Create(0u, 2, 4, 6, 0, 0, 0, 0));
 
-                        var _entriesInts = (uint*)_entriesbytes;
+                        var _entriesSbyte = (sbyte*)_tmpout;
                         // You can use the pointer in here.
-                        deltaInts.Store(_entriesInts);
-
-
+                        delta.Store(_entriesSbyte);
+                        _tmpout += Vector64<byte>.Count;
                     }
                 }
+                _entriesbytes[0] = (byte)value[0];
             }
 
+
+            // store the remaining without using SIMD
             if (i < value.Length)
             {
-                var cur = Vector256.Create((long)value[i]);
-                var mixed = Vector256.Shuffle(cur, Vector256.Create(0, 0, 1, 2)) & Vector256.Create(0, -1, -1, -1) |
-                        Vector256.Shuffle(prev, Vector256.Create(3, 3, 3, 3)) & Vector256.Create(-1, 0, 0, 0);
-                prev = cur;
-                var delta = cur - mixed;
-                var deltaInts = Vector256.Shuffle(delta.AsUInt32(), Vector256.Create(0u, 2, 4, 6, 0, 0, 0, 0));
-                fixed (byte* _entriesbytes = output)
-                {
-                    var _entriesInts = (uint*)_entriesbytes;
-                    // You can use the pointer in here.
-                    deltaInts.Store(_entriesInts);
-
-                }
             }
 
 
