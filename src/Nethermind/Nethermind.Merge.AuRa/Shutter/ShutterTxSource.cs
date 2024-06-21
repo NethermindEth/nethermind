@@ -32,8 +32,7 @@ using G1 = Bls.P1;
 
 public class ShutterTxSource : ITxSource
 {
-    private Transaction[] _loadedTransactions = [];
-    private ulong _loadedTransactionsSlot;
+    private LoadedTransactions _loadedTransactions;
     private bool _validatorsRegistered;
     private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
     private readonly IAbiEncoder _abiEncoder;
@@ -87,17 +86,22 @@ public class ShutterTxSource : ITxSource
         }
 
         ulong nextSlot = GetNextSlot();
-        if (_loadedTransactionsSlot == nextSlot) return _loadedTransactions;
+        // atomic fetch
+        LoadedTransactions loadedTransactions = _loadedTransactions;
+        if (loadedTransactions.Slot == nextSlot) return loadedTransactions.Transactions;
         if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions.");
-        if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {_loadedTransactionsSlot}");
+        if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {loadedTransactions.Slot}");
         return [];
     }
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        if (decryptionKeys.Gnosis.Slot <= _loadedTransactionsSlot)
+        // atomic fetch
+        LoadedTransactions loadedTransactions = _loadedTransactions;
+
+        if (decryptionKeys.Gnosis.Slot <= loadedTransactions.Slot)
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {_loadedTransactionsSlot}.");
+            if (_logger.IsDebug) _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {loadedTransactions.Slot}.");
             return;
         }
 
@@ -117,16 +121,23 @@ public class ShutterTxSource : ITxSource
             List<SequencedTransaction> sequencedTransactions = GetNextTransactions(decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer);
             if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} transactions from Shutter mempool...");
 
-            _loadedTransactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys);
-            _loadedTransactionsSlot = decryptionKeys.Gnosis.Slot;
+            Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys);
 
             // todo: is it safe to get final spec here? maybe use block number
             TxValidator txValidator = new(_specProvider.ChainId);
-            _loadedTransactions = _loadedTransactions.Where(tx => txValidator.IsWellFormed(tx, _specProvider.GetFinalSpec())).ToArray();
+            transactions = transactions.Where(tx => txValidator.IsWellFormed(tx, _specProvider.GetFinalSpec())).ToArray();
 
-            if (_logger.IsInfo)
+            // atomic update
+            _loadedTransactions = new()
             {
-                _loadedTransactions.ForEach(tx => _logger.Info(tx.ToShortString()));
+                Transactions = transactions,
+                Slot = decryptionKeys.Gnosis.Slot
+            };
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug("Decrypted Shutter transactions:");
+                _loadedTransactions.Transactions.ForEach(tx => _logger.Debug(tx.ToShortString()));
             }
         }
     }
@@ -326,6 +337,13 @@ public class ShutterTxSource : ITxSource
         }
 
         return txs;
+    }
+
+    private struct LoadedTransactions
+    {
+
+        public Transaction[] Transactions { get; init; }
+        public ulong Slot { get; init; }
     }
 
     private struct SequencedTransaction
