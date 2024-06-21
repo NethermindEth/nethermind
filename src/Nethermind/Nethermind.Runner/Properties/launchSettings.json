@@ -2,7 +2,7 @@
   "profiles": {
     "Chiado": {
       "commandName": "Project",
-      "commandLineArgs": "-c chiado -dd .data",
+      "commandLineArgs": "-c chiado -dd .data --Shutter.Enabled",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -30,7 +30,7 @@
     },
     "Gnosis": {
       "commandName": "Project",
-      "commandLineArgs": "-c gnosis -dd .data",
+      "commandLineArgs": "-c gnosis -dd .data --Shutter.Enabled",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

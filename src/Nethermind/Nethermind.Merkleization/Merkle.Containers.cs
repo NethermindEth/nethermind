@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
+using System.Collections.Generic;
 using Nethermind.Int256;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization
 {
@@ -68,6 +71,16 @@ namespace Nethermind.Merkleization
     public static partial class Merkle
     {
 
+        public static void Ize(out UInt256 root, Ssz.SlotDecryptionIdentites container)
+        {
+            Merkleizer merkleizer = new Merkleizer(NextPowerOfTwoExponent(5));
+            merkleizer.Feed(container.InstanceID);
+            merkleizer.Feed(container.Eon);
+            merkleizer.Feed(container.Slot);
+            merkleizer.Feed(container.TxPointer);
+            merkleizer.Feed(container.IdentityPreimages, 1024);
+            merkleizer.CalculateRoot(out root);
+        }
 
         //public static void Ize(out UInt256 root, BlsPublicKey container)
         //{
@@ -424,4 +437,5 @@ namespace Nethermind.Merkleization
         //    merkleizer.CalculateRoot(out root);
         //}
     }
+
 }
