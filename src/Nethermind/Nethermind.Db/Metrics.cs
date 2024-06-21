@@ -24,7 +24,7 @@ namespace Nethermind.Db
                 return total;
             }
         }
-        private static ThreadLocal<long> _codeDbCache = new(trackAllValues: true);
+        private static readonly ThreadLocal<long> _codeDbCache = new(trackAllValues: true);
         [Description("Number of Code DB cache reads on thread.")]
         public static long ThreadLocalCodeDbCache => _codeDbCache.Value;
         public static void IncrementCodeDbCache() => _codeDbCache.Value++;
@@ -44,7 +44,7 @@ namespace Nethermind.Db
             }
         }
 
-        private static ThreadLocal<long> _stateTreeCacheHits = new(trackAllValues: true);
+        private static readonly ThreadLocal<long> _stateTreeCacheHits = new(trackAllValues: true);
         public static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Value++;
 
         [CounterMetric]
@@ -61,7 +61,7 @@ namespace Nethermind.Db
                 return total;
             }
         }
-        private static ThreadLocal<long> _stateTreeReads = new(trackAllValues: true);
+        private static readonly ThreadLocal<long> _stateTreeReads = new(trackAllValues: true);
         [Description("Number of State Trie reads on thread.")]
         public static long ThreadLocalStateTreeReads => _stateTreeReads.Value;
         public static void IncrementStateTreeReads() => _stateTreeReads.Value++;
@@ -80,7 +80,7 @@ namespace Nethermind.Db
                 return total;
             }
         }
-        private static ThreadLocal<long> _stateReaderReads = new(trackAllValues: true);
+        private static readonly ThreadLocal<long> _stateReaderReads = new(trackAllValues: true);
         public static void IncrementStateReaderReads() => _stateReaderReads.Value++;
 
         [CounterMetric]
@@ -105,7 +105,7 @@ namespace Nethermind.Db
                 return total;
             }
         }
-        private static ThreadLocal<long> _storageTreeCache = new(trackAllValues: true);
+        private static readonly ThreadLocal<long> _storageTreeCache = new(trackAllValues: true);
         public static void IncrementStorageTreeCache() => _storageTreeCache.Value++;
 
         [CounterMetric]
@@ -122,7 +122,7 @@ namespace Nethermind.Db
                 return total;
             }
         }
-        private static ThreadLocal<long> _storageTreeReads = new(trackAllValues: true);
+        private static readonly ThreadLocal<long> _storageTreeReads = new(trackAllValues: true);
         [Description("Number of storage trie reads on thread.")]
         public static long ThreadLocalStorageTreeReads => _storageTreeReads.Value;
         public static void IncrementStorageTreeReads() => _storageTreeReads.Value++;

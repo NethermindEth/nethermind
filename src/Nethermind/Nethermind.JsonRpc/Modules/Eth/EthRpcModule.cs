@@ -348,7 +348,7 @@ public partial class EthRpcModule(
         return GetBlock(blockParameter, returnFullTransactionObjects);
     }
 
-    private ResultWrapper<BlockForRpc> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
+    protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
@@ -362,7 +362,7 @@ public partial class EthRpcModule(
             _blockchainBridge.RecoverTxSenders(block);
         }
 
-        return ResultWrapper<BlockForRpc>.Success(block is null
+        return ResultWrapper<BlockForRpc?>.Success(block is null
             ? null
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
@@ -680,7 +680,7 @@ public partial class EthRpcModule(
         }
     }
 
-    private void RecoverTxSenderIfNeeded(Transaction transaction)
+    protected void RecoverTxSenderIfNeeded(Transaction transaction)
     {
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
@@ -713,7 +713,7 @@ public partial class EthRpcModule(
                     : null);
     }
 
-    private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
+    protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
 
     private static ResultWrapper<TResult> GetFailureResult<TResult>(ResourceNotFoundException exception, bool isTemporary) =>
