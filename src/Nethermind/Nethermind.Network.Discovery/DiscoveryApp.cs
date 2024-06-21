@@ -31,13 +31,12 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
     private readonly ILogManager _logManager;
+    private readonly MultiVersionDiscoveryHandler _multiVersionDiscoveryHandler;
     private readonly ILogger _logger;
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly ICryptoRandom _cryptoRandom;
     private readonly INetworkStorage _discoveryStorage;
     private readonly INetworkConfig _networkConfig;
-
-    private Task? _discoveryTimerTask;
 
     private IChannel? _channel;
     private MultithreadEventLoopGroup? _group;
@@ -53,9 +52,11 @@ public class DiscoveryApp : IDiscoveryApp
         INetworkConfig? networkConfig,
         IDiscoveryConfig? discoveryConfig,
         ITimestamper? timestamper,
-        ILogManager? logManager)
+        ILogManager? logManager,
+        MultiVersionDiscoveryHandler multiVersionDiscoveryHandler)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        _multiVersionDiscoveryHandler = multiVersionDiscoveryHandler;
         _logger = _logManager.GetClassLogger();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
@@ -168,6 +169,8 @@ public class DiscoveryApp : IDiscoveryApp
             _timestamper, _logManager, null);
         _discoveryManager.MsgSender = _discoveryHandler;
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
+
+        _multiVersionDiscoveryHandler.AddHandlerV4(_discoveryHandler);
 
         channel.Pipeline
             .AddLast(new LoggingHandler(LogLevel.INFO))

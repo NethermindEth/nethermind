@@ -190,10 +190,9 @@ public class DiscoveryV5App : IDiscoveryApp
     {
     }
 
-    public Task StartAsync()
+    public void Start()
     {
         _ = DiscoverViaCustomRandomWalk();
-        return Task.CompletedTask;
     }
 
     private async Task DiscoverViaCustomRandomWalk()

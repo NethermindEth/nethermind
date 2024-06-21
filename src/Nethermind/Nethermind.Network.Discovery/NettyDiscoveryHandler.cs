@@ -172,20 +172,6 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         }
     }
 
-    // TODO find a faster/simpler/more-reliable way
-    private bool IsDiscoveryV5Packet(UdpReceiveResult packet)
-    {
-        try
-        {
-            //return Enum.IsDefined((PacketType) _packetProcessor.GetStaticHeader(packet.Buffer).Flag);
-            return false;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
-
     private DiscoveryMsg Deserialize(MsgType type, byte[] msg)
     {
         return type switch
