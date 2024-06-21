@@ -39,7 +39,6 @@ namespace Nethermind.Evm
             return new Address(in contractAddressKeccak);
         }
 
-
         // See https://eips.ethereum.org/EIPS/eip-7610
         public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
         {

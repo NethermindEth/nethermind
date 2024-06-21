@@ -2452,13 +2452,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return (EvmExceptionType.None, callState);
     }
 
-    private static bool IsNonEmptyAccount(IReleaseSpec spec, Address contractAddress, ICodeInfoRepository _codeInfoRepository, IWorldState state)
-    {
-        return _codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).MachineCode.Length != 0 ||
-               state.GetNonce(contractAddress) != 0 ||
-               state.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash;
-    }
-
     [SkipLocalsInit]
     private EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
         where TTracing : struct, IIsTracing
