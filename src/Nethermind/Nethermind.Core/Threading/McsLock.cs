@@ -27,8 +27,6 @@ public class McsLock
     /// </summary>
     private PaddedTail _tail;
 
-    internal volatile ThreadNode? _currentLockHolder = null;
-
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
     /// enters a busy-wait state until the lock becomes available.
@@ -38,7 +36,7 @@ public class McsLock
         ThreadNode node = _node.Value!;
 
         // Check for reentrancy.
-        if (ReferenceEquals(node, _currentLockHolder))
+        if (node.State != (nuint)LockState.Unlocked)
             ThrowInvalidOperationException();
 
         node.State = (nuint)LockState.Waiting;
@@ -54,8 +52,6 @@ public class McsLock
         }
 
         Interlocked.MemoryBarrier();
-        // Set current lock holder.
-        _currentLockHolder = node;
 
         return new Disposable(this);
 
@@ -149,7 +145,7 @@ public class McsLock
                 if (Interlocked.CompareExchange(ref _lock._tail.Value, null, node) == node)
                 {
                     // Clear current lock holder.
-                    _lock._currentLockHolder = null;
+                    node.State = (nuint)LockState.Unlocked;
                     return;
                 }
 
@@ -161,7 +157,7 @@ public class McsLock
 
             ThreadNode next = node.Next!;
             // Clear current lock holder.
-            _lock._currentLockHolder = null;
+            node.State = (nuint)LockState.Unlocked;
             // Pass the lock to the next thread by setting its 'Locked' flag to false.
             next.State = (nuint)LockState.ReadyToAcquire;
 
@@ -212,7 +208,8 @@ public class McsLock
     {
         ReadyToAcquire = 0,
         Waiting = 1,
-        Acquired = 2
+        Acquired = 2,
+        Unlocked = 3
     }
 
     [StructLayout(LayoutKind.Explicit, Size = 128)]
@@ -230,7 +227,7 @@ public class McsLock
         /// <summary>
         /// Indicates whether the current thread is waiting for the lock.
         /// </summary>
-        public volatile nuint State = (nuint)LockState.Waiting;
+        public volatile nuint State = (nuint)LockState.Unlocked;
 
         /// <summary>
         /// Points to the next node in the queue.
