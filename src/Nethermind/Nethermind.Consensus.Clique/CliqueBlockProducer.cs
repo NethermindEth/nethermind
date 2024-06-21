@@ -41,7 +41,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     private readonly System.Timers.Timer _timer = new();
     private DateTime _lastProducedBlock;
 
-    private CliqueBlockProducer _blockProducer;
+    private readonly CliqueBlockProducer _blockProducer;
 
     public CliqueBlockProducerRunner(
         IBlockTree blockTree,

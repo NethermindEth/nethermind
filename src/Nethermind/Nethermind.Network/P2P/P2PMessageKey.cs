@@ -45,12 +45,12 @@ public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) :
     private string[]? _labels = null;
     public string[] Labels => _labels ??= CalculateLabel();
 
-    private string[] CalculateLabel()
+    private readonly string[] CalculateLabel()
     {
         return [$"{Protocol.Protocol}{Protocol.Version}", GetMessageType()];
     }
 
-    private string GetMessageType()
+    private readonly string GetMessageType()
     {
         if (!MessageNames.TryGetValue((Protocol.Protocol, PacketType), out string messageName))
         {
