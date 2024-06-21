@@ -204,7 +204,7 @@ public class McsLock
         }
     }
 
-    private enum LockState : uint
+    public enum LockState : uint
     {
         ReadyToAcquire = 0,
         Waiting = 1,

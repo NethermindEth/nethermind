@@ -43,7 +43,7 @@ public class McsPriorityLock
     public McsLock.Disposable Acquire()
     {
         // Check for reentrancy.
-        if (_coreLock._node.Value == _coreLock._currentLockHolder)
+        if (_coreLock._node.Value!.State != (nuint)McsLock.LockState.Unlocked)
             ThrowInvalidOperationException();
 
         var isPriority = Thread.CurrentThread.Priority > ThreadPriority.Normal;
