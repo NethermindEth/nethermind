@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -24,7 +25,7 @@ public class McsLock
     /// <summary>
     /// Points to the last node in the queue (tail). Used to manage the queue of waiting threads.
     /// </summary>
-    private volatile ThreadNode? _tail;
+    private PaddedTail _tail;
 
     internal volatile ThreadNode? _currentLockHolder = null;
 
@@ -42,7 +43,7 @@ public class McsLock
 
         node.State = (nuint)LockState.Waiting;
 
-        ThreadNode? predecessor = Interlocked.Exchange(ref _tail, node);
+        ThreadNode? predecessor = Interlocked.Exchange(ref _tail.Value, node);
         if (predecessor is not null)
         {
             WaitForUnlock(node, predecessor);
@@ -99,12 +100,9 @@ public class McsLock
                 // Otherwise spin
                 sw.SpinOnce();
             }
-
-            Interlocked.MemoryBarrier();
         }
 
         node.State = (nuint)LockState.Acquired;
-        Interlocked.MemoryBarrier();
     }
 
     private static void WaitForSignal(ThreadNode node)
@@ -148,7 +146,7 @@ public class McsLock
             {
                 // Attempt to atomically set the tail to null, indicating no thread is waiting.
                 // If it is still 'node', then there are no other waiting threads.
-                if (Interlocked.CompareExchange(ref _lock._tail, null, node) == node)
+                if (Interlocked.CompareExchange(ref _lock._tail.Value, null, node) == node)
                 {
                     // Clear current lock holder.
                     _lock._currentLockHolder = null;
@@ -215,6 +213,13 @@ public class McsLock
         ReadyToAcquire = 0,
         Waiting = 1,
         Acquired = 2
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 128)]
+    private struct PaddedTail
+    {
+        [FieldOffset(64)]
+        public volatile ThreadNode? Value;
     }
 
     /// <summary>
