@@ -39,6 +39,26 @@ internal class ILCompiler
 
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
+        if (code.Length == 0)
+        {
+            method.Return();
+        }
+        else
+        {
+            EmitSegmentBody(method, code);
+        }
+
+        ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
+        return new SegmentExecutionCtx
+        {
+            Method = dynEmitedDelegate,
+            Data = data
+        };
+    }
+
+    private static void EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code)
+    {
+
         using Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
 
@@ -109,7 +129,7 @@ internal class ILCompiler
             OpcodeInfo op = code[i];
 
 
-            if(op.Operation is Instruction.JUMPDEST)
+            if (op.Operation is Instruction.JUMPDEST)
             {
                 // mark the jump destination
                 jumpDestinations[op.ProgramCounter] = method.DefineLabel();
@@ -415,7 +435,7 @@ internal class ILCompiler
                     EmitComparaisonUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), uint256A, uint256B);
                     break;
                 case Instruction.SLT:
-                    EmitComparaisonInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256)}), false, uint256A, uint256B);
+                    EmitComparaisonInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, uint256A, uint256B);
                     break;
                 case Instruction.SGT:
                     EmitComparaisonInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, uint256A, uint256B);
@@ -665,7 +685,7 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
                     method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
-                    
+
                     method.LoadLocalAddress(uint256A);
                     method.LoadConstant(Word.Size);
                     method.LoadConstant((int)PadDirection.Right);
@@ -1057,7 +1077,7 @@ internal class ILCompiler
 
                     method.LoadArgument(0);
                     method.LoadConstant(true);
-                    switch(op.Operation)
+                    switch (op.Operation)
                     {
                         case Instruction.REVERT:
                             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldRevert)));
@@ -1159,7 +1179,7 @@ internal class ILCompiler
                 case Instruction.BLOCKHASH:
                     Label blockHashReturnedNull = method.DefineLabel();
                     Label pushToStackRegion = method.DefineLabel();
-                    
+
                     method.StackLoadPrevious(stack, head, 1);
                     method.StackPop(head, 1);
                     method.LoadField(Word.Ulong0Field);
@@ -1245,6 +1265,8 @@ internal class ILCompiler
             }
         }
 
+        Label skipProgramCounterSetting = method.DefineLabel();
+        Local isEphemeralJump = method.DeclareLocal<bool>();
         // prepare ILEvmState
         // check if returnState is null
         method.MarkLabel(ret);
@@ -1265,9 +1287,15 @@ internal class ILCompiler
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
 
         // set program counter
+        method.LoadLocal(isEphemeralJump);
+        method.BranchIfTrue(skipProgramCounterSetting);
+
         method.LoadArgument(0);
         method.LoadLocal(programCounter);
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
+
+        method.MarkLabel(skipProgramCounterSetting);
+
 
         // set exception
         method.LoadArgument(0);
@@ -1276,7 +1304,6 @@ internal class ILCompiler
 
         // go to return
         method.Branch(exit);
-
 
         // jump table
         method.MarkLabel(jumpTable);
@@ -1289,12 +1316,18 @@ internal class ILCompiler
         //check if jump crosses segment boundaies
         Label jumpIsLocal = method.DefineLabel();
         method.LoadLocal(jmpDestination);
-        method.LoadConstant(code[^1].ProgramCounter + code[^1].Metadata?.AdditionalBytes ?? 0);
+        method.LoadConstant(code[code.Length - 1].ProgramCounter + code[code.Length - 1].Metadata?.AdditionalBytes ?? 0);
         method.BranchIfLessOrEqual(jumpIsLocal);
 
         method.LoadArgument(0);
+        method.Duplicate();
+        method.LoadConstant(true);
+        method.StoreLocal(isEphemeralJump);
         method.LoadConstant(true);
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
+        method.LoadLocal(jmpDestination);
+        method.Convert<ushort>();
+        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
         method.Branch(ret);
 
         method.MarkLabel(jumpIsLocal);
@@ -1320,7 +1353,7 @@ internal class ILCompiler
         }
 
         // we get first Word.Size bits of the jump destination since it is less than int.MaxValue
-        
+
 
         method.LoadLocal(jmpDestination);
         method.LoadConstant(bitMask);
@@ -1360,13 +1393,6 @@ internal class ILCompiler
         // return
         method.MarkLabel(exit);
         method.Return();
-
-        ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
-        return new SegmentExecutionCtx
-        {
-            Method = dynEmitedDelegate,
-            Data = data
-        };
     }
 
     private static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, bool isLeft, params Local[] locals)

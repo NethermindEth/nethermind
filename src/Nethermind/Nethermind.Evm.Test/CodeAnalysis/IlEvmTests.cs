@@ -400,6 +400,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             yield return (Instruction.BYTE, Prepare.EvmCode
                     .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
                     .Done);
+
+            yield return (Instruction.JUMP, Prepare.EvmCode
+                .JUMP(31)
+                .Done);
         }
 
         [Test, TestCaseSource(nameof(GetBytecodes))]
@@ -412,7 +416,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var memory = new EvmPooledMemory();
             var inputBuffer = envExCtx.InputData;
             var returnBuffer = ReadOnlyMemory<byte>.Empty;
-            ILEvmState iLEvmState = new ILEvmState(testcase.bytecode, ref envExCtx, ref txExCtx, ref blkExCtx, EvmExceptionType.None, 0, 100000, false, false, false, 0, stack, ref memory, ref inputBuffer, ref returnBuffer);
+            ILEvmState iLEvmState = new ILEvmState(testcase.bytecode, ref envExCtx, ref txExCtx, ref blkExCtx, EvmExceptionType.None, 0, 100000, 0, stack, ref memory, ref inputBuffer, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
             ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, _blockhashProvider, ctx.Data);
