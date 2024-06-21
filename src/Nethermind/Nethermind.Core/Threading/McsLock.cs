@@ -25,7 +25,7 @@ public class McsLock
     /// <summary>
     /// Points to the last node in the queue (tail). Used to manage the queue of waiting threads.
     /// </summary>
-    private PaddedTail _tail;
+    private PaddedNode _tail;
 
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
@@ -67,7 +67,7 @@ public class McsLock
     {
         // If there was a previous tail, it means the lock is already held by someone.
         // Set this node as the next node of the predecessor.
-        predecessor.Next = node;
+        predecessor.Next.Value = node;
 
         // Busy-wait (spin) until our 'Locked' flag is set to false by the thread
         // that is releasing the lock.
@@ -138,7 +138,7 @@ public class McsLock
             ThreadNode node = _lock._node.Value!;
 
             // If there is no next node, it means this thread might be the last in the queue.
-            if (node.Next is null)
+            if (node.Next.Value is null)
             {
                 // Attempt to atomically set the tail to null, indicating no thread is waiting.
                 // If it is still 'node', then there are no other waiting threads.
@@ -149,13 +149,13 @@ public class McsLock
                     return;
                 }
 
-                if (node.Next is null)
+                if (node.Next.Value is null)
                 {
                     SpinTillNextNotNull(node);
                 }
             }
 
-            ThreadNode next = node.Next!;
+            ThreadNode next = node.Next.Value!;
             // Clear current lock holder.
             node.State = (nuint)LockState.Unlocked;
             // Pass the lock to the next thread by setting its 'Locked' flag to false.
@@ -169,7 +169,7 @@ public class McsLock
                 SignalUnlock(next);
             }
             // Remove the reference to the next node 
-            node.Next = null;
+            node.Next.Value = null;
         }
 
         private static void SpinTillNextNotNull(ThreadNode node)
@@ -177,7 +177,7 @@ public class McsLock
             // If another thread is in the process of enqueuing itself,
             // wait until it finishes setting its node as the 'Next' node.
             SpinWait sw = default;
-            while (node.Next is null)
+            while (node.Next.Value is null)
             {
                 sw.SpinOnce();
             }
@@ -213,7 +213,7 @@ public class McsLock
     }
 
     [StructLayout(LayoutKind.Explicit, Size = 128)]
-    private struct PaddedTail
+    internal struct PaddedNode
     {
         [FieldOffset(64)]
         public volatile ThreadNode? Value;
@@ -232,6 +232,6 @@ public class McsLock
         /// <summary>
         /// Points to the next node in the queue.
         /// </summary>
-        public ThreadNode? Next = null;
+        public PaddedNode Next;
     }
 }
