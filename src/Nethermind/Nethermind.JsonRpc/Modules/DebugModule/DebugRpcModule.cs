@@ -198,7 +198,7 @@ public class DebugRpcModule : IDebugRpcModule
         }
         catch (ArgumentNullException)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Couldn't find any block", ErrorCodes.InvalidInput);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.InvalidInput);
         }
     }
 
@@ -219,7 +219,7 @@ public class DebugRpcModule : IDebugRpcModule
         }
         catch (ArgumentNullException)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Couldn't find any block", ErrorCodes.InvalidInput);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.InvalidInput);
         }
     }
 
