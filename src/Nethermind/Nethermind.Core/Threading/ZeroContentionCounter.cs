@@ -24,6 +24,21 @@ public class ZeroContentionCounter
         FieldInfo next = linkedSlot.FieldType.GetField("_next", BindingFlags.NonPublic | BindingFlags.Instance)!;
         FieldInfo value = next.FieldType.GetField("_value", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
+        // The code we are trying to generate:
+        //
+        //    object? linkedSlot = linkedSlot.GetValue(threadLocal);
+        //    if (linkedSlot == null)
+        //    {
+        //        return 0;
+        //    }
+        //
+        //    long total = 0;
+        //    for (linkedSlot = next.GetValue(linkedSlot); linkedSlot != null; linkedSlot = next.GetValue(linkedSlot))
+        //    {
+        //        total +=  (value.GetValue(linkedSlot) as BoxedLong)!.Value;
+        //    }
+        //    return total;
+
         // Parameters
         ParameterExpression threadLocalParam = Expression.Parameter(typeof(ThreadLocal<BoxedLong>), "threadLocal");
 
