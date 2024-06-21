@@ -187,9 +187,10 @@ public class DebugRpcModule : IDebugRpcModule
         var cancellationToken = cancellationTokenSource.Token;
         var blockTrace = _debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
 
-        try {
+        try
+        {
             if (blockTrace is null)
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
@@ -207,7 +208,8 @@ public class DebugRpcModule : IDebugRpcModule
         var cancellationToken = cancellationTokenSource.Token;
         var blockTrace = _debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
 
-        try {
+        try
+        {
             if (blockTrace is null)
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
 
