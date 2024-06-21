@@ -857,6 +857,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         uint codeLength = (uint)code.Length;
         bool shouldStop = false;
         bool shouldReturn = false;
+        bool shouldJump = false;
         while ((uint)programCounter < codeLength)
         {
 #if DEBUG
@@ -864,11 +865,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while ((ilInfo?.TryExecute(vmState, blkCtx, txCtx, _specProvider, _blockhashProvider, ref programCounter, ref gasAvailable, ref stack, out shouldStop, out shouldReturn, out isRevert, out returnData))
+            while ((ilInfo?.TryExecute(vmState, blkCtx, txCtx, _specProvider, _blockhashProvider, ref programCounter, ref gasAvailable, ref stack, out shouldJump, out shouldStop, out shouldReturn, out isRevert, out returnData))
                    .GetValueOrDefault(false))
             {
                 if (shouldReturn || isRevert) goto DataReturn;
                 if (shouldStop is true) goto EmptyReturn;
+                if (shouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter)) goto InvalidJumpDestination;
             }
 
             Instruction instruction = (Instruction)code[programCounter];

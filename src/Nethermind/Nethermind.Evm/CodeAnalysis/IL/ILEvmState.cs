@@ -28,6 +28,7 @@ internal ref struct ILEvmState
     public bool ShouldStop;
     public bool ShouldRevert;
     public bool ShouldReturn;
+    public bool ShouldJump;
 
     public int StackHead;
     public Span<byte> Stack;
@@ -37,7 +38,7 @@ internal ref struct ILEvmState
     public ref ReadOnlyMemory<byte> InputBuffer;
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
-    public ILEvmState(byte[] machineCode, ref ExecutionEnvironment env, ref TxExecutionContext txCtx, ref BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, bool shouldStop, bool shouldRevert, bool shouldReturn, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> inputBuffer, ref ReadOnlyMemory<byte> returnBuffer)
+    public ILEvmState(byte[] machineCode, ref ExecutionEnvironment env, ref TxExecutionContext txCtx, ref BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> inputBuffer, ref ReadOnlyMemory<byte> returnBuffer)
     {
         MachineCode = machineCode;
         Env = ref env;
@@ -46,9 +47,10 @@ internal ref struct ILEvmState
         EvmException = evmException;
         ProgramCounter = programCounter;
         GasAvailable = gasAvailable;
-        ShouldStop = shouldStop;
-        ShouldRevert = shouldRevert;
-        ShouldReturn = shouldReturn;
+        ShouldStop = false;
+        ShouldRevert = false;
+        ShouldReturn = false;
+        ShouldJump = false;
         StackHead = stackHead;
         Stack = stack;
         Memory = ref memory;

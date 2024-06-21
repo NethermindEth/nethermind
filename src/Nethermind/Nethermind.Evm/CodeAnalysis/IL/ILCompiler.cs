@@ -1286,6 +1286,18 @@ internal class ILCompiler
         method.StoreLocal(jmpDestination);
         method.StackPop(head);
 
+        //check if jump crosses segment boundaies
+        Label jumpIsLocal = method.DefineLabel();
+        method.LoadLocal(jmpDestination);
+        method.LoadConstant(code[^1].ProgramCounter + code[^1].Metadata?.AdditionalBytes ?? 0);
+        method.BranchIfLessOrEqual(jumpIsLocal);
+
+        method.LoadArgument(0);
+        method.LoadConstant(true);
+        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
+        method.Branch(ret);
+
+        method.MarkLabel(jumpIsLocal);
         method.StackPop(head, consumeJumpCondition);
         method.LoadConstant(0);
         method.StoreLocal(consumeJumpCondition);

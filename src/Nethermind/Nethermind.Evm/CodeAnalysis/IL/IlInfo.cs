@@ -61,12 +61,13 @@ internal class IlInfo
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
     public FrozenDictionary<ushort, SegmentExecutionCtx> Segments { get; set; }
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, BlockExecutionContext blkCtx, TxExecutionContext txCtx, ISpecProvider specProvider, IBlockhashProvider blockHashProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
+    public bool TryExecute<TTracingInstructions>(EvmState vmState, BlockExecutionContext blkCtx, TxExecutionContext txCtx, ISpecProvider specProvider, IBlockhashProvider blockHashProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldJump, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         shouldReturn = false;
         shouldRevert = false;
         shouldStop = false;
+        shouldJump = false;
         returnData = null;
         if (programCounter > ushort.MaxValue)
             return false;
@@ -110,6 +111,7 @@ internal class IlInfo
                     shouldReturn = ilvmState.ShouldReturn;
                     shouldRevert = ilvmState.ShouldRevert;
                     returnData = ilvmState.ReturnBuffer;
+                    shouldJump = ilvmState.ShouldJump;
                     break;
                 }
         }
