@@ -433,11 +433,11 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            if (_logger.IsTrace || _reqCount % 1000 == 0)
+            if (_logger.IsTrace || (_logger.IsDebug && _reqCount % 1000 == 0))
             {
                 int moreAccountCount = AccountRangePartitions.Count(kv => kv.Value.MoreAccountsToRight);
 
-                _logger.Info(
+                _logger.Debug(
                     $"Snap - ({reqType}, diff: {_pivot.Diff}) {moreAccountCount} - Requests Account: {_activeAccountRequests} | Storage: {_activeStorageRequests} | Code: {_activeCodeRequests} | Refresh: {_activeAccRefreshRequests} - Queues Slots: {NextSlotRange.Count} | Storages: {StoragesToRetrieve.Count} | Codes: {CodesToRetrieve.Count} | Refresh: {AccountsToRefresh.Count}");
             }
         }
