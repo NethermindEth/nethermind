@@ -39,6 +39,8 @@ namespace Nethermind.Synchronization.FastSync
         internal long NotAssignedCount;
         internal long DataSize;
 
+        private string? _lastStateSyncReport;
+
         private long TotalRequestsCount => EmptishCount + InvalidFormatCount + BadQualityCount + OkCount + NotAssignedCount;
         public long ProcessedRequestsCount => EmptishCount + BadQualityCount + OkCount;
 
@@ -78,8 +80,15 @@ namespace Nethermind.Synchronization.FastSync
                         $" ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}");
                 }
 
-                if (logger.IsInfo) logger.Info(
-                    $"State Sync  {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}");
+                if (logger.IsInfo)
+                {
+                    string stateSyncReport = $"State Sync  {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}";
+                    if (_lastStateSyncReport != stateSyncReport)
+                    {
+                        _lastStateSyncReport = stateSyncReport;
+                        logger.Info(stateSyncReport);
+                    }
+                }
                 if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(10))
                 {
                     long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;

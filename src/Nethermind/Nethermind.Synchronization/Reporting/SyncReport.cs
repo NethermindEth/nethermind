@@ -95,6 +95,9 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ITimer _timer;
 
         private long _fastBlocksPivotNumber;
+        private string? _lastHeadersReport;
+        private string? _lastBodiesReport;
+        private string? _lastReceiptsReport;
 
         public MeasuredProgress HeadersInQueue { get; } = new();
 
@@ -291,7 +294,7 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            var percentage = Math.Clamp(FullSyncBlocksDownloaded.CurrentValue / (float)(FullSyncBlocksKnown + 1), 0, 1);
+            float percentage = Math.Clamp(FullSyncBlocksDownloaded.CurrentValue / (float)(FullSyncBlocksKnown + 1), 0, 1);
             _logger.Info($"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
@@ -300,22 +303,37 @@ namespace Nethermind.Synchronization.Reporting
         {
             if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
             {
-                var percentage = Math.Clamp(FastBlocksHeaders.CurrentValue / (float)(_fastBlocksPivotNumber + 1), 0, 1);
-                _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(HeadersInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)} Blk/s");
+                float percentage = Math.Clamp(FastBlocksHeaders.CurrentValue / (float)(_fastBlocksPivotNumber + 1), 0, 1);
+                string headersReport = $"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(HeadersInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)} Blk/s";
+                if (_lastHeadersReport != headersReport)
+                {
+                    _lastHeadersReport = headersReport;
+                    _logger.Info(headersReport);
+                }
                 FastBlocksHeaders.SetMeasuringPoint();
             }
 
             if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
             {
-                var percentage = Math.Clamp(FastBlocksBodies.CurrentValue / (float)(_amountOfBodiesToDownload + 1), 0, 1);
-                _logger.Info($"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldBodiesToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(BodiesInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)} Blk/s");
+                float percentage = Math.Clamp(FastBlocksBodies.CurrentValue / (float)(_amountOfBodiesToDownload + 1), 0, 1);
+                string bodiesReport = $"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldBodiesToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(BodiesInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)} Blk/s";
+                if (_lastBodiesReport != bodiesReport)
+                {
+                    _lastBodiesReport = bodiesReport;
+                    _logger.Info(bodiesReport);
+                }
                 FastBlocksBodies.SetMeasuringPoint();
             }
 
             if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
             {
-                var percentage = Math.Clamp(FastBlocksReceipts.CurrentValue / (float)(_amountOfReceiptsToDownload + 1), 0, 1);
-                _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldReceiptsToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(ReceiptsInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)} Blk/s");
+                float percentage = Math.Clamp(FastBlocksReceipts.CurrentValue / (float)(_amountOfReceiptsToDownload + 1), 0, 1);
+                string receiptsReport = $"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldReceiptsToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(ReceiptsInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)} Blk/s";
+                if (_lastReceiptsReport != receiptsReport)
+                {
+                    _lastReceiptsReport = receiptsReport;
+                    _logger.Info(receiptsReport);
+                }
                 FastBlocksReceipts.SetMeasuringPoint();
             }
         }
