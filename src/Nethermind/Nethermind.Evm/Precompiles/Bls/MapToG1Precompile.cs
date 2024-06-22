@@ -26,7 +26,6 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = 64;

@@ -26,7 +26,6 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 43000L * (inputData.Length / PairSize);
 
-    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length % PairSize > 0 || inputData.Length == 0)

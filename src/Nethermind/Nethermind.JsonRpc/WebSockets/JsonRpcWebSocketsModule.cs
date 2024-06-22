@@ -58,9 +58,7 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
             throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
         }
 
-        bool authenticated = await _rpcAuthentication.Authenticate(context.Request.Headers.Authorization);
-
-        if (jsonRpcUrl.IsAuthenticated && !authenticated)
+        if (jsonRpcUrl.IsAuthenticated && !await _rpcAuthentication.Authenticate(context.Request.Headers.Authorization))
         {
             throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
         }
