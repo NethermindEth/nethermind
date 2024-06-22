@@ -82,7 +82,9 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (logger.IsInfo)
                 {
-                    string stateSyncReport = $"State Sync  {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}";
+                    string stateSyncReport = logger.IsDebug ?
+                        $"State Sync  {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
+                        $"State Sync  {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
                     if (_lastStateSyncReport != stateSyncReport)
                     {
                         _lastStateSyncReport = stateSyncReport;
