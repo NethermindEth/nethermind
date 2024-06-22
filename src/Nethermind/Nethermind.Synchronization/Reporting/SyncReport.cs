@@ -65,7 +65,8 @@ namespace Nethermind.Synchronization.Reporting
 
             if (e.Previous != e.Current)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
+                // Repeat of "Changing state" so only output as confirm in debug
+                if (_logger.IsDebug) _logger.Debug($"Sync mode changed from {e.Previous} to {e.Current}");
             }
         }
 
