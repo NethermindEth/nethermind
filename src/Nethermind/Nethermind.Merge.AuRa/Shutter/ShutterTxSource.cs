@@ -25,6 +25,7 @@ using Nethermind.Specs;
 using System.IO;
 using Google.Protobuf;
 using Nethermind.Consensus.Validators;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -39,6 +40,7 @@ public class ShutterTxSource : ITxSource
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private readonly IEthereumEcdsa _ethereumEcdsa;
+    private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly SequencerContract _sequencerContract;
     private readonly ShutterEon _eon;
     private readonly Address _validatorRegistryContractAddress;
@@ -54,6 +56,7 @@ public class ShutterTxSource : ITxSource
         IShutterConfig shutterConfig,
         ISpecProvider specProvider,
         IEthereumEcdsa ethereumEcdsa,
+        IReadOnlyBlockTree readOnlyBlockTree,
         ShutterEon eon,
         Dictionary<ulong, byte[]> validatorsInfo,
         ILogManager logManager)
@@ -63,6 +66,7 @@ public class ShutterTxSource : ITxSource
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
         _ethereumEcdsa = ethereumEcdsa;
+        _readOnlyBlockTree = readOnlyBlockTree;
         _eon = eon;
         _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder, filterStore);
         _validatorRegistryContractAddress = new(shutterConfig.ValidatorRegistryContractAddress);
@@ -123,9 +127,10 @@ public class ShutterTxSource : ITxSource
 
             Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys);
 
-            // todo: is it safe to get final spec here? maybe use block number
+            Block? head = _readOnlyBlockTree.Head;
+            IReleaseSpec releaseSpec = head is null ? _specProvider.GetFinalSpec() : _specProvider.GetSpec(head.Number, head.Timestamp);
             TxValidator txValidator = new(_specProvider.ChainId);
-            transactions = transactions.Where(tx => txValidator.IsWellFormed(tx, _specProvider.GetFinalSpec())).ToArray();
+            transactions = Array.FindAll(transactions, tx => tx.Type != TxType.Blob ^ txValidator.IsWellFormed(tx, releaseSpec));
 
             // atomic update
             _loadedTransactions = new()
@@ -136,8 +141,9 @@ public class ShutterTxSource : ITxSource
 
             if (_logger.IsDebug)
             {
-                _logger.Debug("Decrypted Shutter transactions:");
-                _loadedTransactions.Transactions.ForEach(tx => _logger.Debug(tx.ToShortString()));
+                string msg = "Decrypted Shutter transactions:";
+                _loadedTransactions.Transactions.ForEach(tx => msg += "\n" + tx.ToShortString());
+                _logger.Debug(msg);
             }
         }
     }
