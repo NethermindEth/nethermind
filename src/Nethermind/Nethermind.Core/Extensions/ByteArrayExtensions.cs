@@ -43,30 +43,33 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static ArrayPoolList<byte> SliceWithZeroPaddingEmptyOnError(this byte[] bytes, int startIndex, int length)
+        public static byte[] SliceWithZeroPaddingEmptyOnError(this byte[] bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return ArrayPoolList<byte>.Empty();
+                return Array.Empty<byte>();
             }
 
-            ArrayPoolList<byte> slice = new(length, length);
-            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan().Slice(0, copiedFragmentLength));
+            byte[] slice = new byte[length];
+
+            Buffer.BlockCopy(bytes, startIndex, slice, 0, copiedFragmentLength);
             return slice;
         }
 
-        public static ArrayPoolList<byte> SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
+        public static byte[] SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return ArrayPoolList<byte>.Empty();
+                return Array.Empty<byte>();
             }
 
-            ArrayPoolList<byte> slice = new(length, length);
-            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan().Slice(0, copiedFragmentLength));
+            byte[] slice = new byte[length];
+
+            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan(0, copiedFragmentLength));
             return slice;
         }
+
     }
 }

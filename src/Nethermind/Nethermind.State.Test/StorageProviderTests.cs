@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
@@ -409,6 +410,23 @@ namespace Nethermind.Store.Test
             _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
         }
 
+        /// <summary>
+        /// Reset will reset transient state
+        /// </summary>
+        [Test]
+        public void Selfdestruct_clears_cache()
+        {
+            PreBlockCaches preBlockCaches = new PreBlockCaches();
+            Context ctx = new(preBlockCaches);
+            WorldState provider = BuildStorageProvider(ctx);
+            StorageCell storageCell = new StorageCell(TestItem.AddressA, 1);
+            preBlockCaches.StorageCache[storageCell] = [1, 2, 3];
+            provider.Get(storageCell);
+            provider.Commit(Paris.Instance);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Get(storageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
+        }
+
         private class Context
         {
             public WorldState StateProvider { get; }
@@ -416,9 +434,9 @@ namespace Nethermind.Store.Test
             public readonly Address Address1 = new(Keccak.Compute("1"));
             public readonly Address Address2 = new(Keccak.Compute("2"));
 
-            public Context()
+            public Context(PreBlockCaches preBlockCaches = null)
             {
-                StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+                StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);

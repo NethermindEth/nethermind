@@ -18,7 +18,7 @@ namespace Nethermind.Core.Caching
         private readonly McsLock _lock = new();
         private readonly string _name;
         private int _leastRecentlyUsed = -1;
-        private Stack<int> _freeOffsets = new();
+        private readonly Stack<int> _freeOffsets = new();
         private readonly LruCacheItem[] _items;
 
         public LruKeyCacheLowObject(int maxCapacity, string name)
