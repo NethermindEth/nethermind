@@ -289,7 +289,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) => best.Block == best.Header ?
-            $"block: {best.Block} | target: {best.TargetBlock} | peer: {best.Peer.Block}":
+            $"block: {best.Block} | target: {best.TargetBlock} | peer: {best.Peer.Block}" :
             $"block: {best.Block} | header: {best.Header} | target: {best.TargetBlock} | peer: {best.Peer.Block}";
 
         private static string BuildStateStringDebug(Snapshot best) =>
