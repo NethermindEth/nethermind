@@ -293,7 +293,7 @@ namespace Nethermind.Synchronization.Reporting
             }
 
             var percentage = Math.Clamp(FullSyncBlocksDownloaded.CurrentValue / (float)(FullSyncBlocksKnown + 1), 0, 1);
-            _logger.Info($"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1, QueuePaddingLength)} current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s");
+            _logger.Info($"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1, ProgressLength)} current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
 
