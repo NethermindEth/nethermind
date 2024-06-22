@@ -74,8 +74,8 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     float percentage = Math.Min(1, (float)DataSize / _chainEstimations.StateSize.Value);
                     dataSizeInfo = string.Concat(dataSizeInfo,
-                        $" / {(decimal)_chainEstimations.StateSize.Value / 1000 / 1000,6:F0} MB", 
-                        $" ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}" );
+                        $" / {(decimal)_chainEstimations.StateSize.Value / 1000 / 1000,6:F0} MB",
+                        $" ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}");
                 }
 
                 if (logger.IsInfo) logger.Info(
