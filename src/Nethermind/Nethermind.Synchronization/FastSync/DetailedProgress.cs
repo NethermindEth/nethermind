@@ -69,17 +69,17 @@ namespace Nethermind.Synchronization.FastSync
                 // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kBps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
 
                 Metrics.StateSynced = DataSize;
-                string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2} MB";
+                string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,9:F2} MB";
                 if (_chainEstimations.StateSize is not null)
                 {
-                    decimal percentage = Math.Min(1, (decimal)DataSize / _chainEstimations.StateSize.Value);
-                    dataSizeInfo = string.Concat(
-                        $"~{percentage:P2} | ", dataSizeInfo,
-                        $" / ~{(decimal)_chainEstimations.StateSize.Value / 1000 / 1000,6:F2} MB");
+                    float percentage = Math.Min(1, (float)DataSize / _chainEstimations.StateSize.Value);
+                    dataSizeInfo = string.Concat(dataSizeInfo,
+                        $" / {(decimal)_chainEstimations.StateSize.Value / 1000 / 1000,6:F0} MB", 
+                        $" ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}" );
                 }
 
                 if (logger.IsInfo) logger.Info(
-                    $"State Sync {TimeSpan.FromSeconds(SecondsInSync):dd\\.hh\\:mm\\:ss} | {dataSizeInfo} | branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3} | ave: {AverageTimeInHandler:f2}ms");
+                    $"State Sync  {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}");
                 if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(10))
                 {
                     long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;

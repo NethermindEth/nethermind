@@ -8,7 +8,7 @@ public class Progress
 {
     private static char[] _progressChars = { ' ', '⡀', '⡄', '⡆', '⡇', '⣇', '⣧', '⣷', '⣿' };
 
-    public static string GetMeter(float value, int max, int width = 20)
+    public static string GetMeter(float value, int max, int width = 40)
     {
         width = Math.Max(4, width - 3);
         float progressF = value / max * width;

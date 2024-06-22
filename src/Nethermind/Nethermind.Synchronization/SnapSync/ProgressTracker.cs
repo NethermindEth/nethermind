@@ -421,7 +421,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 float progress = (float)(totalPathProgress / (double)(256 * 256));
 
-                if (_logger.IsInfo) _logger.Info($"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1, 40)}");
+                if (_logger.IsInfo) _logger.Info($"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}");
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)
