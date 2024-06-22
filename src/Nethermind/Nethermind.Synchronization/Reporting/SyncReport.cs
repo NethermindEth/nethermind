@@ -95,6 +95,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ITimer _timer;
 
         private long _fastBlocksPivotNumber;
+        private string? _lastDownloadReport;
         private string? _lastHeadersReport;
         private string? _lastBodiesReport;
         private string? _lastReceiptsReport;
@@ -295,7 +296,13 @@ namespace Nethermind.Synchronization.Reporting
             }
 
             float percentage = Math.Clamp(FullSyncBlocksDownloaded.CurrentValue / (float)(FullSyncBlocksKnown + 1), 0, 1);
-            _logger.Info($"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}               | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s");
+            string downloadReport = $"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}               | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s";
+            // Compare ignoring speed change
+            if (_lastDownloadReport.AsSpan().StartsWith(downloadReport.AsSpan(0, downloadReport.LastIndexOf("| current"))))
+            {
+                _lastDownloadReport = downloadReport;
+                _logger.Info(downloadReport);
+            }
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
 
@@ -305,7 +312,8 @@ namespace Nethermind.Synchronization.Reporting
             {
                 float percentage = Math.Clamp(FastBlocksHeaders.CurrentValue / (float)(_fastBlocksPivotNumber + 1), 0, 1);
                 string headersReport = $"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(HeadersInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)} Blk/s";
-                if (_lastHeadersReport != headersReport)
+                // Compare ignoring speed change
+                if (_lastHeadersReport.AsSpan().StartsWith(headersReport.AsSpan(0, headersReport.LastIndexOf("| current"))))
                 {
                     _lastHeadersReport = headersReport;
                     _logger.Info(headersReport);
@@ -317,7 +325,8 @@ namespace Nethermind.Synchronization.Reporting
             {
                 float percentage = Math.Clamp(FastBlocksBodies.CurrentValue / (float)(_amountOfBodiesToDownload + 1), 0, 1);
                 string bodiesReport = $"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldBodiesToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(BodiesInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)} Blk/s";
-                if (_lastBodiesReport != bodiesReport)
+                // Compare ignoring speed change
+                if (_lastBodiesReport.AsSpan().StartsWith(bodiesReport.AsSpan(0, bodiesReport.LastIndexOf("| current"))))
                 {
                     _lastBodiesReport = bodiesReport;
                     _logger.Info(bodiesReport);
@@ -329,7 +338,8 @@ namespace Nethermind.Synchronization.Reporting
             {
                 float percentage = Math.Clamp(FastBlocksReceipts.CurrentValue / (float)(_amountOfReceiptsToDownload + 1), 0, 1);
                 string receiptsReport = $"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldReceiptsToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {Pad(ReceiptsInQueue.CurrentValue, QueuePaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)} Blk/s";
-                if (_lastReceiptsReport != receiptsReport)
+                // Compare ignoring speed change
+                if (_lastReceiptsReport.AsSpan().StartsWith(receiptsReport.AsSpan(0, receiptsReport.LastIndexOf("| current"))))
                 {
                     _lastReceiptsReport = receiptsReport;
                     _logger.Info(receiptsReport);
