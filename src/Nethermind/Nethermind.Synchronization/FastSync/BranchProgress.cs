@@ -152,19 +152,19 @@ namespace Nethermind.Synchronization.FastSync
                     switch (_syncProgress[i])
                     {
                         case NodeProgressState.Unknown:
-                            builder.Append('?');
+                            builder.Append('▫');
                             break;
                         case NodeProgressState.Empty:
-                            builder.Append('0');
+                            builder.Append('◇');
                             break;
                         case NodeProgressState.AlreadySaved:
-                            builder.Append('1');
+                            builder.Append('◆');
                             break;
                         case NodeProgressState.Saved:
-                            builder.Append('+');
+                            builder.Append('■');
                             break;
                         case NodeProgressState.Requested:
-                            builder.Append('*');
+                            builder.Append('□');
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();
