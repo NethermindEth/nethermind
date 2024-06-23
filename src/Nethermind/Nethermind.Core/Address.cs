@@ -253,8 +253,8 @@ namespace Nethermind.Core
         public static implicit operator Address(AddressAsKey key) => key._key;
         public static implicit operator AddressAsKey(Address key) => new(key);
 
-        public bool Equals(AddressAsKey other) => _key.Equals(other._key);
-        public override int GetHashCode() => _key.GetHashCode();
+        public bool Equals(AddressAsKey other) => _key == other._key;
+        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
     }
 
     public ref struct AddressStructRef
