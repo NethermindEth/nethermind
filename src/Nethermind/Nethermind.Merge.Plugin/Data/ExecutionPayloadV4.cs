@@ -107,7 +107,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
         specProvider.GetSpec(BlockNumber, Timestamp).DepositsEnabled
-        && specProvider.GetSpec(BlockNumber, Timestamp).WithdrawalRequestsEnabled;
+        && specProvider.GetSpec(BlockNumber, Timestamp).WithdrawalRequestsEnabled
+        && specProvider.GetSpec(BlockNumber, Timestamp).ConsolidationRequestsEnabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.Requests"/> as defined in

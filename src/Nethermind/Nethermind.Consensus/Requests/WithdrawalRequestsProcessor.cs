@@ -23,7 +23,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
 
     public IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
-        if (!spec.IsEip7002Enabled)
+        if (!spec.WithdrawalRequestsEnabled)
             yield break;
 
         Address eip7002Account = spec.Eip7002ContractAddress;

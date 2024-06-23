@@ -72,7 +72,7 @@ public class WithdrawalRequestProcessorTests
     {
 
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip7002Enabled.Returns(true);
+        spec.WithdrawalRequestsEnabled.Returns(true);
         spec.Eip7002ContractAddress.Returns(eip7002Account);
 
         Block block = Build.A.Block.TestObject;

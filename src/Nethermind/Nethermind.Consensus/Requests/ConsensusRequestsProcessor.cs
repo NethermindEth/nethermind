@@ -21,12 +21,11 @@ public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcess
 
     public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)
     {
-        if (!spec.DepositsEnabled && !spec.WithdrawalRequestsEnabled)
+        if (!spec.RequestsEnabled)
             return;
 
         using ArrayPoolList<ConsensusRequest> requestsList = new(receipts.Length * 2);
 
-        // Process deposits
         requestsList.AddRange(_depositsProcessor.ProcessDeposits(block, receipts, spec));
         requestsList.AddRange(_withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state, block));
 

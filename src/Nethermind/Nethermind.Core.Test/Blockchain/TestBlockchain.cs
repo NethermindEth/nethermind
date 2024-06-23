@@ -362,7 +362,7 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
 
-        if (SpecProvider.GenesisSpec.IsEip6110Enabled || SpecProvider.GenesisSpec.IsEip7002Enabled || SpecProvider.GenesisSpec.IsEip7251Enabled)
+        if (SpecProvider.GenesisSpec.RequestsEnabled)
         {
             genesisBlockBuilder.WithConsensusRequests(0);
         }

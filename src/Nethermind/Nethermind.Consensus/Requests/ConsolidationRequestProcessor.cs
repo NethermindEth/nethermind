@@ -25,7 +25,7 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
 
     public IEnumerable<ConsolidationRequest> ReadConsolidationRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
-        if (!spec.IsEip7251Enabled)
+        if (!spec.ConsolidationRequestsEnabled)
             yield break;
 
         Address eip7251Account = spec.Eip7251ContractAddress;

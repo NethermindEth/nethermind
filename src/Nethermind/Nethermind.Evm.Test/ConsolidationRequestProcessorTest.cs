@@ -72,7 +72,7 @@ public class ConsolidationRequestProcessorTests
     {
 
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip7251Enabled.Returns(true);
+        spec.ConsolidationRequestsEnabled.Returns(true);
         spec.Eip7251ContractAddress.Returns(eip7251Account);
 
         Block block = Build.A.Block.TestObject;

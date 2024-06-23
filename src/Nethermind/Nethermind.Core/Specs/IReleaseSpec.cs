@@ -412,6 +412,6 @@ namespace Nethermind.Core.Specs
 
         bool AuthCallsEnabled => IsEip3074Enabled;
 
-        public bool ConsensusRequestsEnabled => WithdrawalRequestsEnabled || DepositsEnabled;
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }

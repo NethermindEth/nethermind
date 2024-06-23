@@ -232,7 +232,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return ValidationResult.Fail;
         }
 
-        if (spec.ConsensusRequestsEnabled)
+        if (spec.RequestsEnabled)
         {
             error = "ExecutionPayloadV4 expected";
             return ValidationResult.Fail;
