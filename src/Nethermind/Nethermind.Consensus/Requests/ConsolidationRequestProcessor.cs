@@ -19,7 +19,7 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Requests;
 
 // https://eips.ethereum.org/EIPS/eip-7251#block-processing
-public class ConsolidationRequestsProcessor(ITransactionProcessor transactionProcessor) : IConsolidationRequestsProcessor
+public class ConsolidationRequestsProcessor(ITransactionProcessor transactionProcessor)
 {
     private const long GasLimit = 30_000_000L;
 
