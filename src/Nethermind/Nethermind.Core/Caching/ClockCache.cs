@@ -50,8 +50,6 @@ namespace Nethermind.Core.Caching
 
         public bool TryGet(TKey key, out TValue value)
         {
-            using var lockRelease = _lock.Acquire();
-
             if (_cacheMap.TryGetValue(key, out LruCacheItem? ov))
             {
                 MarkAccessed(ov.Offset);
