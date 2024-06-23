@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
@@ -13,7 +13,7 @@ namespace Nethermind.Network.Discovery;
 /// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public class DiscoveryConnectionsPool: IConnectionsPool
+public class DiscoveryConnectionsPool : IConnectionsPool
 {
     private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;

@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
@@ -39,7 +39,7 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
         if (ctx.HasDiscoveryMessageVersion())
             return; // Already handled by previous protocol version
 
-        var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint) msg.Sender);
+        var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
 
         // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
         Task.Factory.StartNew(
