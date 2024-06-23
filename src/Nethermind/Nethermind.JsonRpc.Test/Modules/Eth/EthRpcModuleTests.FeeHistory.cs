@@ -108,7 +108,7 @@ public partial class EthRpcModuleTests
 
             yield return new TestCaseData(new ulong?[] { 49152, 1 }, new ulong?[] { 0, 49152 })
             {
-                TestName = "Blocks with arbitary values",
+                TestName = "Blocks with arbitrary values",
                 ExpectedResult = (new UInt256?[] { 1, 1, 1 }, new double?[] { 0.0, 0.0625 })
             };
         }
