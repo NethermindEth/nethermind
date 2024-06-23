@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
 
@@ -20,6 +22,18 @@
 
   <ItemGroup>
     <Content Include="kzg_trusted_setup.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="runtimes/osx-arm64/native/libic.dylib" Pack="true" PackagePath="runtimes/osx-arm64/native/libic.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes/osx-x64/native/libic.dylib" Pack="true" PackagePath="runtimes/osx-x64/native/libic.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+     <Content Include="runtimes/win-x64/native/ic.dll" Pack="true" PackagePath="runtimes/win-x64/native/eth_pairings.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
