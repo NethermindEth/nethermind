@@ -9,12 +9,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
 
-using Cache = Nethermind.Core.Caching.LruCacheLowObject<Nethermind.Core.AddressAsKey, Nethermind.Core.Account>;
+using Cache = Nethermind.Core.Caching.ClockCache<Nethermind.Core.AddressAsKey, Nethermind.Core.Account>;
 
 namespace Nethermind.Core.Test.Caching
 {
     [TestFixture]
-    public class LruCacheLowObjectTests
+    public class ClockCacheTests
     {
         private static Cache Create()
         {
@@ -275,7 +275,7 @@ namespace Nethermind.Core.Test.Caching
             int itemsToKeep = 10;
             int iterations = 40;
 
-            LruCacheLowObject<int, int> cache = new(maxCapacity, "test");
+            ClockCache<int, int> cache = new(maxCapacity, "test");
 
             for (int i = 0; i < iterations; i++)
             {

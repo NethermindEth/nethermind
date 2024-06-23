@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
@@ -12,7 +11,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Caching
 {
     [TestFixture]
-    public class LruKeyCacheNonConcurrentTests
+    public class ClockKeyCacheNonConcurrentTests
     {
         private const int Capacity = 16;
 
@@ -32,7 +31,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void At_capacity()
         {
-            LruKeyCacheNonConcurrent<Address> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity; i++)
             {
                 cache.Set(_addresses[i]).Should().BeTrue();
@@ -44,7 +43,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Can_reset()
         {
-            LruKeyCacheNonConcurrent<Address> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             cache.Set(_addresses[0]).Should().BeTrue();
             cache.Set(_addresses[0]).Should().BeFalse();
             cache.Get(_addresses[0]).Should().BeTrue();
@@ -53,14 +52,14 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Can_ask_before_first_set()
         {
-            LruKeyCacheNonConcurrent<Address> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             cache.Get(_addresses[0]).Should().BeFalse();
         }
 
         [Test]
         public void Can_clear()
         {
-            LruKeyCacheNonConcurrent<Address> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             cache.Set(_addresses[0]).Should().BeTrue();
             cache.Clear();
             cache.Get(_addresses[0]).Should().BeFalse();
@@ -71,7 +70,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity()
         {
-            LruKeyCacheNonConcurrent<Address> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity * 2; i++)
             {
                 cache.Set(_addresses[i]);
@@ -91,7 +90,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity_lru()
         {
-            LruKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity * 2; i++)
             {
                 for (int ii = 0; ii < Capacity / 2; ii++)
@@ -106,7 +105,7 @@ namespace Nethermind.Core.Test.Caching
         public void Beyond_capacity_lru_check()
         {
             Random random = new();
-            LruKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             for (var iter = 0; iter < Capacity; iter++)
             {
                 for (int ii = 0; ii < Capacity; ii++)
@@ -173,7 +172,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Can_delete()
         {
-            LruKeyCacheNonConcurrent<Address> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
             cache.Set(_addresses[0]).Should().BeTrue();
             cache.Delete(_addresses[0]);
             cache.Get(_addresses[0]).Should().BeFalse();
