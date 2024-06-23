@@ -36,7 +36,6 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IVirtualMachine VirtualMachine { get; private init; }
         private readonly ICodeInfoRepository _codeInfoRepository;
 
-        private readonly AuthorizationListDecoder _authorizationListDecoder = new();
         private readonly AuthorizedCodeInfoRepository _authorizedCodeInfoRepository;
 
         [Flags]
@@ -86,7 +85,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-            _authorizedCodeInfoRepository = new(codeInfoRepository);
+            _authorizedCodeInfoRepository = new(codeInfoRepository, specProvider.ChainId, Logger);
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -137,7 +136,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-                BuildAuthorizedCodeCache(tx.AuthorizationList, _authorizedCodeInfoRepository, spec);
+                _authorizedCodeInfoRepository.BuildAuthorizedCodeFromAuthorizations(WorldState, tx.AuthorizationList, spec);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _authorizedCodeInfoRepository);
 
@@ -145,7 +144,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
-            _authorizedCodeInfoRepository.ClearAuthorizations();
+            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
+                _authorizedCodeInfoRepository.ClearAuthorizations();
 
             // Finalize
             if (restore)
@@ -571,48 +571,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate && !tx.IsSystem())
                 header.GasUsed += spentGas;
-        }
-        /// <summary>
-        /// eip-7702
-        /// Build a cache from transaction authorization_list authorized by signature.  
-        /// </summary>
-        /// <param name="state"></param>
-        /// <param name="authorizations"></param>
-        /// <param name="spec"></param>
-        /// <exception cref="RlpException"></exception>
-        private void BuildAuthorizedCodeCache(AuthorizationTuple[] authorizations, AuthorizedCodeInfoRepository authorizedCache, IReleaseSpec spec)
-        {
-            authorizedCache.ClearAuthorizations();
-
-            Span<byte> encoded = stackalloc byte[128];
-            encoded[0] = Eip7702Constants.Magic;
-            //TODO optimize
-            //TODO try parallel sig recovery
-            foreach (AuthorizationTuple authTuple in authorizations)
-            {
-                if (authTuple.ChainId != 0 && SpecProvider.ChainId != authTuple.ChainId)
-                {
-                    if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because chain id ({authTuple.ChainId}) does not match.");
-                    continue;
-                }
-                RlpStream stream = _authorizationListDecoder.EncodeForCommitMessage(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
-                stream.Data.AsSpan().CopyTo(encoded.Slice(1));
-                Address authority = Ecdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
-
-                CodeInfo authorityCodeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, authority, spec);
-                if (authorityCodeInfo.MachineCode.Length > 0)
-                {
-                    if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) has code deployed.");
-                    continue;
-                }
-                if (authTuple.Nonce != null && WorldState.GetNonce(authority) != authTuple.Nonce)
-                {
-                    if (Logger.IsDebug) Logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) nonce ({authTuple.Nonce}) does not match.");
-                    continue;
-                }
-                //TODO should we do insert if code is empty?
-                authorizedCache.CopyCodeAndOverwrite(WorldState, authTuple.CodeAddress, authority, spec);
-            }
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
