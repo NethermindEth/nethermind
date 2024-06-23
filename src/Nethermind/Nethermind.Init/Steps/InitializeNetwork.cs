@@ -3,9 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Transport.Bootstrapping;
+using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -266,10 +271,37 @@ public class InitializeNetwork : IStep
         }
 
         if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
-        _api.DiscoveryApp.Start();
-        _api.DiscoveryV5App?.Start();
+        _ = BootstrapDiscovery();
         if (_logger.IsDebug) _logger.Debug("Discovery process started.");
         return Task.CompletedTask;
+    }
+
+    private async Task BootstrapDiscovery()
+    {
+        Bootstrap bootstrap = new();
+        bootstrap.Group(new MultithreadEventLoopGroup(1));
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            bootstrap.ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork));
+        else
+            bootstrap.Channel<SocketDatagramChannel>();
+
+        IDiscoveryApp? discoveryApp = _api.DiscoveryApp;
+        IDiscoveryApp? discoveryV5App = _api.DiscoveryV5App;
+        bool isV4Enabled = discoveryApp != null && _networkConfig.DiscoveryPort > 0;
+        bool isV5Enabled = discoveryV5App != null && _networkConfig.DiscoveryV5Port > 0;
+
+        if (isV4Enabled) bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(discoveryApp!.InitializeChannel));
+        if (isV5Enabled) bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(discoveryV5App!.InitializeChannel));
+
+        if (isV4Enabled || isV5Enabled)
+        {
+            var noMatchHandler = new NoVersionMatchDiscoveryHandler(_logger);
+            bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(noMatchHandler.Add));
+        }
+
+        if (isV4Enabled) await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
+        if (isV5Enabled) await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryV5Port);
     }
 
     private void StartPeer()
@@ -307,8 +339,25 @@ public class InitializeNetwork : IStep
         IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
 
         SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
-        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
 
+        _api.DiscoveryConnections = new DiscoveryConnectionsPool(_logger, _networkConfig, discoveryConfig);
+
+        // TODO should port checks or separate bool values be used here?
+        if (_networkConfig.DiscoveryV5Port > 0)
+        {
+            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
+                "EnrDiscoveryDB",
+                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
+                _api.LogManager);
+
+            _api.DiscoveryV5App = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
+            _api.DiscoveryV5App.Initialize(_api.NodeKey.PublicKey);
+        }
+
+        if (_networkConfig.DiscoveryPort <= 0)
+            return;
+
+        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
         IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
             _api.MessageSerializationService,
@@ -367,18 +416,6 @@ public class InitializeNetwork : IStep
             discoveryConfig,
             _api.Timestamper,
             _api.LogManager);
-
-        if (discoveryConfig.Discv5Enabled)
-        {
-            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
-                "EnrDiscoveryDB",
-                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
-                _api.LogManager);
-
-            _api.DiscoveryApp = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
-            _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
-            return;
-        }
 
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
     }

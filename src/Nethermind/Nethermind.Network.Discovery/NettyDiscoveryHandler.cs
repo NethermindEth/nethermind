@@ -7,7 +7,6 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
-using Lantern.Discv5.WireProtocol.Packet;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -17,27 +16,26 @@ namespace Nethermind.Network.Discovery;
 
 public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMsgSender
 {
+    private const int ProtocolVersion = 4;
+
     private readonly ILogger _logger;
     private readonly IDiscoveryManager _discoveryManager;
     private readonly IDatagramChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
-    private readonly IPacketManager? _packetManagerV5;
 
     public NettyDiscoveryHandler(
         IDiscoveryManager? discoveryManager,
         IDatagramChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
-        ILogManager? logManager,
-        IPacketManager? packetManagerV5)
+        ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _packetManagerV5 = packetManagerV5;
     }
 
     public override void ChannelActive(IChannelHandlerContext context)
@@ -139,6 +137,8 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
         DiscoveryMsg msg;
+
+        ctx.SetMessageVersion(ProtocolVersion);
 
         try
         {

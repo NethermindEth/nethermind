@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Api;
 using System.Collections.Concurrent;
 using DotNetty.Transport.Channels.Sockets;
-using Lantern.Discv5.WireProtocol.Packet;
 using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Network.Discovery;
@@ -40,6 +39,7 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly SimpleFilePublicKeyDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
+    private readonly IServiceProvider _serviceProvider;
 
     public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
@@ -102,12 +102,10 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithEnrBuilder(enrBuilder)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true));
 
-        discv5Builder.Build();
-        services.AddSingleton<IUdpConnection, NettySendOnlyConnection>();
-
-        IServiceProvider serviceProvider = services.BuildServiceProvider();
-        _discv5Protocol = serviceProvider.GetRequiredService<IDiscv5Protocol>();
-
+        discv5Builder.Build(); // Force-add default services
+        NettyDiscoveryV5Handler.Register(services); // Override required services
+        _serviceProvider = services.BuildServiceProvider();
+        _discv5Protocol = _serviceProvider.GetRequiredService<IDiscv5Protocol>();
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 
@@ -186,8 +184,11 @@ public class DiscoveryV5App : IDiscoveryApp
     public event EventHandler<NodeEventArgs>? NodeAdded;
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
-    public void Initialize(PublicKey masterPublicKey)
+    public void Initialize(PublicKey masterPublicKey) { }
+
+    public void InitializeChannel(IDatagramChannel channel)
     {
+        _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>().InitializeChannel(channel);
     }
 
     public void Start()

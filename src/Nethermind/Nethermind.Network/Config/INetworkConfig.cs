@@ -50,6 +50,9 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = $"The UDP port number for incoming discovery connections. It's recommended to keep it the same as the TCP port (`{nameof(P2PPort)}`) because other values have not been tested yet.", DefaultValue = "30303")]
     int DiscoveryPort { get; set; }
 
+    [ConfigItem(Description = $"The UDP port number for incoming discovery V5 connections. It's recommended to keep it the same as the TCP port (`{nameof(P2PPort)}`) because other values have not been tested yet.", DefaultValue = "30303")]
+    int DiscoveryV5Port { get; set; }
+
     [ConfigItem(Description = "The TCP port for incoming P2P connections.", DefaultValue = "30303")]
     int P2PPort { get; set; }
 
