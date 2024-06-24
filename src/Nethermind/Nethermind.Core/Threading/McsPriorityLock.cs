@@ -43,8 +43,8 @@ public class McsPriorityLock
     public McsLock.Disposable Acquire()
     {
         // Check for reentrancy.
-        if (_coreLock._node.Value == _coreLock._currentLockHolder)
-            ThrowInvalidOperationException();
+        //if (_coreLock._node.Value == _coreLock._currentLockHolder)
+        //    ThrowInvalidOperationException();
 
         var isPriority = Thread.CurrentThread.Priority > ThreadPriority.Normal;
         if (!isPriority)
@@ -53,12 +53,12 @@ public class McsPriorityLock
 
         return _coreLock.Acquire();
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowInvalidOperationException()
-        {
-            throw new InvalidOperationException("Lock is not reentrant");
-        }
+        //[DoesNotReturn]
+        //[StackTraceHidden]
+        //static void ThrowInvalidOperationException()
+        //{
+        //    throw new InvalidOperationException("Lock is not reentrant");
+        //}
     }
 
     private McsLock.Disposable NonPriorityAcquire()
