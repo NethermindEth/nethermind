@@ -25,7 +25,7 @@ public class ShutterP2P(
     ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly Channel<byte[]> _msgQueue = Channel.CreateUnbounded<byte[]>();
+    private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
     private PubsubRouter? _router;
     private ServiceProvider? _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
