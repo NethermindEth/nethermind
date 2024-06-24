@@ -109,7 +109,7 @@ namespace Ethereum.Test.Base
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
-            if (spec is Cancun) KzgPolynomialCommitments.InitializeAsync();
+            if (spec is Cancun) KzgPolynomialCommitments.InitializeAsync().Wait();
 
             if (test.Transaction.ChainId is null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
