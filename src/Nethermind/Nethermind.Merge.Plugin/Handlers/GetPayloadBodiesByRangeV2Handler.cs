@@ -49,7 +49,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 
             if (consensusRequests is not null)
             {
-                (int depositCount, int withdrawalRequestCount , int consolidationRequestCount) = consensusRequests.GetTypeCounts();
+                (int depositCount, int withdrawalRequestCount, int consolidationRequestCount) = consensusRequests.GetTypeCounts();
 
                 result.DepositRequests = new Deposit[depositCount];
                 result.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
