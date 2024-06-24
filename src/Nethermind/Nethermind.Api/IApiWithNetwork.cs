@@ -16,8 +16,6 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
-using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Api
 {

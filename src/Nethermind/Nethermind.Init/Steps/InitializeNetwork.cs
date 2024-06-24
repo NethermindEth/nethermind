@@ -294,12 +294,6 @@ public class InitializeNetwork : IStep
         if (isV4Enabled) bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(discoveryApp!.InitializeChannel));
         if (isV5Enabled) bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(discoveryV5App!.InitializeChannel));
 
-        if (isV4Enabled || isV5Enabled)
-        {
-            var noMatchHandler = new NoVersionMatchDiscoveryHandler(_logger);
-            bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(noMatchHandler.Add));
-        }
-
         if (isV4Enabled) await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
         if (isV5Enabled) await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryV5Port);
     }
