@@ -224,7 +224,7 @@ public class McsLock
         /// </summary>
         public ThreadNode? Next = null;
     }
-    
+
     [StructLayout(LayoutKind.Explicit, Size = 128)]
     internal struct PaddedNode
     {
