@@ -28,10 +28,10 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
 
     public AuthorizedCodeInfoRepository(ulong chainId, ILogger? logger = null)
         : this(new CodeInfoRepository(), chainId, logger) { }
-    public AuthorizedCodeInfoRepository(ICodeInfoRepository codeInfoRepository, ulong _chainId, ILogger? logger = null)
+    public AuthorizedCodeInfoRepository(ICodeInfoRepository codeInfoRepository, ulong chainId, ILogger? logger = null)
     {
         this._codeInfoRepository = codeInfoRepository;
-        this._chainId = _chainId;
+        this._chainId = chainId;
         _ethereumEcdsa = new EthereumEcdsa(this._chainId, NullLogManager.Instance);
         this._logger = logger ?? NullLogger.Instance;
     }
@@ -71,7 +71,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     /// <param name="spec"></param>
     /// <exception cref="RlpException"></exception>
     [SkipLocalsInit]
-    public void BuildAuthorizedCodeFromAuthorizations(
+    public void InsertFromAuthorizations(
         IWorldState worldState,
         AuthorizationTuple[] authorizations,
         IReleaseSpec spec)

@@ -136,7 +136,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-                _authorizedCodeInfoRepository.BuildAuthorizedCodeFromAuthorizations(WorldState, tx.AuthorizationList, spec);
+                _authorizedCodeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _authorizedCodeInfoRepository);
 
