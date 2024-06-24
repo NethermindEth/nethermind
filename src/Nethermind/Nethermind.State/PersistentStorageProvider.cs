@@ -46,17 +46,19 @@ namespace Nethermind.State
         /// Manages persistent storage allowing for snapshotting and restoring
         /// Persists data to ITrieStore
         /// </summary>
-        public PersistentStorageProvider(ITrieStore? trieStore,
-            StateProvider? stateProvider,
-            ILogManager? logManager,
-            IStorageTreeFactory? storageTreeFactory = null,
-            ConcurrentDictionary<StorageCell, byte[]>? preBlockCache = null) : base(logManager)
+        public PersistentStorageProvider(ITrieStore trieStore,
+            StateProvider stateProvider,
+            ILogManager logManager,
+            IStorageTreeFactory? storageTreeFactory,
+            ConcurrentDictionary<StorageCell, byte[]>? preBlockCache,
+            bool populatePreBlockCache) : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
             _preBlockCache = preBlockCache;
+            _populatePreBlockCache = populatePreBlockCache;
             _loadFromTree = storageCell =>
             {
                 StorageTree tree = GetOrCreateStorage(storageCell.Address);
@@ -66,6 +68,7 @@ namespace Nethermind.State
         }
 
         public Hash256 StateRoot { get; set; } = null!;
+        private readonly bool _populatePreBlockCache;
 
         /// <summary>
         /// Reset the storage state
@@ -368,17 +371,9 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell.Index, out exists);
             if (!exists)
             {
-                long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
-
-                value = _preBlockCache is not null
-                    ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
-                    : _loadFromTree(storageCell);
-
-                if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
-                {
-                    // Read from Concurrent Cache
-                    Db.Metrics.IncrementStorageTreeCache();
-                }
+                value = !_populatePreBlockCache ?
+                    LoadFromTreeReadPreWarmCache(in storageCell) :
+                    LoadFromTreePopulatePrewarmCache(in storageCell);
             }
             else
             {
@@ -386,6 +381,35 @@ namespace Nethermind.State
             }
 
             if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
+            return value;
+        }
+
+        private byte[] LoadFromTreePopulatePrewarmCache(in StorageCell storageCell)
+        {
+            long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
+
+            byte[] value = _preBlockCache is not null
+                ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
+                : _loadFromTree(storageCell);
+
+            if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
+            {
+                // Read from Concurrent Cache
+                Db.Metrics.IncrementStorageTreeCache();
+            }
+            return value;
+        }
+
+        private byte[] LoadFromTreeReadPreWarmCache(in StorageCell storageCell)
+        {
+            if (_preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
+            {
+                Db.Metrics.IncrementStorageTreeCache();
+            }
+            else
+            {
+                value = _loadFromTree(storageCell);
+            }
             return value;
         }
 
