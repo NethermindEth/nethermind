@@ -3,6 +3,7 @@
     "network": "holesky",
     "cl-client": "lodestar:chainsafe/lodestar:latest",
     "el-client": "nethermind:nethermindeth/nethermind:master",
+    "checkpoint-sync-url": "https://holesky.beaconstate.ethstaker.cc/",
     "timeout": 180,
     "agent": "g6-standard-6"
   },
@@ -10,6 +11,7 @@
     "network": "chiado",
     "cl-client": "lodestar:chainsafe/lodestar:latest",
     "el-client": "nethermind:nethermindeth/nethermind:master",
+    "checkpoint-sync-url": "http://139.144.26.89:4000/",
     "timeout": 180,
     "agent": "g6-standard-6"
   },
@@ -17,6 +19,7 @@
     "network": "sepolia",
     "cl-client": "lodestar:chainsafe/lodestar:latest",
     "el-client": "nethermind:nethermindeth/nethermind:master",
+    "checkpoint-sync-url": "https://beaconstate-sepolia.chainsafe.io",
     "timeout": 180,
     "agent": "g6-standard-6"
   },
@@ -24,6 +27,7 @@
     "network": "gnosis",
     "cl-client": "lodestar:chainsafe/lodestar:latest",
     "el-client": "nethermind:nethermindeth/nethermind:master",
+    "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
     "timeout": 180,
     "agent": "g6-standard-6"
   },
@@ -31,6 +35,7 @@
     "network": "mainnet",
     "cl-client": "lodestar:chainsafe/lodestar:latest",
     "el-client": "nethermind:nethermindeth/nethermind:master",
+    "checkpoint-sync-url": "https://mainnet.checkpoint.sigp.io",
     "timeout": 180,
     "agent": "g6-standard-8"
   }
