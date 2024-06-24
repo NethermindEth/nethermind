@@ -201,10 +201,3 @@ jobs:
               --build-arg COMMIT_HASH=$GITHUB_SHA \
               . --push
           done
-      - name: Trigger DAppNode build
-        if: needs.build.outputs.prerelease == 'false'
-        run: |
-          curl -s -X POST https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches \
-            -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" \
-            -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' \
-            -u "${{ steps.gh-app.outputs.token }}"
