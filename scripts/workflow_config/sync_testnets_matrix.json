@@ -1,0 +1,37 @@
+[
+  {
+    "network": "holesky",
+    "cl-client": "lodestar:chainsafe/lodestar:latest",
+    "el-client": "nethermind:nethermindeth/nethermind:master",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "chiado",
+    "cl-client": "lodestar:chainsafe/lodestar:latest",
+    "el-client": "nethermind:nethermindeth/nethermind:master",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "sepolia",
+    "cl-client": "lodestar:chainsafe/lodestar:latest",
+    "el-client": "nethermind:nethermindeth/nethermind:master",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "gnosis",
+    "cl-client": "lodestar:chainsafe/lodestar:latest",
+    "el-client": "nethermind:nethermindeth/nethermind:master",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "mainnet",
+    "cl-client": "lodestar:chainsafe/lodestar:latest",
+    "el-client": "nethermind:nethermindeth/nethermind:master",
+    "timeout": 180,
+    "agent": "g6-standard-8"
+  }
+]

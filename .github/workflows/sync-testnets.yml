@@ -1,4 +1,4 @@
-name: Sync Testnets
+name: Sync Supported Chains
 
 on:
   workflow_run:
@@ -13,31 +13,65 @@ env:
   TERM: xterm
 
 jobs:
-  testnet-sync:
+  setup_matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: nethermind
+      - name: Set Matrix
+        id: set-matrix
+        run: echo "matrix=$(jq -c . nethermind/scripts/workflow_config/sync_testnets_matrix.json)" >> $GITHUB_OUTPUT
+
+  create_a_runner:
+    needs: [setup-matrix]
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - network: "holesky"
-            checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
-            cl-client: "lodestar:chainsafe/lodestar:latest"
-            el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-80gb
-          - network: "chiado"
-            checkpoint-sync-url: "http://139.144.26.89:4000/"
-            cl-client: "lodestar:chainsafe/lodestar:latest"
-            el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-80gb
-          - network: "sepolia"
-            checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
-            cl-client: "lodestar:chainsafe/lodestar:latest"
-            el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-160gb
-    name: "Run sync of ${{ matrix.network }} testnet"
-    runs-on: ${{ matrix.agent }}
+        client-network: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    runs-on: ubuntu-latest
+    outputs:
+      runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
+      machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+        
+      - name: Create a Runner
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ steps.gh-app.outputs.token }}"
+          action: "create"
+          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.client }}-${{ github.run_id }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          machine_type: "${{ matrix.client-network.agent }}"
+          image: "linode/ubuntu24.04"
+          tags: "core, self-hosted, dynamic"
+  
+  sync-chain:
+    needs: [setup-matrix, create_a_runner]
+    strategy:
+      fail-fast: false
+      matrix:
+        client-network: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    name: "Run sync of ${{ matrix.network }} chain"
+    runs-on: ${{ matrix.client-network.network }}-${{ matrix.client-network.client }}-${{ github.run_id }}
+    timeout-minutes: ${{ matrix.client-network.timeout }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           clean: true
 
@@ -149,12 +183,29 @@ jobs:
         run: |
           docker logs sedge-consensus-client      
 
-      - name: Clean Up
-        if: always()
-        run: |
-          cd sedge
-          docker compose stop
-          cd ..
-          sudo rm -rf sedge
-          sudo rm -rf $GITHUB_WORKSPACE/sedge
-          docker system prune -a -f --volumes
+  destroy_runner:
+    needs: [setup-matrix, create_a_runner, sync-chain]
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        client-network: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    runs-on: ubuntu-latest
+    steps:    
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Destroy a Runner
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ steps.gh-app.outputs.token }}"
+          action: "destroy"
+          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.client }}-${{ github.run_id }}
+          search_phrase: ${{ matrix.client-network.network }}-${{ matrix.client-network.client }}-${{ github.run_id }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
