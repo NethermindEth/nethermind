@@ -160,16 +160,9 @@ public class ShutterTxSource : ITxSource
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
         sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
 
-        using ArrayPoolList<int> sortedKeyIndexes = new(sequencedTransactions.Count);
-        int keyIndex = 1;
-        foreach (SequencedTransaction transaction in sortedIndexes)
-        {
-            sortedKeyIndexes[transaction.Index] = keyIndex++;
-        }
-
         return sequencedTransactions
             .AsParallel()
-            .Select((t, i) => DecryptSequencedTransaction(t, decryptionKeys.Keys[sortedKeyIndexes[i]]))
+            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys.Keys[sortedIndexes[i].Index + 1]))
             .OfType<Transaction>()
             .ToArray();
     }
