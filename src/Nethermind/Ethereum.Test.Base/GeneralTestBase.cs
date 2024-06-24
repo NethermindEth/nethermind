@@ -25,6 +25,7 @@ using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base
 {
@@ -32,7 +33,7 @@ namespace Ethereum.Test.Base
     {
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
-        private static UInt256 _defaultBaseFeeForStateTest = 0xA;
+        private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
         private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
 
         [SetUp]
@@ -40,7 +41,10 @@ namespace Ethereum.Test.Base
         {
         }
 
-        protected void Setup(ILogManager logManager)
+        [OneTimeSetUp]
+        public Task OneTimeSetUp() => KzgPolynomialCommitments.InitializeAsync();
+
+        protected static void Setup(ILogManager logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
@@ -95,7 +99,7 @@ namespace Ethereum.Test.Base
                 test.CurrentNumber,
                 test.CurrentGasLimit,
                 test.CurrentTimestamp,
-                Array.Empty<byte>());
+                []);
             header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
             header.StateRoot = test.PostHash;
             header.Hash = header.CalculateHash();
@@ -109,8 +113,6 @@ namespace Ethereum.Test.Base
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
-            if (spec is Cancun) KzgPolynomialCommitments.InitializeAsync().Wait();
-
             if (test.Transaction.ChainId is null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
@@ -123,7 +125,7 @@ namespace Ethereum.Test.Base
                     number: test.CurrentNumber - 1,
                     gasLimit: test.CurrentGasLimit,
                     timestamp: test.CurrentTimestamp,
-                    extraData: Array.Empty<byte>()
+                    extraData: []
                 )
                 {
                     BlobGasUsed = (ulong)test.ParentBlobGasUsed,
@@ -203,7 +205,7 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
-            List<string> differences = new();
+            List<string> differences = [];
             if (test.PostHash != stateProvider.StateRoot)
             {
                 differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
