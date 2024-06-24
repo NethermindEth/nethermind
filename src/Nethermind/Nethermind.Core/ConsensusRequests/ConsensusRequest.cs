@@ -28,9 +28,6 @@ public class ConsensusRequest
     public byte[]? PubKeyField { get; set; }
 
     [JsonIgnore]
-    public byte[]? TargetPubkeyField { get; set; }
-
-    [JsonIgnore]
     public byte[]? WithdrawalCredentialsField { get; protected set; }
 
     [JsonIgnore]

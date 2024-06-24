@@ -29,8 +29,8 @@ public class ConsolidationRequest : ConsensusRequest
 
     public byte[]? TargetPubkey
     {
-        get { return TargetPubkeyField; }
-        set { TargetPubkeyField = value; }
+        get { return WithdrawalCredentialsField; }
+        set { WithdrawalCredentialsField = value; }
     }
 
     public override string ToString() => ToString(string.Empty);
