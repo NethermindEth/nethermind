@@ -102,13 +102,12 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithEnrBuilder(enrBuilder)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true));
 
-        discv5Builder.Build(); // Force-add default services
         NettyDiscoveryV5Handler.Register(services); // Override required services
-        _serviceProvider = services.BuildServiceProvider();
-        _discv5Protocol = _serviceProvider.GetRequiredService<IDiscv5Protocol>();
+        _discv5Protocol = discv5Builder.Build();
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 
+        _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
     }
 
@@ -188,7 +187,9 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public void InitializeChannel(IDatagramChannel channel)
     {
-        _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>().InitializeChannel(channel);
+        var handler =_serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        handler.InitializeChannel(channel);
+        channel.Pipeline.AddLast(handler);
     }
 
     public void Start()

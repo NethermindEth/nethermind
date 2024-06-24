@@ -31,23 +31,21 @@ public class DiscoveryConnectionsPool : IConnectionsPool
 
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
     {
-        if (!_byPort.TryGetValue(port, out Task<IChannel>? task))
+        if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
+        _byPort.Add(port, task = bootstrap.BindAsync(_ip, port));
+
+        return await task.ContinueWith(t =>
         {
-            _byPort.Add(port, bootstrap.BindAsync(_ip, port).ContinueWith(t =>
+            if (t.IsFaulted)
             {
-                if (t.IsFaulted)
-                {
-                    _logger.Error(
-                        $"Error when establishing discovery connection on Address: {_ip}({_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort})",
-                        t.Exception
-                    );
-                }
+                _logger.Error(
+                    $"Error when establishing discovery connection on Address: {_ip}({_networkConfig.LocalIp}:{port})",
+                    t.Exception
+                );
+            }
 
-                return t.Result;
-            }));
-        }
-
-        return await _byPort[port];
+            return t.Result;
+        });
     }
 
     public async Task StopAsync()
