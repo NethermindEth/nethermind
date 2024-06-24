@@ -5,9 +5,12 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -17,6 +20,7 @@ namespace Nethermind.Consensus.Processing
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
         private readonly ISpecProvider _specProvider;
+        private readonly AuthorizationListDecoder _authorizationListDecoder = new ();
         private readonly ILogger _logger;
 
         /// <summary>
@@ -100,6 +104,40 @@ namespace Nethermind.Consensus.Processing
                     blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
 
                     if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
+                }
+            }
+
+            if (releaseSpec.IsAuthorizationListEnabled)
+            {
+                void RecoverAuthority(AuthorizationTuple tuple)
+                {
+                    RlpStream rlpStream = _authorizationListDecoder.EncodeForCommitMessage(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+                    tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(rlpStream.Data));
+                }
+
+                foreach (Transaction tx in block.Transactions.AsSpan())
+                {
+                    if (!tx.HasAuthorizationList)
+                    {
+                        continue;
+                    }
+
+                    if (tx.AuthorizationList.Length >= 4)
+                    {
+                        Parallel.ForEach(
+                        tx.AuthorizationList,
+                        tuple =>
+                        {
+                            RecoverAuthority(tuple);
+                        });
+                    }
+                    else
+                    {
+                        foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                        {
+                            RecoverAuthority(tuple);
+                        }
+                    }
                 }
             }
         }

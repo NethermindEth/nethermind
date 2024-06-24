@@ -32,6 +32,26 @@ namespace Nethermind.Evm.Test;
 public class AuthorizedCodeInfoRepositoryTests
 {
     [Test]
+    public void Benchmark()
+    {
+        MemDb stateDb = new();
+        TestSpecProvider specProvider = new (Prague.Instance);
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        WorldState stateProvider = new (trieStore, new MemDb(), LimboLogs.Instance);
+        CodeInfoRepository codeInfoRepository = new();
+        var spec = specProvider.GetSpec(MainnetSpecProvider.PragueActivation);
+
+        stateProvider.CreateAccount(TestItem.AddressB, 0);
+        codeInfoRepository.InsertCode(stateProvider, new ReadOnlyMemory<byte>([0x0]),TestItem.AddressB, spec);
+
+        AuthorizedCodeInfoRepository sut = new(codeInfoRepository, 1, NullLogger.Instance);
+        var tuples = Enumerable
+            .Range(0, 100)
+            .Select(i => CreateAuthorizationTuple(TestItem.PrivateKeys[i], 1, TestItem.AddressB, (UInt256)0)).ToArray();
+
+        sut.InsertFromAuthorizations(stateProvider, tuples, spec);
+    }
+    [Test]
     public void InsertFromAuthorizations_AuthorityTupleIsCorrect_CodeIsInserted()
     {
         PrivateKey authority = TestItem.PrivateKeyA;

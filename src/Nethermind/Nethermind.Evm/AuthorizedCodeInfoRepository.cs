@@ -70,7 +70,6 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     /// <param name="authorizations"></param>
     /// <param name="spec"></param>
     /// <exception cref="RlpException"></exception>
-    [SkipLocalsInit]
     public void InsertFromAuthorizations(
         IWorldState worldState,
         AuthorizationTuple[] authorizations,
