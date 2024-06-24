@@ -55,9 +55,10 @@ public class SequencerContract : Contract
                 .ToList();
             events = newEvents.Concat(events);
 
-            if (!newEvents.IsNullOrEmpty())
+            if (!logs.IsNullOrEmpty())
             {
-                TransactionSubmitted tx0 = newEvents.ElementAt(0);
+                TransactionSubmitted tx0 = ParseTransactionSubmitted(logs.ElementAt(0));
+                // if first transaction in chunk is before txPointer then don't search further
                 if (tx0.Eon < eon || tx0.TxIndex <= txPointer)
                 {
                     break;
