@@ -35,8 +35,6 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        if (ctx.HasDiscoveryMessageVersion()) return; // Already handled by previous protocol version
-
         var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint) msg.Sender);
         _inboundQueue.Writer.TryWrite(udpPacket);
     }
@@ -68,6 +66,6 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
     public void Close() => _inboundQueue.Writer.Complete();
 
     public static IServiceCollection Register(IServiceCollection services) => services
-        .AddSingleton<NettyDiscoveryV5Handler, NettyDiscoveryV5Handler>()
+        .AddSingleton<NettyDiscoveryV5Handler>()
         .AddSingleton<IUdpConnection>(p => p.GetRequiredService<NettyDiscoveryV5Handler>());
 }
