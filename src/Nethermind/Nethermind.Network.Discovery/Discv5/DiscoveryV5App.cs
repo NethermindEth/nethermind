@@ -274,8 +274,8 @@ public class DiscoveryV5App : IDiscoveryApp
             if (_api.PeerManager?.ActivePeers.Any() == true)
             {
             await Task.Delay(_discoveryConfig.DiscoveryInterval, _appShutdownSource.Token);
+            }
         }
-    }
     }
 
     public async Task StopAsync()
