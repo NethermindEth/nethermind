@@ -14,6 +14,7 @@ public interface ISequencerContract
     struct TransactionSubmitted
     {
         public ulong Eon;
+        public ulong TxIndex;
         public Bytes32 IdentityPrefix;
         public Address Sender;
         public byte[] EncryptedTransaction;

@@ -308,10 +308,8 @@ public class ShutterTxSource : ITxSource
 
     private List<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
     {
-        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon);
-        if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract for this eon.");
-
-        events = events.Skip((int)txPointer);
+        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer);
+        if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
         List<SequencedTransaction> txs = [];
         UInt256 totalGas = 0;

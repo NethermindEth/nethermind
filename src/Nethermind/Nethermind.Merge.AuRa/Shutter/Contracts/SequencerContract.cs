@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Filters;
@@ -13,41 +14,73 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
+using TransactionSubmitted = ISequencerContract.TransactionSubmitted;
+
 public class SequencerContract : Contract
 {
     private readonly ILogFinder _logFinder;
-    private readonly LogFilter _logFilter;
+    private readonly IFilterStore _filterStore;
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
+    private readonly long LogScanChunkSize = 16;
+    private readonly int LogScanCutoffChunks = 4;
 
-    public SequencerContract(string contractAddress, ILogFinder logFinder, IFilterStore filterStore)
-        : base(null, new(contractAddress), null)
+    public SequencerContract(string address, ILogFinder logFinder, IFilterStore filterStore)
+        : base(null, new(address), null)
     {
-        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
-        IEnumerable<object> topics = new List<object>() { _transactionSubmittedAbi.Signature.Hash };
+        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
         _logFinder = logFinder;
-        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, contractAddress, topics);
+        _filterStore = filterStore;
     }
 
-    private IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents()
+    public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer)
     {
-        IEnumerable<FilterLog> logs = _logFinder.FindLogs(_logFilter);
-        return logs.Select(log => ParseTransactionSubmitted(AbiEncoder.Decode(AbiEncodingStyle.None, _transactionSubmittedAbi.Signature, log.Data)));
+        IEnumerable<TransactionSubmitted> events = [];
+
+        IEnumerable<object> topics = new List<object>() { _transactionSubmittedAbi.Signature.Hash };
+        LogFilter logFilter;
+
+        BlockParameter end = BlockParameter.Latest;
+        BlockParameter start;
+
+        for (int i = 0; i < LogScanCutoffChunks; i++)
+        {
+            start = new(end.BlockNumber!.Value - LogScanChunkSize);
+            logFilter = _filterStore.CreateLogFilter(start, end, ContractAddress!, topics);;
+
+            IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter);
+            List<TransactionSubmitted> newEvents = logs
+                .AsParallel()
+                .Select(ParseTransactionSubmitted)
+                .Where(e => e.Eon == eon && e.TxIndex >= txPointer)
+                .ToList();
+            events = newEvents.Concat(events);
+
+            if (!newEvents.IsNullOrEmpty())
+            {
+                TransactionSubmitted tx0 = newEvents.ElementAt(0);
+                if (tx0.Eon < eon || tx0.TxIndex <= txPointer)
+                {
+                    break;
+                }
+            }
+
+            end = start;
+        }
+
+        return events;
     }
 
-    public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon)
+    private TransactionSubmitted ParseTransactionSubmitted(FilterLog log)
     {
-        return GetEvents().Where(e => e.Eon == eon);
-    }
-
-    private ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(object[] decodedEvent)
-    {
-        return new ISequencerContract.TransactionSubmitted()
+        object[] decodedEvent = AbiEncoder.Decode(AbiEncodingStyle.None, _transactionSubmittedAbi.Signature, log.Data);
+        return new TransactionSubmitted()
         {
             Eon = (ulong)decodedEvent[0],
-            IdentityPrefix = new Bytes32((byte[])decodedEvent[1]),
-            Sender = (Address)decodedEvent[2],
-            EncryptedTransaction = (byte[])decodedEvent[3],
-            GasLimit = (UInt256)decodedEvent[4]
+            TxIndex = (ulong)decodedEvent[1],
+            IdentityPrefix = new Bytes32((byte[])decodedEvent[2]),
+            Sender = (Address)decodedEvent[3],
+            EncryptedTransaction = (byte[])decodedEvent[4],
+            GasLimit = (UInt256)decodedEvent[5]
         };
     }
 }
