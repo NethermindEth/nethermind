@@ -54,7 +54,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "create"
-          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl-client }}-${{ github.run_id }}
+          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.client-network.agent }}"
           image: "linode/ubuntu24.04"
@@ -67,7 +67,7 @@ jobs:
       matrix:
         client-network: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     name: "Run sync of ${{ matrix.client-network.network }} chain"
-    runs-on: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl-client }}-${{ github.run_id }}
+    runs-on: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
     timeout-minutes: ${{ matrix.client-network.timeout }}
     steps:
       - name: Checkout repository
@@ -103,7 +103,7 @@ jobs:
           ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
           full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.client-network.network }} \
-          -c ${{ matrix.client-network.cl-client }} -e ${{ matrix.client-network.el-client }} \
+          -c ${{ matrix.client-network.cl }}:${{ matrix.client-network.cl_image }} -e ${{ matrix.client-network.el }}:${{ matrix.client-network.el_image }} \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
@@ -206,6 +206,6 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy"
-          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl-client }}-${{ github.run_id }}
-          search_phrase: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl-client }}-${{ github.run_id }}
+          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
+          search_phrase: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
