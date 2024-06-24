@@ -37,22 +37,23 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
             if (block is null)
             {
                 yield return null;
+                continue;
             }
 
             ExecutionPayloadBodyV2Result result = new(block!.Transactions, block.Withdrawals, null, null);
 
             ConsensusRequest[]? consensusRequests = block?.Requests;
 
-            (int depositCount, int withdrawalRequestCount) = block!.Requests.GetTypeCounts();
-
-            result.DepositRequests = new Deposit[depositCount];
-            result.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-
-            int depositIndex = 0;
-            int withdrawalRequestIndex = 0;
-
             if (consensusRequests is not null)
             {
+                (int depositCount, int withdrawalRequestCount) = consensusRequests.GetTypeCounts();
+
+                result.DepositRequests = new Deposit[depositCount];
+                result.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+
+                int depositIndex = 0;
+                int withdrawalRequestIndex = 0;
+
                 foreach (ConsensusRequest request in consensusRequests)
                 {
                     if (request.Type == ConsensusRequestsType.Deposit)
