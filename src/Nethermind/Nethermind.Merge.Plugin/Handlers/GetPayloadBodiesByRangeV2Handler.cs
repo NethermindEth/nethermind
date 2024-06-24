@@ -37,10 +37,22 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
         {
             Block? block = _blockTree.FindBlock(i);
 
+            if (block is null)
+            {
+                yield return null;
+            }
+
+            ExecutionPayloadBodyV2Result result = new(block!.Transactions, block.Withdrawals, null, null);
+
             ConsensusRequest[]? consensusRequests = block?.Requests;
 
-            List<Deposit> deposits = [];
-            List<WithdrawalRequest> withdrawalRequests = [];
+            (int depositCount, int withdrawalRequestCount) = block != null ? block.Requests.GetTypeCounts() : (0, 0);
+
+            result.DepositRequests = new Deposit[depositCount];
+            result.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+
+            int depositIndex = 0;
+            int withdrawalRequestIndex = 0;
 
             if (consensusRequests is not null)
             {
@@ -48,11 +60,11 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
                 {
                     if (request.Type == ConsensusRequestsType.Deposit)
                     {
-                        deposits.Add((Deposit)request);
+                        result.DepositRequests![depositIndex++] = (Deposit)request;
                     }
                     else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                     {
-                        withdrawalRequests.Add((WithdrawalRequest)request);
+                        result.WithdrawalRequests![withdrawalRequestIndex++] = (WithdrawalRequest)request;
                     }
                     else
                     {
@@ -60,13 +72,8 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
                         if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
                     }
                 }
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
-
             }
-            else
-            {
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, null, null);
-            }
+            yield return result;
         }
 
         yield break;
