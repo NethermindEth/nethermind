@@ -59,6 +59,8 @@ jobs:
           machine_type: "${{ matrix.client-network.agent }}"
           image: "linode/ubuntu24.04"
           tags: "core, self-hosted, dynamic"
+          organization: "NethermindEth"
+          repo_name: "nethermind"
   
   sync-chain:
     needs: [setup-matrix, create_a_runner]
@@ -209,3 +211,5 @@ jobs:
           runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
           search_phrase: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
