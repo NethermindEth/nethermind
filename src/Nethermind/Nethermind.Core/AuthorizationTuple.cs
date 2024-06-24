@@ -36,5 +36,8 @@ public class AuthorizationTuple
     public Address CodeAddress { get; }
     public UInt256? Nonce { get; }
     public Signature AuthoritySignature { get; }
+    /// <summary>
+    /// <see cref="Authority"/> may be recovered at a later point.
+    /// </summary>
     public Address? Authority { get; set; }
 }

@@ -47,7 +47,7 @@ public class AuthorizedCodeInfoRepositoryTests
         AuthorizedCodeInfoRepository sut = new(codeInfoRepository, 1, NullLogger.Instance);
         var tuples = Enumerable
             .Range(0, 100)
-            .Select(i => CreateAuthorizationTuple(TestItem.PrivateKeys[i], 1, TestItem.AddressB, (UInt256)0)).ToArray();
+            .Select(i =>CreateAuthorizationTuple(TestItem.PrivateKeys[i], 1, TestItem.AddressB, (UInt256)0)).ToArray<AuthorizationTuple>();
 
         sut.InsertFromAuthorizations(stateProvider, tuples, spec);
     }
@@ -149,6 +149,6 @@ public class AuthorizedCodeInfoRepositoryTests
         EthereumEcdsa ecdsa = new(1, new OneLoggerLogManager(NullLogger.Instance));
         Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
 
-        return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
+        return new AuthorizationTuple(chainId, codeAddress, nonce, sig, signer.Address);
     }
 }

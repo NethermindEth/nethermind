@@ -100,22 +100,22 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
 
         int contentLength = GetContentLength(item);
         stream.StartSequence(contentLength);
-        foreach (AuthorizationTuple setCode in item)
+        foreach (AuthorizationTuple tuple in item)
         {
-            stream.Encode(setCode.ChainId);
-            stream.Encode(setCode.CodeAddress ?? throw new RlpException($"Invalid tx {nameof(AuthorizationTuple)} format - address is null"));
-            if (setCode.Nonce != null)
+            stream.Encode(tuple.ChainId);
+            stream.Encode(tuple.CodeAddress ?? throw new RlpException($"Invalid tx {nameof(AuthorizationTuple)} format - address is null"));
+            if (tuple.Nonce != null)
             {
-                stream.StartSequence(Rlp.LengthOf(setCode.Nonce));
-                stream.Encode((UInt256)setCode.Nonce);
+                stream.StartSequence(Rlp.LengthOf(tuple.Nonce));
+                stream.Encode((UInt256)tuple.Nonce);
             }
             else
             {
                 stream.StartSequence(0);
             }
-            stream.Encode(setCode.AuthoritySignature.V);
-            stream.Encode(setCode.AuthoritySignature.R);
-            stream.Encode(setCode.AuthoritySignature.S);
+            stream.Encode(tuple.AuthoritySignature.V);
+            stream.Encode(tuple.AuthoritySignature.R);
+            stream.Encode(tuple.AuthoritySignature.S);
         }
     }
 

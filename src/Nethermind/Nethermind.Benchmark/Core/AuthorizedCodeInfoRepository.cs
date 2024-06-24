@@ -31,7 +31,6 @@ public class AuthorizedCodeInfoRepositoryBenchmark
 
     private AuthorizationTuple[] Tuples100;
     private AuthorizationTuple[] Tuples1k;
-    private AuthorizationTuple[] Tuples10k;
 
     private AuthorizedCodeInfoRepository sut;
     private static EthereumEcdsa _ethereumEcdsa;
@@ -52,18 +51,20 @@ public class AuthorizedCodeInfoRepositoryBenchmark
         var list = new List<AuthorizationTuple>();
         var rnd = new Random();
         var addressBuffer = new byte[20];
-        for (int i = 0; i < 10000; i++)
+        var keyBuffer = new byte[32];
+        for (int i = 0; i < 1000; i++)
         {
             rnd.NextBytes(addressBuffer);
+            rnd.NextBytes(keyBuffer);
+            var signer = new PrivateKey(keyBuffer);
             list.Add(CreateAuthorizationTuple(
-                TestItem.PrivateKeys[rnd.Next(TestItem.PrivateKeys.Length - 1)],
+                signer,
                 1,
                 new Address(addressBuffer),
                 1));
         }
         Tuples100 = list.Take(100).ToArray();
         Tuples1k = list.Take(1_000).ToArray();
-        Tuples10k = list.Take(10_000).ToArray();
 
         static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
         {
@@ -75,26 +76,26 @@ public class AuthorizedCodeInfoRepositoryBenchmark
 
             Signature sig = _ethereumEcdsa.Sign(signer, Keccak.Compute(code));
 
-            return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
+            return new AuthorizationTuple(chainId, codeAddress, nonce, sig, signer.Address);
         }
     }
 
     [Benchmark]
     public void Build100Tuples()
     {
-        sut.BuildAuthorizedCodeFromAuthorizations(_stateProvider, Tuples100, _spec);
+        sut.InsertFromAuthorizations(_stateProvider, Tuples100, _spec);
     }
     
     [Benchmark]
     public void Build1kTuples()
     {
-        sut.BuildAuthorizedCodeFromAuthorizations(_stateProvider, Tuples1k, _spec);
+        sut.InsertFromAuthorizations(_stateProvider, Tuples1k, _spec);
     }
 
     //[Benchmark]
     //public void Build10kTuples()
     //{
-    //    sut.BuildAuthorizedCodeFromAuthorizations(_stateProvider, Tuples10k, _spec);
+    //    sut.InsertFromAuthorizations(_stateProvider, Tuples10k, _spec);
     //}
 
 }
