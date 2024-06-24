@@ -133,17 +133,20 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-                _authorizedCodeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
+            if (spec.IsEip7702Enabled)
+            {
+                _authorizedCodeInfoRepository.ClearAuthorizations();
+                if (tx.HasAuthorizationList)
+                {
+                    _authorizedCodeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
+                }
+            }
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _authorizedCodeInfoRepository);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
-
-            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-                _authorizedCodeInfoRepository.ClearAuthorizations();
 
             // Finalize
             if (restore)
