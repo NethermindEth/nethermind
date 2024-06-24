@@ -44,13 +44,13 @@ public class NodeSerializerTests
         while (true)
         {
             _rand.NextBytes(c1);
-            c1Point = Banderwagon.FromBytesUncompressedUnchecked(c1);
+            c1Point = Banderwagon.FromBytesUncompressedUnchecked(c1, isBigEndian: false);
             if (c1Point.HasValue) break;
         }
         while (true)
         {
             _rand.NextBytes(c2);
-            c2Point = Banderwagon.FromBytesUncompressedUnchecked(c2);
+            c2Point = Banderwagon.FromBytesUncompressedUnchecked(c2, isBigEndian: false);
             if (c2Point.HasValue) break;
         }
         _rand.NextBytes(stem);
@@ -73,14 +73,14 @@ public class NodeSerializerTests
         while (true)
         {
             _rand.NextBytes(commitment);
-            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment);
+            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment, isBigEndian: false);
             if (internalCommitment.HasValue) break;
         }
 
         while (true)
         {
             _rand.NextBytes(c2);
-            c2Point = Banderwagon.FromBytesUncompressedUnchecked(c2);
+            c2Point = Banderwagon.FromBytesUncompressedUnchecked(c2, isBigEndian: false);
             if (c2Point.HasValue) break;
         }
         _rand.NextBytes(stem);
@@ -102,13 +102,13 @@ public class NodeSerializerTests
         while (true)
         {
             _rand.NextBytes(commitment);
-            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment);
+            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment, isBigEndian: false);
             if (internalCommitment.HasValue) break;
         }
         while (true)
         {
             _rand.NextBytes(c1);
-            c1Point = Banderwagon.FromBytesUncompressedUnchecked(c1);
+            c1Point = Banderwagon.FromBytesUncompressedUnchecked(c1, isBigEndian: false);
             if (c1Point.HasValue) break;
         }
         _rand.NextBytes(stem);
@@ -128,7 +128,7 @@ public class NodeSerializerTests
         while (true)
         {
             _rand.NextBytes(commitment);
-            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment);
+            internalCommitment = Banderwagon.FromBytesUncompressedUnchecked(commitment, isBigEndian: false);
             if (internalCommitment.HasValue) break;
         }
         _rand.NextBytes(stem);
