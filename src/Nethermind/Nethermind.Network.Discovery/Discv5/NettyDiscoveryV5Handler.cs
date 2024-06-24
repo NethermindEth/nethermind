@@ -35,7 +35,7 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint) msg.Sender);
+        var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
         _inboundQueue.Writer.TryWrite(udpPacket);
     }
 

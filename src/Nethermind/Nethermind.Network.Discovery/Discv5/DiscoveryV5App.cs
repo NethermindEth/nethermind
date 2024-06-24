@@ -187,7 +187,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public void InitializeChannel(IDatagramChannel channel)
     {
-        var handler =_serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
         channel.Pipeline.AddLast(handler);
     }
