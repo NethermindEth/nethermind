@@ -16,7 +16,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
 
-    private readonly IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> _executionGetPayloadBodiesByHashV2Handler;
+    private readonly IAsyncHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> _executionGetPayloadBodiesByHashV2Handler;
     private readonly IGetPayloadBodiesByRangeV2Handler _executionGetPayloadBodiesByRangeV2Handler;
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
@@ -25,7 +25,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public async Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId) =>
         await _getPayloadHandlerV4.HandleAsync(payloadId);
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IList<Hash256> blockHashes)
+    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes)
         => _executionGetPayloadBodiesByHashV2Handler.HandleAsync(blockHashes);
 
     public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count)
