@@ -190,7 +190,7 @@ namespace Ethereum.Transaction.Test
                 Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
                 Assert.That(transaction.Signature, Is.EqualTo(expectedSignature), "signature");
 
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL, LimboLogs.Instance);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
                     transaction);
