@@ -35,19 +35,19 @@ public class AuthorizedCodeInfoRepositoryTests
     public void Benchmark()
     {
         MemDb stateDb = new();
-        TestSpecProvider specProvider = new (Prague.Instance);
+        TestSpecProvider specProvider = new(Prague.Instance);
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        WorldState stateProvider = new (trieStore, new MemDb(), LimboLogs.Instance);
+        WorldState stateProvider = new(trieStore, new MemDb(), LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
         var spec = specProvider.GetSpec(MainnetSpecProvider.PragueActivation);
 
         stateProvider.CreateAccount(TestItem.AddressB, 0);
-        codeInfoRepository.InsertCode(stateProvider, new ReadOnlyMemory<byte>([0x0]),TestItem.AddressB, spec);
+        codeInfoRepository.InsertCode(stateProvider, new ReadOnlyMemory<byte>([0x0]), TestItem.AddressB, spec);
 
         AuthorizedCodeInfoRepository sut = new(codeInfoRepository, 1, NullLogger.Instance);
         var tuples = Enumerable
             .Range(0, 100)
-            .Select(i =>CreateAuthorizationTuple(TestItem.PrivateKeys[i], 1, TestItem.AddressB, (UInt256)0)).ToArray<AuthorizationTuple>();
+            .Select(i => CreateAuthorizationTuple(TestItem.PrivateKeys[i], 1, TestItem.AddressB, (UInt256)0)).ToArray<AuthorizationTuple>();
 
         sut.InsertFromAuthorizations(stateProvider, tuples, spec);
     }
@@ -106,7 +106,7 @@ public class AuthorizedCodeInfoRepositoryTests
         ICodeInfoRepository mockCodeRepository = Substitute.For<ICodeInfoRepository>();
         mockCodeRepository
             .GetCachedCodeInfo(Arg.Any<IWorldState>(), authority.Address, Arg.Any<IReleaseSpec>())
-            .Returns(new CodeInfo( [(byte)0x0] ));
+            .Returns(new CodeInfo([(byte)0x0]));
         AuthorizedCodeInfoRepository sut = new(mockCodeRepository, 1, NullLogger.Instance);
         var tuples = new[]
         {

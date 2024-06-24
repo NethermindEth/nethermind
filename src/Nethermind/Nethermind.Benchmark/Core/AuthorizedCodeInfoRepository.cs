@@ -46,7 +46,7 @@ public class AuthorizedCodeInfoRepositoryBenchmark
         _stateProvider.CreateAccount(Address.Zero, 100000000000000);
         _stateProvider.Commit(_spec);
 
-        _ethereumEcdsa = new (1, new OneLoggerLogManager(NullLogger.Instance));
+        _ethereumEcdsa = new(1, new OneLoggerLogManager(NullLogger.Instance));
         sut = new AuthorizedCodeInfoRepository(1, NullLogger.Instance);
         var list = new List<AuthorizationTuple>();
         var rnd = new Random();
@@ -85,7 +85,7 @@ public class AuthorizedCodeInfoRepositoryBenchmark
     {
         sut.InsertFromAuthorizations(_stateProvider, Tuples100, _spec);
     }
-    
+
     [Benchmark]
     public void Build1kTuples()
     {

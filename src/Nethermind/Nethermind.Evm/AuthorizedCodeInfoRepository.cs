@@ -79,13 +79,13 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
 
         //TODO optimize
         foreach (AuthorizationTuple authTuple in authorizations)
-        {            
+        {
             if (authTuple.ChainId != 0 && _chainId != authTuple.ChainId)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list because chain id ({authTuple.ChainId}) does not match.");
                 continue;
             }
-            Address authority = authTuple.Authority;    
+            Address authority = authTuple.Authority;
             if (authority == null)
             {
                 authority = RecoverAuthority(authTuple);
