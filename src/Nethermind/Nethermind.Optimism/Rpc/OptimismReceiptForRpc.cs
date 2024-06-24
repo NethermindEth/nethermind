@@ -25,27 +25,42 @@ public class OptimismReceiptForRpc : ReceiptForRpc
             L1GasUsed = l1GasInfo.L1GasUsed;
             L1GasPrice = l1GasInfo.L1GasPrice;
             L1FeeScalar = l1GasInfo.L1FeeScalar;
+
+            L1BaseFeeScalar = l1GasInfo.L1BaseFeeScalar;
+            L1BlobBaseFee = l1GasInfo.L1BlobBaseFee;
+            L1BlobBaseFeeScalar = l1GasInfo.L1BlobBaseFeeScalar;
         }
     }
 
     // DepositTx related fields
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public UInt256? DepositNonce;
+    public UInt256? DepositNonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public UInt256? DepositReceiptVersion;
+    public UInt256? DepositReceiptVersion { get; set; }
+
 
     // Regular tx fields
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public UInt256? L1Fee;
+    public UInt256? L1Fee { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public UInt256? L1GasPrice;
+    public UInt256? L1GasPrice { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public UInt256? L1GasUsed;
+    public UInt256? L1GasUsed { get; set; }
 
     // Pre-ecotone field of a regular tx fields
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? L1FeeScalar;
+    public string? L1FeeScalar { get; set; }
+
+    // Fjord fields
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? L1BaseFeeScalar { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? L1BlobBaseFee { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? L1BlobBaseFeeScalar { get; set; }
 }

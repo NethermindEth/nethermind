@@ -8,27 +8,31 @@ using System.Linq;
 
 namespace Nethermind.Optimism;
 
-public readonly struct L1TxGasInfo(UInt256? l1Fee, UInt256? l1GasPrice, UInt256? l1GasUsed, string? l1FeeScalar)
+public readonly struct L1TxGasInfo(UInt256? l1Fee, UInt256? l1GasPrice, UInt256? l1GasUsed, string? l1FeeScalar, UInt256? l1BaseFeeScalar = null, UInt256? l1BlobBaseFee = null, UInt256? l1BlobBaseFeeScalar = null)
 {
     public UInt256? L1Fee { get; } = l1Fee;
     public UInt256? L1GasPrice { get; } = l1GasPrice;
     public UInt256? L1GasUsed { get; } = l1GasUsed;
     public string? L1FeeScalar { get; } = l1FeeScalar;
+
+    public UInt256? L1BaseFeeScalar { get; } = l1BaseFeeScalar;
+    public UInt256? L1BlobBaseFee { get; } = l1BlobBaseFee;
+    public UInt256? L1BlobBaseFeeScalar { get; } = l1BlobBaseFeeScalar;
 }
 
 public readonly struct L1BlockGasInfo
 {
     private readonly UInt256? _l1GasPrice;
-    private readonly UInt256 _l1BlobBaseFee;
-    private readonly UInt256 _l1BaseFeeScalar;
-    private readonly UInt256 _l1BlobBaseFeeScalar;
+    private readonly UInt256? _l1BlobBaseFee;
+    private readonly UInt256? _l1BaseFeeScalar;
+    private readonly UInt256? _l1BlobBaseFeeScalar;
     private readonly UInt256 _l1BaseFee;
     private readonly UInt256 _overhead;
     private readonly UInt256 _feeScalar;
     private readonly string? _feeScalarDecimal;
     private readonly bool _isFjord;
     private readonly bool _isEcotone;
-    private readonly bool _isRegolith;
+    private readonly bool _isPostRegolith;
 
     private static readonly byte[] BedrockL1AttributesSelector = [0x01, 0x5d, 0x8e, 0xb9];
     private readonly IOptimismSpecHelper _specHelper;
@@ -48,6 +52,7 @@ public readonly struct L1BlockGasInfo
             Memory<byte> data = depositTx.Data.Value;
 
             _isFjord = _specHelper.IsFjord(block.Header);
+            _isPostRegolith = _specHelper.IsRegolith(block.Header);
 
             if (_isFjord || (_isEcotone = (_specHelper.IsEcotone(block.Header) && !data[0..4].Span.SequenceEqual(BedrockL1AttributesSelector))))
             {
@@ -63,7 +68,6 @@ public readonly struct L1BlockGasInfo
             }
             else
             {
-                _isRegolith = true;
                 if (data.Length < 4 + 32 * 8)
                 {
                     return;
@@ -88,20 +92,21 @@ public readonly struct L1BlockGasInfo
             if (_isFjord)
             {
                 UInt256 fastLzSize = OPL1CostHelper.ComputeFlzCompressLen(tx);
-                l1Fee = OPL1CostHelper.ComputeL1CostFjord(fastLzSize, _l1GasPrice.Value, _l1BlobBaseFee, _l1BaseFeeScalar, _l1BlobBaseFeeScalar);
+                l1Fee = OPL1CostHelper.ComputeL1CostFjord(fastLzSize, _l1GasPrice.Value, _l1BlobBaseFee!.Value, _l1BaseFeeScalar!.Value, _l1BlobBaseFeeScalar!.Value, out UInt256 estimatedSize);
+                l1GasUsed = OPL1CostHelper.ComputeGasUsedFjord(estimatedSize);
             }
             else if (_isEcotone)
             {
-                l1GasUsed = OPL1CostHelper.ComputeDataGas(tx, _isRegolith);
-                l1Fee = OPL1CostHelper.ComputeL1CostEcotone(l1GasUsed.Value, _l1GasPrice.Value, _l1BlobBaseFee, _l1BaseFeeScalar, _l1BlobBaseFeeScalar);
+                l1GasUsed = OPL1CostHelper.ComputeDataGas(tx, _isPostRegolith);
+                l1Fee = OPL1CostHelper.ComputeL1CostEcotone(l1GasUsed.Value, _l1GasPrice.Value, _l1BlobBaseFee!.Value, _l1BaseFeeScalar!.Value, _l1BlobBaseFeeScalar!.Value);
             }
             else
             {
-                l1GasUsed = OPL1CostHelper.ComputeDataGas(tx, _isRegolith) + _overhead;
+                l1GasUsed = OPL1CostHelper.ComputeDataGas(tx, _isPostRegolith) + _overhead;
                 l1Fee = OPL1CostHelper.ComputeL1CostPreEcotone(l1GasUsed.Value, _l1BaseFee, _feeScalar);
             }
         }
 
-        return new L1TxGasInfo(l1Fee, _l1GasPrice, l1GasUsed, _feeScalarDecimal);
+        return new L1TxGasInfo(l1Fee, _l1GasPrice, l1GasUsed, _feeScalarDecimal, _l1BaseFeeScalar, _l1BlobBaseFee, _l1BlobBaseFeeScalar);
     }
 }
