@@ -24,24 +24,37 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
+    protected bool CheckRangeCount(long start, long count, out string? error, out int errorCode)
     {
         if (start < 1 || count < 1)
         {
-            var error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
+            error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
 
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV1Handler)}: ${error}");
+            if (_logger.IsError) _logger.Error($"{GetType().Name}: ${error}");
 
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, ErrorCodes.InvalidParams);
+            errorCode = ErrorCodes.InvalidParams;
+            return false;
         }
 
         if (count > MaxCount)
         {
-            var error = $"The number of requested bodies must not exceed {MaxCount}";
+            error = $"The number of requested bodies must not exceed {MaxCount}";
 
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV1Handler)}: {error}");
+            if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
 
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            errorCode = MergeErrorCodes.TooLargeRequest;
+            return false;
+        }
+        error = null;
+        errorCode = 0;
+        return true;
+    }
+
+    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
+    {
+        if (!CheckRangeCount(start, count, out string? error, out int errorCode))
+        {
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error!, errorCode);
         }
 
         return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(start, count));

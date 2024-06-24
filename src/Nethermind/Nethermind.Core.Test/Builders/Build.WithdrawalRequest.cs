@@ -5,5 +5,5 @@ namespace Nethermind.Core.Test.Builders;
 
 public partial class Build
 {
-    public WithdrawalRequestBuilder WithdrawalRequest => new WithdrawalRequestBuilder().WithAmount(0);
+    public static WithdrawalRequestBuilder WithdrawalRequest => new ();
 }

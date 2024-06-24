@@ -16,23 +16,19 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 
-public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager) : GetPayloadBodiesByHashV1Handler(blockTree, logManager), IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>
+public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager) : GetPayloadBodiesByHashV1Handler(blockTree, logManager), IAsyncHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>
 {
-    public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> HandleAsync(IList<Hash256> blockHashes)
+    public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> HandleAsync(IReadOnlyList<Hash256> blockHashes)
     {
-        if (blockHashes.Count > MaxCount)
+        if (!CheckHashCount(blockHashes, out string? error))
         {
-            var error = $"The number of requested bodies must not exceed {MaxCount}";
-
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
-
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error!, MergeErrorCodes.TooLargeRequest);
         }
 
         return Task.FromResult(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success(GetRequests(blockHashes)));
     }
 
-    private IEnumerable<ExecutionPayloadBodyV2Result?> GetRequests(IList<Hash256> blockHashes)
+    private IEnumerable<ExecutionPayloadBodyV2Result?> GetRequests(IReadOnlyList<Hash256> blockHashes)
     {
         for (int i = 0; i < blockHashes.Count; i++)
         {
