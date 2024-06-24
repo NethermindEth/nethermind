@@ -20,14 +20,14 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
         int verkleProofStructLength = 0;
         int ipaLength = 0;
         ipaLength += 33; //Rlp.LengthOf(FrE A)
-        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.L.Length * 33) +
-                     Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.R.Length * 33);
+        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.L[0].Length * 33) +
+                     Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.R[0].Length * 33);
         verkleProofStructLength += Rlp.LengthOfSequence(ipaLength);
         verkleProofStructLength += 33;
 
         contentLength += Rlp.LengthOfSequence(verkleProofStructLength);
 
-        contentLength += Rlp.LengthOfSequence(33 * item.CommsSorted.Length);
+        contentLength += Rlp.LengthOfSequence(33 * item.CommsSorted[0].Length);
 
         int hintLength = 0;
         hintLength += Rlp.LengthOfSequence(item.VerifyHint.DifferentStemNoProof.Length * 32);
@@ -102,16 +102,16 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
         int verkleProofStructLength = 0;
         int ipaLength = 0;
         ipaLength += 33; //Rlp.LengthOf(FrE A)
-        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.L.Length * 33) +
-                     Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.R.Length * 33);
+        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.L[0].Length * 33) +
+                     Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.R[0].Length * 33);
         verkleProofStructLength += Rlp.LengthOfSequence(ipaLength);
         verkleProofStructLength += 33;
         stream.StartSequence(verkleProofStructLength);
         stream.StartSequence(ipaLength);
         stream.Encode(item.Proof.IpaProofSerialized.A);
-        stream.StartSequence(item.Proof.IpaProofSerialized.L.Length * 33);
+        stream.StartSequence(item.Proof.IpaProofSerialized.L[0].Length * 33);
         foreach (byte[] data in item.Proof.IpaProofSerialized.L) stream.Encode(data);
-        stream.StartSequence(item.Proof.IpaProofSerialized.R.Length * 33);
+        stream.StartSequence(item.Proof.IpaProofSerialized.R[0].Length * 33);
         foreach (byte[] data in item.Proof.IpaProofSerialized.R) stream.Encode(data);
         stream.Encode(item.Proof.D);
 

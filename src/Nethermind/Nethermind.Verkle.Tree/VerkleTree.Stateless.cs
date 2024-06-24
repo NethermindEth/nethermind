@@ -109,7 +109,8 @@ public partial class VerkleTree
     {
         if (!skipRoot)
         {
-            InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytesUncompressedUnchecked(root)));
+            InternalNode rootNode = new(VerkleNodeType.BranchNode,
+                new Commitment(Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false)));
             SetInternalNode(Array.Empty<byte>(), rootNode);
         }
 
@@ -130,7 +131,8 @@ public partial class VerkleTree
         {
             if (!skipRoot)
             {
-                InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytesUncompressedUnchecked(root)));
+                InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(
+                    Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false)));
                 SetInternalNode(Array.Empty<byte>(), rootNode);
             }
 
@@ -142,7 +144,8 @@ public partial class VerkleTree
 
         if (!skipRoot)
         {
-            InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytesUncompressedUnchecked(root)));
+            InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(
+                Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false)));
             SetInternalNode(Array.Empty<byte>(), rootNode);
         }
 
@@ -166,7 +169,8 @@ public partial class VerkleTree
             {
                 pathList.Add(stem.Bytes[i]);
                 InternalNode node = VerkleNodes.CreateStatelessBranchNode(
-                    new Commitment(Banderwagon.FromBytesUncompressedUnchecked(hint.CommByPath[pathList.AsSpan()]))
+                    new Commitment(
+                        Banderwagon.FromBytesUncompressedUnchecked(hint.CommByPath[pathList.AsSpan()], isBigEndian: false))
                 );
                 SetInternalNode(pathList.AsSpan(), node);
             }
@@ -184,19 +188,23 @@ public partial class VerkleTree
                     break;
                 case ExtPresent.DifferentStem:
                     Stem otherStem = hint.DifferentStemNoProof[pathList.ToArray()];
-                    Commitment otherInternalCommitment = new(Banderwagon.FromBytesUncompressedUnchecked(hint.CommByPath[pathList.AsSpan()]));
+                    Commitment otherInternalCommitment = new(
+                        Banderwagon.FromBytesUncompressedUnchecked(hint.CommByPath[pathList.AsSpan()], isBigEndian: false));
                     stemNode = VerkleNodes.CreateStatelessStemNode(otherStem, otherInternalCommitment);
                     pathOfStem = pathList.ToArray();
                     break;
                 case ExtPresent.Present:
-                    Commitment internalCommitment = new(Banderwagon.FromBytesUncompressedUnchecked(hint.CommByPath[pathList.AsSpan()]));
+                    Commitment internalCommitment = new(
+                        Banderwagon.FromBytesUncompressedUnchecked(hint.CommByPath[pathList.AsSpan()], isBigEndian: false));
                     Commitment? c1 = null;
                     Commitment? c2 = null;
 
                     pathList.Add(2);
-                    if (hint.CommByPath.TryGetValue(pathList.AsSpan(), out byte[] c1B)) c1 = new Commitment(Banderwagon.FromBytesUncompressedUnchecked(c1B));
+                    if (hint.CommByPath.TryGetValue(pathList.AsSpan(), out byte[] c1B)) c1 = new Commitment(
+                        Banderwagon.FromBytesUncompressedUnchecked(c1B, isBigEndian: false));
                     pathList[^1] = 3;
-                    if (hint.CommByPath.TryGetValue(pathList.AsSpan(), out byte[] c2B)) c2 = new Commitment(Banderwagon.FromBytesUncompressedUnchecked(c2B));
+                    if (hint.CommByPath.TryGetValue(pathList.AsSpan(), out byte[] c2B)) c2 = new Commitment(
+                        Banderwagon.FromBytesUncompressedUnchecked(c2B, isBigEndian: false));
 
                     stemNode = VerkleNodes.CreateStatelessStemNode(stem, c1, c2, internalCommitment, false);
                     pathOfStem = new byte[pathList.Count - 1];
@@ -340,7 +348,7 @@ public partial class VerkleTree
 
         List<byte> pathList = new();
         InsertBranchNodeForSync(CollectionsMarshal.AsSpan(pathList),
-            new Commitment(Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()])));
+            new Commitment(Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()], isBigEndian: false)));
         foreach ((var stem, (ExtPresent extStatus, var depth)) in depthsAndExtByStem)
         {
             pathList.Clear();
@@ -348,7 +356,7 @@ public partial class VerkleTree
             {
                 pathList.Add(stem[i]);
                 InsertBranchNodeForSync(CollectionsMarshal.AsSpan(pathList),
-                    new Commitment(Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()])));
+                    new Commitment(Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()], isBigEndian: false)));
             }
 
             pathList.Add(stem[depth - 1]);
@@ -361,10 +369,11 @@ public partial class VerkleTree
                 case ExtPresent.DifferentStem:
                     var otherStem = otherStemsByPrefix[pathList.ToArray()];
                     InsertPlaceholderForNotPresentStem(otherStem, CollectionsMarshal.AsSpan(pathList),
-                        new Commitment(Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()])));
+                        new Commitment(Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()], isBigEndian: false)));
                     break;
                 case ExtPresent.Present:
-                    Commitment internalCommitment = new(Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()]));
+                    Commitment internalCommitment = new(
+                        Banderwagon.FromBytesUncompressedUnchecked(commByPath[pathList.ToArray()], isBigEndian: false));
                     if (!VerifyCommitmentThenInsertStem(CollectionsMarshal.AsSpan(pathList), stem, internalCommitment))
                         return false;
                     break;

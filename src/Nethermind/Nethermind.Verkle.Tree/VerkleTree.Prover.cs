@@ -323,25 +323,24 @@ public partial class VerkleTree
 
             var offset = valueIndex < 128 ? 0 : 128;
 
-            Banderwagon commitment;
+            byte[] commitment;
             byte[][] polyBytes;
             switch (offset)
             {
                 case 0:
-                    commitment = suffix.C1.Point;
+                    commitment = suffix.C1.Point.ToBytesUncompressedLittleEndian();
                     polyBytes = c1Hashes.Select(p => p.ToBytes()).ToArray();
                     break;
                 case 128:
-                    commitment = suffix.C2.Point;
+                    commitment = suffix.C2.Point.ToBytesUncompressedLittleEndian();
                     polyBytes = c2Hashes.Select(p => p.ToBytes()).ToArray();
                     break;
                 default:
                     throw new Exception("unreachable");
             }
 
-            VerkleProverQuerySerialized openAtValLow = new(polyBytes, commitment.ToBytesUncompressedLittleEndian(), (byte)valueLowerIndex, valueLow.ToBytes());
-            VerkleProverQuerySerialized openAtValUpper =
-                new(polyBytes, commitment.ToBytesUncompressedLittleEndian(), (byte)valueUpperIndex, valueHigh.ToBytes());
+            VerkleProverQuerySerialized openAtValLow = new(polyBytes, commitment, (byte)valueLowerIndex, valueLow.ToBytes());
+            VerkleProverQuerySerialized openAtValUpper = new(polyBytes, commitment, (byte)valueUpperIndex, valueHigh.ToBytes());
 
             queries.Add(openAtValLow);
             queries.Add(openAtValUpper);

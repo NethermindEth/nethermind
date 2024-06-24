@@ -372,7 +372,7 @@ public partial class VerkleTree
             byte[] childPath = [.. path.ToArray(), z];
 
             if (!leafValuesByPathAndZ.TryGetValue((path, z), out FrE y))
-                y = !commByPath.TryGetValue(childPath, out byte[] yPoint) ? FrE.Zero : Banderwagon.FromBytesUncompressedUnchecked(yPoint).MapToScalarField();
+                y = !commByPath.TryGetValue(childPath, out byte[] yPoint) ? FrE.Zero : Banderwagon.FromBytesUncompressedUnchecked(yPoint, isBigEndian: false).MapToScalarField();
             ysByPathAndZ.Add((path.ToArray(), z), y);
         }
 
