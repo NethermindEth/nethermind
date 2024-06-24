@@ -111,8 +111,11 @@ namespace Nethermind.Consensus.Processing
             {
                 void RecoverAuthority(AuthorizationTuple tuple)
                 {
+                    Span<byte> msg = stackalloc byte[128];
+                    msg[0] = Eip7702Constants.Magic;
                     RlpStream rlpStream = _authorizationListDecoder.EncodeForCommitMessage(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-                    tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(rlpStream.Data));
+                    rlpStream.Data.AsSpan().CopyTo(msg.Slice(1));
+                    tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(msg));
                 }
 
                 foreach (Transaction tx in block.Transactions.AsSpan())
