@@ -209,8 +209,8 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             Block block = Build.A.Block
                 .WithConsensusRequests(new ConsensusRequest[] {
-                    Build.A.Deposit.WithIndex(0).TestObject,
-                    Build.A.WithdrawalRequest.TestObject
+                    Build.Deposit.WithIndex(0).TestObject,
+                    Build.WithdrawalRequest.TestObject
                 })
                 .TestObject;
             block.Header.RequestsRoot = Keccak.OfAnEmptyString;
@@ -225,8 +225,8 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             Block block = Build.A.Block
                 .WithConsensusRequests(new ConsensusRequest[] {
-                    Build.A.Deposit.WithIndex(0).TestObject,
-                    Build.A.WithdrawalRequest.TestObject
+                    Build.Deposit.WithIndex(0).TestObject,
+                    Build.WithdrawalRequest.TestObject
                 })
                 .TestObject;
 
@@ -240,8 +240,8 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             Block block = Build.A.Block
                 .WithConsensusRequests(new ConsensusRequest[] {
-                    Build.A.WithdrawalRequest.TestObject,
-                    Build.A.Deposit.WithIndex(0).TestObject
+                    Build.WithdrawalRequest.TestObject,
+                    Build.Deposit.WithIndex(0).TestObject
                 })
                 .TestObject;
 

@@ -16,49 +16,59 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 
-public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager) : GetPayloadBodiesByHashV1Handler(blockTree, logManager), IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>
+public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager) : GetPayloadBodiesByHashV1Handler(blockTree, logManager), IAsyncHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>
 {
-    public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> HandleAsync(IList<Hash256> blockHashes)
+    public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> HandleAsync(IReadOnlyList<Hash256> blockHashes)
     {
-        if (blockHashes.Count > MaxCount)
+        if (!CheckHashCount(blockHashes, out string? error))
         {
-            var error = $"The number of requested bodies must not exceed {MaxCount}";
-
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
-
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error!, MergeErrorCodes.TooLargeRequest);
         }
 
         return Task.FromResult(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success(GetRequests(blockHashes)));
     }
 
-    private IEnumerable<ExecutionPayloadBodyV2Result?> GetRequests(IList<Hash256> blockHashes)
+    private IEnumerable<ExecutionPayloadBodyV2Result?> GetRequests(IReadOnlyList<Hash256> blockHashes)
     {
         for (int i = 0; i < blockHashes.Count; i++)
         {
             Block? block = _blockTree.FindBlock(blockHashes[i]);
 
-            ConsensusRequest[]? consensusRequests = block?.Requests;
+            if (block is null)
+            {
+                yield return null;
+                continue;
+            }
 
-            List<Deposit> deposits = [];
-            List<WithdrawalRequest> withdrawalRequests = [];
-            List<ConsolidationRequest> consolidationRequests = [];
+            ExecutionPayloadBodyV2Result result = new(block!.Transactions, block.Withdrawals, null, null, null);
+
+            ConsensusRequest[]? consensusRequests = block?.Requests;
 
             if (consensusRequests is not null)
             {
+                (int depositCount, int withdrawalRequestCount , int consolidationRequestCount) = consensusRequests.GetTypeCounts();
+
+                result.DepositRequests = new Deposit[depositCount];
+                result.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+                result.ConsolidationRequests = new ConsolidationRequest[consolidationRequestCount];
+
+                int depositIndex = 0;
+                int withdrawalRequestIndex = 0;
+                int consolidationRequestIndex = 0;
+
                 foreach (ConsensusRequest request in consensusRequests)
                 {
                     if (request.Type == ConsensusRequestsType.Deposit)
                     {
-                        deposits.Add((Deposit)request);
+                        result.DepositRequests![depositIndex++] = (Deposit)request;
                     }
                     else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                     {
-                        withdrawalRequests.Add((WithdrawalRequest)request);
+                        result.WithdrawalRequests![withdrawalRequestIndex++] = (WithdrawalRequest)request;
                     }
                     else if (request.Type == ConsensusRequestsType.ConsolidationRequest)
                     {
-                        consolidationRequests.Add((ConsolidationRequest)request);
+                        result.ConsolidationRequests![consolidationRequestIndex++] = (ConsolidationRequest)request;
                     }
                     else
                     {
@@ -66,15 +76,10 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
                         if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
                     }
                 }
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests, consolidationRequests);
             }
-            else
-            {
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, null, null, null);
-            }
+            yield return result;
         }
 
         yield break;
     }
-
 }

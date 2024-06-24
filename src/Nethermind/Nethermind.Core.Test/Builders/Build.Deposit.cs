@@ -5,5 +5,5 @@ namespace Nethermind.Core.Test.Builders;
 
 public partial class Build
 {
-    public DepositBuilder Deposit => new DepositBuilder().WithAmount(0);
+    public static DepositBuilder Deposit => new();
 }

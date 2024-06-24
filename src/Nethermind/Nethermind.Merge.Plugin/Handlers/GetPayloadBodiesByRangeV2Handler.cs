@@ -21,21 +21,9 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 {
     public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> Handle(long start, long count)
     {
-        if (start < 1 || count < 1)
+        if (!CheckRangeCount(start, count, out string? error, out int errorCode))
         {
-            var error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
-
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV2Handler)}: ${error}");
-
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error, ErrorCodes.InvalidParams);
-        }
-        if (count > MaxCount)
-        {
-            var error = $"The number of requested bodies must not exceed {MaxCount}";
-
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV2Handler)}: {error}");
-
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error!, errorCode);
         }
 
         return Task.FromResult(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success(GetRequests(start, count)));
@@ -49,27 +37,41 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
         {
             Block? block = _blockTree.FindBlock(i);
 
-            ConsensusRequest[]? consensusRequests = block?.Requests;
+            if (block is null)
+            {
+                yield return null;
+                continue;
+            }
 
-            List<Deposit> deposits = [];
-            List<WithdrawalRequest> withdrawalRequests = [];
-            List<ConsolidationRequest> consolidationRequests = [];
+            ExecutionPayloadBodyV2Result result = new(block!.Transactions, block.Withdrawals, null, null, null);
+
+            ConsensusRequest[]? consensusRequests = block?.Requests;
 
             if (consensusRequests is not null)
             {
+                (int depositCount, int withdrawalRequestCount , int consolidationRequestCount) = consensusRequests.GetTypeCounts();
+
+                result.DepositRequests = new Deposit[depositCount];
+                result.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+                result.ConsolidationRequests = new ConsolidationRequest[consolidationRequestCount];
+
+                int depositIndex = 0;
+                int withdrawalRequestIndex = 0;
+                int consolidationRequestIndex = 0;
+
                 foreach (ConsensusRequest request in consensusRequests)
                 {
                     if (request.Type == ConsensusRequestsType.Deposit)
                     {
-                        deposits.Add((Deposit)request);
+                        result.DepositRequests![depositIndex++] = (Deposit)request;
                     }
                     else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                     {
-                        withdrawalRequests.Add((WithdrawalRequest)request);
+                        result.WithdrawalRequests![withdrawalRequestIndex++] = (WithdrawalRequest)request;
                     }
                     else if (request.Type == ConsensusRequestsType.ConsolidationRequest)
                     {
-                        consolidationRequests.Add((ConsolidationRequest)request);
+                        result.ConsolidationRequests![consolidationRequestIndex++] = (ConsolidationRequest)request;
                     }
                     else
                     {
@@ -77,13 +79,8 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
                         if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
                     }
                 }
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests, consolidationRequests);
-
             }
-            else
-            {
-                yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, null, null, null);
-            }
+            yield return result;
         }
 
         yield break;
