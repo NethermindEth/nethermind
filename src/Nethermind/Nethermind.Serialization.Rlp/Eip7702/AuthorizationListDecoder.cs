@@ -66,7 +66,6 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
 
         while (decoderContext.Position < check)
         {
-            //TODO check what is valid for the fields here
             var chainId = decoderContext.DecodeULong();
             Address codeAddress = decoderContext.DecodeAddress();
             int nonceLength = decoderContext.ReadSequenceLength();

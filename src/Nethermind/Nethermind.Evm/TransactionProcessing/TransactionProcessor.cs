@@ -16,8 +16,6 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;

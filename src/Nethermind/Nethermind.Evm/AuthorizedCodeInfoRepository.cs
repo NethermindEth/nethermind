@@ -11,7 +11,6 @@ using System.Collections.Generic;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp.Eip7702;
-using System.Runtime.CompilerServices;
 using Nethermind.Crypto;
 
 namespace Nethermind.Evm;
@@ -34,6 +33,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
         this._chainId = chainId;
         _ethereumEcdsa = new EthereumEcdsa(this._chainId, NullLogManager.Instance);
         this._logger = logger ?? NullLogger.Instance;
+        _internalBuffer[0] = Eip7702Constants.Magic;
     }
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
         _authorizedCode.TryGetValue(codeSource, out CodeInfo result)
@@ -62,9 +62,9 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    /// <summary>
+    /// <summary>    
+    /// Build a code cache from transaction authorization_list authorized by signature.
     /// eip-7702
-    /// Build a cache from transaction authorization_list authorized by signature.  
     /// </summary>
     /// <param name="state"></param>
     /// <param name="authorizations"></param>
@@ -77,10 +77,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     {
         _authorizedCode.Clear();
 
-        Span<byte> encoded = _internalBuffer.AsSpan();
-        encoded[0] = Eip7702Constants.Magic;
         //TODO optimize
-        //TODO try parallel sig recovery
         foreach (AuthorizationTuple authTuple in authorizations)
         {            
             if (authTuple.ChainId != 0 && _chainId != authTuple.ChainId)
@@ -88,9 +85,11 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
                 if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list because chain id ({authTuple.ChainId}) does not match.");
                 continue;
             }
-            RlpStream stream = _authorizationListDecoder.EncodeForCommitMessage(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
-            stream.Data.AsSpan().CopyTo(encoded.Slice(1));
-            Address authority = _ethereumEcdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
+            Address authority = authTuple.Authority;    
+            if (authority == null)
+            {
+                authority = RecoverAuthority(authTuple);
+            }
 
             CodeInfo authorityCodeInfo = _codeInfoRepository.GetCachedCodeInfo(worldState, authority, spec);
             if (authorityCodeInfo.MachineCode.Length > 0)
@@ -106,6 +105,14 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
             //TODO should we do insert if code is empty?
             CopyCodeAndOverwrite(worldState, authTuple.CodeAddress, authority, spec);
         }
+    }
+
+    private Address RecoverAuthority(AuthorizationTuple authTuple)
+    {
+        Span<byte> encoded = _internalBuffer.AsSpan();
+        RlpStream stream = _authorizationListDecoder.EncodeForCommitMessage(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
+        stream.Data.AsSpan().CopyTo(encoded.Slice(1));
+        return _ethereumEcdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
     }
 
     public void ClearAuthorizations()
