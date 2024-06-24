@@ -24,7 +24,8 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IReadOnlyList<Hash2
         _logger = logManager.GetClassLogger();
     }
 
-    protected bool CheckHashCount(IReadOnlyList<Hash256> blockHashes, out string? error) {
+    protected bool CheckHashCount(IReadOnlyList<Hash256> blockHashes, out string? error)
+    {
         if (blockHashes.Count > MaxCount)
         {
             error = $"The number of requested bodies must not exceed {MaxCount}";
