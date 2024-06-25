@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -115,7 +116,7 @@ namespace Nethermind.Consensus.Processing
                     msg[0] = Eip7702Constants.Magic;
                     RlpStream rlpStream = _authorizationListDecoder.EncodeForCommitMessage(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
                     rlpStream.Data.AsSpan().CopyTo(msg.Slice(1));
-                    tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(msg));
+                    tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(msg.Slice(0, rlpStream.Data.Length + 1)));
                 }
 
                 foreach (Transaction tx in block.Transactions.AsSpan())

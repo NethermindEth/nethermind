@@ -70,6 +70,8 @@ public static class TxErrorMessages
     public static readonly string InvalidBlobProofSize =
         $"InvalidBlobProofSize: Cannot be more than {Ckzg.Ckzg.BytesPerProof}.";
 
+    public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
+
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
