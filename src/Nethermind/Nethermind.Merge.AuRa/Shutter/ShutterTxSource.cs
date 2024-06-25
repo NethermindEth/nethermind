@@ -26,6 +26,9 @@ using System.IO;
 using Google.Protobuf;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -125,7 +128,7 @@ public class ShutterTxSource : ITxSource
             List<SequencedTransaction> sequencedTransactions = GetNextTransactions(decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer);
             if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} transactions from Shutter mempool...");
 
-            Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys);
+            Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys.Keys);
 
             Block? head = _readOnlyBlockTree.Head;
             IReleaseSpec releaseSpec = head is null ? _specProvider.GetFinalSpec() : _specProvider.GetSpec(head.Number, head.Timestamp);
@@ -155,14 +158,14 @@ public class ShutterTxSource : ITxSource
         return (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - genesisTimestamp) / 5) + 1;
     }
 
-    private Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, Dto.DecryptionKeys decryptionKeys)
+    internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, IList<Dto.Key> decryptionKeys)
     {
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
         sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
 
         return sequencedTransactions
             .AsParallel()
-            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys.Keys[sortedIndexes[i].Index + 1]))
+            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedIndexes[i].Index + 1]))
             .OfType<Transaction>()
             .ToArray();
     }
@@ -343,7 +346,7 @@ public class ShutterTxSource : ITxSource
         public ulong Slot { get; init; }
     }
 
-    private struct SequencedTransaction
+    internal struct SequencedTransaction
     {
         public int Index;
         public ulong Eon;
