@@ -44,6 +44,14 @@ namespace Nethermind.Db
             RegisterDb(BuildDbSettings(DbNames.Code));
             RegisterDb(BuildDbSettings(DbNames.Bloom));
 
+            DbSettings stateDbSettings = BuildDbSettings(DbNames.State);
+            RegisterCustomDb(DbNames.State, () => new FullPruningDb(
+                stateDbSettings,
+                DbFactory is not MemDbFactory
+                    ? new FullPruningInnerDbFactory(DbFactory, _fileSystem, stateDbSettings.DbPath)
+                    : DbFactory,
+                () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
+
             if (useReceiptsDb)
             {
                 RegisterColumnsDb<ReceiptsColumns>(BuildDbSettings(DbNames.Receipts));

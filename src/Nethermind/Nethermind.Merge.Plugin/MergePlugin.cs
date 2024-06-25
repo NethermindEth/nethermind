@@ -30,6 +30,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
@@ -438,7 +439,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
                 _api.DbProvider,
-                null!,
+                new NodeStorageFactory(INodeStorage.KeyScheme.Current, _api.LogManager).WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,

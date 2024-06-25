@@ -39,6 +39,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -142,7 +143,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
-                null!,
+                new NodeStorageFactory(INodeStorage.KeyScheme.Current, _api.LogManager).WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
