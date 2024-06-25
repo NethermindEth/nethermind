@@ -54,7 +54,7 @@ public abstract class ClockCacheBase<TKey>
             long current = Volatile.Read(ref accessedBitmapWord);
             while (true)
             {
-                long previous = Interlocked.CompareExchange(ref accessedBitmapWord, current & flags, current);
+                long previous = Interlocked.And(ref accessedBitmapWord, flags);
                 if (previous == current)
                 {
                     break;
@@ -76,7 +76,7 @@ public abstract class ClockCacheBase<TKey>
         long current = Volatile.Read(ref accessedBitmapWord);
         while (true)
         {
-            long previous = Interlocked.CompareExchange(ref accessedBitmapWord, current | flags, current);
+            long previous = Interlocked.Or(ref accessedBitmapWord, flags);
             if (previous == current)
             {
                 break;
