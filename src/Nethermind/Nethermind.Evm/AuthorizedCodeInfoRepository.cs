@@ -18,7 +18,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
 {
     public IEnumerable<Address> AuthorizedAddresses => _authorizedCode.Keys;
     private readonly Dictionary<Address, CodeInfo> _authorizedCode = new();
-    private readonly AuthorizationListDecoder _authorizationListDecoder = new();
+    private readonly AuthorizationTupleDecoder _authorizationTupleDecoder = new();
     private readonly EthereumEcdsa _ethereumEcdsa;
     private readonly ICodeInfoRepository _codeInfoRepository;
     private readonly ulong _chainId;
@@ -114,7 +114,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     private Address RecoverAuthority(AuthorizationTuple authTuple)
     {
         Span<byte> encoded = _internalBuffer.AsSpan();
-        RlpStream stream = _authorizationListDecoder.EncodeForCommitMessage(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
+        RlpStream stream = _authorizationTupleDecoder.EncodeForCommitMessage(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
         stream.Data.AsSpan().CopyTo(encoded.Slice(1));
         return _ethereumEcdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
     }

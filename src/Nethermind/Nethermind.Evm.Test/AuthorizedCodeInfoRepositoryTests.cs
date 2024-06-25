@@ -121,7 +121,7 @@ public class AuthorizedCodeInfoRepositoryTests
 
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
     {
-        AuthorizationListDecoder decoder = new();
+        AuthorizationTupleDecoder decoder = new();
         RlpStream rlp = decoder.EncodeForCommitMessage(chainId, codeAddress, nonce);
         Span<byte> code = stackalloc byte[rlp.Length + 1];
         code[0] = Eip7702Constants.Magic;

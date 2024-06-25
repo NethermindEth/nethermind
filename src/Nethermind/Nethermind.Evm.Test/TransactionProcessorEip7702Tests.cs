@@ -363,6 +363,7 @@ internal class TransactionProcessorEip7702Tests
             .WithNonce(1)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
+            .WithAuthorizationCode([])
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -384,7 +385,7 @@ internal class TransactionProcessorEip7702Tests
 
     private AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
     {
-        AuthorizationListDecoder decoder = new();
+        AuthorizationTupleDecoder decoder = new();
         RlpStream rlp = decoder.EncodeForCommitMessage(chainId, codeAddress, nonce);
         Span<byte> code = stackalloc byte[rlp.Length + 1];
         code[0] = Eip7702Constants.Magic;
