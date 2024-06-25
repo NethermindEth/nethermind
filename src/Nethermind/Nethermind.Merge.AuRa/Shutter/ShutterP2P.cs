@@ -16,6 +16,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
+using Google.Protobuf;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -109,14 +110,21 @@ public class ShutterP2P(
     {
         if (_logger.IsDebug) _logger.Debug("Processing Shutter P2P message.");
 
-        Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-        if (envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
+        try
         {
-            onDecryptionKeysReceived(decryptionKeys);
+            Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+            if (envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
+            {
+                onDecryptionKeysReceived(decryptionKeys);
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Could not parse Shutter decryption keys: protobuf type names did not match.");
+            }
         }
-        else
+        catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Debug("Could not parse Shutter decryption keys...");
+            if (_logger.IsDebug) _logger.Debug($"Could not parse Shutter decryption keys: {e}");
         }
     }
 

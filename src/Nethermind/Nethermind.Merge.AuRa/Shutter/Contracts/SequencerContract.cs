@@ -32,20 +32,20 @@ public class SequencerContract : Contract
         _filterStore = filterStore;
     }
 
-    public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer)
+    public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
     {
         IEnumerable<TransactionSubmitted> events = [];
 
         IEnumerable<object> topics = new List<object>() { _transactionSubmittedAbi.Signature.Hash };
         LogFilter logFilter;
 
-        BlockParameter end = BlockParameter.Latest;
+        BlockParameter end = new(headBlockNumber);
         BlockParameter start;
 
         for (int i = 0; i < LogScanCutoffChunks; i++)
         {
             start = new(end.BlockNumber!.Value - LogScanChunkSize);
-            logFilter = _filterStore.CreateLogFilter(start, end, ContractAddress!, topics); ;
+            logFilter = _filterStore.CreateLogFilter(start, end, ContractAddress!.ToString(), topics);
 
             IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter);
             List<TransactionSubmitted> newEvents = logs

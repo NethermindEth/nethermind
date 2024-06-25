@@ -146,7 +146,7 @@ public class ShutterTransactionLoader
 
     private List<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
     {
-        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer);
+        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, _readOnlyBlockTree.Head!.Number);
         if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
         List<SequencedTransaction> txs = [];
