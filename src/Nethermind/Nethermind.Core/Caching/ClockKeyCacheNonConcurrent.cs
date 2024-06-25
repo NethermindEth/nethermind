@@ -83,7 +83,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
         [DoesNotReturn]
         static void ThrowInvalidOperationException()
         {
-            throw new InvalidOperationException($"{nameof(ClockKeyCache<TKey>)} removing item that doesn't exist");
+            throw new InvalidOperationException($"{nameof(ClockKeyCacheNonConcurrent<TKey>)} removing item that doesn't exist");
         }
     }
 

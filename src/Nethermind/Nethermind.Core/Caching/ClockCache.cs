@@ -114,7 +114,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
         [DoesNotReturn]
         void ThrowInvalidOperationException()
         {
-            throw new InvalidOperationException($"{nameof(ClockKeyCache<TKey>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
+            throw new InvalidOperationException($"{nameof(ClockCache<TKey, TValue>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
         }
     }
 
