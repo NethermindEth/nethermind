@@ -9,20 +9,16 @@ using Nethermind.Merge.AuRa.Shutter;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Core.Test;
-using Google.Protobuf;
 using Nethermind.Core.Extensions;
 using NSubstitute;
 using Nethermind.Blockchain.Find;
-using Nethermind.Abi;
 using Nethermind.Core.Specs;
-using Nethermind.Consensus.Processing;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Serialization.Rlp;
 using System.Linq;
-using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -30,7 +26,6 @@ using G1 = Bls.P1;
 using G2 = Bls.P2;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 using SequencedTransaction = ShutterTransactionLoader.SequencedTransaction;
-using Dto = Shutter.Dto;
 
 class ShutterTransactionLoaderSourceTests
 {
@@ -60,12 +55,17 @@ class ShutterTransactionLoaderSourceTests
         }
 
         // decryption keys are sorted by preimage
-        keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.Key));
+        keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+
+        ShutterConfig shutterConfig = new()
+        {
+            SequencerContractAddress = "0x0000000000000000000000000000000000000000"
+        };
 
         ShutterTransactionLoader txLoader = new ShutterTransactionLoader(
             Substitute.For<ILogFinder>(),
             Substitute.For<IFilterStore>(),
-            Substitute.For<IShutterConfig>(),
+            shutterConfig,
             Substitute.For<ISpecProvider>(),
             new EthereumEcdsa(chainId, logManager),
             Substitute.For<IReadOnlyBlockTree>(),
