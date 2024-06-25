@@ -78,28 +78,25 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
 
     public void ActivateHealingCache()
     {
-        _blockTree.OnUpdateMainChain += OnNewBlock;
+        _blockTree.OnProcessStatelessBlock += OnNewBlock;
     }
 
     public void DisableHealingCache()
     {
         _healingCache.Clear();
-        _blockTree.OnUpdateMainChain -= OnNewBlock;
+        _blockTree.OnProcessStatelessBlock -= OnNewBlock;
     }
 
     private readonly Dictionary<long, VerkleMemoryDb> _healingCache = new();
 
-    private void OnNewBlock(object sender, OnUpdateMainChainArgs blockEventArgs)
+    private void OnNewBlock(object sender, BlockEventArgs blockEventArgs)
     {
-        foreach (Block? block in blockEventArgs.Blocks)
-        {
-            AddToHealingCache(block);
-        }
+        _logger.Info($"Trying to add to healing cache: {blockEventArgs.Block.Hash}");
+        AddToHealingCache(blockEventArgs.Block);
     }
 
     private void OnPivotChange(object sender, PivotChangedEventArgs pivotChangedEventArgs)
     {
-
         var fromBlock = pivotChangedEventArgs.FromBlock;
         var toBlock = pivotChangedEventArgs.ToBlock;
 
