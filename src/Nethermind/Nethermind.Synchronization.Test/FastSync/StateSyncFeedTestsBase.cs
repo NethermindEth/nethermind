@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -64,8 +63,10 @@ namespace Nethermind.Synchronization.Test.FastSync
         [SetUp]
         public void Setup()
         {
-            _logManager = LimboLogs.Instance;
-            _logger = LimboTraceLogger.Instance;
+            //_logManager = LimboLogs.Instance;
+            _logManager = new NUnitLogManager(LogLevel.Trace);
+            //_logger = LimboTraceLogger.Instance;
+            _logger = _logManager.GetClassLogger();
             TrieScenarios.InitOnce();
         }
 

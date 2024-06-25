@@ -27,6 +27,8 @@ namespace Nethermind.Core.Test.Builders
             private static readonly Account _account4 = Build.An.Account.WithBalance(4).TestObject;
             private static readonly Account _account5 = Build.An.Account.WithBalance(5).TestObject;
             private static readonly Account _account6 = Build.An.Account.WithBalance(6).TestObject;
+            private static readonly Account _account7 = Build.An.Account.WithBalance(7).TestObject;
+            private static readonly Account _account8 = Build.An.Account.WithBalance(8).TestObject;
             private static readonly Account _account10 = Build.An.Account.WithBalance(10).TestObject;
 
             public static PathWithAccount[] AccountsWithPaths = new PathWithAccount[]
@@ -38,6 +40,8 @@ namespace Nethermind.Core.Test.Builders
                 new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
                 new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
                 new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123458"), _account6),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123459"), _account7),
+                new PathWithAccount(new Hash256("000000000000000000000000000000000000000000000000000000000112345a"), _account8),
                 };
 
             public static PathWithStorageSlot[] SlotsWithPaths = new PathWithStorageSlot[]
@@ -65,7 +69,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static void FillStateTreeWithTestAccounts(StateTree stateTree, int? maxCount = null)
             {
-                maxCount ??= AccountsWithPaths.Length - 1;
+                maxCount ??= AccountsWithPaths.Length;
                 for (int i = 0; i < maxCount; i++)
                 {
                     stateTree.Set(AccountsWithPaths[i].Path, AccountsWithPaths[i].Account);

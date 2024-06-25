@@ -30,12 +30,14 @@ namespace Nethermind.Synchronization.Test.SnapSync
     {
         private StateTree _inputTree;
         private StateTree _inputTree_7;
+        private StateTree _inputTree_9;
 
         [OneTimeSetUp]
         public void Setup()
         {
-            _inputTree = TestItem.Tree.GetStateTree(maxCount:6);
-            _inputTree_7 = TestItem.Tree.GetStateTree(maxCount:7);
+            _inputTree = TestItem.Tree.GetStateTree(maxCount: 6);
+            _inputTree_7 = TestItem.Tree.GetStateTree(maxCount: 7);
+            _inputTree_9 = TestItem.Tree.GetStateTree(maxCount: 9);
         }
 
         private byte[][] CreateProofForPath(ReadOnlySpan<byte> path, StateTree tree = null)
@@ -171,7 +173,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromOneRangeWithoutProof()
         {
-            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            //Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 rootHash = _inputTree_7.RootHash;
 
             MemDb db = new();
             DbProvider dbProvider = new();
@@ -183,6 +186,18 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+
+            IRawState rawState = progressTracker.GetSyncState();
+            rawState.Finalize(200);
+
+            var state = stateFactory.Get(rootHash);
+            foreach (var item in TestItem.Tree.AccountsWithPaths)
+            {
+                Account a = state.Get(item.Path);
+                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
+                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
+            }
+
             //Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
             //Assert.IsFalse(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
@@ -231,6 +246,38 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var state = stateFactory.Get(rootHash);
             foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
+            {
+                Account a = state.Get(item.Path);
+                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
+                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
+            }
+        }
+
+        [Test]
+        public void RecreateAccountStateFromMultipleRange_Single()
+        {
+            Hash256 rootHash = _inputTree_9.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+
+            // output state
+            MemDb db = new();
+            IDbProvider dbProvider = new DbProvider();
+            dbProvider.RegisterDb(DbNames.State, db);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.StateDb, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider.StateDb, new NodeStorage(db), LimboLogs.Instance);
+
+            for (int i = 0; i < 9; i++)
+            {
+                byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[i].Path.Bytes, _inputTree_9);
+                var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[i].Path, TestItem.Tree.AccountsWithPaths[i..(i+1)], firstProof);
+                Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            }
+
+            IRawState rawState = progressTracker.GetNewRawState();
+            rawState.Finalize(1);
+
+            var state = stateFactory.Get(rootHash);
+            foreach (var item in TestItem.Tree.AccountsWithPaths)
             {
                 Account a = state.Get(item.Path);
                 Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
