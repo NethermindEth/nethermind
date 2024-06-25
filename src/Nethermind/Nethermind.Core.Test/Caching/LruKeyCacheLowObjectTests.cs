@@ -77,7 +77,15 @@ namespace Nethermind.Core.Test.Caching
                 cache.Set(_addresses[i]);
             }
 
-            cache.Get(_addresses[Capacity]).Should().BeTrue();
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Get(_addresses[i]).Should().BeFalse();
+            }
+            // Check in reverse order
+            for (int i = Capacity * 2 - 1; i >= Capacity; i--)
+            {
+                cache.Get(_addresses[i]).Should().BeTrue();
+            }
         }
 
         [Test]

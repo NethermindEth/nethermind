@@ -27,9 +27,9 @@ public class Eip2935Tests : VirtualMachineTestsBase
     }
 
 
-    [TestCase(MainnetSpecProvider.CancunBlockTimestamp, false)]
-    [TestCase(MainnetSpecProvider.PragueBlockTimestamp, true)]
-    public void CorrectBlockhashBeingUsed(ulong timestamp, bool eipEnabled)
+    [TestCase(MainnetSpecProvider.CancunBlockTimestamp)]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp)]
+    public void CorrectBlockhashBeingUsed(ulong timestamp)
     {
         const long blockNumber = 256;
         byte[] bytecode =
@@ -48,7 +48,7 @@ public class Eip2935Tests : VirtualMachineTestsBase
         CallOutputTracer callOutputTracer = new();
         _processor.Execute(transaction, block.Header, callOutputTracer);
 
-        long expected = eipEnabled ? blockNumber + Eip2935Constants.RingBufferSize : blockNumber;
+        long expected = blockNumber;
         callOutputTracer.ReturnValue!.Should().BeEquivalentTo(Keccak.Compute(expected.ToString()).BytesToArray());
     }
 }

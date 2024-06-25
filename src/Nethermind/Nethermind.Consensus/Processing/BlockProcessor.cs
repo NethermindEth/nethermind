@@ -106,6 +106,7 @@ public partial class BlockProcessor : IBlockProcessor
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
+
         try
         {
             for (int i = 0; i < blocksCount; i++)
@@ -256,7 +257,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
-        _blockhashStore.ApplyHistoryBlockHashes(block.Header);
+        _blockhashStore.ApplyBlockhashStateChanges(block.Header);
 
         _stateProvider.Commit(spec, commitStorageRoots: false);
 

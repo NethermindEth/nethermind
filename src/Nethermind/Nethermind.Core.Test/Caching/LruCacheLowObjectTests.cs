@@ -13,6 +13,7 @@ using Cache = Nethermind.Core.Caching.LruCacheLowObject<Nethermind.Core.AddressA
 
 namespace Nethermind.Core.Test.Caching
 {
+    [TestFixture]
     public class LruCacheLowObjectTests
     {
         private static Cache Create()
@@ -84,8 +85,15 @@ namespace Nethermind.Core.Test.Caching
                 cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
             }
 
-            Account? account = cache.Get(_addresses[Capacity]);
-            account.Should().Be(_accounts[Capacity]);
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Get(_addresses[i]).Should().BeNull();
+            }
+            // Check in reverse order
+            for (int i = Capacity * 2 - 1; i >= Capacity; i--)
+            {
+                cache.Get(_addresses[i]).Should().Be(_accounts[i]);
+            }
         }
 
         [Test]
