@@ -54,11 +54,13 @@ public class ShutterTxLoader
 
     public LoadedTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer);
+        Block head = _readOnlyBlockTree.Head!;
+
+        List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head.Number);
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} transactions from Shutter mempool...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
-        FilterTransactions(ref transactions, _readOnlyBlockTree.Head);
+        FilterTransactions(ref transactions, head);
 
         LoadedTransactions loadedTransactions = new()
         {
@@ -144,9 +146,9 @@ public class ShutterTxLoader
         return null;
     }
 
-    private List<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
+    private List<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, _readOnlyBlockTree.Head!.Number);
+        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber);
         if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
         List<SequencedTransaction> txs = [];
