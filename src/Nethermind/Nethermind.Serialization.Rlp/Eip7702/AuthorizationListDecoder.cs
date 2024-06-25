@@ -16,36 +16,27 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
             rlpStream.ReadByte();
             return null;
         }
-
-        int outerLength = rlpStream.ReadSequenceLength();
-
-        int check = rlpStream.Position + outerLength;
-
-        List<AuthorizationTuple> result = new List<AuthorizationTuple>();
-
-        while (rlpStream.Position < check)
+        return rlpStream.DecodeArray(stream =>
         {
-            //TODO check what is valid for the fields here
-            var chainId = rlpStream.DecodeULong();
-            Address codeAddress = rlpStream.DecodeAddress();
-            UInt256? nonce = null;
-            int nonceLength = rlpStream.ReadSequenceLength();
-            if (nonceLength > 0)
-                nonce = rlpStream.DecodeUInt256();
-            result.Add(new AuthorizationTuple(
+            bool shouldReturnNull = false;
+            var chainId = stream.DecodeULong();
+            Address? codeAddress = stream.DecodeAddress();
+            shouldReturnNull |= codeAddress is null;
+            UInt256?[] nonces = stream.DecodeArray<UInt256?>(s => s.DecodeUInt256());
+            shouldReturnNull |= nonces.Length > 1;
+            UInt256? nonce = nonces.Length == 1 ? nonces[0] : null;
+            if (shouldReturnNull)
+            {
+                return null;
+            }
+            return new AuthorizationTuple(
                 chainId,
                 codeAddress,
                 nonce,
-                rlpStream.DecodeULong(),
-                rlpStream.DecodeByteArray(),
-                rlpStream.DecodeByteArray()));
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(check);
-        }
-        return result.ToArray();
+                stream.DecodeULong(),
+                stream.DecodeByteArray(),
+                stream.DecodeByteArray());
+        });
     }
 
     public AuthorizationTuple[]? Decode(
