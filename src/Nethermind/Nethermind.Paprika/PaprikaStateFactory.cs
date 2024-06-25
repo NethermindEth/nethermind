@@ -27,6 +27,7 @@ public class PaprikaStateFactory : IStateFactory
 {
     private readonly ILogger _logger;
     private static readonly long _sepolia = 32.GiB();
+    private static readonly long _holesky = 96.GiB();
     private static readonly long _mainnet = 256.GiB();
 
     private static readonly TimeSpan _flushFileEvery = TimeSpan.FromMinutes(10);
@@ -41,13 +42,15 @@ public class PaprikaStateFactory : IStateFactory
 
     public PaprikaStateFactory()
     {
-        _db = PagedDb.NativeMemoryDb(128 * 1024);
+        _db = PagedDb.NativeMemoryDb(64 * 1024 * 1024);
         _merkleBehaviour = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
         _blockchain = new Blockchain(_db, _merkleBehaviour);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
 
-        _accessor = _blockchain.BuildReadOnlyAccessor();
+        //TODO - implement switching after sync is complete
+        //_accessor = _blockchain.BuildReadOnlyAccessor();
+        _accessor = _blockchain.BuildReadOnlyAccessorForSync();
 
         _logger = LimboLogs.Instance.GetClassLogger();
     }
@@ -58,7 +61,7 @@ public class PaprikaStateFactory : IStateFactory
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
-        _db = PagedDb.MemoryMappedDb(_sepolia, 64, directory, flushToDisk: true);
+        _db = PagedDb.MemoryMappedDb(_holesky, 64, directory, flushToDisk: true);
 
         var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
 
@@ -72,7 +75,8 @@ public class PaprikaStateFactory : IStateFactory
             _logger.Error("Paprika's Flusher task failed and stopped, throwing the following exception", exception);
         };
 
-        _accessor = _blockchain.BuildReadOnlyAccessor();
+        //_accessor = _blockchain.BuildReadOnlyAccessor();
+        _accessor = _blockchain.BuildReadOnlyAccessorForSync();
     }
 
     public ComputeMerkleBehavior MerkleBehaviour => _merkleBehaviour;
@@ -103,6 +107,11 @@ public class PaprikaStateFactory : IStateFactory
 
         bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(bytes), bytes);
         return bytes.ToEvmWord();
+    }
+
+    public void ForceFlush()
+    {
+        _blockchain.ForceFlush();
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
