@@ -340,6 +340,18 @@ public ref struct EvmStack<TTracing>
         return _bytes.Slice(Head * WordSize, WordSize);
     }
 
+    public bool PopWord256(out Span<byte> word)
+    {
+        if (Head-- == 0)
+        {
+            word = default;
+            return false;
+        }
+
+        word = _bytes.Slice(Head * WordSize, WordSize);
+        return true;
+    }
+
     public byte PopByte()
     {
         if (Head-- == 0)
@@ -432,7 +444,7 @@ public ref struct EvmStack<TTracing>
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
         ref byte bottom = ref Unsafe.Add(ref bytes, (Head - n - m - 1) * WordSize);
-        ref byte top = ref Unsafe.Add(ref bytes, (Head - n - 1) * WordSize);
+        ref byte top = ref Unsafe.Add(ref bytes, (Head - n - 2) * WordSize);
 
         Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));

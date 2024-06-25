@@ -65,6 +65,7 @@ public static class BitmapHelper
         } else
         {
             bitvec.Set1(pc);
+            pc += numbits;
         }
     }
     /// <summary>

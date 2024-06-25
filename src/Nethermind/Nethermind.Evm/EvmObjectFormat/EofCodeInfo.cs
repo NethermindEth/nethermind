@@ -19,7 +19,7 @@ public class EofCodeInfo : ICodeInfo
     public int Version => _header.Version;
     public bool IsEmpty => _codeInfo.IsEmpty;
     public ReadOnlyMemory<byte> TypeSection { get; }
-    public ReadOnlyMemory<byte> CodeSection { get;  }
+    public ReadOnlyMemory<byte> CodeSection { get; }
     public ReadOnlyMemory<byte> DataSection { get; }
 
     public ReadOnlyMemory<byte> ContainerSection(int index)

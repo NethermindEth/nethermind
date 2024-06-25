@@ -201,6 +201,7 @@ namespace Nethermind.Evm
     }
     public static class InstructionExtensions
     {
+
         public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
             =>
             instruction switch
@@ -213,6 +214,7 @@ namespace Nethermind.Evm
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
             Instruction.JUMPF or Instruction.RETURNCONTRACT => true,
+            Instruction.RJUMP => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };
@@ -344,7 +346,7 @@ namespace Nethermind.Evm
             Instruction.DATALOAD => (1, 1, 0),
             Instruction.DATALOADN => (0, 1, 2),
             Instruction.DATASIZE => (0, 1, 0),
-            Instruction.DATACOPY => (3, 1, 0),
+            Instruction.DATACOPY => (3, 0, 0),
 
             Instruction.RJUMPV => (1, 0, null), // null indicates this is a dynamic multi-bytes opcode
             Instruction.SWAPN => (null, null, 1),

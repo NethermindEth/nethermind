@@ -417,9 +417,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 bytecodeResultArray = bytecodeResult.ToArray();
                             }
 
-                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.ValidateFullBody, out _)
+                            bool invalidCode = !isEof_invalidated && !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.ValidateFullBody, out _)
                                 && bytecodeResultArray.Length < spec.MaxCodeSize;
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray.Length, spec);
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray?.Length ?? 0, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 ReadOnlyMemory<byte> code = callResult.Output.Bytes;
@@ -976,8 +976,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Metrics.ExpOpcode++;
 
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        if (!stack.PopUInt256(out a) || !stack.PopWord256(out bytes)) goto StackUnderflow;
 
                         int leadingZeros = bytes.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -1460,7 +1459,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
-                        if (UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
+
+                        if (env.CodeInfo.Version == 0 &&  UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
                         {
                             goto AccessViolation;
                         }
@@ -1486,11 +1486,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (UInt256.AddOverflow(a, 32, out c) || c > _returnDataBuffer.Length)
-                        {
-                            goto AccessViolation;
-                        }
-
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, 32)) goto OutOfGas;
 
                         slice = _returnDataBuffer.Span.SliceWithZeroPadding(a, 32);
@@ -1879,8 +1874,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
                             goto OutOfGas;
 
-                        int n = (int)codeSection[programCounter] >> 0x04;
-                        int m = (int)codeSection[programCounter] &  0x0f;
+                        int n = 1 + (int)(codeSection[programCounter] >> 0x04);
+                        int m = 1 + (int)(codeSection[programCounter] &  0x0f);
 
                         stack.Exchange(n, m);
 
@@ -2191,17 +2186,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (spec.IsEofEnabled && env.CodeInfo.Version > 0)
                         {
                             if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
-                            var caseV = stack.PopByte();
-                            var maxIndex = codeSection[programCounter++];
-                            var immediateValueSize = (maxIndex + 1) * EvmObjectFormat.TWO_BYTE_LENGTH;
-                            if (caseV <= maxIndex)
+                            stack.PopUInt256(out a);
+                            var count = codeSection[programCounter] + 1;
+                            var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
+                            if (a < count)
                             {
-                                int caseOffset = codeSection.Slice(
-                                    programCounter + caseV * EvmObjectFormat.TWO_BYTE_LENGTH,
-                                    EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
-                                programCounter += caseOffset;
+                                int case_v = programCounter + EvmObjectFormat.ONE_BYTE_LENGTH + (int)a * EvmObjectFormat.TWO_BYTE_LENGTH;
+                                int offset = codeSection.Slice(case_v, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                                programCounter += offset;
                             }
-                            programCounter += immediateValueSize;
+                            programCounter += immediates;
                             break;
                         }
                         goto InvalidInstruction;
@@ -2670,7 +2664,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address codeSource = stack.PopAddress();
         if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
 
         UInt256 callValue;
         switch (instruction)
@@ -2685,6 +2678,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 if (!stack.PopUInt256(out callValue)) return EvmExceptionType.StackUnderflow;
                 break;
         }
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
 
         UInt256 transferValue = instruction == Instruction.EXTDELEGATECALL ? UInt256.Zero : callValue;
         if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
@@ -2901,7 +2896,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.OutOfGas, null);
 
         if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 salt) ||
+            !stack.PopWord256(out Span<byte> salt) ||
             !stack.PopUInt256(out UInt256 dataOffset) ||
             !stack.PopUInt256(out UInt256 dataSize))
             return (EvmExceptionType.StackUnderflow, null);
@@ -2956,7 +2951,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
-        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt.ToBytes(), initCode.Span, env.InputData.Span);
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initCode.Span, env.InputData.Span);
 
         if (spec.UseHotAndColdStorage)
         {
