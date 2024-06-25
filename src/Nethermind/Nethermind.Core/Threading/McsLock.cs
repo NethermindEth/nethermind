@@ -187,7 +187,7 @@ public class McsLock
         public volatile ThreadNode? Next = null;
 
         /// <summary>
-        /// Points to the next node in the queue.
+        /// The lock for access to _tail
         /// </summary>
         public readonly McsLock Lock = @lock;
         /// <summary>
