@@ -10,6 +10,12 @@
       },
       {
         "indexed": false,
+        "internalType": "uint64",
+        "name": "txIndex",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
         "internalType": "bytes",
         "name": "identityPrefix",
         "type": "bytes32"
