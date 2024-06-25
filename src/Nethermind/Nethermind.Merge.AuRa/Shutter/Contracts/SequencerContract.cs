@@ -45,7 +45,7 @@ public class SequencerContract : Contract
         for (int i = 0; i < LogScanCutoffChunks; i++)
         {
             start = new(end.BlockNumber!.Value - LogScanChunkSize);
-            logFilter = _filterStore.CreateLogFilter(start, end, ContractAddress!, topics);;
+            logFilter = _filterStore.CreateLogFilter(start, end, ContractAddress!, topics); ;
 
             IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter);
             List<TransactionSubmitted> newEvents = logs
