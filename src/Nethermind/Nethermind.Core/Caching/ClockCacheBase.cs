@@ -45,23 +45,24 @@ public abstract class ClockCacheBase<TKey>
         long flags = 1L << position;
 
         ref long accessedBitmapWord = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
-        bool accessed = (accessedBitmapWord & flags) != 0;
-
+        bool accessed = (Volatile.Read(ref accessedBitmapWord) & flags) != 0;
         if (accessed)
         {
             // Clear the accessed bit
-            flags = ~flags;
-            long current = Volatile.Read(ref accessedBitmapWord);
-            while (true)
-            {
-                long previous = Interlocked.And(ref accessedBitmapWord, flags);
-                if (previous == current)
-                {
-                    break;
-                }
-                current = previous;
-            }
+            Interlocked.And(ref accessedBitmapWord, ~flags);
         }
+
+        return accessed;
+    }
+
+    protected bool ClearAccessedNonConcurrent(int position)
+    {
+        uint offset = (uint)position >> BitShiftPerInt64;
+        long flags = 1L << position;
+
+        ref long accessedBitmapWord = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
+        bool accessed = (accessedBitmapWord & flags) != 0;
+        accessedBitmapWord &= ~flags;
 
         return accessed;
     }
@@ -73,16 +74,16 @@ public abstract class ClockCacheBase<TKey>
 
         ref long accessedBitmapWord = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
 
-        long current = Volatile.Read(ref accessedBitmapWord);
-        while (true)
-        {
-            long previous = Interlocked.Or(ref accessedBitmapWord, flags);
-            if (previous == current)
-            {
-                break;
-            }
-            current = previous;
-        }
+        Interlocked.Or(ref accessedBitmapWord, flags);
+    }
+
+    protected void MarkAccessedNonConcurrent(int position)
+    {
+        uint offset = (uint)position >> BitShiftPerInt64;
+        long flags = 1L << position;
+
+        ref long accessedBitmapWord = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
+        accessedBitmapWord |= flags;
     }
 
     /// <summary>

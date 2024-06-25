@@ -112,25 +112,4 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
     }
 
     public int Count => _cacheMap.Count;
-
-    private bool ClearAccessedNonConcurrent(int position)
-    {
-        uint offset = (uint)position >> BitShiftPerInt64;
-        long flags = 1L << position;
-
-        ref long accessedBitmapWord = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
-        bool accessed = (accessedBitmapWord & flags) != 0;
-        accessedBitmapWord &= ~flags;
-
-        return accessed;
-    }
-
-    private void MarkAccessedNonConcurrent(int position)
-    {
-        uint offset = (uint)position >> BitShiftPerInt64;
-        long flags = 1L << position;
-
-        ref long accessedBitmapWord = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
-        accessedBitmapWord |= flags;
-    }
 }
