@@ -27,7 +27,7 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 using G1 = Bls.P1;
 
-public class ShutterTransactionLoader
+public class ShutterTxLoader
 {
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
@@ -36,7 +36,7 @@ public class ShutterTransactionLoader
     private readonly SequencerContract _sequencerContract;
     private readonly UInt256 _encryptedGasLimit;
 
-    public ShutterTransactionLoader(ILogFinder logFinder,
+    public ShutterTxLoader(ILogFinder logFinder,
         IFilterStore filterStore,
         IShutterConfig shutterConfig,
         ISpecProvider specProvider,

@@ -21,7 +21,7 @@ using Nethermind.Blockchain;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
-using LoadedTransactions = ShutterTransactionLoader.LoadedTransactions;
+using LoadedTransactions = ShutterTxLoader.LoadedTransactions;
 
 public class ShutterTxSource : ITxSource
 {
@@ -31,7 +31,7 @@ public class ShutterTxSource : ITxSource
     private readonly IAbiEncoder _abiEncoder;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
-    private readonly ShutterTransactionLoader _txLoader;
+    private readonly ShutterTxLoader _txLoader;
     private readonly Address _validatorRegistryContractAddress;
     private readonly Dictionary<ulong, byte[]> _validatorsInfo;
     private readonly ulong _validatorRegistryMessageVersion;

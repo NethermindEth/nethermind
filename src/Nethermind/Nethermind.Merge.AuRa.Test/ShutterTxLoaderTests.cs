@@ -25,9 +25,9 @@ namespace Nethermind.Merge.AuRa.Test;
 using G1 = Bls.P1;
 using G2 = Bls.P2;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
-using SequencedTransaction = ShutterTransactionLoader.SequencedTransaction;
+using SequencedTransaction = ShutterTxLoader.SequencedTransaction;
 
-class ShutterTransactionLoaderSourceTests
+class ShutterTxLoaderSourceTests
 {
     [Test]
     public void Can_decrypt_sequenced_transactions()
@@ -62,7 +62,7 @@ class ShutterTransactionLoaderSourceTests
             SequencerContractAddress = "0x0000000000000000000000000000000000000000"
         };
 
-        ShutterTransactionLoader txLoader = new ShutterTransactionLoader(
+        ShutterTxLoader txLoader = new ShutterTxLoader(
             Substitute.For<ILogFinder>(),
             Substitute.For<IFilterStore>(),
             shutterConfig,
