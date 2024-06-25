@@ -83,7 +83,8 @@ public static class ConsensusRequestExtensions
             else if (requests[i].Type == ConsensusRequestsType.WithdrawalRequest)
             {
                 withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)requests[i];
-            }else
+            }
+            else
             {
                 consolidationRequests[consolidationRequestIndex++] = (ConsolidationRequest)requests[i];
             }
