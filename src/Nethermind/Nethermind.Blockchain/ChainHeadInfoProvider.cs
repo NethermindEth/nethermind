@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -75,21 +76,25 @@ namespace Nethermind.Blockchain
             private readonly IStateReader _stateReader;
             private readonly ReaderWriterLockSlim _lock = new();
             private IScopedStateReader? _reader;
+            private Hash256? _stateRoot;
 
             public HeadAccountStateProvider(IBlockTree blockTree, IStateReader stateReader)
             {
                 _stateReader = stateReader;
                 blockTree.BlockAddedToMain += OnHeadChanged;
-
-                // start with the most recent
-                _reader = _stateReader.ForStateRoot();
             }
 
             private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
             {
-                IScopedStateReader current = !_stateReader.HasStateForRoot(e.Block.StateRoot) ?
-                                                        _stateReader.ForStateRoot() :
-                                                        _stateReader.ForStateRoot(e.Block.StateRoot);
+                //memorize only state root - do not open reader
+                _stateRoot = e.Block.StateRoot;
+            }
+
+            private void ResetStateReader(Hash256? stateRoot)
+            {
+                IScopedStateReader current = !_stateReader.HasStateForRoot(stateRoot) ?
+                    _stateReader.ForStateRoot() :
+                    _stateReader.ForStateRoot(stateRoot);
                 IScopedStateReader? previous;
 
                 _lock.EnterWriteLock();
@@ -111,7 +116,13 @@ namespace Nethermind.Blockchain
                 _lock.EnterReadLock();
                 try
                 {
-                    return _reader.TryGetAccount(address, out account);
+                    //open and dispose new reader for a single get operation - might have a severe performance penalty
+                    //changed to ensure no pending readers block page reuse in paprika
+                    using IScopedStateReader current = !_stateReader.HasStateForRoot(_stateRoot) ?
+                        _stateReader.ForStateRoot() :
+                        _stateReader.ForStateRoot(_stateRoot);
+
+                    return current.TryGetAccount(address, out account);
                 }
                 finally
                 {
