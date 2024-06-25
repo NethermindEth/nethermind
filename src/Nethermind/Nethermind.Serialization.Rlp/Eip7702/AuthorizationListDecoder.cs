@@ -9,34 +9,28 @@ using System.Collections.Generic;
 namespace Nethermind.Serialization.Rlp.Eip7702;
 public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>, IRlpValueDecoder<AuthorizationTuple[]?>
 {
-    public AuthorizationTuple[]? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public AuthorizationTuple?[]? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
         {
             rlpStream.ReadByte();
             return null;
         }
-        return rlpStream.DecodeArray(stream =>
-        {
-            bool shouldReturnNull = false;
-            var chainId = stream.DecodeULong();
-            Address? codeAddress = stream.DecodeAddress();
-            shouldReturnNull |= codeAddress is null;
-            UInt256?[] nonces = stream.DecodeArray<UInt256?>(s => s.DecodeUInt256());
-            shouldReturnNull |= nonces.Length > 1;
-            UInt256? nonce = nonces.Length == 1 ? nonces[0] : null;
-            if (shouldReturnNull)
-            {
-                return null;
-            }
-            return new AuthorizationTuple(
-                chainId,
-                codeAddress,
-                nonce,
-                stream.DecodeULong(),
-                stream.DecodeByteArray(),
-                stream.DecodeByteArray());
-        });
+        return rlpStream.DecodeArray(DecodeAuthorizationTuple);
+    }
+
+    private AuthorizationTuple? DecodeAuthorizationTuple(RlpStream stream)
+    {
+        bool shouldReturnNull = false;
+        var chainId = stream.DecodeULong();
+        Address? codeAddress = stream.DecodeAddress();
+        shouldReturnNull |= codeAddress is null;
+        UInt256?[] nonces = stream.DecodeArray<UInt256?>(s => s.DecodeUInt256());
+        shouldReturnNull |= nonces.Length > 1;
+        UInt256? nonce = nonces.Length == 1 ? nonces[0] : null;
+        return shouldReturnNull
+            ? null
+            : new AuthorizationTuple(chainId, codeAddress, nonce, stream.DecodeULong(), stream.DecodeByteArray(), stream.DecodeByteArray());
     }
 
     public AuthorizationTuple[]? Decode(

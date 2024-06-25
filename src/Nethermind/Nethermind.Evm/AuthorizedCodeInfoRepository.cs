@@ -62,7 +62,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    /// <summary>    
+    /// <summary>
     /// Build a code cache from transaction authorization_list authorized by signature.
     /// eip-7702
     /// </summary>
@@ -72,14 +72,18 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     /// <exception cref="RlpException"></exception>
     public void InsertFromAuthorizations(
         IWorldState worldState,
-        AuthorizationTuple[] authorizations,
+        AuthorizationTuple?[] authorizations,
         IReleaseSpec spec)
     {
         _authorizedCode.Clear();
 
         //TODO optimize
-        foreach (AuthorizationTuple authTuple in authorizations)
+        foreach (AuthorizationTuple? authTuple in authorizations)
         {
+            if (authTuple is null)
+            {
+                continue;
+            }
             if (authTuple.ChainId != 0 && _chainId != authTuple.ChainId)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list because chain id ({authTuple.ChainId}) does not match.");
