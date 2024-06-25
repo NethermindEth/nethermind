@@ -14,6 +14,7 @@ public class Deposit : ConsensusRequest
     public Deposit()
     {
         Type = ConsensusRequestsType.Deposit;
+        Amount = 0;
     }
     public byte[]? Pubkey
     {

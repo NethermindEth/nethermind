@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
@@ -23,4 +24,16 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId);
+
+    [JsonRpcMethod(
+        Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes);
+
+    [JsonRpcMethod(
+        Description = "Returns an array of execution payload bodies for the provided number range",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count);
 }

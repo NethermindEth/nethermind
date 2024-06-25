@@ -57,4 +57,27 @@ public static class ConsensusRequestExtensions
 
         return (depositCount, withdrawalRequestCount);
     }
+
+    public static (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests) SplitRequests(this ConsensusRequest[]? requests)
+    {
+        if (requests is null) return (null, null);
+        (int depositCount, int withdrawalRequestCount) = requests.GetTypeCounts();
+        Deposit[]? deposits = new Deposit[depositCount];
+        WithdrawalRequest[]? withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+        int depositIndex = 0;
+        int withdrawalRequestIndex = 0;
+        for (int i = 0; i < requests.Length; i++)
+        {
+            if (requests[i].Type == ConsensusRequestsType.Deposit)
+            {
+                deposits[depositIndex++] = (Deposit)requests[i];
+            }
+            else
+            {
+                withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)requests[i];
+            }
+        }
+
+        return (deposits, withdrawalRequests);
+    }
 }
