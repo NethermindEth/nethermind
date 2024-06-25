@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -24,9 +25,9 @@ public class McsLock
     /// <summary>
     /// Points to the last node in the queue (tail). Used to manage the queue of waiting threads.
     /// </summary>
-    private volatile ThreadNode? _tail;
+    private PaddedNode _tail;
 
-    internal volatile ThreadNode? _currentLockHolder = null;
+    internal PaddedNode _currentLockHolder;
 
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
@@ -37,19 +38,19 @@ public class McsLock
         ThreadNode node = _node.Value!;
 
         // Check for reentrancy.
-        if (ReferenceEquals(node, _currentLockHolder))
+        if (ReferenceEquals(node, _currentLockHolder.Value))
             ThrowInvalidOperationException();
 
         node.State = (nuint)LockState.Waiting;
 
-        ThreadNode? predecessor = Interlocked.Exchange(ref _tail, node);
+        ThreadNode? predecessor = Interlocked.Exchange(ref _tail.Value, node);
         if (predecessor is not null)
         {
             WaitForUnlock(node, predecessor);
         }
 
         // Set current lock holder.
-        _currentLockHolder = node;
+        _currentLockHolder.Value = node;
 
         return new Disposable(this);
 
@@ -133,10 +134,10 @@ public class McsLock
             {
                 // Attempt to atomically set the tail to null, indicating no thread is waiting.
                 // If it is still 'node', then there are no other waiting threads.
-                if (Interlocked.CompareExchange(ref _lock._tail, null, node) == node)
+                if (Interlocked.CompareExchange(ref _lock._tail.Value, null, node) == node)
                 {
                     // Clear current lock holder.
-                    _lock._currentLockHolder = null;
+                    _lock._currentLockHolder.Value = null;
                     return;
                 }
 
@@ -148,7 +149,7 @@ public class McsLock
 
             ThreadNode next = node.Next!;
             // Clear current lock holder.
-            _lock._currentLockHolder = null;
+            _lock._currentLockHolder.Value = null;
             // Pass the lock to the next thread by setting its 'Locked' flag to false.
             next.State = (nuint)LockState.ReadyToAcquire;
 
@@ -208,5 +209,12 @@ public class McsLock
         /// Points to the next node in the queue.
         /// </summary>
         public ThreadNode? Next = null;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 128)]
+    internal struct PaddedNode
+    {
+        [FieldOffset(64)]
+        public volatile ThreadNode? Value;
     }
 }
