@@ -1483,12 +1483,18 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
 
         public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
+        public event EventHandler<BlockEventArgs>? OnProcessStatelessBlock;
 
         public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
 
         public event EventHandler<BlockEventArgs>? NewSuggestedBlock;
 
         public event EventHandler<BlockEventArgs>? NewHeadBlock;
+
+        public void UpdateStatelessBlock(Block block)
+        {
+            OnProcessStatelessBlock?.Invoke(this, new BlockEventArgs(block));
+        }
 
         /// <summary>
         /// Can delete a slice of the chain (usually invoked when the chain is corrupted in the DB).

@@ -152,6 +152,14 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
+        public event EventHandler<BlockEventArgs>? OnProcessStatelessBlock
+        {
+            add { }
+            remove { }
+        }
+
+        public void UpdateStatelessBlock(Block block) => _wrapped.UpdateStatelessBlock(block);
+
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             var bestKnownNumber = BestKnownNumber;

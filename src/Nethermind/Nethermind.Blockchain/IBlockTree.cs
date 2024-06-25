@@ -178,6 +178,10 @@ namespace Nethermind.Blockchain
         /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
 
+        event EventHandler<BlockEventArgs> OnProcessStatelessBlock;
+
+        public void UpdateStatelessBlock(Block block);
+
         int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
 
         bool IsBetterThanHead(BlockHeader? header);
