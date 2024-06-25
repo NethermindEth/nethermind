@@ -2345,17 +2345,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                             goto InvalidInstruction;
 
-
-                        if (!UpdateGas(GasCostOf.DataCopy, ref gasAvailable)) goto OutOfGas;
-
                         stack.PopUInt256(out UInt256 memOffset);
                         stack.PopUInt256(out UInt256 offset);
                         stack.PopUInt256(out UInt256 size);
 
                         if (size > UInt256.Zero)
                         {
-                            gasAvailable -= GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size);
-                            if (!UpdateGas(gasAvailable, ref gasAvailable) ||
+                            if (!UpdateGas(GasCostOf.Memory + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable) ||
                                 !UpdateMemoryCost(vmState, ref gasAvailable, in memOffset, size))
                                 goto OutOfGas;
 

@@ -668,7 +668,7 @@ public static class EvmObjectFormat
 
                         ushort dataSectionOffset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-                        if (dataSectionOffset + 32 >= header.DataSection.Size)
+                        if (dataSectionOffset + 32 > header.DataSection.Size)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.DATALOADN}'s immediate argument must be less than datasection.Length / 32 i.e: {header.DataSection.Size / 32}");
                             return false;
@@ -763,7 +763,7 @@ public static class EvmObjectFormat
 
             ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-            ushort curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+            ushort currrentSectionOutputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
             short peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
             int unreachedBytes = code.Length;
@@ -790,13 +790,13 @@ public static class EvmObjectFormat
                 switch (opcode)
                 {
                     case Instruction.CALLF or Instruction.JUMPF:
-                        ushort sectionIndex = code.Slice(programCounter + 1, immediates.Value).ReadEthUInt16();
-                        inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+                        ushort targetSectionId = code.Slice(posPostInstruction, immediates.Value).ReadEthUInt16();
+                        inputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
-                        outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                        isTargetSectionNonReturning = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
+                        outputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        isTargetSectionNonReturning = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
                         outputs = (ushort)(isTargetSectionNonReturning ? 0 : outputs);
-                        targetMaxStackHeight = typesection.Slice(sectionIndex * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
+                        targetMaxStackHeight = typesection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
 
                         if(MAX_STACK_HEIGHT - targetMaxStackHeight + inputs < currentStackBounds.Max)
                         {
@@ -804,14 +804,14 @@ public static class EvmObjectFormat
                             return false;
                         }
 
-                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(curr_outputs + inputs - outputs == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
+                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currrentSectionOutputs + inputs - outputs == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {curr_outputs + inputs - outputs} but found {currentStackBounds.Max}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currrentSectionOutputs + inputs - outputs} but found {currentStackBounds.Max}");
                             return false;
                         }
                         break;
                     case Instruction.DUPN:
-                        byte imm = code[programCounter + 1];
+                        byte imm = code[posPostInstruction];
                         inputs = (ushort)(imm + 1);
                         outputs = (ushort)(inputs + 1);
                         break;
@@ -820,8 +820,8 @@ public static class EvmObjectFormat
                         outputs = inputs = (ushort)(2 + imm);
                         break;
                     case Instruction.EXCHANGE:
-                        byte imm_n = (byte)(code[programCounter + 1] >> 4);
-                        byte imm_m = (byte)(code[programCounter + 1] & 0x0F);
+                        byte imm_n = (byte)(code[posPostInstruction] >> 4);
+                        byte imm_m = (byte)(code[posPostInstruction] & 0x0F);
                         outputs = inputs = (ushort)(imm_n + imm_m + 3);
                         break;
                 }
@@ -831,9 +831,13 @@ public static class EvmObjectFormat
                     if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack Underflow required {inputs} but found {currentStackBounds.Min}");
                     return false;
                 }
-                short delta = (short)(outputs - inputs);
-                currentStackBounds.Max = (short)(currentStackBounds.Max + delta);
-                currentStackBounds.Min = (short)(currentStackBounds.Min + delta);
+
+                if(!opcode.IsTerminating())
+                {
+                    short delta = (short)(outputs - inputs);
+                    currentStackBounds.Max = (short)(currentStackBounds.Max + delta);
+                    currentStackBounds.Min = (short)(currentStackBounds.Min + delta);
+                }
                 peakStackHeight = Math.Max(peakStackHeight, currentStackBounds.Max);
 
                 switch (opcode)
@@ -855,7 +859,7 @@ public static class EvmObjectFormat
 
                             if(opcode is Instruction.RJUMPI)
                             {
-                                recordedStackHeight[posPostInstruction].Combine(currentStackBounds);
+                                recordedStackHeight[posPostInstruction + immediates.Value].Combine(currentStackBounds);
                             }
 
                             if(jumpDestination > programCounter)
@@ -902,15 +906,10 @@ public static class EvmObjectFormat
                             }
                             break;
                         }
-                    default:
-                        {
-                            posPostInstruction += immediates.Value;
-                            break;
-                        }
                 }
 
                 unreachedBytes -= 1 + immediates.Value;
-                programCounter = posPostInstruction;
+                programCounter += 1 + immediates.Value;
 
                 if (opcode.IsTerminating())
                 {

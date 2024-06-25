@@ -353,7 +353,7 @@ namespace Nethermind.Evm
             Instruction.DUPN => (null, null, 1),
             Instruction.EXCHANGE => (null, null, 1),
 
-            Instruction.EXTCALL => (3, 1, 0),
+            Instruction.EXTCALL => (4, 1, 0),
             Instruction.EXTSTATICCALL => (3, 1, 0),
             Instruction.EXTDELEGATECALL => (3, 1, 0),
             _ => throw new NotImplementedException($"opcode {instruction} not implemented yet"),
