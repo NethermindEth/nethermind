@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITxPool _txPool;
         private readonly ITxPoolConfig _txPoolConfig;
 
-        private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize, "pending tx hashes");
+        private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 
         public PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig)
         {

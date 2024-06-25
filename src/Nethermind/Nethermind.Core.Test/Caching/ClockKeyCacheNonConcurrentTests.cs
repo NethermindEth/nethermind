@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void At_capacity()
         {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             for (int i = 0; i < Capacity; i++)
             {
                 cache.Set(_addresses[i]).Should().BeTrue();
@@ -43,7 +43,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Can_reset()
         {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             cache.Set(_addresses[0]).Should().BeTrue();
             cache.Set(_addresses[0]).Should().BeFalse();
             cache.Get(_addresses[0]).Should().BeTrue();
@@ -52,14 +52,14 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Can_ask_before_first_set()
         {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             cache.Get(_addresses[0]).Should().BeFalse();
         }
 
         [Test]
         public void Can_clear()
         {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             cache.Set(_addresses[0]).Should().BeTrue();
             cache.Clear();
             cache.Get(_addresses[0]).Should().BeFalse();
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity()
         {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             for (int i = 0; i < Capacity * 2; i++)
             {
                 cache.Set(_addresses[i]);
@@ -90,7 +90,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity_lru()
         {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             for (int i = 0; i < Capacity * 2; i++)
             {
                 for (int ii = 0; ii < Capacity / 2; ii++)
@@ -105,7 +105,7 @@ namespace Nethermind.Core.Test.Caching
         public void Beyond_capacity_lru_check()
         {
             Random random = new();
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             for (var iter = 0; iter < Capacity; iter++)
             {
                 for (int ii = 0; ii < Capacity; ii++)
@@ -172,7 +172,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Can_delete()
         {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity, "test");
+            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(Capacity);
             cache.Set(_addresses[0]).Should().BeTrue();
             cache.Delete(_addresses[0]);
             cache.Get(_addresses[0]).Should().BeFalse();

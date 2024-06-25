@@ -324,7 +324,7 @@ namespace Nethermind.Trie.Pruning
 
             if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath)
             {
-                _pastPathHash = new(pruningStrategy.TrackedPastKeyCount, "");
+                _pastPathHash = new(pruningStrategy.TrackedPastKeyCount);
             }
             else
             {

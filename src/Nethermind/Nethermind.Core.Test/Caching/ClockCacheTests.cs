@@ -18,7 +18,7 @@ namespace Nethermind.Core.Test.Caching
     {
         private static Cache Create()
         {
-            return new Cache(Capacity, "test")!;
+            return new Cache(Capacity)!;
         }
 
         private const int Capacity = 32;
@@ -183,7 +183,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity_lru_parallel()
         {
-            Cache cache = new(Capacity, "test");
+            Cache cache = new(Capacity);
             Parallel.For(0, Environment.ProcessorCount * 8, (iter) =>
             {
                 for (int ii = 0; ii < Capacity; ii++)
@@ -275,7 +275,7 @@ namespace Nethermind.Core.Test.Caching
             int itemsToKeep = 10;
             int iterations = 40;
 
-            ClockCache<int, int> cache = new(maxCapacity, "test");
+            ClockCache<int, int> cache = new(maxCapacity);
 
             for (int i = 0; i < iterations; i++)
             {
