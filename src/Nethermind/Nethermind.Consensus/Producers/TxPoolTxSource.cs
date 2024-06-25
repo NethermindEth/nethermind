@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.Producers
             int checkedBlobTransactions = 0;
             int selectedBlobTransactions = 0;
             UInt256 blobGasCounter = 0;
-            UInt256 blobGasPrice = UInt256.Zero;
+            UInt256 feePerBlobGas = UInt256.Zero;
 
             foreach (Transaction blobTx in blobTransactions)
             {
@@ -143,13 +143,13 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(blobTx, parent, spec, out blobGasPrice))
+                if (feePerBlobGas.IsZero && !TryUpdateFeePerBlobGas(blobTx, parent, spec, out feePerBlobGas))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                     continue;
                 }
 
-                if (blobGasPrice > blobTx.MaxFeePerBlobGas)
+                if (feePerBlobGas > blobTx.MaxFeePerBlobGas)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
                     continue;
@@ -186,20 +186,20 @@ namespace Nethermind.Consensus.Producers
             return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
         }
 
-        private bool TryUpdateBlobGasPrice(Transaction lightBlobTx, BlockHeader parent, IReleaseSpec spec, out UInt256 blobGasPrice)
+        private bool TryUpdateFeePerBlobGas(Transaction lightBlobTx, BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
         {
             ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             if (excessDataGas is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
-                blobGasPrice = UInt256.Zero;
+                feePerBlobGas = UInt256.Zero;
                 return false;
             }
 
-            if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(excessDataGas.Value, out blobGasPrice))
+            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, out feePerBlobGas))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, failed to calculate data gas price.");
-                blobGasPrice = UInt256.Zero;
+                feePerBlobGas = UInt256.Zero;
                 return false;
             }
 

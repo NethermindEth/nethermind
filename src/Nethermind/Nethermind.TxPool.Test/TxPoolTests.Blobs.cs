@@ -340,7 +340,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            _headInfo.CurrentPricePerBlobGas = UInt256.MaxValue;
+            _headInfo.CurrentFeePerBlobGas = UInt256.MaxValue;
 
             Transaction tx = Build.A.Transaction
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)

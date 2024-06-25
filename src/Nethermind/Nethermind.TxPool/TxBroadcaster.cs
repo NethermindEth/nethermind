@@ -246,7 +246,7 @@ namespace Nethermind.TxPool
                     }
                     else
                     {
-                        if (!tx.CanPayForBlobGas(_headInfo.CurrentPricePerBlobGas))
+                        if (!tx.CanPayForBlobGas(_headInfo.CurrentFeePerBlobGas))
                         {
                             continue;
                         }
