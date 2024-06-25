@@ -40,38 +40,8 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
                 continue;
             }
 
-            ExecutionPayloadBodyV2Result result = new(block!.Transactions, block.Withdrawals, null, null);
-
-            ConsensusRequest[]? consensusRequests = block?.Requests;
-
-            if (consensusRequests is not null)
-            {
-                (int depositCount, int withdrawalRequestCount) = consensusRequests.GetTypeCounts();
-
-                result.DepositRequests = new Deposit[depositCount];
-                result.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-
-                int depositIndex = 0;
-                int withdrawalRequestIndex = 0;
-
-                foreach (ConsensusRequest request in consensusRequests)
-                {
-                    if (request.Type == ConsensusRequestsType.Deposit)
-                    {
-                        result.DepositRequests![depositIndex++] = (Deposit)request;
-                    }
-                    else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
-                    {
-                        result.WithdrawalRequests![withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                    }
-                    else
-                    {
-                        var error = $"Unknown request type {request.Type}";
-                        if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV2Handler)}: {error}");
-                    }
-                }
-            }
-            yield return result;
+            (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests) = block!.Requests.SplitRequests();
+            yield return new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
         }
 
         yield break;
