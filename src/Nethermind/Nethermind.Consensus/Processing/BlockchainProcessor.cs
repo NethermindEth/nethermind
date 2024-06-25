@@ -407,15 +407,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
         }
 
-        bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
-        if (updateHead)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-            bool wereProcessed = processingBranch.Blocks[0].IsGenesis;
-            wereProcessed |= !options.ContainsFlag(ProcessingOptions.StatelessProcessing);;
-            _blockTree.UpdateMainChain(processingBranch.Blocks, wereProcessed);
-        }
+        bool updateHead = processingBranch.Blocks.Count != 0 &&
+                          !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
+        if (updateHead) _blockTree.UpdateMainChain(processingBranch.Blocks, true);
 
+        if (options.ContainsFlag(ProcessingOptions.StatelessProcessing))
+        {
+            foreach (Block? block in processedBlocks)
+            {
+                _blockTree.UpdateStatelessBlock(block);
+            }
+        }
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         long blockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
         if (!readonlyChain)
