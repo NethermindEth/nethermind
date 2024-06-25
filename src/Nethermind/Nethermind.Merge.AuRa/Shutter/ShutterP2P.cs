@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
+using System.IO.Abstractions;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -78,10 +79,15 @@ public class ShutterP2P(
         {
             while (true)
             {
-                var msg = await _msgQueue.Reader.ReadAsync();
                 try
                 {
-                    ProcessP2PMessage(msg);
+                    if (await _msgQueue.Reader.WaitToReadAsync(_cancellationTokenSource.Token))
+                    {
+                        var msg = await _msgQueue.Reader.ReadAsync(_cancellationTokenSource.Token);
+                        {
+                            ProcessP2PMessage(msg);
+                        }
+                    }
                 }
                 catch (Exception e)
                 {
