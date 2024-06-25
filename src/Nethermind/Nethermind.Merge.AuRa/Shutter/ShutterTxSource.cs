@@ -129,25 +129,7 @@ public class ShutterTxSource : ITxSource
             if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} transactions from Shutter mempool...");
 
             Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, decryptionKeys.Keys);
-
-            Block? head = _readOnlyBlockTree.Head;
-            IReleaseSpec releaseSpec = head is null ? _specProvider.GetFinalSpec() : _specProvider.GetSpec(head.Number, head.Timestamp);
-            TxValidator txValidator = new(_specProvider.ChainId);
-            transactions = Array.FindAll(transactions, tx => tx.Type != TxType.Blob ^ txValidator.IsWellFormed(tx, releaseSpec));
-
-            // atomic update
-            _loadedTransactions = new()
-            {
-                Transactions = transactions,
-                Slot = decryptionKeys.Gnosis.Slot
-            };
-
-            if (_logger.IsDebug)
-            {
-                string msg = "Decrypted Shutter transactions:";
-                _loadedTransactions.Transactions.ForEach(tx => msg += "\n" + tx.ToShortString());
-                _logger.Debug(msg);
-            }
+            _loadedTransactions = FilterTransactions(_readOnlyBlockTree.Head, transactions, decryptionKeys.Gnosis.Slot);
         }
     }
 
@@ -156,6 +138,28 @@ public class ShutterTxSource : ITxSource
         // assume Gnosis or Chiado chain
         ulong genesisTimestamp = (_specProvider.ChainId == BlockchainIds.Chiado) ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
         return (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - genesisTimestamp) / 5) + 1;
+    }
+
+    internal LoadedTransactions FilterTransactions(Block? head, Transaction[] transactions, ulong slot)
+    {
+        IReleaseSpec releaseSpec = head is null ? _specProvider.GetFinalSpec() : _specProvider.GetSpec(head.Number, head.Timestamp);
+        TxValidator txValidator = new(_specProvider.ChainId);
+        transactions = Array.FindAll(transactions, tx => tx.Type != TxType.Blob ^ txValidator.IsWellFormed(tx, releaseSpec));
+
+        LoadedTransactions loadedTransactions = new()
+        {
+            Transactions = transactions,
+            Slot = slot
+        };
+
+        if (_logger.IsDebug)
+        {
+            string msg = "Decrypted Shutter transactions:";
+            loadedTransactions.Transactions.ForEach(tx => msg += "\n" + tx.ToShortString());
+            _logger.Debug(msg);
+        }
+
+        return loadedTransactions;
     }
 
     internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, IList<Dto.Key> decryptionKeys)
@@ -339,7 +343,7 @@ public class ShutterTxSource : ITxSource
         return txs;
     }
 
-    private struct LoadedTransactions
+    internal struct LoadedTransactions
     {
 
         public Transaction[] Transactions { get; init; }

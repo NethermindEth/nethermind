@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Serialization.Rlp;
 using System.Linq;
+using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -81,6 +82,12 @@ class ShutterTxSourceTests
             byte[] tmp = Rlp.Encode<Transaction>(tx).Bytes;
             Assert.That(Enumerable.SequenceEqual(tmp, msg));
         }
+    }
+
+    [Test]
+    public void Can_filter_invalid_transactions()
+    {
+        // TestBlockchain
     }
     
     private (SequencedTransaction, Dto.Key) GenerateSequencedTransaction(byte[] msg, byte[] identityPreimage, UInt256 sk, Bytes32 sigma)
