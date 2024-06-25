@@ -155,16 +155,19 @@ public partial class BlockProcessor : IBlockProcessor
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
-        if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
-        {
-            /* Discarding the other branch data - chain reorganization.
-               We cannot use cached values any more because they may have been written
-               by blocks that are being reorganized out.*/
+        //if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
+        //{
+        //    /* Discarding the other branch data - chain reorganization.
+        //       We cannot use cached values any more because they may have been written
+        //       by blocks that are being reorganized out.*/
 
-            if (incrementReorgMetric)
-                Metrics.Reorganizations++;
-            _stateProvider.ResetTo(branchStateRoot);
-        }
+        //    if (incrementReorgMetric)
+        //        Metrics.Reorganizations++;
+        //    _stateProvider.ResetTo(branchStateRoot);
+        //}
+
+        //TODO - always reset - ensures paprika read only transactions are disposed
+        _stateProvider.ResetTo(branchStateRoot);
     }
 
     // TODO: move to branch processor
