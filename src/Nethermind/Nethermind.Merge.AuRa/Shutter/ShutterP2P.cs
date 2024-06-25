@@ -85,6 +85,7 @@ public class ShutterP2P(
                 }
                 catch (Exception e)
                 {
+                    if (_logger.IsError) _logger.Error("Shutter processing thread error", e);
                     throw new ShutterP2PException("Shutter processing thread error", e);
                 }
             }
