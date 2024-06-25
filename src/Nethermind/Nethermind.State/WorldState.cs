@@ -30,11 +30,12 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private IState _state;
+        private IState? _state;
+        private Hash256 _stateRoot;
 
         public Hash256 StateRoot
         {
-            get => _state.StateRoot;
+            get => _state is null ? _stateRoot : _state.StateRoot;
             set
             {
                 ResetState(value);
@@ -48,6 +49,7 @@ namespace Nethermind.State
             _factory = factory;
             _stateProvider = new StateProvider(this, factory, codeDb, logManager);
             _state = _factory.Get(Keccak.EmptyTreeHash);
+            _stateRoot = Keccak.EmptyTreeHash;
             _persistentStorageProvider = new PersistentStorageProvider(this, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
@@ -104,6 +106,7 @@ namespace Nethermind.State
 
         public void ResetTo(Hash256 stateRoot)
         {
+            stateRoot ??= _stateRoot;
             ResetState(stateRoot);
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
@@ -159,7 +162,8 @@ namespace Nethermind.State
         {
             _state.Commit(blockNumber);
 
-            ResetState(_state.StateRoot);
+            _stateRoot = _state.StateRoot;
+            ResetStateToNull();
         }
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);

@@ -551,27 +551,23 @@ namespace Nethermind.Synchronization.FastSync
                     }
                     else
                     {
-                        keyExists = _nodeStorage.KeyExists(syncItem.Address, syncItem.Path, syncItem.Hash);
+                        //keyExists = _nodeStorage.KeyExists(syncItem.Address, syncItem.Path, syncItem.Hash);
+
+                        keyExists = false;
+                        if (syncItem.NodeDataType == NodeDataType.State)
+                        {
+                            Span<byte> fullPath = stackalloc byte[64];
+                            syncItem.PathNibbles.CopyTo(fullPath);
+
+                            using var rawState = _stateFactory.GetRaw();
+                            var hash = rawState.GetHash(Nibbles.ToBytes(fullPath), syncItem.PathNibbles.Length);
+                            keyExists = hash == syncItem.Hash;
+                        }
+                        else if (syncItem.NodeDataType == NodeDataType.Storage)
+                        {
+                            
+                        }
                     }
-                    //if (syncItem.NodeDataType == NodeDataType.State)
-                    //{
-                    //    Span<byte> fullPath = stackalloc byte[64];
-                    //    syncItem.PathNibbles.CopyTo(fullPath);
-
-                    //    using var rawState = _stateFactory.GetRaw();
-                    //    var hash = rawState.GetHash(Nibbles.ToBytes(fullPath), syncItem.PathNibbles.Length);
-                    //    keyExists = hash == syncItem.Hash;
-
-                    //} else if (syncItem.NodeDataType == NodeDataType.Storage)
-                    //{
-
-                    //}
-                    //else
-                    //{
-                    //    IDb dbToCheck = _codeDb;
-                    //    Interlocked.Increment(ref _data.DbChecks);
-                    //    keyExists = dbToCheck.KeyExists(syncItem.Hash);
-                    //}
 
                     if (keyExists)
                     {
@@ -738,7 +734,7 @@ namespace Nethermind.Synchronization.FastSync
                                 node.Key.CopyTo(fullPath.Slice(syncItem.Level));
 
                                 rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), rlpContext.DecodeByteArray());
-                                rawState.RecalculateStorageRoot(accountHash);
+                                //no hash recalc
                                 rawState.Commit(false);
                             }
                             //_stateDb.Set(syncItem.Hash, data);

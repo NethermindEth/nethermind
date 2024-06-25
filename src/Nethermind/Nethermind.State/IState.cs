@@ -86,9 +86,12 @@ public interface IStateFactory : IAsyncDisposable
 
     bool HasRoot(Hash256 stateRoot);
 
-    public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account);
+    bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account);
 
-    public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index);
+    EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index);
+
+    void ForceFlush();
+
 }
 
 public interface IStateOwner
