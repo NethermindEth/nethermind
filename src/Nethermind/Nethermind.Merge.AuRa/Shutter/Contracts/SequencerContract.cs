@@ -51,18 +51,25 @@ public class SequencerContract : Contract
                 .AsOrdered()
                 .Select(ParseTransactionSubmitted);
 
+            bool shouldBreak = false;
+            
             foreach (TransactionSubmitted tx in transactions)
             {
                 // if transaction in chunk is before txPointer then don't search further
                 if (tx.Eon < eon || tx.TxIndex <= txPointer)
                 {
-                    yield break;
+                    shouldBreak = true;
                 }
 
                 if (tx.Eon == eon && tx.TxIndex >= txPointer)
                 {
                     yield return tx;
                 }
+            }
+
+            if (shouldBreak)
+            {
+                yield break;
             }
 
             end = new BlockParameter(startBlockNumber - 1);
