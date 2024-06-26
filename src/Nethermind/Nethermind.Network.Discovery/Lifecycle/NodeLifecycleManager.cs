@@ -383,8 +383,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 {
                     await CreateAndSendPingAsync(counter - 1);
                 }
-
-                UpdateState(NodeLifecycleState.Unreachable);
+                else
+                {
+                    UpdateState(NodeLifecycleState.Unreachable);
+                }
             }
         }
         catch (Exception e)
