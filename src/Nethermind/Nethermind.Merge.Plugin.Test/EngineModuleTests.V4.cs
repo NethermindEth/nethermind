@@ -324,29 +324,7 @@ public partial class EngineModuleTests
 
         if (requests is not null)
         {
-            (int depositCount, int withdrawalRequestCount, int consolidationRequestCount) = requests.GetTypeCounts();
-            deposits = new Deposit[depositCount];
-            withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-            consolidationRequests = new ConsolidationRequest[consolidationRequestCount];
-            int depositIndex = 0;
-            int withdrawalRequestIndex = 0;
-            int consolidationRequestIndex = 0;
-            for (int i = 0; i < requests.Length; ++i)
-            {
-                ConsensusRequest request = requests[i];
-                if (request.Type == ConsensusRequestsType.Deposit)
-                {
-                    deposits[depositIndex++] = (Deposit)request;
-                }
-                else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
-                {
-                    withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }
-                else
-                {
-                    consolidationRequests[consolidationRequestIndex++] = (ConsolidationRequest)request;
-                }
-            }
+            (deposits, withdrawalRequests, consolidationRequests) = requests.SplitRequests();
         }
 
         ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
