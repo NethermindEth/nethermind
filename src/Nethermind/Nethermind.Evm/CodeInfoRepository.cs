@@ -7,7 +7,6 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -26,27 +25,27 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly LruCacheLowObject<ValueHash256, ICodeInfo>[] _caches;
+        private readonly ClockCache<ValueHash256, ICodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new LruCacheLowObject<ValueHash256, ICodeInfo>[CacheCount];
+            _caches = new ClockCache<ValueHash256, ICodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new LruCacheLowObject<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+                _caches[i] = new ClockCache<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
             }
         }
 
         public ICodeInfo? Get(in ValueHash256 codeHash)
         {
-            LruCacheLowObject<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
         public bool Set(in ValueHash256 codeHash, ICodeInfo codeInfo)
         {
-            LruCacheLowObject<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 

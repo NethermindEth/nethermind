@@ -38,7 +38,7 @@ namespace Ethereum.Test.Base
             char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            return currentDirectory.Remove(currentDirectory.LastIndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}BlockchainTests";
+            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "BlockchainTests");
         }
 
         private IEnumerable<BlockchainTest> LoadTestsFromDirectory(string testDir, string wildcard)
