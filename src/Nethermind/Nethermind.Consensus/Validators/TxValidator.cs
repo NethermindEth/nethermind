@@ -304,6 +304,11 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
             }
+            else if (tx.AuthorizationList is null)
+            {
+                error = TxErrorMessages.MissingAuthorizationList;
+                return false;
+            }
             return true;
         }
     }

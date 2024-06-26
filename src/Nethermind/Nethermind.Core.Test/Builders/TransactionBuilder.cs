@@ -220,6 +220,11 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListType()
+        {
+            return TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;
+        }
+
         public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple authTuple)
         {
             TestObjectInternal.AuthorizationList = TestObjectInternal.AuthorizationList != null ? [.. TestObjectInternal.AuthorizationList, authTuple] : [authTuple];
