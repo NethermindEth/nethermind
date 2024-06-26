@@ -37,7 +37,6 @@ public class SequencerContract : Contract
 
     public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        IEnumerable<TransactionSubmitted> events = [];
         BlockParameter end = new(headBlockNumber);
 
         for (int i = 0; i < LogScanCutoffChunks; i++)
