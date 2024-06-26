@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Filters;
+using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using NSubstitute;
 using NUnit.Framework;
@@ -18,7 +19,7 @@ public class SequencerContractTests
     public void GetEvents(string hex)
     {
         // Arrange
-        SequencerContract sequencerContract = new(TestItem.AddressA, Substitute.For<ILogFinder>(), new NUnitLogManager());
+        SequencerContract sequencerContract = new(TestItem.AddressA, Substitute.For<ILogFinder>(), LimboLogs.Instance);
 
         // Act
         ISequencerContract.TransactionSubmitted parsedTransaction = sequencerContract.ParseTransactionSubmitted(
