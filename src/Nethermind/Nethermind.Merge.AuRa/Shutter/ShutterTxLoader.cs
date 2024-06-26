@@ -35,7 +35,7 @@ public class ShutterTxLoader(
     ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly SequencerContract _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder);
+    private readonly SequencerContract _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
 
     public LoadedTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)

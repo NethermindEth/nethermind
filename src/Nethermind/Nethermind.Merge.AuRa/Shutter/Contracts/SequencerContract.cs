@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using DnsClient.Internal;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
@@ -12,9 +13,11 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
+using ILogger = Logging.ILogger;
 using TransactionSubmitted = ISequencerContract.TransactionSubmitted;
 
 public class SequencerContract : Contract
@@ -25,14 +28,16 @@ public class SequencerContract : Contract
     private const int LogScanCutoffChunks = 16;
     private readonly AddressFilter _addressFilter;
     private readonly TopicsFilter _topicsFilter;
+    private readonly ILogger _logger;
 
-    public SequencerContract(string address, ILogFinder logFinder)
+    public SequencerContract(string address, ILogFinder logFinder, ILogManager logManager)
         : base(null, new(address))
     {
         _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
         _addressFilter = new AddressFilter(ContractAddress!);
         _topicsFilter = new SequenceTopicsFilter(new SpecificTopic(_transactionSubmittedAbi.Signature.Hash));
         _logFinder = logFinder;
+        _logger = logManager.GetClassLogger();
     }
 
     public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
@@ -50,6 +55,8 @@ public class SequencerContract : Contract
                 .AsParallel()
                 .AsOrdered()
                 .Select(ParseTransactionSubmitted);
+            
+            if (_logger.IsInfo) _logger.Info($"Got {transactions.Count()} Shutter logs from blocks {start.BlockNumber!.Value} - {end.BlockNumber!.Value}");
 
             bool shouldBreak = false;
             
