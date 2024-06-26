@@ -22,7 +22,6 @@ public class ShutterMessageHandler(
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
-    private Block? _head;
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
@@ -48,7 +47,7 @@ public class ShutterMessageHandler(
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
 
             List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
-            _txSource.LoadTransactions(decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer, decryptionKeys.Gnosis.Slot, keys);
+            txSource.LoadTransactions(decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer, decryptionKeys.Gnosis.Slot, keys);
         }
     }
 

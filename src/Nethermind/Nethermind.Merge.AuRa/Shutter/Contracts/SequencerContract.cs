@@ -23,7 +23,7 @@ public class SequencerContract : Contract
     private readonly IFilterStore _filterStore;
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
     private const long LogScanChunkSize = 16;
-    private const int LogScanCutoffChunks = 4;
+    private const int LogScanCutoffChunks = 16;
     private readonly AddressFilter _addressFilter;
     private readonly TopicsFilter _topicsFilter;
 
