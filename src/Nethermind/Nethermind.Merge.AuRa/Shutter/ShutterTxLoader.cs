@@ -43,9 +43,17 @@ public class ShutterTxLoader(
         Block head = readOnlyBlockTree.Head!;
 
         List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head.Number);
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} transactions from Shutter mempool...");
+        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
+
+        if (_logger.IsDebug)
+        {
+            string msg = "Decrypted Shutter transactions:";
+            transactions.ForEach(tx => msg += "\n" + tx.ToShortString());
+            _logger.Debug(msg);
+        }
+
         FilterTransactions(ref transactions, head);
 
         LoadedTransactions loadedTransactions = new()
@@ -56,7 +64,7 @@ public class ShutterTxLoader(
 
         if (_logger.IsDebug)
         {
-            string msg = "Decrypted Shutter transactions:";
+            string msg = "Filtered Shutter transactions:";
             loadedTransactions.Transactions.ForEach(tx => msg += "\n" + tx.ToShortString());
             _logger.Debug(msg);
         }
@@ -79,6 +87,7 @@ public class ShutterTxLoader(
 
         return sequencedTransactions
             .AsParallel()
+            .AsOrdered()
             .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedIndexes[i].Index + 1]))
             .OfType<Transaction>()
             .ToArray();
@@ -101,11 +110,14 @@ public class ShutterTxLoader(
             byte[] encodedTransaction = ShutterCrypto.Decrypt(encryptedMessage, key);
 
             // todo: remove after using for testing
-            if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter message: {Convert.ToHexString(encodedTransaction)}");
+            if (_logger.IsDebug) _logger.Debug($"Decrypted raw Shutter transaction: {Convert.ToHexString(encodedTransaction)}");
 
             Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction.AsSpan());
             // todo: test sending transactions with bad signatures to see if secp segfaults
             transaction.SenderAddress = ethereumEcdsa.RecoverAddress(transaction, true);
+
+            if (_logger.IsDebug) _logger.Debug($"Decoded Shutter transaction: {transaction.ToShortString()}");
+
             return transaction;
         }
         catch (ShutterCrypto.ShutterCryptoException e)
