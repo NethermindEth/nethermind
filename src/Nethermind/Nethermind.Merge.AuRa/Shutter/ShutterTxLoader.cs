@@ -77,7 +77,11 @@ public class ShutterTxLoader(
         // question for reviewers: what is correct thing to do here if head is null?
         IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
         TxValidator txValidator = new(specProvider.ChainId);
-        transactions = Array.FindAll(transactions, tx => tx.Type != TxType.Blob ^ txValidator.IsWellFormed(tx, releaseSpec));
+        transactions = Array.FindAll(transactions, tx => {
+            bool wellFormed = txValidator.IsWellFormed(tx, releaseSpec, out string? error);
+            if (error is not null && _logger.IsDebug) _logger.Debug($"Decrypred Shutter transactions was not well-formed: {error}");
+            return wellFormed ^ tx.Type != TxType.Blob;
+        });
     }
 
     internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
