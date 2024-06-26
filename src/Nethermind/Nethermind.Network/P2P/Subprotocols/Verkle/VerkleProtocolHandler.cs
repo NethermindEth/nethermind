@@ -243,7 +243,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         SubTreeRangeMessageSerializer subTreeRangeMessageSerializer = new();
         VerkleProofSerializer verkleProofSerializer = new();
 
-        Banderwagon rootPoint = Banderwagon.FromBytes(rootHash.Bytes.ToArray()) ?? throw new Exception("the root point is invalid");
+        byte[] rootPoint = rootHash.Bytes.ToArray();
 
         IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
         subTreeRangeMessageSerializer.Serialize(buffer, response);

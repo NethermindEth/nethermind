@@ -293,7 +293,7 @@ public class VerkleWorldStateBenchmark
             {
                 if (slot == null)
                 {
-                    worldState.GetAccount(address);
+                    worldState.TryGetAccount(address, out AccountStruct account);
                 }
                 else
                 {

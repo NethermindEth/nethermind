@@ -205,7 +205,7 @@ public class TestSyncRangesInAHugeVerkleTree
 
         Stem endStem = range[^1].Path;
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(startStem, endStem, out Banderwagon root, stateRootToUse);
+        VerkleProof proof = tree.CreateVerkleRangeProof(startStem, endStem, out byte[] root, stateRootToUse);
         var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
         var tempTree = new VerkleTree(stateStore, LimboLogs.Instance);
         bool isTrue = tempTree.CreateStatelessTreeFromRange(proof, root, startStem, endStem, range);
@@ -274,7 +274,7 @@ public class TestSyncRangesInAHugeVerkleTree
             remoteTree.CommitTree(blockNumber);
         }
 
-        Banderwagon root = default;
+        byte[] root = default;
         ExecutionWitness executionWitness = default;
         SortedSet<byte[]> update = new(Bytes.Comparer);
 
@@ -416,7 +416,7 @@ public class TestSyncRangesInAHugeVerkleTree
         Stem endStem = subTrees[^1].Path;
         // Stem limitHash = Stem.MaxValue;
 
-        VerkleProof proof = remoteTree.CreateVerkleRangeProof(startingStem, endStem, out Banderwagon root, stateRoot);
+        VerkleProof proof = remoteTree.CreateVerkleRangeProof(startingStem, endStem, out byte[] root, stateRoot);
 
         var message = new SubTreeRangeMessage()
         {
