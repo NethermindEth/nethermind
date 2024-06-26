@@ -26,8 +26,8 @@ public class SequencerContract : Contract
     private readonly TopicsFilter _topicsFilter;
     private readonly ILogger _logger;
 
-    public SequencerContract(string address, ILogFinder logFinder, ILogManager logManager)
-        : base(null, new(address))
+    public SequencerContract(Address address, ILogFinder logFinder, ILogManager logManager)
+        : base(null, address)
     {
         _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
         _addressFilter = new AddressFilter(ContractAddress!);
@@ -77,7 +77,7 @@ public class SequencerContract : Contract
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(FilterLog log)
+    internal ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(FilterLog log)
     {
         object[] decodedEvent = AbiEncoder.Decode(AbiEncodingStyle.Packed, _transactionSubmittedAbi.Signature, log.Data);
         return new ISequencerContract.TransactionSubmitted

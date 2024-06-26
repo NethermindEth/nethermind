@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Abi;
 using Nethermind.Crypto;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Producers;
 using Nethermind.Evm.TransactionProcessing;
