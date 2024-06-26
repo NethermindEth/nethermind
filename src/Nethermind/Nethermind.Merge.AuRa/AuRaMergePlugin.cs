@@ -118,7 +118,7 @@ namespace Nethermind.Merge.AuRa
                 ShutterEon shutterEon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
                 _api.BlockTree!.NewHeadBlock += (_, e) => shutterEon.Update(e.Block.Header);
 
-                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, validatorsInfo, _api.LogManager);
+                shutterTxSource = new ShutterTxSource(_api.LogFinder!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, validatorsInfo, _api.LogManager);
 
                 ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, shutterTxSource, shutterEon, _api.LogManager);
                 _shutterP2P = new(shutterMessageHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);

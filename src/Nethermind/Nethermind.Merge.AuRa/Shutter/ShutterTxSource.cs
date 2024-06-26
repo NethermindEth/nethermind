@@ -25,7 +25,6 @@ using LoadedTransactions = ShutterTxLoader.LoadedTransactions;
 
 public class ShutterTxSource(
     ILogFinder logFinder,
-    IFilterStore filterStore,
     ReadOnlyTxProcessingEnvFactory envFactory,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
