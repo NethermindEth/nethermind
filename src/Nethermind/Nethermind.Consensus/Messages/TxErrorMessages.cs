@@ -72,6 +72,8 @@ public static class TxErrorMessages
 
     public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
 
+    public const string MissingAuthorizationList = "MissingAuthorizationList: Must be set.";
+
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
