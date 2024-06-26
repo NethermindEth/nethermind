@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -6,6 +6,7 @@ using Nethermind.Int256;
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 
 namespace Nethermind.Serialization.Rlp.Eip7702;
 
@@ -13,23 +14,36 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
 {
     public AuthorizationTuple Decode(RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        int length = stream.ReadSequenceLength();
+        int check = length + stream.Position;
+
         var chainId = stream.DecodeULong();
         Address? codeAddress = stream.DecodeAddress();
         UInt256?[] nonces = stream.DecodeArray<UInt256?>(s => s.DecodeUInt256());
+
         if (nonces.Length > 1)
             ThrowInvalidNonceRlpException();
         UInt256? nonce = nonces.Length == 1 ? nonces[0] : null;
+
+        ulong yParity = stream.DecodeULong();
+        byte[] r = stream.DecodeByteArray();
+        byte[] s = stream.DecodeByteArray();
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+            stream.Check(check);
         return new AuthorizationTuple(
             chainId,
             codeAddress,
             nonce,
-            stream.DecodeULong(),
-            stream.DecodeByteArray(),
-            stream.DecodeByteArray());
+            yParity,
+            r,
+            s);
     }
 
     public AuthorizationTuple Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        int length = decoderContext.ReadSequenceLength();
+        int check = length + decoderContext.Position;
+
         var chainId = decoderContext.DecodeULong();
         Address codeAddress = decoderContext.DecodeAddress();
 
@@ -40,31 +54,59 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
             ThrowInvalidNonceRlpException();
         if (nonceLength == 1)
             nonce = decoderContext.DecodeUInt256();
+
+        ulong yParity = decoderContext.DecodeULong();
+        byte[] r = decoderContext.DecodeByteArray();
+        byte[] s = decoderContext.DecodeByteArray();
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+            decoderContext.Check(check);
         return new AuthorizationTuple(
             chainId,
             codeAddress,
             nonce,
             //Signature
-            decoderContext.DecodeULong(),
-            decoderContext.DecodeByteArray(),
-            decoderContext.DecodeByteArray());
+            yParity,
+            r,
+            s);
+    }
+
+    public RlpStream Encode(AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        RlpStream stream = new(GetLength(item, rlpBehaviors));
+        Encode(stream, item, rlpBehaviors);
+        return stream;
     }
 
     public void Encode(RlpStream stream, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        throw new NotImplementedException();
+        int contentLength = GetContentLength(item);
+        stream.StartSequence(contentLength);
+        stream.Encode(item.ChainId);
+        stream.Encode(item.CodeAddress);
+        if (item.Nonce != null)
+        {
+            stream.StartSequence(Rlp.LengthOf(item.Nonce));
+            stream.Encode((UInt256)item.Nonce);
+        }
+        else
+        {
+            stream.StartSequence(0);
+        }
+        stream.Encode(item.AuthoritySignature.RecoveryId);
+        stream.Encode(item.AuthoritySignature.R);
+        stream.Encode(item.AuthoritySignature.S);
     }
 
-    public RlpStream EncodeForCommitMessage(ulong chainId, Address codeAddress, UInt256? nonce)
+    public RlpStream EncodeWithoutSignature(ulong chainId, Address codeAddress, UInt256? nonce)
     {
-        int contentLength = Rlp.LengthOf(chainId) + Rlp.LengthOf(codeAddress) + (nonce != null ? Rlp.LengthOfSequence(Rlp.LengthOf(nonce)) : Rlp.OfEmptySequence.Length);
+        int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         var totalLength = Rlp.LengthOfSequence(contentLength);
         RlpStream stream = new RlpStream(totalLength);
-        EncodeForCommitMessage(stream, chainId, codeAddress, nonce);
+        EncodeWithoutSignature(stream, chainId, codeAddress, nonce);
         return stream;
     }
 
-    public void EncodeForCommitMessage(RlpStream stream, ulong chainId, Address codeAddress, UInt256? nonce)
+    public void EncodeWithoutSignature(RlpStream stream, ulong chainId, Address codeAddress, UInt256? nonce)
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         stream.StartSequence(contentLength);
@@ -89,7 +131,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
 
     private static int GetContentLength(AuthorizationTuple tuple)
     {
-        return  GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
+        return GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
             + Rlp.LengthOf(tuple.AuthoritySignature.V)
             + Rlp.LengthOf(tuple.AuthoritySignature.R.AsSpan())
             + Rlp.LengthOf(tuple.AuthoritySignature.S.AsSpan());

@@ -11,11 +11,16 @@ namespace Nethermind.Serialization.Rlp.Eip7702;
 public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>, IRlpValueDecoder<AuthorizationTuple[]?>
 {
     private readonly AuthorizationTupleDecoder _tupleDecoder = new();
-    public AuthorizationTuple[]? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public AuthorizationTuple[]? Decode(
+        RlpStream rlpStream,
+        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             ThrowNullAuthorizationListRlpException();
-        return rlpStream.DecodeArray<AuthorizationTuple>((rlp) => _tupleDecoder.Decode(rlp, rlpBehaviors), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes));
+
+        return rlpStream.DecodeArray<AuthorizationTuple>(
+            (rlp) => _tupleDecoder.Decode(rlp, rlpBehaviors),
+            rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes));
     }
 
     public AuthorizationTuple[]? Decode(
@@ -25,7 +30,7 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
         if (decoderContext.IsNextItemNull())
             ThrowNullAuthorizationListRlpException();
 
-        AuthorizationTuple[]  result = decoderContext.DecodeArray<AuthorizationTuple>(
+        AuthorizationTuple[] result = decoderContext.DecodeArray<AuthorizationTuple>(
             _tupleDecoder,
             rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes));
         return result;
@@ -36,27 +41,14 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
         AuthorizationTuple[] items,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (items is null)        
-            throw new ArgumentNullException(nameof(items));        
+        if (items is null)
+            throw new ArgumentNullException(nameof(items));
 
-        int contentLength = _tupleDecoder.GetLength(items);
+        int contentLength = GetLength(items, rlpBehaviors);
         stream.StartSequence(contentLength);
         foreach (AuthorizationTuple tuple in items)
         {
-            stream.Encode(tuple.ChainId);
-            stream.Encode(tuple.CodeAddress);
-            if (tuple.Nonce != null)
-            {
-                stream.StartSequence(Rlp.LengthOf(tuple.Nonce));
-                stream.Encode((UInt256)tuple.Nonce);
-            }
-            else
-            {
-                stream.StartSequence(0);
-            }
-            stream.Encode(tuple.AuthoritySignature.V);
-            stream.Encode(tuple.AuthoritySignature.R);
-            stream.Encode(tuple.AuthoritySignature.S);
+            _tupleDecoder.Encode(stream, tuple, rlpBehaviors);
         }
     }
 
@@ -67,7 +59,7 @@ public class AuthorizationListDecoder : IRlpStreamDecoder<AuthorizationTuple[]?>
         foreach (AuthorizationTuple tuple in authorizationTuples)
         {
             total += _tupleDecoder.GetLength(tuple, rlpBehaviors);
-        }        
+        }
         return Rlp.LengthOfSequence(total);
     }
 

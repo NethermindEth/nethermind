@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     Span<byte> msg = stackalloc byte[128];
                     msg[0] = Eip7702Constants.Magic;
-                    RlpStream rlpStream = _authorizationTupleDecoder.EncodeForCommitMessage(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+                    RlpStream rlpStream = _authorizationTupleDecoder.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
                     rlpStream.Data.AsSpan().CopyTo(msg.Slice(1));
                     tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(msg.Slice(0, rlpStream.Data.Length + 1)));
                 }

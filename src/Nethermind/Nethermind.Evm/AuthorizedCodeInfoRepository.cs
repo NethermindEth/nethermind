@@ -114,7 +114,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     private Address RecoverAuthority(AuthorizationTuple authTuple)
     {
         Span<byte> encoded = _internalBuffer.AsSpan();
-        RlpStream stream = _authorizationTupleDecoder.EncodeForCommitMessage(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
+        RlpStream stream = _authorizationTupleDecoder.EncodeWithoutSignature(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
         stream.Data.AsSpan().CopyTo(encoded.Slice(1));
         return _ethereumEcdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
     }

@@ -169,7 +169,7 @@ namespace Nethermind.Core
         /// List of EOA code authorizations.
         /// https://eips.ethereum.org/EIPS/eip-7702 
         /// </summary>
-        public AuthorizationTuple?[]? AuthorizationList { get; set; } 
+        public AuthorizationTuple[]? AuthorizationList { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
