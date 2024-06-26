@@ -362,7 +362,7 @@ namespace Ethereum.Test.Base
                 }
             }
 
-            foreach ((Address acountAddress, AccountState accountState) in test.PostState)
+            foreach ((Address accountAddress, AccountState accountState) in test.PostState)
             {
                 int differencesBefore = differences.Count;
 
@@ -372,60 +372,60 @@ namespace Ethereum.Test.Base
                     break;
                 }
 
-                bool accountExists = stateProvider.AccountExists(acountAddress);
-                UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?)null;
-                UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?)null;
+                bool accountExists = stateProvider.AccountExists(accountAddress);
+                UInt256? balance = accountExists ? stateProvider.GetBalance(accountAddress) : (UInt256?)null;
+                UInt256? nonce = accountExists ? stateProvider.GetNonce(accountAddress) : (UInt256?)null;
 
                 if (accountState.Balance != balance)
                 {
-                    differences.Add($"{acountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {(balance > accountState.Balance ? balance - accountState.Balance : accountState.Balance - balance)}");
+                    differences.Add($"{accountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {(balance > accountState.Balance ? balance - accountState.Balance : accountState.Balance - balance)}");
                 }
 
                 if (accountState.Nonce != nonce)
                 {
-                    differences.Add($"{acountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
+                    differences.Add($"{accountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
                 }
 
-                byte[] code = accountExists ? stateProvider.GetCode(acountAddress) : new byte[0];
+                byte[] code = accountExists ? stateProvider.GetCode(accountAddress) : new byte[0];
                 if (!Bytes.AreEqual(accountState.Code, code))
                 {
-                    differences.Add($"{acountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
+                    differences.Add($"{accountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
                 }
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger.Info($"ACCOUNT STATE ({acountAddress}) HAS DIFFERENCES");
+                    _logger.Info($"ACCOUNT STATE ({accountAddress}) HAS DIFFERENCES");
                 }
 
                 differencesBefore = differences.Count;
 
                 KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0];
-                if (test.Pre.ContainsKey(acountAddress))
+                if (test.Pre.ContainsKey(accountAddress))
                 {
-                    clearedStorages = test.Pre[acountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
+                    clearedStorages = test.Pre[accountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
                 }
 
                 foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
                 {
-                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
+                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
                     if (!value.IsZero())
                     {
-                        differences.Add($"{acountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                        differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
                     }
                 }
 
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
                 {
-                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, storageItem.Key));
+                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
                     if (!Bytes.AreEqual(storageItem.Value, value))
                     {
-                        differences.Add($"{acountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                        differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
                     }
                 }
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger.Info($"ACCOUNT STORAGE ({acountAddress}) HAS DIFFERENCES");
+                    _logger.Info($"ACCOUNT STORAGE ({accountAddress}) HAS DIFFERENCES");
                 }
             }
 
