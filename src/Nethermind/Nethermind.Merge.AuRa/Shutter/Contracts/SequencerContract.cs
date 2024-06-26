@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
@@ -14,8 +15,6 @@ using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.AuRa.Shutter.Contracts;
-
-using TransactionSubmitted = ISequencerContract.TransactionSubmitted;
 
 public class SequencerContract : Contract
 {
@@ -29,13 +28,13 @@ public class SequencerContract : Contract
     public SequencerContract(string address, ILogFinder logFinder)
         : base(null, new(address))
     {
-        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
+        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
         _addressFilter = new AddressFilter(ContractAddress!);
         _topicsFilter = new SequenceTopicsFilter(new SpecificTopic(_transactionSubmittedAbi.Signature.Hash));
         _logFinder = logFinder;
     }
 
-    public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
+    public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
     {
         BlockParameter end = new(headBlockNumber);
 
@@ -45,16 +44,11 @@ public class SequencerContract : Contract
             BlockParameter start = new(startBlockNumber);
             LogFilter logFilter = new(0, start, end, _addressFilter, _topicsFilter);
 
-            IEnumerable<TransactionSubmitted> transactions = _logFinder
-                .FindLogs(logFilter)
-                .AsParallel()
-                .AsOrdered()
-                .Select(ParseTransactionSubmitted);
-
             bool shouldBreak = false;
-            
-            foreach (TransactionSubmitted tx in transactions)
+            foreach (FilterLog log in _logFinder.FindLogs(logFilter))
             {
+                ISequencerContract.TransactionSubmitted tx = ParseTransactionSubmitted(log);
+
                 // if transaction in chunk is before txPointer then don't search further
                 if (tx.Eon < eon || tx.TxIndex <= txPointer)
                 {
@@ -76,10 +70,11 @@ public class SequencerContract : Contract
         }
     }
 
-    private TransactionSubmitted ParseTransactionSubmitted(FilterLog log)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(FilterLog log)
     {
         object[] decodedEvent = AbiEncoder.Decode(AbiEncodingStyle.None, _transactionSubmittedAbi.Signature, log.Data);
-        return new TransactionSubmitted()
+        return new ISequencerContract.TransactionSubmitted
         {
             Eon = (ulong)decodedEvent[0],
             TxIndex = (ulong)decodedEvent[1],
