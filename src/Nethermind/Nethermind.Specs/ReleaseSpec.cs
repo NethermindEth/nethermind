@@ -89,7 +89,6 @@ namespace Nethermind.Specs
         public Address Eip7002ContractAddress { get; set; }
         public bool IsEip7251Enabled { get; set; }
         public Address Eip7251ContractAddress { get; set; }
-        public bool IsEip3074Enabled { get; set; }
 
         private Address _eip4788ContractAddress;
         public Address Eip4788ContractAddress

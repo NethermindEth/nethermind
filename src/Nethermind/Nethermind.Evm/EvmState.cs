@@ -217,7 +217,6 @@ namespace Nethermind.Evm
                     case ExecutionType.CREATE:
                     case ExecutionType.CREATE2:
                     case ExecutionType.TRANSACTION:
-                    case ExecutionType.AUTHCALL:
                         return Env.Caller;
                     case ExecutionType.DELEGATECALL:
                         return Env.ExecutingAccount;
@@ -232,7 +231,6 @@ namespace Nethermind.Evm
         public long Refund { get; set; }
 
         public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-        public Address? Authorized { get; set; }
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public readonly ExecutionEnvironment Env;
 
