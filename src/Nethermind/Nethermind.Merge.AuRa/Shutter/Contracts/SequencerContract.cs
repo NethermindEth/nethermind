@@ -68,7 +68,7 @@ public class SequencerContract : Contract
                 count++;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Got {count} Shutter logs from blocks {start.BlockNumber!.Value} - {end.BlockNumber!.Value}");
+            if (_logger.IsDebug) _logger.Debug($"Got {count} Shutter logs from blocks {start.BlockNumber!.Value} - {end.BlockNumber!.Value}");
 
             if (shouldBreak)
             {
