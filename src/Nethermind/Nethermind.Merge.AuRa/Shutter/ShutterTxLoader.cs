@@ -48,7 +48,7 @@ public class ShutterTxLoader
         _logger = logManager.GetClassLogger();
         _ethereumEcdsa = ethereumEcdsa;
         _readOnlyBlockTree = readOnlyBlockTree;
-        _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder, filterStore);
+        _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder, filterStore, logManager);
         _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     }
 
