@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Trie;
 
 namespace Nethermind.State
@@ -33,6 +32,7 @@ namespace Nethermind.State
         bool IsDeadAccount(Address address);
 
         bool IsEmptyAccount(Address address);
+
         bool HasStateForRoot(Hash256 stateRoot);
     }
 }

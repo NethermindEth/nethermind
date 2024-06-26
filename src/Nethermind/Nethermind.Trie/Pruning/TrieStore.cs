@@ -281,7 +281,7 @@ namespace Nethermind.Trie.Pruning
 
         // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
         // If null, disable removing key.
-        private readonly LruCacheLowObject<HashAndTinyPath, ValueHash256>? _pastPathHash;
+        private readonly ClockCache<HashAndTinyPath, ValueHash256>? _pastPathHash;
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
@@ -324,7 +324,7 @@ namespace Nethermind.Trie.Pruning
 
             if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath)
             {
-                _pastPathHash = new(pruningStrategy.TrackedPastKeyCount, "");
+                _pastPathHash = new(pruningStrategy.TrackedPastKeyCount);
             }
             else
             {
