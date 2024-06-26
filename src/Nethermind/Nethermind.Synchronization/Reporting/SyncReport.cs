@@ -122,9 +122,6 @@ namespace Nethermind.Synchronization.Reporting
         public long FullSyncBlocksKnown { get; set; }
 
         private bool _reportedFastBlocksSummary;
-        private string _paddedPivot;
-        private string _paddedAmountOfOldBodiesToDownload;
-        private string _paddedAmountOfOldReceiptsToDownload;
         private long _amountOfBodiesToDownload;
         private long _amountOfReceiptsToDownload;
         private uint _nodeInfoType;
@@ -132,13 +129,8 @@ namespace Nethermind.Synchronization.Reporting
         private void SetPaddedPivots()
         {
             _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
-            _paddedPivot = $"{_fastBlocksPivotNumber,BlockPaddingLength:N0}";
-            long amountOfBodiesToDownload = _fastBlocksPivotNumber - _syncConfig.AncientBodiesBarrier;
-            _amountOfBodiesToDownload = amountOfBodiesToDownload;
-            _paddedAmountOfOldBodiesToDownload = $"{amountOfBodiesToDownload,BlockPaddingLength:N0}";
-            long amountOfReceiptsToDownload = _fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier;
-            _amountOfReceiptsToDownload = amountOfReceiptsToDownload;
-            _paddedAmountOfOldReceiptsToDownload = $"{_fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier,BlockPaddingLength:N0}";
+            _amountOfBodiesToDownload = _fastBlocksPivotNumber - _syncConfig.AncientBodiesBarrier;
+            _amountOfReceiptsToDownload = _fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier;
         }
 
         private void WriteSyncReport()
