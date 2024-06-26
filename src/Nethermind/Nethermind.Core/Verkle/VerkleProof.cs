@@ -45,8 +45,7 @@ public struct VerkleProof
 
     public byte[] Encode()
     {
-        List<byte> encoded = new List<byte>();
-        encoded.AddRange(VerifyHint.Encode());
+        var encoded = new List<byte>(VerifyHint.Encode());
 
         encoded.AddRange(CommsSorted.Length.ToByteArrayLittleEndian());
         foreach (byte[] comm in CommsSorted)
