@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using System;
 using System.Diagnostics;
@@ -64,7 +65,6 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
             chainId,
             codeAddress,
             nonce,
-            //Signature
             yParity,
             r,
             s);
@@ -132,7 +132,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     private static int GetContentLength(AuthorizationTuple tuple)
     {
         return GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
-            + Rlp.LengthOf(tuple.AuthoritySignature.V)
+            + Rlp.LengthOf(tuple.AuthoritySignature.RecoveryId)
             + Rlp.LengthOf(tuple.AuthoritySignature.R.AsSpan())
             + Rlp.LengthOf(tuple.AuthoritySignature.S.AsSpan());
     }
