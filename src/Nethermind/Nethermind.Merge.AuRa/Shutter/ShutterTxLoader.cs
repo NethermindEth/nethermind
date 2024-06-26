@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -27,34 +26,21 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 using G1 = Bls.P1;
 
-public class ShutterTxLoader
+public class ShutterTxLoader(
+    ILogFinder logFinder,
+    IShutterConfig shutterConfig,
+    ISpecProvider specProvider,
+    IEthereumEcdsa ethereumEcdsa,
+    IReadOnlyBlockTree readOnlyBlockTree,
+    ILogManager logManager)
 {
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
-    private readonly IEthereumEcdsa _ethereumEcdsa;
-    private readonly IReadOnlyBlockTree _readOnlyBlockTree;
-    private readonly SequencerContract _sequencerContract;
-    private readonly UInt256 _encryptedGasLimit;
-
-    public ShutterTxLoader(ILogFinder logFinder,
-        IFilterStore filterStore,
-        IShutterConfig shutterConfig,
-        ISpecProvider specProvider,
-        IEthereumEcdsa ethereumEcdsa,
-        IReadOnlyBlockTree readOnlyBlockTree,
-        ILogManager logManager)
-    {
-        _specProvider = specProvider;
-        _logger = logManager.GetClassLogger();
-        _ethereumEcdsa = ethereumEcdsa;
-        _readOnlyBlockTree = readOnlyBlockTree;
-        _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder, filterStore);
-        _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly SequencerContract _sequencerContract = new(shutterConfig.SequencerContractAddress, logFinder);
+    private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
 
     public LoadedTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        Block head = _readOnlyBlockTree.Head!;
+        Block head = readOnlyBlockTree.Head!;
 
         List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head.Number);
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} transactions from Shutter mempool...");
@@ -81,8 +67,8 @@ public class ShutterTxLoader
     private void FilterTransactions(ref Transaction[] transactions, Block? head)
     {
         // question for reviewers: what is correct thing to do here if head is null?
-        IReleaseSpec releaseSpec = head is null ? _specProvider.GetFinalSpec() : _specProvider.GetSpec(head.Number, head.Timestamp);
-        TxValidator txValidator = new(_specProvider.ChainId);
+        IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
+        TxValidator txValidator = new(specProvider.ChainId);
         transactions = Array.FindAll(transactions, tx => tx.Type != TxType.Blob ^ txValidator.IsWellFormed(tx, releaseSpec));
     }
 
@@ -119,7 +105,7 @@ public class ShutterTxLoader
 
             Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction.AsSpan());
             // todo: test sending transactions with bad signatures to see if secp segfaults
-            transaction.SenderAddress = _ethereumEcdsa.RecoverAddress(transaction, true);
+            transaction.SenderAddress = ethereumEcdsa.RecoverAddress(transaction, true);
             return transaction;
         }
         catch (ShutterCrypto.ShutterCryptoException e)

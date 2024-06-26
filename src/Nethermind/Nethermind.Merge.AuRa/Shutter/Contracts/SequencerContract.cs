@@ -20,21 +20,19 @@ using TransactionSubmitted = ISequencerContract.TransactionSubmitted;
 public class SequencerContract : Contract
 {
     private readonly ILogFinder _logFinder;
-    private readonly IFilterStore _filterStore;
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
     private const long LogScanChunkSize = 16;
     private const int LogScanCutoffChunks = 16;
     private readonly AddressFilter _addressFilter;
     private readonly TopicsFilter _topicsFilter;
 
-    public SequencerContract(string address, ILogFinder logFinder, IFilterStore filterStore)
-        : base(null, new(address), null)
+    public SequencerContract(string address, ILogFinder logFinder)
+        : base(null, new(address))
     {
         _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
         _addressFilter = new AddressFilter(ContractAddress!);
         _topicsFilter = new SequenceTopicsFilter(new SpecificTopic(_transactionSubmittedAbi.Signature.Hash));
         _logFinder = logFinder;
-        _filterStore = filterStore;
     }
 
     public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)

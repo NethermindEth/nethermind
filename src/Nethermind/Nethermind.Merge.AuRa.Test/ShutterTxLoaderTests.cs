@@ -15,7 +15,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Serialization.Rlp;
 using System.Linq;
@@ -64,7 +63,6 @@ class ShutterTxLoaderSourceTests
 
         ShutterTxLoader txLoader = new ShutterTxLoader(
             Substitute.For<ILogFinder>(),
-            Substitute.For<IFilterStore>(),
             shutterConfig,
             Substitute.For<ISpecProvider>(),
             new EthereumEcdsa(chainId, logManager),
