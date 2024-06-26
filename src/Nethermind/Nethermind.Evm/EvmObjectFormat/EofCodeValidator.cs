@@ -184,7 +184,6 @@ public static class EvmObjectFormat
         internal const byte MINIMUM_HEADER_SIZE = VERSION_OFFSET
                                                 + MINIMUM_HEADER_SECTION_SIZE
                                                 + MINIMUM_HEADER_SECTION_SIZE + TWO_BYTE_LENGTH
-                                                + MINIMUM_HEADER_SECTION_SIZE + TWO_BYTE_LENGTH
                                                 + MINIMUM_HEADER_SECTION_SIZE
                                                 + ONE_BYTE_LENGTH;
 
@@ -210,9 +209,7 @@ public static class EvmObjectFormat
         internal const ushort MINIMUM_SIZE = MINIMUM_HEADER_SIZE
                                             + MINIMUM_TYPESECTION_SIZE // minimum type section body size
                                             + MINIMUM_CODESECTION_SIZE // minimum code section body size
-                                            + MINIMUM_DATASECTION_SIZE // minimum data section body size
-                                            + MINIMUM_CONTAINERSECTION_SIZE; // minimum container section body size
-
+                                            + MINIMUM_DATASECTION_SIZE; // minimum data section body size
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, out EofHeader? header)
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -711,7 +708,7 @@ public static class EvmObjectFormat
                         }
 
                         ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSection.Value.Start + header.ContainerSection.Value[initcodeSectionId].Start, header.ContainerSection.Value[initcodeSectionId].Size);
-                        if(IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody, out _))
+                        if(!IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody | ValidationStrategy.ValidateInitcodeMode, out _))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must be a valid Eof");
                             return false;

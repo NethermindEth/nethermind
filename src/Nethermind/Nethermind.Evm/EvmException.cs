@@ -22,6 +22,7 @@ namespace Nethermind.Evm
         InvalidSubroutineReturn,
         InvalidJumpDestination,
         AccessViolation,
+        AddressOutOfRange,
         StaticCallViolation,
         PrecompileFailure,
         TransactionCollision,

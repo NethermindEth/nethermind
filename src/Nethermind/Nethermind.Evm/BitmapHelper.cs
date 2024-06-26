@@ -114,7 +114,7 @@ public static class BitmapHelper
     private const uint Vector256ByteCount = 32;
     private const uint Vector256IntCount = 8;
 
-    public static bool CheckCollision(byte[] codeSegments, byte[] jumpmask)
+    public static bool CheckCollision(ReadOnlySpan<byte> codeSegments, ReadOnlySpan<byte> jumpmask)
     {
         int count = Math.Min(codeSegments.Length, jumpmask.Length);
 

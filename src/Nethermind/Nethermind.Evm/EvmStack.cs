@@ -320,6 +320,18 @@ public ref struct EvmStack<TTracing>
         return new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
     }
 
+    public bool PopAddress(out Address address)
+    {
+        if (Head-- == 0)
+        {
+            address = null;
+            return false;
+        }
+
+        address = new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+        return true;
+    }
+
     public ref byte PopBytesByRef()
     {
         if (Head-- == 0)
