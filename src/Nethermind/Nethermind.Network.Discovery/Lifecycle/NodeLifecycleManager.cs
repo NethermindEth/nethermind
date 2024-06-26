@@ -293,6 +293,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
         UpdateState(NodeLifecycleState.EvictCandidate);
     }
 
+    public void ResetUnreachableStatus()
+    {
+        if (State == NodeLifecycleState.Unreachable)
+        {
+            UpdateState(NodeLifecycleState.New);
+        }
+    }
+
     public void LostEvictionProcess()
     {
         if (State == NodeLifecycleState.Active)
