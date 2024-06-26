@@ -78,7 +78,7 @@ public class ShutterTxLoader
         return loadedTransactions;
     }
 
-    internal void FilterTransactions(ref Transaction[] transactions, Block? head)
+    private void FilterTransactions(ref Transaction[] transactions, Block? head)
     {
         // question for reviewers: what is correct thing to do here if head is null?
         IReleaseSpec releaseSpec = head is null ? _specProvider.GetFinalSpec() : _specProvider.GetSpec(head.Number, head.Timestamp);

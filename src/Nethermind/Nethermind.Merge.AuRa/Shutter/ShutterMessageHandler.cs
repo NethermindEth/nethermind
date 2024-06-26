@@ -14,27 +14,19 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 using G1 = Bls.P1;
 
-public class ShutterMessageHandler
+public class ShutterMessageHandler(
+    IShutterConfig shutterConfig,
+    ShutterTxSource txSource,
+    ShutterEon eon,
+    ILogManager logManager)
 {
-    private readonly ILogger _logger;
-    private readonly ShutterTxSource _txSource;
-    private readonly ShutterEon _eon;
-    private readonly ulong _instanceId;
-
-    public ShutterMessageHandler(IShutterConfig shutterConfig,
-        ShutterTxSource txSource,
-        ShutterEon eon,
-        ILogManager logManager)
-    {
-        _logger = logManager.GetClassLogger();
-        _txSource = txSource;
-        _eon = eon;
-        _instanceId = shutterConfig.InstanceID;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ulong _instanceId = shutterConfig.InstanceID;
+    private Block? _head;
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        ulong loadedTransactionsSlot = _txSource.GetLoadedTransactionsSlot();
+        ulong loadedTransactionsSlot = txSource.GetLoadedTransactionsSlot();
 
         if (decryptionKeys.Gnosis.Slot <= loadedTransactionsSlot)
         {
@@ -42,7 +34,7 @@ public class ShutterMessageHandler
             return;
         }
 
-        ShutterEon.Info? eonInfo = _eon.GetCurrentEonInfo();
+        ShutterEon.Info? eonInfo = eon.GetCurrentEonInfo();
         if (eonInfo is null)
         {
             if (_logger.IsDebug) _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");

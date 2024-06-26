@@ -7,11 +7,11 @@ using Microsoft.IdentityModel.Tokens;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
@@ -22,59 +22,54 @@ public class SequencerContract : Contract
     private readonly ILogFinder _logFinder;
     private readonly IFilterStore _filterStore;
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
-    private readonly long LogScanChunkSize = 16;
-    private readonly int LogScanCutoffChunks = 16;
-    private readonly ILogger _logger;
+    private const long LogScanChunkSize = 16;
+    private const int LogScanCutoffChunks = 4;
+    private readonly AddressFilter _addressFilter;
+    private readonly TopicsFilter _topicsFilter;
 
-    public SequencerContract(string address, ILogFinder logFinder, IFilterStore filterStore, ILogManager logManager)
+    public SequencerContract(string address, ILogFinder logFinder, IFilterStore filterStore)
         : base(null, new(address), null)
     {
-        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
+        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
+        _addressFilter = new AddressFilter(ContractAddress!);
+        _topicsFilter = new SequenceTopicsFilter(new SpecificTopic(_transactionSubmittedAbi.Signature.Hash));
         _logFinder = logFinder;
         _filterStore = filterStore;
-        _logger = logManager.GetClassLogger();
     }
 
     public IEnumerable<TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
     {
         IEnumerable<TransactionSubmitted> events = [];
-
-        IEnumerable<object> topics = new List<object>() { _transactionSubmittedAbi.Signature.Hash };
-        LogFilter logFilter;
-
         BlockParameter end = new(headBlockNumber);
-        BlockParameter start;
 
         for (int i = 0; i < LogScanCutoffChunks; i++)
         {
-            start = new(end.BlockNumber!.Value - LogScanChunkSize);
-            logFilter = _filterStore.CreateLogFilter(start, end, ContractAddress!.ToString(), topics);
+            long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
+            BlockParameter start = new(startBlockNumber);
+            LogFilter logFilter = new(0, start, end, _addressFilter, _topicsFilter);
 
-            IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter);
-
-            if (_logger.IsInfo) _logger.Info($"Got {logs.Count()} Shutter logs from blocks {start.BlockNumber!.Value} - {end.BlockNumber!.Value}");
-
-            List<TransactionSubmitted> newEvents = logs
+            IEnumerable<TransactionSubmitted> transactions = _logFinder
+                .FindLogs(logFilter)
                 .AsParallel()
-                .Select(ParseTransactionSubmitted)
-                .Where(e => e.Eon == eon && e.TxIndex >= txPointer)
-                .ToList();
-            events = newEvents.Concat(events);
+                .AsOrdered()
+                .Select(ParseTransactionSubmitted);
 
-            if (!logs.IsNullOrEmpty())
+            foreach (TransactionSubmitted tx in transactions)
             {
-                TransactionSubmitted tx0 = ParseTransactionSubmitted(logs.ElementAt(0));
-                // if first transaction in chunk is before txPointer then don't search further
-                if (tx0.Eon < eon || tx0.TxIndex <= txPointer)
+                // if transaction in chunk is before txPointer then don't search further
+                if (tx.Eon < eon || tx.TxIndex <= txPointer)
                 {
-                    break;
+                    yield break;
+                }
+
+                if (tx.Eon == eon && tx.TxIndex >= txPointer)
+                {
+                    yield return tx;
                 }
             }
 
-            end = new(start.BlockNumber!.Value - 1);
+            end = new BlockParameter(startBlockNumber - 1);
         }
-
-        return events;
     }
 
     private TransactionSubmitted ParseTransactionSubmitted(FilterLog log)

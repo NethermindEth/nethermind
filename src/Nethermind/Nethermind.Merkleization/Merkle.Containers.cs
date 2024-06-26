@@ -437,5 +437,4 @@ namespace Nethermind.Merkleization
         //    merkleizer.CalculateRoot(out root);
         //}
     }
-
 }

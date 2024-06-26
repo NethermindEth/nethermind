@@ -26,8 +26,6 @@ public class ValidatorRegistryContract(
 {
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
-    private readonly ulong _chainId = chainId;
-    private readonly ulong _messageVersion = messageVersion;
 
     public UInt256 GetNumUpdates(BlockHeader blockHeader) => (UInt256)Call(blockHeader, getNumUpdates, Address.Zero, [])[0];
 
@@ -64,15 +62,15 @@ public class ValidatorRegistryContract(
                 continue;
             }
 
-            if (msg.Version != _messageVersion)
+            if (msg.Version != messageVersion)
             {
-                if (logger.IsDebug) logger.Debug($"Registration message has wrong version ({msg.Version}) should be {_messageVersion}");
+                if (logger.IsDebug) logger.Debug($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
                 continue;
             }
 
-            if (msg.ChainId != _chainId)
+            if (msg.ChainId != chainId)
             {
-                if (logger.IsDebug) logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {_chainId}");
+                if (logger.IsDebug) logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
                 continue;
             }
 
