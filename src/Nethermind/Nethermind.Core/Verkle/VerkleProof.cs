@@ -45,8 +45,7 @@ public struct VerkleProofSerialized
 
     public byte[] Encode()
     {
-        List<byte> encoded = new List<byte>();
-        encoded.AddRange(VerifyHint.Encode());
+        var encoded = new List<byte>(VerifyHint.Encode());
 
         encoded.AddRange(CommsSorted.Length.ToByteArrayLittleEndian());
         foreach (Banderwagon comm in CommsSorted)
