@@ -282,10 +282,8 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            float percentage = Math.Clamp(FullSyncBlocksDownloaded.CurrentValue / (float)(FullSyncBlocksKnown + 1), 0, 1);
-            string downloadReport = $"Downloaded   {FullSyncBlocksDownloaded.CurrentValue,BlockPaddingLength:N0} / {FullSyncBlocksKnown,BlockPaddingLength:N0} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}                | current {FullSyncBlocksDownloaded.CurrentPerSecond,SpeedPaddingLength:N0} Blk/s";
-            // Compare ignoring speed change
-            if (!_lastDownloadReport.AsSpan().StartsWith(downloadReport.AsSpan(0, downloadReport.LastIndexOf("| current"))))
+            string downloadReport = GenerateReport("Downloaded  ", FullSyncBlocksDownloaded.CurrentValue, FullSyncBlocksKnown, queue: -1, FullSyncBlocksDownloaded.CurrentPerSecond);
+            if (!EqualsIgnoringSpeed(_lastDownloadReport, downloadReport))
             {
                 _lastDownloadReport = downloadReport;
                 _logger.Info(downloadReport);
@@ -297,10 +295,8 @@ namespace Nethermind.Synchronization.Reporting
         {
             if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
             {
-                float percentage = Math.Clamp(FastBlocksHeaders.CurrentValue / (float)(_fastBlocksPivotNumber + 1), 0, 1);
-                string headersReport = $"Old Headers  {FastBlocksHeaders.CurrentValue,BlockPaddingLength:N0} / {_paddedPivot} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {HeadersInQueue.CurrentValue,QueuePaddingLength:N0} | current {FastBlocksHeaders.CurrentPerSecond,SpeedPaddingLength:N0} Blk/s";
-                // Compare ignoring speed change
-                if (!_lastHeadersReport.AsSpan().StartsWith(headersReport.AsSpan(0, headersReport.LastIndexOf("| current"))))
+                string headersReport = GenerateReport("Old Headers ", FastBlocksHeaders.CurrentValue, _fastBlocksPivotNumber, HeadersInQueue.CurrentValue, FastBlocksHeaders.CurrentPerSecond);
+                if (!EqualsIgnoringSpeed(_lastHeadersReport, headersReport))
                 {
                     _lastHeadersReport = headersReport;
                     _logger.Info(headersReport);
@@ -310,10 +306,8 @@ namespace Nethermind.Synchronization.Reporting
 
             if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
             {
-                float percentage = Math.Clamp(FastBlocksBodies.CurrentValue / (float)(_amountOfBodiesToDownload + 1), 0, 1);
-                string bodiesReport = $"Old Bodies   {FastBlocksBodies.CurrentValue,BlockPaddingLength:N0} / {_paddedAmountOfOldBodiesToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {BodiesInQueue.CurrentValue,QueuePaddingLength:N0} | current {FastBlocksBodies.CurrentPerSecond,SpeedPaddingLength:N0} Blk/s";
-                // Compare ignoring speed change
-                if (!_lastBodiesReport.AsSpan().StartsWith(bodiesReport.AsSpan(0, bodiesReport.LastIndexOf("| current"))))
+                string bodiesReport = GenerateReport("Old Bodies  ", FastBlocksBodies.CurrentValue, _amountOfBodiesToDownload, BodiesInQueue.CurrentValue, FastBlocksBodies.CurrentPerSecond);
+                if (!EqualsIgnoringSpeed(_lastBodiesReport, bodiesReport))
                 {
                     _lastBodiesReport = bodiesReport;
                     _logger.Info(bodiesReport);
@@ -323,10 +317,8 @@ namespace Nethermind.Synchronization.Reporting
 
             if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
             {
-                float percentage = Math.Clamp(FastBlocksReceipts.CurrentValue / (float)(_amountOfReceiptsToDownload + 1), 0, 1);
-                string receiptsReport = $"Old Receipts {FastBlocksReceipts.CurrentValue,BlockPaddingLength:N0} / {_paddedAmountOfOldReceiptsToDownload} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)} queue {ReceiptsInQueue.CurrentValue,QueuePaddingLength:N0} | current {FastBlocksReceipts.CurrentPerSecond,SpeedPaddingLength:N0} Blk/s";
-                // Compare ignoring speed change
-                if (!_lastReceiptsReport.AsSpan().StartsWith(receiptsReport.AsSpan(0, receiptsReport.LastIndexOf("| current"))))
+                string receiptsReport = GenerateReport("Old Receipts", FastBlocksReceipts.CurrentValue, _amountOfReceiptsToDownload, ReceiptsInQueue.CurrentValue, FastBlocksReceipts.CurrentPerSecond);
+                if (!EqualsIgnoringSpeed(_lastReceiptsReport, receiptsReport))
                 {
                     _lastReceiptsReport = receiptsReport;
                     _logger.Info(receiptsReport);
@@ -334,6 +326,16 @@ namespace Nethermind.Synchronization.Reporting
                 FastBlocksReceipts.SetMeasuringPoint();
             }
         }
+
+        private static string GenerateReport(string title, long current, long total, long queue, decimal speed)
+        {
+            float percentage = Math.Clamp(current / (float)(total + 1), 0, 1);
+            string receiptsReport = $"{title} {current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}{(queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} " : "                ")}| current {speed,SpeedPaddingLength:N0} Blk/s";
+            return receiptsReport;
+        }
+
+        private static bool EqualsIgnoringSpeed(string? lastReport, string report)
+            => lastReport.AsSpan().StartsWith(report.AsSpan(0, report.LastIndexOf("| current")));
 
         private void WriteBeaconSyncReport()
         {

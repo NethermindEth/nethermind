@@ -4,17 +4,32 @@
 using System;
 
 namespace Nethermind.Logging;
-public class Progress
+public static class Progress
 {
-    private static char[] _progressChars = { ' ', '⡀', '⡄', '⡆', '⡇', '⣇', '⣧', '⣷', '⣿' };
+    private const int Width = 40;
+    private const int WidthBar = Width - 3;
 
-    public static string GetMeter(float value, int max, int width = 40)
+    private static readonly string[] _progressChars = [" ", "⡀", "⡄", "⡆", "⡇", "⣇", "⣧", "⣷", "⣿"];
+    private static readonly string[] _fullChunks = CreateChunks('⣿', "[", "");
+    private static readonly string[] _emptyChunks = CreateChunks(' ', "", "]");
+
+    private static string[] CreateChunks(char ch, string start, string end)
     {
-        width = Math.Max(4, width - 3);
-        float progressF = value / max * width;
+        var chunks = new string[WidthBar + 1];
+        for (int i = 0; i < chunks.Length; i++)
+        {
+            chunks[i] = start + new string(ch, i) + end;
+        }
+
+        return chunks;
+    }
+
+    public static string GetMeter(float value, int max)
+    {
+        float progressF = value / max * WidthBar;
         int progress = (int)Math.Floor(progressF);
         int progressChar = (int)((progressF - progress) * _progressChars.Length);
 
-        return $"[{new string('⣿', progress)}{_progressChars[progressChar]}{new string(' ', width - progress - 1)}]";
+        return string.Concat(_fullChunks[progress], _progressChars[progressChar], _emptyChunks[WidthBar - progress - 1]);
     }
 }
