@@ -48,6 +48,27 @@ namespace Nethermind.Blockchain.Find
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         }
 
+        public IEnumerable<FilterLog> FindLogsTest(LogFilter filter, CancellationToken cancellationToken = default)
+        {
+
+            BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
+                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
+
+            cancellationToken.ThrowIfCancellationRequested();
+            BlockHeader toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
+            cancellationToken.ThrowIfCancellationRequested();
+            BlockHeader fromBlock = filter.ToBlock == filter.FromBlock ?
+                toBlock :
+                FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
+
+            return FindLogsTest(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        public IEnumerable<FilterLog> FindLogsTest(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+            return FilterLogsWithIndex(filter, fromBlock, toBlock, cancellationToken);
+        }
+
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
