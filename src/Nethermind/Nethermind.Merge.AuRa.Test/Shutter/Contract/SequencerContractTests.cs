@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Filters;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
@@ -17,7 +18,7 @@ public class SequencerContractTests
     public void GetEvents(string hex)
     {
         // Arrange
-        SequencerContract sequencerContract = new(TestItem.AddressA, Substitute.For<ILogFinder>());
+        SequencerContract sequencerContract = new(TestItem.AddressA, Substitute.For<ILogFinder>(), new NUnitLogManager());
 
         // Act
         ISequencerContract.TransactionSubmitted parsedTransaction = sequencerContract.ParseTransactionSubmitted(
