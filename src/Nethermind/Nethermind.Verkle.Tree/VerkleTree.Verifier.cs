@@ -387,9 +387,9 @@ public partial class VerkleTree
             queries[i] = new VerkleVerifierQuerySerialized(comm.ToBytesUncompressedLittleEndian(), z, y.ToBytes());
         }
         // Console.WriteLine("Verifier Query");
-        // foreach (VerkleVerifierQuery query in queries)
+        // foreach (VerkleVerifierQuerySerialized query in queries)
         // {
-        //     Console.WriteLine($"{query.NodeCommitPoint.ToBytes().ToHexString()}:{query.ChildIndex}:{query.ChildHash.ToBytes().ToHexString()}");
+        //     Console.WriteLine($"{query.NodeCommitPoint.ToHexString()}:{query.ChildIndex}:{query.ChildHash.ToHexString()}");
         // }
 
         MultiProof proofVerifier = new(CRS.Instance, PreComputedWeights.Instance);
