@@ -3,13 +3,13 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
+        "indexed": false,
         "internalType": "uint64",
         "name": "eon",
         "type": "uint64"
       },
       {
-        "indexed": true,
+        "indexed": false,
         "internalType": "uint64",
         "name": "txIndex",
         "type": "uint64"
