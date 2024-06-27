@@ -101,13 +101,22 @@ public class ShutterTxLoader(
 
     internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
     {
+        int len = sequencedTransactions.Count;
+
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
         sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+
+        using ArrayPoolList<int> sortedKeyIndexes = new(len, len);
+        int keyIndex = 1;
+        foreach (SequencedTransaction index in sortedIndexes)
+        {
+            sortedKeyIndexes[index.Index] = keyIndex++;
+        }
 
         return sequencedTransactions
             .AsParallel()
             .AsOrdered()
-            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedIndexes[i].Index + 1]))
+            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedKeyIndexes[i]]))
             .OfType<Transaction>()
             .ToArray();
     }

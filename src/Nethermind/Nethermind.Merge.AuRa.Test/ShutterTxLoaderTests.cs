@@ -52,6 +52,7 @@ class ShutterTxLoaderSourceTests
     [Test]
     public void Can_decrypt_sequenced_transactions()
     {
+        const int txCount = 100;
         UInt256 sk = 4328942385;
         Random rnd = new Random(100);
 
@@ -60,20 +61,21 @@ class ShutterTxLoaderSourceTests
         List<SequencedTransaction> sequencedTransactions = [];
         List<(byte[] IdentityPreimage, byte[] Key)> keys = [];
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < txCount; i++)
         {
             byte[] identityPrefix = new byte[52];
             byte[] sigma = new byte[32];
             rnd.NextBytes(identityPrefix);
             rnd.NextBytes(sigma);
 
-            (SequencedTransaction sequencedTransaction, (byte[], byte[]) key) = GenerateSequencedTransaction(msg, identityPrefix, sk, new(sigma));
+            (SequencedTransaction sequencedTransaction, (byte[], byte[]) key) = GenerateSequencedTransaction(i, msg, identityPrefix, sk, new(sigma));
             sequencedTransactions.Add(sequencedTransaction);
             keys.Add(key);
         }
 
         // decryption keys are sorted by preimage
         keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+        keys.Insert(0, new());
 
         Transaction[] txs = _txLoader.DecryptSequencedTransactions(sequencedTransactions, keys);
         foreach (Transaction tx in txs)
@@ -81,6 +83,7 @@ class ShutterTxLoaderSourceTests
             byte[] tmp = Rlp.Encode<Transaction>(tx).Bytes;
             Assert.That(Enumerable.SequenceEqual(tmp, msg));
         }
+        Assert.That(txs.Length, Is.EqualTo(txCount));
     }
 
     [Test]
@@ -106,7 +109,7 @@ class ShutterTxLoaderSourceTests
         Assert.That(filtered.Count, Is.EqualTo(expectedValid));
     }
 
-    private (SequencedTransaction, (byte[] IdentityPreimage, byte[] Key)) GenerateSequencedTransaction(byte[] msg, byte[] identityPreimage, UInt256 sk, Bytes32 sigma)
+    private (SequencedTransaction, (byte[] IdentityPreimage, byte[] Key)) GenerateSequencedTransaction(int index, byte[] msg, byte[] identityPreimage, UInt256 sk, Bytes32 sigma)
     {
         G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
         G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
@@ -116,7 +119,7 @@ class ShutterTxLoaderSourceTests
 
         var sequencedTransaction = new SequencedTransaction()
         {
-            Index = 0,
+            Index = index,
             Eon = 0,
             EncryptedTransaction = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage),
             GasLimit = 0,
