@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7702;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using System;
@@ -20,16 +19,15 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class AuthorizationTupleDecoderTests
 {
-    public static IEnumerable<object[]> AuthorizationTupleEncodeCases()
+    public static IEnumerable<AuthorizationTuple> AuthorizationTupleEncodeCases()
     {
-        yield return new object[]
-        {
-            new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))
-        };
-        yield return new object[]
-        {
-            new AuthorizationTuple(ulong.MaxValue, new Address(Enumerable.Range(0, 20).Select(i => (byte)0xff).ToArray()), UInt256.MaxValue, new Signature(Enumerable.Range(0, 64).Select(i => (byte)0xff).ToArray(), 1)),
-        };
+        yield return new AuthorizationTuple(0, Address.Zero, null, new Signature(new byte[64], 0));
+        yield return new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0));
+        yield return new AuthorizationTuple(
+            ulong.MaxValue,
+            new Address(Enumerable.Range(0, 20).Select(i => (byte)0xff).ToArray()),
+            UInt256.MaxValue,
+            new Signature(Enumerable.Range(0, 64).Select(i => (byte)0xff).ToArray(), 1));
     }
 
     [TestCaseSource(nameof(AuthorizationTupleEncodeCases))]
@@ -43,10 +41,23 @@ public class AuthorizationTupleDecoderTests
         sut.Decode(result).Should().BeEquivalentTo(item);
     }
 
+
+    [Test]
+    public void Encode_NonceIsNull_NonceIsAlsoNullAfterDecoding()
+    {
+        AuthorizationTuple item = new(0, Address.Zero, null, new Signature(new byte[64], 0));
+        AuthorizationTupleDecoder sut = new();
+
+        RlpStream result = sut.Encode(item);
+        result.Position = 0;
+
+        Assert.That(sut.Decode(result).Nonce, Is.Null);
+    }
+
     [Test]
     public void Decode_NonceItemListIsGreaterThan1_ThrowsRlpException()
     {
-        RlpStream stream = RlpStreamWithTuplewithTwoNonces();
+        RlpStream stream = TupleRlpStreamWithTwoNonces();
 
         AuthorizationTupleDecoder sut = new();
 
@@ -56,7 +67,7 @@ public class AuthorizationTupleDecoderTests
     [Test]
     public void DecodeValueDecoderContext_NonceItemListIsGreaterThan1_ThrowsRlpException()
     {
-        RlpStream stream = RlpStreamWithTuplewithTwoNonces();
+        RlpStream stream = TupleRlpStreamWithTwoNonces();
 
         AuthorizationTupleDecoder sut = new();
         Assert.That(() =>
@@ -67,7 +78,7 @@ public class AuthorizationTupleDecoderTests
         , Throws.TypeOf<RlpException>());
     }
 
-    private static RlpStream RlpStreamWithTuplewithTwoNonces()
+    private static RlpStream TupleRlpStreamWithTwoNonces()
     {
         ulong chainId = 0;
         Address codeAddress = Address.Zero;

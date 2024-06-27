@@ -232,7 +232,7 @@ namespace Nethermind.Core.Test.Builders
         }
         public TransactionBuilder<T> WithAuthorizationCode(IEnumerable<AuthorizationTuple> authList)
         {
-            TestObjectInternal.AuthorizationList = authList.ToArray();
+            TestObjectInternal.AuthorizationList = authList?.ToArray();
             return this;
         }
 

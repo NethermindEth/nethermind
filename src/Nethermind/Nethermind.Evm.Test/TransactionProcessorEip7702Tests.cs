@@ -18,7 +18,6 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Serialization.Rlp;
 using System;
 using System.Linq;

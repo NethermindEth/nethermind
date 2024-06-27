@@ -68,6 +68,13 @@ namespace Nethermind.Core.Test.Encoding
                 .WithChainId(1559)
                 .WithAuthorizationCode([new AuthorizationTuple(0, TestItem.AddressF, 0, 0, [], [])])
                 .SignedAndResolved(), "EIP 7702 first test case");
+            yield return (Build.A.Transaction
+                .WithMaxFeePerGas(2.GWei())
+                .WithType(TxType.SetCode)
+                .WithGasPrice(0)
+                .WithChainId(1559)
+                .WithAuthorizationCode([])
+                .SignedAndResolved(), "EIP 7702 second test case");
         }
 
         public static IEnumerable<(Transaction, string)> TestCaseSource()
@@ -383,26 +390,37 @@ namespace Nethermind.Core.Test.Encoding
             );
         }
 
-        public static IEnumerable<AuthorizationTuple[]> SetCodeAuthorizationCases()
-        {
+        public static IEnumerable<AuthorizationTuple[]> AuthorizationTupleCases()
+        {            
+            yield return null!;
+            yield return [];
+            yield return [new AuthorizationTuple(0, Address.Zero, 0, 0, [], [])];
+            yield return [new AuthorizationTuple(0, Address.Zero, null, 0, [], [])];
             yield return
-            [
-                new AuthorizationTuple(0, TestItem.AddressA, null, ulong.MinValue, [0x0], [0x0]),
-                new AuthorizationTuple(0, TestItem.AddressF, 0, ulong.MinValue, [0x0], [0x0])
-            ];
+                [
+                    new AuthorizationTuple(0, Address.Zero, 0, 0, [], []),
+                    new AuthorizationTuple(0, Address.Zero, null, 0, [], []),
+                    new AuthorizationTuple(ulong.MaxValue, new Address(Enumerable.Range(0, 20).Select(i => (byte)0xff).ToArray()), UInt256.MaxValue, 0, Enumerable.Range(0, 32).Select(i => (byte)0xff).ToArray(), Enumerable.Range(0, 32).Select(i => (byte)0xff).ToArray()),
+                ];
+            yield return
+                [
+                    new AuthorizationTuple(0, TestItem.AddressA, null, ulong.MinValue, [0x0], [0x0]),
+                    new AuthorizationTuple(0, TestItem.AddressF, 0, ulong.MinValue, [0x0], [0x0])
+                ];
         }
 
-        [TestCaseSource(nameof(SetCodeAuthorizationCases))]
-        public void TxSetCodeEncodeAndDecode(AuthorizationTuple[] setCodeAuthorizations)
+        [TestCaseSource(nameof(AuthorizationTupleCases))]
+        public void TxAuthorizationTupleEncodeAndDecode(AuthorizationTuple[] authorizations)
         {
             Transaction tx = Build.A.Transaction
                 .WithMaxFeePerGas(2.GWei())
                 .WithType(TxType.SetCode)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .WithAuthorizationCode(setCodeAuthorizations)
+                .WithAuthorizationCode(authorizations)
                 .SignedAndResolved().TestObject;
             RlpStream rlpStream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
+
             _txDecoder.Encode(rlpStream, tx);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);

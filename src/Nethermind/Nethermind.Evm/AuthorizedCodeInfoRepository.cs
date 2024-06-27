@@ -10,7 +10,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Crypto;
 
 namespace Nethermind.Evm;

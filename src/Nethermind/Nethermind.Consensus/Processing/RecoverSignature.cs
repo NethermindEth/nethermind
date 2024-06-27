@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing

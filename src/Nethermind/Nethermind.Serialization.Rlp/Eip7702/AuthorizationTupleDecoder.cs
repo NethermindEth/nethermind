@@ -9,7 +9,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
-namespace Nethermind.Serialization.Rlp.Eip7702;
+namespace Nethermind.Serialization.Rlp;
 
 public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, IRlpValueDecoder<AuthorizationTuple>
 {

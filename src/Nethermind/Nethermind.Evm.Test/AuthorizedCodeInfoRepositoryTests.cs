@@ -6,25 +6,17 @@ using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
 using FluentAssertions;
 using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Test;
 
