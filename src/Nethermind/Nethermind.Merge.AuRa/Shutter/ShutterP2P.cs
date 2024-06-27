@@ -67,7 +67,7 @@ public class ShutterP2P(
         topic.OnMessage += (byte[] msg) =>
         {
             _msgQueue.Writer.TryWrite(msg);
-            if (_logger.IsDebug) _logger.Debug("Received Shutter P2P message.");
+            if (_logger.IsTrace) _logger.Trace("Received Shutter P2P message.");
         };
 
         MyProto proto = new();
@@ -115,7 +115,7 @@ public class ShutterP2P(
 
     internal void ProcessP2PMessage(byte[] msg)
     {
-        if (_logger.IsDebug) _logger.Debug("Processing Shutter P2P message.");
+        if (_logger.IsTrace) _logger.Trace("Processing Shutter P2P message.");
 
         try
         {
