@@ -157,15 +157,14 @@ namespace Nethermind.Blockchain.Find
             IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
             {
                 var AddressFilter = f.AddressFilter;
-
-                var addresses = AddressFilter.Address is null ? (AddressFilter.Addresses is null ? [] : AddressFilter.Addresses.Select(key => key.Value)) : new[] { AddressFilter.Address };
-                var blocksAddressFiltered = addresses.SelectMany(address => LogIndexStorage.GetBlocksForAddress(address));
-                var setA = blocksAddressFiltered.ToHashSet();
-
                 var TopicsFilter = f.TopicsFilter;
-                var topics = TopicsFilter;
 
-                return setA.Intersect(setA);
+                var blocksAddressFiltered = AddressFilter.GetBlockNumbersFrom(_logIndexStorage);
+                var setA = blocksAddressFiltered.ToHashSet();
+                var blocksTopicFiltered = TopicsFilter.GetBlockNumbersFrom(_logIndexStorage);
+                var setB = blocksTopicFiltered.ToHashSet();
+
+                return setA.Intersect(setB);
 
             }
 

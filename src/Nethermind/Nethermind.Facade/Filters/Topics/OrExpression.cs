@@ -2,15 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
     public class OrExpression : TopicExpression, IEquatable<OrExpression>
     {
         private readonly TopicExpression[] _subexpressions;
+
+        public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
+        {
+            var blocks = new HashSet<long>();
+            foreach (var expression in _subexpressions)
+            {
+                blocks.UnionWith(expression.GetBlockNumbersFrom(logIndexStorage));
+            }
+            return blocks;
+        }
 
         public OrExpression(params TopicExpression[] subexpressions)
         {

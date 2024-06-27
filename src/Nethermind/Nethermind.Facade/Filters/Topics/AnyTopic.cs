@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -11,6 +14,14 @@ namespace Nethermind.Blockchain.Filters.Topics
         public static readonly AnyTopic Instance = new();
 
         private AnyTopic() { }
+
+
+        public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
+        {
+            // TODO: Handle the case when there is no filter for topics
+            return Enumerable.Empty<long>();
+        }
+
 
         public override bool Accepts(Hash256 topic) => true;
         public override bool Accepts(ref Hash256StructRef topic) => true;
