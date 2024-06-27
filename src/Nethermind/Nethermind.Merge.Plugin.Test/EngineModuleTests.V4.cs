@@ -320,26 +320,11 @@ public partial class EngineModuleTests
 
         Deposit[]? deposits = null;
         WithdrawalRequest[]? withdrawalRequests = null;
+        ConsolidationRequest[]? consolidationRequests = null;
 
         if (requests is not null)
         {
-            (int depositCount, int withdrawalRequestCount) = requests.GetTypeCounts();
-            deposits = new Deposit[depositCount];
-            withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-            int depositIndex = 0;
-            int withdrawalRequestIndex = 0;
-            for (int i = 0; i < requests.Length; ++i)
-            {
-                ConsensusRequest request = requests[i];
-                if (request.Type == ConsensusRequestsType.Deposit)
-                {
-                    deposits[depositIndex++] = (Deposit)request;
-                }
-                else
-                {
-                    withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }
-            }
+            (deposits, withdrawalRequests, consolidationRequests) = requests.SplitRequests();
         }
 
         ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
@@ -360,9 +345,9 @@ public partial class EngineModuleTests
         IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV2(blockHashes).Result.Data;
         ExecutionPayloadBodyV2Result?[] expected = {
-            new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
+            new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>() , deposits, withdrawalRequests, consolidationRequests),
             null,
-            new (txs, Array.Empty<Withdrawal>(), deposits, withdrawalRequests),
+            new (txs, Array.Empty<Withdrawal>(), deposits, withdrawalRequests, consolidationRequests),
         };
 
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
@@ -376,14 +361,17 @@ public partial class EngineModuleTests
 
         Deposit[]? deposits = null;
         WithdrawalRequest[]? withdrawalRequests = null;
+        ConsolidationRequest[]? consolidationRequests = null;
 
         if (requests is not null)
         {
-            (int depositCount, int withdrawalRequestCount) = requests.GetTypeCounts();
+            (int depositCount, int withdrawalRequestCount, int consolidationRequestCount) = requests.GetTypeCounts();
             deposits = new Deposit[depositCount];
             withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+            consolidationRequests = new ConsolidationRequest[consolidationRequestCount];
             int depositIndex = 0;
             int withdrawalRequestIndex = 0;
+            int consolidationRequestIndex = 0;
             for (int i = 0; i < requests.Length; ++i)
             {
                 ConsensusRequest request = requests[i];
@@ -391,9 +379,14 @@ public partial class EngineModuleTests
                 {
                     deposits[depositIndex++] = (Deposit)request;
                 }
-                else
+                else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
                 {
                     withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
+                }
+                else
+                {
+                    consolidationRequests[consolidationRequestIndex++] = (ConsolidationRequest)request;
+
                 }
             }
         }
@@ -418,7 +411,7 @@ public partial class EngineModuleTests
            rpc.engine_getPayloadBodiesByRangeV2(1, 3).Result.Data;
         ExecutionPayloadBodyV2Result?[] expected =
         {
-            new (txs, Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
+            new (txs, Array.Empty<Withdrawal>() , deposits, withdrawalRequests, consolidationRequests),
         };
 
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());

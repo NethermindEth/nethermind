@@ -311,7 +311,7 @@ public class OptimismCompactReceiptStorageDecoder :
 
     TxReceipt IRlpStreamDecoder<TxReceipt>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        return Decode(rlpStream, rlpBehaviors); ;
+        return Decode(rlpStream, rlpBehaviors);
     }
 
     public void Encode(RlpStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
