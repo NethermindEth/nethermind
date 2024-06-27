@@ -65,7 +65,7 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
     public Task ListenAsync(CancellationToken token = default) => Task.CompletedTask;
     public void Close() => _inboundQueue.Writer.Complete();
 
-    public static IServiceCollection Register(IServiceCollection services) => services
+    public static void Register(IServiceCollection services) => services
         .AddSingleton<NettyDiscoveryV5Handler>()
         .AddSingleton<IUdpConnection>(p => p.GetRequiredService<NettyDiscoveryV5Handler>());
 }

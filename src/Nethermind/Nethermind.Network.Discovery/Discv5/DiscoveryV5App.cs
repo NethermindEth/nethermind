@@ -100,9 +100,9 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
-            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true));
+            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
+            .WithServices(NettyDiscoveryV5Handler.Register);
 
-        NettyDiscoveryV5Handler.Register(services); // Override required services
         _discv5Protocol = discv5Builder.Build();
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
