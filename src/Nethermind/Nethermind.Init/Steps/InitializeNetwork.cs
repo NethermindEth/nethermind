@@ -297,8 +297,18 @@ public class InitializeNetwork : IStep
             if (isV5Enabled) discoveryV5App!.InitializeChannel(channel);
         }));
 
-        if (isV4Enabled) await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
-        if (isV5Enabled) await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryV5Port);
+        isV4Enabled = false;
+        if (isV4Enabled)
+        {
+            await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
+            _api.DiscoveryApp!.Start();
+        }
+
+        if (isV5Enabled)
+        {
+            await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryV5Port);
+            _api.DiscoveryV5App!.Start();
+        }
     }
 
     private void StartPeer()
