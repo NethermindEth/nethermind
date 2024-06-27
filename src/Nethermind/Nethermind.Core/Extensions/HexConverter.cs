@@ -228,8 +228,32 @@ namespace Nethermind.Core.Extensions
             return (char)value;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryDecodeFromUtf8(ReadOnlySpan<byte> hex, Span<byte> bytes, bool isOdd)
+        public static bool TryDecodeFromUtf8(ReadOnlySpan<byte> hexString, Span<byte> result)
+        {
+            int oddMod = hexString.Length % 2;
+            if (oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                hexString.Length >= Vector128<byte>.Count)
+            {
+                if (Avx512BW.IsSupported && hexString.Length >= Vector512<byte>.Count)
+                {
+                    return TryDecodeFromUtf8_Vector512(hexString, result);
+                }
+                else if (Avx2.IsSupported && hexString.Length >= Vector256<byte>.Count)
+                {
+                    return TryDecodeFromUtf8_Vector256(hexString, result);
+                }
+                else
+                {
+                    return TryDecodeFromUtf8_Vector128(hexString, result);
+                }
+            }
+            else
+            {
+                return TryDecodeFromUtf8_Scalar(hexString, result, oddMod == 1);
+            }
+        }
+
+        private static bool TryDecodeFromUtf8_Scalar(ReadOnlySpan<byte> hex, Span<byte> bytes, bool isOdd)
         {
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length, "Target buffer not right-sized for provided characters");
 
@@ -261,7 +285,7 @@ namespace Nethermind.Core.Extensions
             return (byteLo | byteHi) != 0xFF;
         }
 
-        public static bool TryDecodeFromUtf8_Vector128(ReadOnlySpan<byte> hex, Span<byte> bytes)
+        private static bool TryDecodeFromUtf8_Vector128(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Ssse3.IsSupported || AdvSimd.Arm64.IsSupported);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
@@ -334,10 +358,10 @@ namespace Nethermind.Core.Extensions
             while (true);
 
             // Fall back to the scalar routine in case of invalid input.
-            return TryDecodeFromUtf8(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
+            return TryDecodeFromUtf8_Scalar(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
         }
 
-        public static bool TryDecodeFromUtf8_Vector256(ReadOnlySpan<byte> hex, Span<byte> bytes)
+        private static bool TryDecodeFromUtf8_Vector256(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Avx2.IsSupported);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
@@ -398,10 +422,10 @@ namespace Nethermind.Core.Extensions
             while (true);
 
             // Fall back to the scalar routine in case of invalid input.
-            return TryDecodeFromUtf8(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
+            return TryDecodeFromUtf8_Scalar(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
         }
 
-        public static bool TryDecodeFromUtf8_Vector512(ReadOnlySpan<byte> hex, Span<byte> bytes)
+        private static bool TryDecodeFromUtf8_Vector512(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Avx512BW.IsSupported);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
@@ -462,7 +486,7 @@ namespace Nethermind.Core.Extensions
             while (true);
 
             // Fall back to the scalar routine in case of invalid input.
-            return TryDecodeFromUtf8(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
+            return TryDecodeFromUtf8_Scalar(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
         }
 
         public static bool TryDecodeFromUtf16_Vector128(ReadOnlySpan<char> chars, Span<byte> bytes)
