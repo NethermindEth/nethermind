@@ -1034,11 +1034,21 @@ namespace Nethermind.Core.Extensions
             }
 
             bool isSuccess;
-            if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+            if (oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
                 hexString.Length >= Vector128<byte>.Count)
             {
-                isSuccess = HexConverter.TryDecodeFromUtf8_Vector128(hexString, result);
+                if (Avx512BW.IsSupported && hexString.Length >= Vector512<byte>.Count)
+                {
+                    isSuccess = HexConverter.TryDecodeFromUtf8_Vector512(hexString, result);
+                }
+                else if (Avx2.IsSupported && hexString.Length >= Vector256<byte>.Count)
+                {
+                    isSuccess = HexConverter.TryDecodeFromUtf8_Vector256(hexString, result);
+                }
+                else
+                {
+                    isSuccess = HexConverter.TryDecodeFromUtf8_Vector128(hexString, result);
+                }
             }
             else
             {
