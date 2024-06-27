@@ -11,6 +11,7 @@ using System.Runtime.Intrinsics.X86;
 
 using Nethermind.Core.Collections;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 namespace Nethermind.Core.Extensions
 {
     // copied and bit modified from: https://github.com/dotnet/runtime/blob/main/src/libraries/Common/src/System/HexConverter.cs
@@ -256,7 +257,7 @@ namespace Nethermind.Core.Extensions
         /// <summary>
         /// Loops in 2 byte chunks and decodes them into 1 byte chunks.
         /// </summary>
-        private static bool TryDecodeFromUtf8_Scalar(ReadOnlySpan<byte> hex, Span<byte> bytes, bool isOdd)
+        internal static bool TryDecodeFromUtf8_Scalar(ReadOnlySpan<byte> hex, Span<byte> bytes, bool isOdd)
         {
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length, "Target buffer not right-sized for provided characters");
 
@@ -291,7 +292,7 @@ namespace Nethermind.Core.Extensions
         /// <summary>
         /// Loops in 16 byte chunks and decodes them into 8 byte chunks.
         /// </summary>
-        private static bool TryDecodeFromUtf8_Vector128(ReadOnlySpan<byte> hex, Span<byte> bytes)
+        internal static bool TryDecodeFromUtf8_Vector128(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Ssse3.IsSupported || AdvSimd.Arm64.IsSupported);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
@@ -370,7 +371,7 @@ namespace Nethermind.Core.Extensions
         /// <summary>
         /// Loops in 32 byte chunks and decodes them into 16 byte chunks.
         /// </summary>
-        private static bool TryDecodeFromUtf8_Vector256(ReadOnlySpan<byte> hex, Span<byte> bytes)
+        internal static bool TryDecodeFromUtf8_Vector256(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Avx2.IsSupported);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
@@ -437,7 +438,7 @@ namespace Nethermind.Core.Extensions
         /// <summary>
         /// Loops in 64 byte chunks and decodes them into 32 byte chunks.
         /// </summary>
-        private static bool TryDecodeFromUtf8_Vector512(ReadOnlySpan<byte> hex, Span<byte> bytes)
+        internal static bool TryDecodeFromUtf8_Vector512(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Avx512BW.IsSupported);
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
