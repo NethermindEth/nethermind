@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
 
-public class TxDataZero
+public static class TxDataZero
 {
     public static Transaction[] GetTxs(PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
     {   long numberOfBytes = (blockGasConsumptionTarget - GasCostOf.Transaction) / GasCostOf.TxDataZero;

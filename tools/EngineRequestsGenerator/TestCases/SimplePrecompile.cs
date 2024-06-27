@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
 
-public class SimplePrecompile
+public static class SimplePrecompile
 {
     public static Transaction[] GetTxs(byte precompileAddress, TestCase testcase, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
     {
