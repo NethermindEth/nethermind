@@ -54,11 +54,13 @@ public class ShutterTxLoader(
             _logger.Debug(msg);
         }
 
-        FilterTransactions(ref transactions, head);
+        // question for reviewers: what is correct thing to do here if head is null?
+        IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
+        Transaction[] filtered = FilterTransactions(transactions, releaseSpec);
 
         LoadedTransactions loadedTransactions = new()
         {
-            Transactions = transactions,
+            Transactions = filtered,
             Slot = slot
         };
 
@@ -72,15 +74,19 @@ public class ShutterTxLoader(
         return loadedTransactions;
     }
 
-    private void FilterTransactions(ref Transaction[] transactions, Block? head)
+    internal Transaction[] FilterTransactions(Transaction[] transactions, IReleaseSpec releaseSpec)
     {
-        // question for reviewers: what is correct thing to do here if head is null?
-        IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
         TxValidator txValidator = new(specProvider.ChainId);
-        transactions = Array.FindAll(transactions, tx => {
+        return Array.FindAll(transactions, tx =>
+        {
             bool wellFormed = txValidator.IsWellFormed(tx, releaseSpec, out string? error);
-            if (error is not null && _logger.IsDebug) _logger.Debug($"Decrypred Shutter transactions was not well-formed: {error}");
-            return wellFormed ^ tx.Type != TxType.Blob;
+            if (_logger.IsDebug)
+            {
+                string msgEnd = (error is null) ? "." : ": " + error;
+                if (!wellFormed) _logger.Debug($"Decrypted Shutter transactions was not well-formed{msgEnd}");
+                if (tx.Type == TxType.Blob) _logger.Debug($"Decrypted Shutter transaction was blob, cannot include.");
+            }
+            return wellFormed && tx.Type != TxType.Blob;
         });
     }
 

@@ -8,7 +8,6 @@ using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Shutter;
 using NUnit.Framework;
 using Nethermind.Crypto;
-using Nethermind.Core.Test;
 using Nethermind.Core.Extensions;
 using NSubstitute;
 using Nethermind.Blockchain.Find;
@@ -18,6 +17,8 @@ using Nethermind.Logging;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Serialization.Rlp;
 using System.Linq;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -28,11 +29,29 @@ using SequencedTransaction = ShutterTxLoader.SequencedTransaction;
 
 class ShutterTxLoaderSourceTests
 {
+    private ShutterTxLoader _txLoader;
+
+    [SetUp]
+    public void Setup()
+    {
+        ShutterConfig shutterConfig = new()
+        {
+            SequencerContractAddress = "0x0000000000000000000000000000000000000000"
+        };
+
+        _txLoader = new ShutterTxLoader(
+            Substitute.For<ILogFinder>(),
+            shutterConfig,
+            ChiadoSpecProvider.Instance,
+            new EthereumEcdsa(BlockchainIds.Chiado, LimboLogs.Instance),
+            Substitute.For<IReadOnlyBlockTree>(),
+            LimboLogs.Instance
+        );
+    }
+
     [Test]
     public void Can_decrypt_sequenced_transactions()
     {
-        ILogManager logManager = new NUnitLogManager();
-        ulong chainId = BlockchainIds.Chiado;
         UInt256 sk = 4328942385;
         Random rnd = new Random(100);
 
@@ -56,21 +75,7 @@ class ShutterTxLoaderSourceTests
         // decryption keys are sorted by preimage
         keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
 
-        ShutterConfig shutterConfig = new()
-        {
-            SequencerContractAddress = "0x0000000000000000000000000000000000000000"
-        };
-
-        ShutterTxLoader txLoader = new ShutterTxLoader(
-            Substitute.For<ILogFinder>(),
-            shutterConfig,
-            Substitute.For<ISpecProvider>(),
-            new EthereumEcdsa(chainId, logManager),
-            Substitute.For<IReadOnlyBlockTree>(),
-            logManager
-        );
-
-        Transaction[] txs = txLoader.DecryptSequencedTransactions(sequencedTransactions, keys);
+        Transaction[] txs = _txLoader.DecryptSequencedTransactions(sequencedTransactions, keys);
         foreach (Transaction tx in txs)
         {
             byte[] tmp = Rlp.Encode<Transaction>(tx).Bytes;
@@ -79,9 +84,26 @@ class ShutterTxLoaderSourceTests
     }
 
     [Test]
-    public void Can_filter_invalid_transactions()
+    [TestCase(2,
+        new string[] {
+            // valid
+            "f869820a56849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a0df1cd95e75d0188cded14137c9c83a3ce6d710886bf9139a10cab20dd693ab85a020f5fdae2704bf133be02897c886ceb9189a9ea363989b11330461a78b9bb368",
+            "02f8758227d81385012a05f20085012a05f2088252089497d2eeb65da0c37dc0f43ff4691e521673efadfd872386f26fc1000080c080a0c00874a71afda5444b961f78774196fbb833c33482d6463b97380147dd7d472fa061d508b02cb212c78d0b864a04b10e0b0e3accca6e08252049d999c4629cd9a8",
+            // wrong chain id
+            "f869820a56849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd5a0b806b9e17c30c4eaad51b290714a407925c82818311a432e4ee656ad23938852a045cd3f087a1f2580ba7d806fa6ba2bfc9933b317ee89fa67713665aab7c22441"
+        }
+    )]
+    public void Can_filter_invalid_transactions(int expectedValid, string[] transactionHexes)
     {
-        // TestBlockchain
+        Transaction[] transactions = new Transaction[transactionHexes.Length];
+        for (int i = 0; i < transactionHexes.Length; i++)
+        {
+            transactions[i] = Rlp.Decode<Transaction>(Convert.FromHexString(transactionHexes[i]));
+        }
+
+        IReleaseSpec releaseSpec = Cancun.Instance;
+        Transaction[] filtered = _txLoader.FilterTransactions(transactions, releaseSpec);
+        Assert.That(filtered.Length, Is.EqualTo(expectedValid));
     }
 
     private (SequencedTransaction, (byte[] IdentityPreimage, byte[] Key)) GenerateSequencedTransaction(byte[] msg, byte[] identityPreimage, UInt256 sk, Bytes32 sigma)
