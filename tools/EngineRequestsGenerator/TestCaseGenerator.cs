@@ -337,11 +337,18 @@ public class TestCaseGenerator
             case TestCase.SStoreManyAccountsConsecutiveKeysZeroValue:
             case TestCase.SStoreManyAccountsRandomKeysRandomValue:
             case TestCase.SStoreManyAccountsRandomKeysZeroValue:
+            // case TestCase.TStoreConsecutiveKeysRandomValue:
+            // case TestCase.TStoreConsecutiveKeysZeroValue:
+            // case TestCase.TStoreRandomKeysRandomValue:
+            // case TestCase.TStoreRandomKeysZeroValue:
                 return SStore.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreOneAccountOneKeyConstantValue:
             case TestCase.SStoreOneAccountOneKeyZeroValue:
             case TestCase.SStoreOneAccountOneKeyRandomValue:
             case TestCase.SStoreOneAccountOneKeyTwoValues:
+            case TestCase.TStoreOneKeyZeroValue:
+            case TestCase.TStoreOneKeyConstantValue:
+            case TestCase.TStoreOneKeyRandomValue:
                 return SStoreOneKey.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);

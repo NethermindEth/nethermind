@@ -236,6 +236,27 @@ public enum TestCase
     [TestCaseMetadata("Point evaluation - one data", "Point evaluation precompile repeating computations on the same data")]
     PointEvaluationOneData,
 
+    [TestCaseMetadata("TStore - one storage key, repeating zero value", "TStore - repeating storing zero in single key of transient storage")]
+    TStoreOneKeyZeroValue,
+
+    [TestCaseMetadata("TStore - one storage key, repeating constant value", "TStore - repeating storing the same 32-byte word in single single key of transient storage")]
+    TStoreOneKeyConstantValue,
+
+    [TestCaseMetadata("TStore - one storage key, repeating random values", "TStore - repeating storing random 32-byte values in single key of transient storage")]
+    TStoreOneKeyRandomValue,
+
+    // [TestCaseMetadata("TStore - consecutive storage keys, random values", "TStore - storing random 32-byte values in consecutive keys of transient storage")]
+    // TStoreConsecutiveKeysRandomValue,
+    //
+    // [TestCaseMetadata("TStore - random storage keys, random values", "TStore - storing random 32-byte values in random keys of transient storage")]
+    // TStoreRandomKeysRandomValue,
+    //
+    // [TestCaseMetadata("TStore - consecutive storage keys, zero values", "TStore - storing zeros in consecutive keys of transient storage")]
+    // TStoreConsecutiveKeysZeroValue,
+    //
+    // [TestCaseMetadata("TStore - random storage keys, zero values", "TStore - storing zeros in random keys of transient storage")]
+    // TStoreRandomKeysZeroValue,
+
     [TestCaseMetadata("SStore - one storage key, repeating zero value", "SStore - repeating storing zero in single storage key of single account")]
     SStoreOneAccountOneKeyZeroValue,
 
