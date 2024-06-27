@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -13,6 +14,19 @@ namespace Nethermind.Blockchain.Filters
 
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
+
+        public IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
+        {
+            if (Addresses is not null)
+            {
+                return Addresses.SelectMany(a => logIndexStorage.GetBlocksForAddress(a));
+            }
+            if (Address is null)
+            {
+                return Enumerable.Empty<long>();
+            }
+            return logIndexStorage.GetBlocksForAddress(Address);
+        }
 
         public AddressFilter(Address address)
         {
