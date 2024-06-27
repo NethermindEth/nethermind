@@ -47,6 +47,7 @@ public static class SStoreOneKey
         byte[] constantWord = Keccak.Compute("random").BytesToArray();
 
         List<byte> codeToDeploy = new();
+        byte instruction = GetInstruction(testCase);
 
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
 
@@ -55,13 +56,16 @@ public static class SStoreOneKey
             switch (testCase)
             {
                 case TestCase.SStoreOneAccountOneKeyZeroValue:
+                case TestCase.TStoreOneKeyZeroValue:
                     codeToDeploy.Add((byte)Instruction.PUSH0);              // zero value
                     break;
                 case TestCase.SStoreOneAccountOneKeyConstantValue:
+                case TestCase.TStoreOneKeyConstantValue:
                     codeToDeploy.Add((byte)Instruction.PUSH32);             // constant value
                     codeToDeploy.AddRange(constantWord);
                     break;
                 case TestCase.SStoreOneAccountOneKeyRandomValue:
+                case TestCase.TStoreOneKeyRandomValue:
                     codeToDeploy.Add((byte)Instruction.PUSH32);             // random value
                     codeToDeploy.AddRange(Keccak.Compute(i.ToByteArray()).Bytes);
                     break;
@@ -70,7 +74,7 @@ public static class SStoreOneKey
             }
 
             codeToDeploy.Add((byte)Instruction.PUSH0);                      // key
-            codeToDeploy.Add((byte)Instruction.SSTORE);
+            codeToDeploy.Add(instruction);
         }
 
         codeToDeploy.Add((byte)Instruction.PUSH0);
@@ -78,6 +82,23 @@ public static class SStoreOneKey
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);
         return byteCode.ToArray();
+    }
+
+    private static byte GetInstruction(TestCase testCase)
+    {
+        switch (testCase)
+        {
+            case TestCase.SStoreOneAccountOneKeyZeroValue:
+            case TestCase.SStoreOneAccountOneKeyConstantValue:
+            case TestCase.SStoreOneAccountOneKeyRandomValue:
+                return (byte)Instruction.SSTORE;
+            case TestCase.TStoreOneKeyZeroValue:
+            case TestCase.TStoreOneKeyRandomValue:
+            case TestCase.TStoreOneKeyConstantValue:
+                return (byte)Instruction.TSTORE;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
+        }
     }
 
     private static byte[] PrepareCodeTwoValues(TestCase testCase)
