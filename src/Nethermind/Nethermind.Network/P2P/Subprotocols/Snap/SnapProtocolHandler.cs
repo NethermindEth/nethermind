@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     {
         public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
         public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
-        private static TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(ArrayPoolList<byte[]>.Empty());
+        private static readonly TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(ArrayPoolList<byte[]>.Empty());
 
         private readonly LatencyBasedRequestSizer _requestSizer = new(
             minRequestLimit: 50000,

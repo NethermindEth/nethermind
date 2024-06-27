@@ -3,14 +3,12 @@
 
 using System;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using MathGmp.Native;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -27,7 +25,10 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(5);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
+        public long BaseGasCost(IReleaseSpec releaseSpec)
+        {
+            return 0L;
+        }
 
         /// <summary>
         /// https://github.com/ethereum/EIPs/pull/2892
@@ -62,8 +63,7 @@ namespace Nethermind.Evm.Precompiles
 
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
-                using ArrayPoolList<byte> expSpan = inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32);
-                UInt256 exp = new(expSpan.AsSpan(), true);
+                UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
                 result /= 3;
@@ -75,21 +75,14 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        private static mpz_t ImportDataToGmp(ReadOnlyMemory<byte> inputData, int startIndex, int length)
-        {
-            using ArrayPoolList<byte> baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(startIndex, length);
-            return ImportDataToGmp(baseData.AsSpan());
-        }
-
-        private static unsafe mpz_t ImportDataToGmp(ReadOnlySpan<byte> data)
+        private static mpz_t ImportDataToGmp(byte[] data)
         {
             mpz_t result = new();
             gmp_lib.mpz_init(result);
             ulong memorySize = (ulong)data.Length;
             using void_ptr memoryChunk = gmp_lib.allocate(memorySize);
 
-            Span<byte> spanUnmanagedBuffer = new(memoryChunk.ToIntPtr().ToPointer(), data.Length);
-            data.CopyTo(spanUnmanagedBuffer);
+            Marshal.Copy(data, 0, memoryChunk.ToIntPtr(), data.Length);
             gmp_lib.mpz_import(result, memorySize, 1, 1, 1, 0, memoryChunk);
 
             return result;
@@ -121,15 +114,19 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, true);
             }
 
-            using mpz_t modulusInt = ImportDataToGmp(inputData, 96 + baseLength + expLength, modulusLength);
+            byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
+            using mpz_t modulusInt = ImportDataToGmp(modulusData);
 
             if (gmp_lib.mpz_sgn(modulusInt) == 0)
             {
                 return (new byte[modulusLength], true);
             }
 
-            using mpz_t baseInt = ImportDataToGmp(inputData, 96, baseLength);
-            using mpz_t expInt = ImportDataToGmp(inputData, 96 + baseLength, expLength);
+            byte[] baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
+            using mpz_t baseInt = ImportDataToGmp(baseData);
+
+            byte[] expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
+            using mpz_t expInt = ImportDataToGmp(expData);
 
             using mpz_t powmResult = new();
             gmp_lib.mpz_init(powmResult);
@@ -149,31 +146,24 @@ namespace Nethermind.Evm.Precompiles
         }
 
         [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
-        [SkipLocalsInit]
         public static (ReadOnlyMemory<byte>, bool) OldRun(byte[] inputData)
         {
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
 
-            ReadOnlySpan<byte> inputDataSpan = inputData.AsSpan();
-
-            BigInteger modulusInt = ExtractBigInteger(inputDataSpan, 96 + baseLength + expLength, modulusLength);
+            BigInteger modulusInt = inputData
+                .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
 
             if (modulusInt.IsZero)
             {
                 return (new byte[modulusLength], true);
             }
 
-            BigInteger baseInt = ExtractBigInteger(inputDataSpan, 96, baseLength);
-            BigInteger expInt = ExtractBigInteger(inputDataSpan, 96 + baseLength, expLength);
+            BigInteger baseInt = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
+            BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength)
+                .ToUnsignedBigInteger();
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
-
-            BigInteger ExtractBigInteger(ReadOnlySpan<byte> span, int startIndex, int length)
-            {
-                using ArrayPoolList<byte> arrayPoolList = span.SliceWithZeroPaddingEmptyOnError(startIndex, length);
-                return arrayPoolList.AsSpan().ToUnsignedBigInteger();
-            }
         }
 
         /// <summary>
@@ -183,7 +173,6 @@ namespace Nethermind.Evm.Precompiles
         /// return words**2
         /// </summary>
         /// <returns></returns>
-        [SkipLocalsInit]
         private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength)
         {
             UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
@@ -220,7 +209,7 @@ namespace Nethermind.Evm.Precompiles
                         bitLength--;
                     }
 
-                    bool overflow = UInt256.MultiplyOverflow(exponentLength - 32, 8, out UInt256 multiplicationResult);
+                    bool overflow = UInt256.MultiplyOverflow((exponentLength - 32), 8, out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
                     {

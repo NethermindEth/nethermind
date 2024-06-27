@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Ethash
                 new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
-                new BlockhashStore(getFromApi.BlockTree, getFromApi.SpecProvider, scope.WorldState),
+                new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.TransactionProcessor,
                 getFromApi.LogManager);
 

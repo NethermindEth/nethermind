@@ -244,7 +244,7 @@ namespace Nethermind.Blockchain.Test
         [TestCase(512)]
         [TestCase(8192)]
         [TestCase(8193)]
-        public void Eip2935_init_block_history_and_then_get_hash(int chainLength)
+        public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash(int chainLength)
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
             BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
@@ -259,32 +259,29 @@ namespace Nethermind.Blockchain.Test
                 (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
                 (new ForkActivation(0, current.Timestamp), Prague.Instance));
             BlockhashProvider provider = new(tree, specProvider, worldState, LimboLogs.Instance);
-            BlockhashStore store = new(tree, specProvider, worldState);
-
-            store.ApplyHistoryBlockHashes(current.Header);
-            worldState.Commit(Prague.Instance);
+            BlockhashStore store = new(specProvider, worldState);
 
             Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1);
             Assert.That(result, Is.EqualTo(head?.Hash));
-            AssertGenesisHash(provider, current.Header, genesis.Hash!);
+            AssertGenesisHash(Prague.Instance, provider, current.Header, genesis.Hash);
 
             head = current.Header;
             // number = chainLength + 1
             current = Build.A.Block.WithParent(head!).TestObject;
             tree.SuggestHeader(current.Header);
 
-            store.ApplyHistoryBlockHashes(current.Header);
+            store.ApplyBlockhashStateChanges(current.Header);
             result = provider.GetBlockhash(current.Header, chainLength);
             Assert.That(result, Is.EqualTo(head?.Hash));
 
-            AssertGenesisHash(provider, current.Header, genesis.Hash!);
+            AssertGenesisHash(Prague.Instance, provider, current.Header, genesis.Hash);
         }
 
-        private static void AssertGenesisHash(BlockhashProvider provider, BlockHeader currentHeader,
-            Hash256 genesisHash)
+        private static void AssertGenesisHash(IReleaseSpec spec, BlockhashProvider provider, BlockHeader currentHeader,
+            Hash256? genesisHash)
         {
             Hash256? result = provider.GetBlockhash(currentHeader, 0);
-            if (currentHeader.Number > Eip2935Constants.RingBufferSize)
+            if ((spec.IsEip7709Enabled && currentHeader.Number > Eip2935Constants.RingBufferSize) || currentHeader.Number > 256)
                 Assert.That(result, Is.Null);
             else
                 Assert.That(result, Is.EqualTo(genesisHash));

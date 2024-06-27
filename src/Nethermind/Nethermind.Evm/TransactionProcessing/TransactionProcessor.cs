@@ -165,9 +165,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
+
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
                 Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
 
@@ -557,26 +558,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress))
+            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, WorldState))
             {
-                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, contractAddress, spec);
-                bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
-                bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
+                if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
-                // TODO: verify what should happen if code info is a precompile
-                // (but this would generally be a hash collision)
-                if (codeIsNotEmpty || accountNonceIsNotZero)
-                {
-                    if (Logger.IsTrace)
-                    {
-                        Logger.Trace($"Contract collision at {contractAddress}");
-                    }
-
-                    ThrowTransactionCollisionException();
-                }
-
-                // we clean any existing storage (in case of a previously called self destruct)
-                WorldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                ThrowTransactionCollisionException();
             }
         }
 

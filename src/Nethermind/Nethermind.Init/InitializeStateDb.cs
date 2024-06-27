@@ -150,12 +150,16 @@ public class InitializeStateDb : IStep
                 mainWorldTrieStore,
                 codeDb,
                 getApi.LogManager,
-                preBlockCaches)
+                preBlockCaches,
+                // Main thread should only read from prewarm caches, not spend extra time updating them.
+                populatePreBlockCache: false)
             : new WorldState(
                 mainWorldTrieStore,
                 codeDb,
                 getApi.LogManager,
-                preBlockCaches);
+                preBlockCaches,
+                // Main thread should only read from prewarm caches, not spend extra time updating them.
+                populatePreBlockCache: false);
 
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(

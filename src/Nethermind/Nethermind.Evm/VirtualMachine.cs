@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -139,8 +140,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
-    private IWorldState _worldState;
-    private IWorldState _state = null!;
+    private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
@@ -165,7 +165,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         _txTracer = txTracer;
         _state = worldState;
-        _worldState = worldState;
 
         IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
@@ -239,7 +238,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     if (callResult.IsException)
                     {
                         if (typeof(TTracingActions) == typeof(IsTracing)) _txTracer.ReportActionError(callResult.ExceptionType);
-                        _worldState.Restore(currentState.Snapshot);
+                        _state.Restore(currentState.Snapshot);
 
                         RevertParityTouchBugAccount(spec, state.Env.IsSystemEnv);
 
@@ -417,7 +416,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
-                _worldState.Restore(currentState.Snapshot);
+                _state.Restore(currentState.Snapshot);
 
                 RevertParityTouchBugAccount(spec, state.Env.IsSystemEnv);
 
@@ -1329,7 +1328,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ReadOnlyMemory<byte> externalCode = _codeInfoRepository.GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2039,7 +2038,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        ReadOnlyMemory<byte> accountCode = _codeInfoRepository.GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+        ReadOnlyMemory<byte> accountCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
         UInt256 result = (UInt256)accountCode.Span.Length;
         stack.PushUInt256(in result);
     }
@@ -2118,7 +2117,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_worldState, codeSource, spec);
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)
@@ -2158,7 +2157,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
-        Snapshot snapshot = _worldState.TakeSnapshot();
+        Snapshot snapshot = _state.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec, env.IsSystemEnv);
 
         if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
@@ -2403,11 +2402,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.IncrementNonce(env.ExecutingAccount);
 
-        Snapshot snapshot = _worldState.TakeSnapshot();
+        Snapshot snapshot = _state.TakeSnapshot();
 
         bool accountExists = _state.AccountExists(contractAddress);
-        if (accountExists && (_codeInfoRepository.GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 ||
-                              _state.GetNonce(contractAddress) != 0))
+
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, _state))
         {
             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
             if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
@@ -2416,11 +2415,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (accountExists)
-        {
-            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
-        }
-        else if (_state.IsDeadAccount(contractAddress))
+        if (_state.IsDeadAccount(contractAddress))
         {
             _state.ClearStorage(contractAddress);
         }

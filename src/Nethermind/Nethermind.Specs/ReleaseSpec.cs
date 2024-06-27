@@ -106,6 +106,7 @@ namespace Nethermind.Specs
             set => _depositContractAddress = value;
         }
         public bool IsEip2935Enabled { get; set; }
+        public bool IsEip7709Enabled { get; set; }
 
         private Address _eip2935ContractAddress;
         public Address Eip2935ContractAddress

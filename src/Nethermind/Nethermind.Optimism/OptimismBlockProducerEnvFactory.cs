@@ -76,7 +76,7 @@ public class OptimismBlockProducerEnvFactory(
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
-            new BlockhashStore(_blockTree, specProvider, readOnlyTxProcessingEnv.WorldState),
+            new BlockhashStore(specProvider, readOnlyTxProcessingEnv.WorldState),
             logManager,
             specHelper,
             readOnlyTxProcessingEnv.TransactionProcessor,

@@ -387,7 +387,7 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
             State,
             ReceiptStorage,
-            new BlockhashStore(BlockTree, SpecProvider, State),
+            new BlockhashStore(SpecProvider, State),
             TxProcessor,
             LogManager,
             consensusRequestsProcessor: ConsensusRequestsProcessor);

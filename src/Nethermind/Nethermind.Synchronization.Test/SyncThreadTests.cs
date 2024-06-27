@@ -301,7 +301,7 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(tree, specProvider, stateProvider),
+                new BlockhashStore(specProvider, stateProvider),
                 txProcessor,
                 logManager);
 
@@ -324,7 +324,7 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
                 devState,
                 receiptStorage,
-                new BlockhashStore(tree, specProvider, devState),
+                new BlockhashStore(specProvider, devState),
                 devTxProcessor,
                 logManager);
 
