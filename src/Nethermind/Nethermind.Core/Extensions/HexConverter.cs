@@ -253,6 +253,9 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        /// <summary>
+        /// Loops in 2 byte chunks and decodes them into 1 byte chunks.
+        /// </summary>
         private static bool TryDecodeFromUtf8_Scalar(ReadOnlySpan<byte> hex, Span<byte> bytes, bool isOdd)
         {
             Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length, "Target buffer not right-sized for provided characters");
@@ -285,6 +288,9 @@ namespace Nethermind.Core.Extensions
             return (byteLo | byteHi) != 0xFF;
         }
 
+        /// <summary>
+        /// Loops in 16 byte chunks and decodes them into 8 byte chunks.
+        /// </summary>
         private static bool TryDecodeFromUtf8_Vector128(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Ssse3.IsSupported || AdvSimd.Arm64.IsSupported);
@@ -357,10 +363,13 @@ namespace Nethermind.Core.Extensions
             }
             while (true);
 
-            // Fall back to the scalar routine in case of invalid input.
-            return TryDecodeFromUtf8_Scalar(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
+            // Invalid input.
+            return false;
         }
 
+        /// <summary>
+        /// Loops in 32 byte chunks and decodes them into 16 byte chunks.
+        /// </summary>
         private static bool TryDecodeFromUtf8_Vector256(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Avx2.IsSupported);
@@ -405,7 +414,7 @@ namespace Nethermind.Core.Extensions
                         Vector256.Create((short)0x0110).AsSByte()).AsByte();
                 // Accumulate output in lower INT64 half and take care about endianness
                 output = Vector256.Shuffle(output, Vector256.Create((byte)0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
-                // Store 8 bytes in dest by given offset
+                // Store 16 bytes in dest by given offset
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref destRef, offset / 2), output.AsUInt64().GetLower());
 
                 offset += (nuint)Vector256<ushort>.Count * 2;
@@ -421,10 +430,13 @@ namespace Nethermind.Core.Extensions
             }
             while (true);
 
-            // Fall back to the scalar routine in case of invalid input.
-            return TryDecodeFromUtf8_Scalar(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
+            // Invalid input.
+            return false;
         }
 
+        /// <summary>
+        /// Loops in 64 byte chunks and decodes them into 32 byte chunks.
+        /// </summary>
         private static bool TryDecodeFromUtf8_Vector512(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Avx512BW.IsSupported);
@@ -469,7 +481,7 @@ namespace Nethermind.Core.Extensions
                         Vector512.Create((short)0x0110).AsSByte()).AsByte();
                 // Accumulate output in lower INT64 half and take care about endianness
                 output = Vector512.Shuffle(output, Vector512.Create((byte)0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
-                // Store 8 bytes in dest by given offset
+                // Store 32 bytes in dest by given offset
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref destRef, offset / 2), output.AsUInt64().GetLower());
 
                 offset += (nuint)Vector512<ushort>.Count * 2;
@@ -485,8 +497,8 @@ namespace Nethermind.Core.Extensions
             }
             while (true);
 
-            // Fall back to the scalar routine in case of invalid input.
-            return TryDecodeFromUtf8_Scalar(hex[(int)offset..], bytes[(int)offset..], isOdd: false);
+            // Invalid input.
+            return false;
         }
 
         public static bool TryDecodeFromUtf16_Vector128(ReadOnlySpan<char> chars, Span<byte> bytes)
