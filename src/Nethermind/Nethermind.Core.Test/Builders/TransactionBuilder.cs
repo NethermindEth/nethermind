@@ -300,5 +300,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.IsServiceTransaction = isServiceTransaction;
             return this;
         }
+
+        public TransactionBuilder<T> From(T item)
+        {
+            TestObjectInternal = item;
+            return this;
+        }
     }
 }

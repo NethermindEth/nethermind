@@ -24,10 +24,32 @@ namespace Nethermind.Core.Test.Encoding
     {
         private readonly TxDecoder _txDecoder = new();
 
-        public static IEnumerable<(TransactionBuilder<Transaction>, string)> TestObjectsSource()
+        public static IEnumerable<(Transaction, string)> ExtendedTestCaseSource()
         {
-            yield return (Build.A.Transaction.SignedAndResolved(), "basic");
-            yield return (Build.A.Transaction.SignedAndResolved().WithNonce(0), "basic with nonce=0");
+            foreach ((Transaction, string) item in TestCaseSource())
+            {
+                yield return item;
+            }
+
+            yield return (Build.A.Transaction
+                .WithMaxFeePerGas(2.GWei())
+                .WithType(TxType.SetCode)
+                .WithGasPrice(0)
+                .WithChainId(1559)
+                .WithAuthorizationCode([new AuthorizationTuple(0, TestItem.AddressF, 0, 0, [], [])])
+                .SignedAndResolved().TestObject, "EIP 7702 with one tuple");
+            yield return (Build.A.Transaction
+                .WithMaxFeePerGas(2.GWei())
+                .WithType(TxType.SetCode)
+                .WithGasPrice(0)
+                .WithChainId(1559)
+                .WithAuthorizationCode([])
+                .SignedAndResolved().TestObject, "EIP 7702 with empty list");
+        }
+        public static IEnumerable<(Transaction, string)> TestCaseSource()
+        {
+            yield return (Build.A.Transaction.SignedAndResolved().TestObject, "basic");
+            yield return (Build.A.Transaction.SignedAndResolved().WithNonce(0).TestObject, "basic with nonce=0");
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.AccessList)
@@ -37,7 +59,7 @@ namespace Nethermind.Core.Test.Encoding
                         .AddAddress(Address.Zero)
                         .AddStorage(1)
                         .Build())
-                .SignedAndResolved(), "access list");
+                .SignedAndResolved().TestObject, "access list");
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.EIP1559)
@@ -48,39 +70,22 @@ namespace Nethermind.Core.Test.Encoding
                         .AddAddress(Address.Zero)
                         .AddStorage(1)
                         .Build())
-                .SignedAndResolved(), "EIP1559 - access list");
+                .SignedAndResolved().TestObject, "EIP1559 - access list");
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(50)
                 .WithMaxPriorityFeePerGas(10)
                 .WithChainId(0)
-                .SignedAndResolved(), "EIP 1559");
+                .SignedAndResolved().TestObject, "EIP 1559");
             yield return (Build.A.Transaction
                 .WithMaxFeePerGas(2.GWei())
                 .WithType(TxType.EIP1559)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .SignedAndResolved(), "EIP 1559 second test case");
-            yield return (Build.A.Transaction
-                .WithMaxFeePerGas(2.GWei())
-                .WithType(TxType.SetCode)
-                .WithGasPrice(0)
-                .WithChainId(1559)
-                .WithAuthorizationCode([new AuthorizationTuple(0, TestItem.AddressF, 0, 0, [], [])])
-                .SignedAndResolved(), "EIP 7702 first test case");
-            yield return (Build.A.Transaction
-                .WithMaxFeePerGas(2.GWei())
-                .WithType(TxType.SetCode)
-                .WithGasPrice(0)
-                .WithChainId(1559)
-                .WithAuthorizationCode([])
-                .SignedAndResolved(), "EIP 7702 second test case");
+                .SignedAndResolved().TestObject, "EIP 1559 second test case");
         }
 
-        public static IEnumerable<(Transaction, string)> TestCaseSource()
-            => TestObjectsSource().Select(tos => (tos.Item1.TestObject, tos.Item2));
-
-        [TestCaseSource(nameof(TestCaseSource))]
+        [TestCaseSource(nameof(ExtendedTestCaseSource))]
         [Repeat(10)] // Might wanna increase this to double check when changing logic as on lower value, it does not reproduce.
         public void CanCorrectlyCalculateTxHash_when_called_concurrently((Transaction Tx, string Description) testCase)
         {
@@ -105,7 +110,7 @@ namespace Nethermind.Core.Test.Encoding
             Task.WaitAll(tasks.ToArray());
         }
 
-        [TestCaseSource(nameof(TestCaseSource))]
+        [TestCaseSource(nameof(ExtendedTestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
             RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
@@ -118,7 +123,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded.EqualToTransaction(testCase.Tx);
         }
 
-        [TestCaseSource(nameof(TestCaseSource))]
+        [TestCaseSource(nameof(ExtendedTestCaseSource))]
         public void Roundtrip_ValueDecoderContext((Transaction Tx, string Description) testCase)
         {
             RlpStream rlpStream = new(10000);
@@ -134,7 +139,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded.EqualToTransaction(testCase.Tx);
         }
 
-        [TestCaseSource(nameof(TestCaseSource))]
+        [TestCaseSource(nameof(ExtendedTestCaseSource))]
         public void Roundtrip_ValueDecoderContext_WithMemorySlice((Transaction Tx, string Description) testCase)
         {
             RlpStream rlpStream = new(10000);
@@ -149,7 +154,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded.EqualToTransaction(testCase.Tx);
         }
 
-        [TestCaseSource(nameof(TestCaseSource))]
+        [TestCaseSource(nameof(ExtendedTestCaseSource))]
         public void ValueDecoderContext_DecodeWithMemorySlice_ShouldUseSameBuffer((Transaction Tx, string Description) testCase)
         {
             if (!testCase.Tx.Data.HasValue || testCase.Tx.Data.Value.Length == 0) return;
@@ -247,7 +252,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(encoded.Bytes));
         }
 
-        [TestCaseSource(nameof(TestCaseSource))]
+        [TestCaseSource(nameof(ExtendedTestCaseSource))]
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding(
             (Transaction Tx, string Description) testCase)
         {
