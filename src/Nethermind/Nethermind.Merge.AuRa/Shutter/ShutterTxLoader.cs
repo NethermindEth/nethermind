@@ -19,6 +19,7 @@ using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -34,6 +35,7 @@ public class ShutterTxLoader(
     IReadOnlyBlockTree readOnlyBlockTree,
     ILogManager logManager)
 {
+    private readonly TxValidator _txValidator = new(specProvider.ChainId);
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
@@ -49,14 +51,14 @@ public class ShutterTxLoader(
 
         if (_logger.IsDebug)
         {
-            string msg = "Decrypted Shutter transactions:";
-            transactions.ForEach(tx => msg += "\n" + tx.ToShortString());
-            _logger.Debug(msg);
+            StringBuilder msg = new("Decrypted Shutter transactions:");
+            transactions.ForEach(tx => msg.Append("\n" + tx.ToShortString()));
+            _logger.Debug(msg.ToString());
         }
 
         // question for reviewers: what is correct thing to do here if head is null?
         IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
-        Transaction[] filtered = FilterTransactions(transactions, releaseSpec);
+        Transaction[] filtered = FilterTransactions(transactions, releaseSpec).ToArray();
 
         LoadedTransactions loadedTransactions = new()
         {
@@ -66,28 +68,35 @@ public class ShutterTxLoader(
 
         if (_logger.IsDebug)
         {
-            string msg = "Filtered Shutter transactions:";
-            loadedTransactions.Transactions.ForEach(tx => msg += "\n" + tx.ToShortString());
-            _logger.Debug(msg);
+            StringBuilder msg = new("Filtered Shutter transactions:");
+            loadedTransactions.Transactions.ForEach(tx => msg.Append("\n" + tx.ToShortString()));
+            _logger.Debug(msg.ToString());
         }
 
         return loadedTransactions;
     }
 
-    internal Transaction[] FilterTransactions(Transaction[] transactions, IReleaseSpec releaseSpec)
+    internal IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, IReleaseSpec releaseSpec)
     {
-        TxValidator txValidator = new(specProvider.ChainId);
-        return Array.FindAll(transactions, tx =>
+        foreach (Transaction tx in transactions)
         {
-            bool wellFormed = txValidator.IsWellFormed(tx, releaseSpec, out string? error);
+            bool wellFormed = _txValidator.IsWellFormed(tx, releaseSpec, out string? error);
+
             if (_logger.IsDebug)
             {
-                string msgEnd = (error is null) ? "." : ": " + error;
-                if (!wellFormed) _logger.Debug($"Decrypted Shutter transactions was not well-formed{msgEnd}");
+                if (!wellFormed)
+                {
+                    string msgEnd = (error is null) ? "." : ": " + error;
+                    _logger.Debug($"Decrypted Shutter transactions was not well-formed{msgEnd}");
+                }
                 if (tx.Type == TxType.Blob) _logger.Debug($"Decrypted Shutter transaction was blob, cannot include.");
             }
-            return wellFormed && tx.Type != TxType.Blob;
-        });
+
+            if (wellFormed && tx.Type != TxType.Blob)
+            {
+                yield return tx;
+            }
+        }
     }
 
     internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
@@ -119,14 +128,9 @@ public class ShutterTxLoader(
 
             byte[] encodedTransaction = ShutterCrypto.Decrypt(encryptedMessage, key);
 
-            // todo: remove after using for testing
-            if (_logger.IsDebug) _logger.Debug($"Decrypted raw Shutter transaction: {Convert.ToHexString(encodedTransaction)}");
-
             Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction.AsSpan());
             // todo: test sending transactions with bad signatures to see if secp segfaults
             transaction.SenderAddress = ethereumEcdsa.RecoverAddress(transaction, true);
-
-            if (_logger.IsDebug) _logger.Debug($"Decoded Shutter transaction: {transaction.ToShortString()}");
 
             return transaction;
         }

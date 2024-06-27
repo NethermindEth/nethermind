@@ -102,8 +102,8 @@ class ShutterTxLoaderSourceTests
         }
 
         IReleaseSpec releaseSpec = Cancun.Instance;
-        Transaction[] filtered = _txLoader.FilterTransactions(transactions, releaseSpec);
-        Assert.That(filtered.Length, Is.EqualTo(expectedValid));
+        IEnumerable<Transaction> filtered = _txLoader.FilterTransactions(transactions, releaseSpec);
+        Assert.That(filtered.Count, Is.EqualTo(expectedValid));
     }
 
     private (SequencedTransaction, (byte[] IdentityPreimage, byte[] Key)) GenerateSequencedTransaction(byte[] msg, byte[] identityPreimage, UInt256 sk, Bytes32 sigma)

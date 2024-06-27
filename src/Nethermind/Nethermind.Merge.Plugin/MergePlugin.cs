@@ -473,7 +473,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return Task.CompletedTask;
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public virtual ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
 }

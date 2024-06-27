@@ -32,9 +32,9 @@ namespace Nethermind.Merge.AuRa
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
-        private IAuraConfig? _auraConfig;
         private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
+        private EventHandler<BlockEventArgs>? _eonUpdateHandler;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
@@ -45,7 +45,6 @@ namespace Nethermind.Merge.AuRa
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
-            _auraConfig = _api.Config<IAuraConfig>();
             _mergeConfig = _api.Config<IMergeConfig>();
             _shutterConfig = _api.Config<IShutterConfig>();
 
@@ -116,7 +115,8 @@ namespace Nethermind.Merge.AuRa
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
                 ShutterEon shutterEon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
-                _api.BlockTree!.NewHeadBlock += (_, e) => shutterEon.Update(e.Block.Header);
+                _eonUpdateHandler = (_, e) => shutterEon.Update(e.Block.Header);
+                _api.BlockTree!.NewHeadBlock += _eonUpdateHandler;
 
                 shutterTxSource = new ShutterTxSource(_api.LogFinder!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, validatorsInfo, _api.LogManager);
 
@@ -134,10 +134,14 @@ namespace Nethermind.Merge.AuRa
             return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
 
-        public new void DisposeAsync()
+        public override ValueTask DisposeAsync()
         {
+            if (_eonUpdateHandler is not null)
+            {
+                _api.BlockTree!.NewHeadBlock -= _eonUpdateHandler;
+            }
             _shutterP2P?.DisposeAsync();
-            _ = base.DisposeAsync();
+            return base.DisposeAsync();
         }
 
         private void ValidateShutterConfig(IShutterConfig shutterConfig)
