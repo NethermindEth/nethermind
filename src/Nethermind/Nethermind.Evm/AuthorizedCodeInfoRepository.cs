@@ -24,9 +24,6 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     private readonly ILogger _logger;
     private readonly byte[] _internalBuffer = new byte[128];
 
-    public AuthorizedCodeInfoRepository(ulong chainId, ILogger? logger = null)
-        : this(new CodeInfoRepository(), chainId, logger) { }
-
     public AuthorizedCodeInfoRepository(ICodeInfoRepository codeInfoRepository, ulong chainId, ILogger? logger = null)
     {
         _codeInfoRepository = codeInfoRepository;

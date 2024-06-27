@@ -40,24 +40,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
         _codeOverwrites[key] = value;
     }
-
-    /// <summary>
-    /// Copy code from <paramref name="codeSource"/> and set it to override <paramref name="target"/>.
-    /// Main use for this is for https://eips.ethereum.org/EIPS/eip-7702
-    /// </summary>
-    /// <param name="code"></param>
-    public void CopyCodeAndOverwrite(
-        IWorldState worldState,
-        Address codeSource,
-        Address target,
-        IReleaseSpec vmSpec)
-    {
-        if (!_codeOverwrites.ContainsKey(target))
-        {
-            _codeOverwrites.Add(target, GetCachedCodeInfo(worldState, codeSource, vmSpec));
-        }
-    }
-
     public void ClearOverwrites()
     {
         _codeOverwrites.Clear();
