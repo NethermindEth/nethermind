@@ -412,20 +412,6 @@ public class TestCaseGenerator
         }
     }
 
-    // private IEnumerable<Withdrawal> PrepareWithdrawals(PrivateKey[] privateKeys)
-    // {
-    //     for (int i = 0; i < _numberOfWithdrawals; i++)
-    //     {
-    //         yield return new Withdrawal
-    //         {
-    //             Address = privateKeys[i].Address,
-    //             AmountInGwei = 1_000_000_000_000, // 1000 eth
-    //             ValidatorIndex = (ulong)(i + 1),
-    //             Index = (ulong)(i % 16 + 1)
-    //         };
-    //     }
-    // }
-
     private void WriteJsonRpcRequest(StringBuilder stringBuilder, string methodName, params  string[]? parameters)
     {
         stringBuilder.Append($"{{\"jsonrpc\":\"2.0\",\"method\":\"{methodName}\",");
@@ -444,5 +430,4 @@ public class TestCaseGenerator
         stringBuilder.Append("\"id\":67}");
         stringBuilder.AppendLine();
     }
-
 }
