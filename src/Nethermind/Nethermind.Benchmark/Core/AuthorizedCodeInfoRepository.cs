@@ -17,7 +17,6 @@ using Nethermind.Trie.Pruning;
 using System;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp.Eip7702;
 using Nethermind.Serialization.Rlp;
 using System.Collections.Generic;
 using System.Linq;
@@ -47,7 +46,7 @@ public class AuthorizedCodeInfoRepositoryBenchmark
         _stateProvider.Commit(_spec);
 
         _ethereumEcdsa = new(1, new OneLoggerLogManager(NullLogger.Instance));
-        sut = new AuthorizedCodeInfoRepository(1, NullLogger.Instance);
+        sut = new AuthorizedCodeInfoRepository(new CodeInfoRepository(), 1, NullLogger.Instance);
         var list = new List<AuthorizationTuple>();
         var rnd = new Random();
         var addressBuffer = new byte[20];

@@ -40,7 +40,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) => _codeInfoRepository.GetOrAdd(codeHash, initCode);
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        throw new NotSupportedException($"Use {nameof(CopyCodeAndOverwrite)}() for code authorizations.");
+        _codeInfoRepository.InsertCode(state, code, codeOwner, spec);
 
     /// <summary>
     /// Copy code from <paramref name="codeSource"/> and set it to override <paramref name="target"/>.
