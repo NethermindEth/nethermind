@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Test.Find
         private IBloomStorage _bloomStorage = null!;
         private IReceiptsRecovery _receiptsRecovery = null!;
         private Block _headTestBlock = null!;
+        private LogIndexStorage _logIndexStorage = null!;
 
         [SetUp]
         public void SetUp()
@@ -35,6 +36,9 @@ namespace Nethermind.Blockchain.Test.Find
             SetUp(true);
         }
 
+
+        [TearDown]
+        public void TearDown() => _bloomStorage?.Dispose();
 
         private void SetUp(bool allowReceiptIterator)
         {
@@ -47,9 +51,10 @@ namespace Nethermind.Blockchain.Test.Find
                 .OfChainLength(out _headTestBlock, 5)
                 .TestObject;
             _blockTree = _rawBlockTree;
+            _logIndexStorage = new LogIndexStorage();
             _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
-            _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
         }
 
         private void SetupHeadWithNoTransaction()
@@ -111,16 +116,26 @@ namespace Nethermind.Blockchain.Test.Find
         [TestCaseSource(nameof(FilterByAddressTestsData))]
         public void filter_by_address(Address[] addresses, int expectedCount, bool withBloomDb)
         {
+            StoreLogIndex();
             var filterBuilder = AllBlockFilter();
             filterBuilder = addresses.Length == 1 ? filterBuilder.WithAddress(addresses[0]) : filterBuilder.WithAddresses(addresses);
             var logFilter = filterBuilder.Build();
 
-            var logs = _logFinder.FindLogs(logFilter).ToArray();
+            var logs = _logFinder.FindLogsTest(logFilter).ToArray();
 
             logs.Length.Should().Be(expectedCount);
         }
 
         private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
+
+        private void StoreLogIndex()
+        {
+
+            _logIndexStorage.StoreLogIndex(TestItem.AddressA, 1);
+            _logIndexStorage.StoreLogIndex(TestItem.AddressB, 4);
+            _logIndexStorage.StoreLogIndex(TestItem.AddressC, 4);
+            _logIndexStorage.StoreLogIndex(TestItem.AddressD, 4);
+        }
 
     }
 }

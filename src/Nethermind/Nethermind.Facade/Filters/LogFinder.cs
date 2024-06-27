@@ -38,6 +38,26 @@ namespace Nethermind.Blockchain.Find
             IBloomStorage? bloomStorage,
             ILogManager? logManager,
             IReceiptsRecovery? receiptsRecovery,
+            LogIndexStorage? logIndexStorage,
+            int maxBlockDepth = 1000)
+        {
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
+            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
+            _maxBlockDepth = maxBlockDepth;
+            _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
+            _logIndexStorage = logIndexStorage ?? new LogIndexStorage();
+        }
+
+        public LogFinder(IBlockFinder? blockFinder,
+            IReceiptFinder? receiptFinder,
+            IReceiptStorage? receiptStorage,
+            IBloomStorage? bloomStorage,
+            ILogManager? logManager,
+            IReceiptsRecovery? receiptsRecovery,
             int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -161,8 +181,13 @@ namespace Nethermind.Blockchain.Find
 
                 var blocksAddressFiltered = AddressFilter.GetBlockNumbersFrom(_logIndexStorage);
                 var setA = blocksAddressFiltered.ToHashSet();
+                Console.WriteLine($"setA: {setA.Count}");
                 var blocksTopicFiltered = TopicsFilter.GetBlockNumbersFrom(_logIndexStorage);
                 var setB = blocksTopicFiltered.ToHashSet();
+                Console.WriteLine($"setA: {setA.Count}");
+                if (blocksTopicFiltered.First() == -1) {
+                    return setA;
+                }
 
                 return setA.Intersect(setB);
 

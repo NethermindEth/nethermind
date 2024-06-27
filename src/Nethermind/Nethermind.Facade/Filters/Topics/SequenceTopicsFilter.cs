@@ -24,13 +24,17 @@ namespace Nethermind.Blockchain.Filters.Topics
                 var blocks = new HashSet<long>(_expressions[0].GetBlockNumbersFrom(logIndexStorage));
                 foreach (var expression in _expressions[1..])
                 {
-                    blocks.IntersectWith(expression.GetBlockNumbersFrom(logIndexStorage));
+                    var toAddBlocks = expression.GetBlockNumbersFrom(logIndexStorage);
+                    if (toAddBlocks is not null && toAddBlocks.Count() > 0 && toAddBlocks.First() != -1)
+                    {
+                        blocks.IntersectWith(toAddBlocks);
+                    }
                 }
 
                 return blocks;
             }
             // TODO: Handle the case when there is no filter for topics
-            return Enumerable.Empty<long>();
+            return [-1];
         }
 
         public SequenceTopicsFilter(params TopicExpression[] expressions)
