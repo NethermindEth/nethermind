@@ -45,8 +45,9 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
 
         UdpConnection.ValidatePacketSize(data);
 
-        IByteBuffer packet = _bufferAllocator.Buffer(data.Length, data.Length);
-        packet.WriteBytes(data);
+        IByteBuffer buffer = _bufferAllocator.Buffer(data.Length, data.Length);
+        buffer.WriteBytes(data);
+        var packet = new DatagramPacket(buffer, destination);
 
         try
         {
