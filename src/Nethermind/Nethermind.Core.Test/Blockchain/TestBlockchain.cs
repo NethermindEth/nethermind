@@ -359,7 +359,7 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
 
-        if (SpecProvider.GenesisSpec.ConsensusRequestsEnabled)
+        if (SpecProvider.GenesisSpec.RequestsEnabled)
             genesisBlockBuilder.WithConsensusRequests(0);
 
         genesisBlockBuilder.WithStateRoot(State.StateRoot);

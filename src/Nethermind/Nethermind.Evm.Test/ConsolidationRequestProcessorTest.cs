@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class WithdrawalRequestProcessorTests
+public class ConsolidationRequestProcessorTests
 {
 
     private ISpecProvider _specProvider;
@@ -36,7 +36,7 @@ public class WithdrawalRequestProcessorTests
 
     private static readonly UInt256 AccountBalance = 1.Ether();
 
-    private readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
+    private readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
 
     [SetUp]
     public void Setup()
@@ -45,7 +45,7 @@ public class WithdrawalRequestProcessorTests
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        _stateProvider.CreateAccount(eip7002Account, AccountBalance);
+        _stateProvider.CreateAccount(eip7251Account, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -68,30 +68,30 @@ public class WithdrawalRequestProcessorTests
 
 
     [Test]
-    public void ShouldProcessWithdrawalRequest()
+    public void ShouldProcessConsolidationRequest()
     {
 
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.WithdrawalRequestsEnabled.Returns(true);
-        spec.Eip7002ContractAddress.Returns(eip7002Account);
+        spec.ConsolidationRequestsEnabled.Returns(true);
+        spec.Eip7251ContractAddress.Returns(eip7251Account);
 
         Block block = Build.A.Block.TestObject;
 
-        WithdrawalRequestsProcessor withdrawalRequestsProcessor = new(transactionProcessor: _transactionProcessor);
+        ConsolidationRequestsProcessor ConsolidationRequestsProcessor = new(transactionProcessor: _transactionProcessor);
 
-        var withdrawalRequest = new WithdrawalRequest()
+        var ConsolidationRequest = new ConsolidationRequest()
         {
             SourceAddress = new Address(Bytes.FromHexString("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b")),
-            ValidatorPubkey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
-            Amount = 0
+            SourcePubkey = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
+            TargetPubkey = Bytes.FromHexString("0000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b0000000000000000000000000000000000000000")
         };
 
-        var withdrawalRequests = withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, _stateProvider, block).ToList();
+        var ConsolidationRequests = ConsolidationRequestsProcessor.ReadConsolidationRequests(spec, _stateProvider, block).ToList();
 
-        Assert.That(withdrawalRequests, Has.Count.EqualTo(16));
+        Assert.That(ConsolidationRequests, Has.Count.EqualTo(10));
 
-        WithdrawalRequest withdrawalRequestResult = withdrawalRequests[0];
+        ConsolidationRequest ConsolidationRequestResult = ConsolidationRequests[0];
 
-        withdrawalRequestResult.Should().BeEquivalentTo(withdrawalRequest);
+        ConsolidationRequestResult.Should().BeEquivalentTo(ConsolidationRequest);
     }
 }

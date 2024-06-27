@@ -71,6 +71,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public Address DepositContractAddress => spec.DepositContractAddress;
     public bool IsEip7002Enabled => spec.IsEip7002Enabled;
     public Address Eip7002ContractAddress => spec.Eip7002ContractAddress;
+    public bool IsEip7251Enabled => spec.IsEip7251Enabled;
+    public Address Eip7251ContractAddress => spec.Eip7251ContractAddress;
     public virtual bool IsEip2935Enabled => spec.IsEip2935Enabled;
     public virtual bool IsEip7709Enabled => spec.IsEip7709Enabled;
     public virtual Address Eip2935ContractAddress => spec.Eip2935ContractAddress;

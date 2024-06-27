@@ -29,26 +29,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         {
             executionPayload.DepositRequests = Array.Empty<Deposit>();
             executionPayload.WithdrawalRequests = Array.Empty<WithdrawalRequest>();
+            executionPayload.ConsolidationRequests = Array.Empty<ConsolidationRequest>();
         }
         else
         {
-            (int depositCount, int withdrawalRequestCount) = blockRequests.GetTypeCounts();
-            executionPayload.DepositRequests = new Deposit[depositCount];
-            executionPayload.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-            int depositIndex = 0;
-            int withdrawalRequestIndex = 0;
-            for (int i = 0; i < blockRequests.Length; ++i)
-            {
-                ConsensusRequest request = blockRequests[i];
-                if (request.Type == ConsensusRequestsType.Deposit)
-                {
-                    executionPayload.DepositRequests[depositIndex++] = (Deposit)request;
-                }
-                else
-                {
-                    executionPayload.WithdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }
-            }
+            (executionPayload.DepositRequests, executionPayload.WithdrawalRequests, executionPayload.ConsolidationRequests) = blockRequests.SplitRequests();
         }
 
         return executionPayload;
@@ -65,7 +50,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
         var depositsLength = DepositRequests?.Length ?? 0;
         var withdrawalRequestsLength = WithdrawalRequests?.Length ?? 0;
-        var requestsCount = depositsLength + withdrawalRequestsLength;
+        var consolidationRequestsLength = ConsolidationRequests?.Length ?? 0;
+        var requestsCount = depositsLength + withdrawalRequestsLength + consolidationRequestsLength;
         if (requestsCount > 0)
         {
             var requests = new ConsensusRequest[requestsCount];
@@ -75,9 +61,14 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
                 requests[i] = DepositRequests![i];
             }
 
-            for (; i < requestsCount; ++i)
+            for (; i < depositsLength + withdrawalRequestsLength; ++i)
             {
                 requests[i] = WithdrawalRequests![i - depositsLength];
+            }
+
+            for (; i < requestsCount; ++i)
+            {
+                requests[i] = ConsolidationRequests![i - depositsLength - withdrawalRequestsLength];
             }
 
             block.Body.Requests = requests;
@@ -94,7 +85,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
         specProvider.GetSpec(BlockNumber, Timestamp).DepositsEnabled
-        && specProvider.GetSpec(BlockNumber, Timestamp).WithdrawalRequestsEnabled;
+        && specProvider.GetSpec(BlockNumber, Timestamp).WithdrawalRequestsEnabled
+        && specProvider.GetSpec(BlockNumber, Timestamp).ConsolidationRequestsEnabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.Requests"/> as defined in
@@ -109,4 +101,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// </summary>
     [JsonRequired]
     public sealed override WithdrawalRequest[]? WithdrawalRequests { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ConsolidationRequests"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7251">EIP-7251</see>.
+    /// </summary>
+    [JsonRequired]
+    public sealed override ConsolidationRequest[]? ConsolidationRequests { get; set; }
 }

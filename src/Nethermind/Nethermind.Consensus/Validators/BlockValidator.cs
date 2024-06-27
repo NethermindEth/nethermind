@@ -295,7 +295,7 @@ public class BlockValidator(
 
     public bool ValidateRequests(Block block, IReleaseSpec spec, out string? error)
     {
-        if (spec.ConsensusRequestsEnabled && block.Requests is null)
+        if (spec.RequestsEnabled && block.Requests is null)
         {
             error = BlockErrorMessages.MissingRequests;
 
@@ -304,7 +304,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (!spec.ConsensusRequestsEnabled && block.Requests is not null)
+        if (!spec.RequestsEnabled && block.Requests is not null)
         {
             error = BlockErrorMessages.RequestsNotEnabled;
 
