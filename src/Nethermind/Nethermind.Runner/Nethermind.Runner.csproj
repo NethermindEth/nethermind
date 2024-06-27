@@ -32,9 +32,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Lantern.Discv5\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj" />
-    <ProjectReference Include="..\..\Lantern.Discv5\src\Lantern.Discv5.Rlp\Lantern.Discv5.Rlp.csproj" />
-    <ProjectReference Include="..\..\Lantern.Discv5\src\Lantern.Discv5.WireProtocol\Lantern.Discv5.WireProtocol.csproj" />
     <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />

@@ -6,6 +6,9 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="BouncyCastle.Cryptography">
+      <Aliases>custom</Aliases>
+    </PackageReference>
     <PackageReference Include="Nethermind.Crypto.SecP256k1" />
   </ItemGroup>
 

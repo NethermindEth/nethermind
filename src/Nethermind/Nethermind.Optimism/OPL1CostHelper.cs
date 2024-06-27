@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -62,7 +61,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
 
             uint fastLzSize = ComputeFlzCompressLen(tx);
 
-            return ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar);
+            return ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar, out _);
         }
 
         UInt256 dataGas = ComputeDataGas(tx, _opSpecHelper.IsRegolith(header));
@@ -112,7 +111,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
     // l1FeeScaled = baseFeeScalar * l1BaseFee * 16 + blobFeeScalar * l1BlobBaseFee
     // estimatedSize = max(minTransactionSize, intercept + fastlzCoef * fastlzSize)
     // l1Cost = estimatedSize * l1FeeScaled / 1e12
-    public static UInt256 ComputeL1CostFjord(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
+    public static UInt256 ComputeL1CostFjord(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar, out UInt256 estimatedSize)
     {
         UInt256 l1FeeScaled = l1BaseFeeScalar * l1BaseFee * PrecisionMultiplier + l1BlobBaseFeeScalar * blobBaseFee;
         UInt256 fastLzCost = L1CostFastlzCoef * fastLzSize;
@@ -126,7 +125,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
             fastLzCost -= L1CostInterceptNeg;
         }
 
-        var estimatedSize = UInt256.Max(MinTransactionSizeScaled, fastLzCost);
+        estimatedSize = UInt256.Max(MinTransactionSizeScaled, fastLzCost);
         return estimatedSize * l1FeeScaled / FjordDivisor;
     }
 
@@ -242,4 +241,6 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
         }
         return FlzCompressLen(encoded);
     }
+
+    internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
 }

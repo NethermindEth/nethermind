@@ -11,7 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching
 {
-    public class LruCacheTests<TCache>
+    [TestFixture]
+    public class LruCacheTests
     {
         private static ICache<Address, Account> Create()
         {
@@ -207,8 +208,15 @@ namespace Nethermind.Core.Test.Caching
                 cache.Set(_addresses[i], _accounts[i]).Should().BeTrue();
             }
 
-            Account? account = cache.Get(_addresses[Capacity]);
-            account.Should().Be(_accounts[Capacity]);
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Get(_addresses[i]).Should().BeNull();
+            }
+            // Check in reverse order
+            for (int i = Capacity * 2 - 1; i >= Capacity; i--)
+            {
+                cache.Get(_addresses[i]).Should().Be(_accounts[i]);
+            }
         }
 
         [Test]
