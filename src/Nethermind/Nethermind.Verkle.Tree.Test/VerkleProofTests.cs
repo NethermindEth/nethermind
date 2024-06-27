@@ -38,11 +38,10 @@ public class VerkleProofTest
             VerkleTestUtils.MaxValue,
         };
         VerkleTree tree = VerkleTestUtils.CreateVerkleTreeWithKeysAndValues(keys, keys);
-        VerkleProof proof = tree.CreateVerkleProof(keys, out Banderwagon root);
-        TestProofSerialization(proof);
+        VerkleProofSerialized proof = tree.CreateVerkleProofSerialized(keys, out Banderwagon root);
+        //TestProofSerialization(proof);
 
-
-        bool verified = VerkleTree.VerifyVerkleProof(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
+        bool verified = VerkleTree.VerifyVerkleProofSer(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
     }
 

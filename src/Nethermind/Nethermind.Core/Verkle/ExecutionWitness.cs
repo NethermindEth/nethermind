@@ -10,8 +10,6 @@ using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Proofs;
 
 namespace Nethermind.Core.Verkle;
-
-
 public class ExecutionWitness
 {
     public StemStateDiff[] StateDiff { get; }
@@ -27,6 +25,69 @@ public class ExecutionWitness
     {
         StateDiff = stateDiff;
         VerkleProof = proof;
+    }
+}
+
+public class ExecSer
+{
+    public StemStateDiff[] StateDiff { get; }
+    public WitnessVerkleProofSerialized? VerkleProof { get; }
+
+    public ExecSer()
+    {
+        StateDiff = Array.Empty<StemStateDiff>();
+        VerkleProof = null;
+    }
+
+    public ExecSer(StemStateDiff[] stateDiff, WitnessVerkleProofSerialized? proof)
+    {
+        StateDiff = stateDiff;
+        VerkleProof = proof;
+    }
+}
+
+public class WitnessVerkleProofSerialized
+{
+    public Stem[]? OtherStems { get; set; }
+    public byte[] DepthExtensionPresent { get; set; }
+    public Banderwagon[] CommitmentsByPath { get; set; }
+    public byte[] D { get; set; }
+
+    public IpaProofStructSerialized IpaProof { get; set; }
+
+    public WitnessVerkleProofSerialized(
+        Stem[] stems,
+        byte[] depthExtensionPresent,
+        Banderwagon[] commitmentsByPath,
+        byte[] d,
+        IpaProofStructSerialized ipaProof
+    )
+    {
+        OtherStems = stems;
+        DepthExtensionPresent = depthExtensionPresent;
+        CommitmentsByPath = commitmentsByPath;
+        D = d;
+        IpaProof = ipaProof;
+    }
+
+    public static implicit operator WitnessVerkleProofSerialized(VerkleProofSerialized proof)
+    {
+        Stem[] otherStems = proof.VerifyHint.DifferentStemNoProof.Select(x => new Stem(x)).ToArray();
+
+        byte[] depthExtensionPresent = new byte[proof.VerifyHint.ExtensionPresent.Length];
+        for (int i = 0; i < depthExtensionPresent.Length; i++)
+        {
+            depthExtensionPresent[i] = (byte)(proof.VerifyHint.Depths[i] << 3);
+            depthExtensionPresent[i] =
+                (byte)(depthExtensionPresent[i] | (proof.VerifyHint.ExtensionPresent[i].ToByte()));
+        }
+
+        return new WitnessVerkleProofSerialized(otherStems,
+            depthExtensionPresent,
+            proof.CommsSorted,
+            proof.Proof.D,
+            proof.Proof.IpaProofSerialized
+        );
     }
 }
 

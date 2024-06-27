@@ -20,6 +20,51 @@ public enum ExtPresent : byte
     Present = 2
 }
 
+public struct VerkleProofSerialized
+{
+    public VerificationHint VerifyHint;
+    public Banderwagon[] CommsSorted;
+    public VerkleProofStructSerialized Proof;
+
+    public override string ToString()
+    {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.Append("\n####[Verkle Proof]####\n");
+        stringBuilder.Append("\n###[Verify Hint]###\n");
+        stringBuilder.Append(VerifyHint.ToString());
+        stringBuilder.Append("\n###[Comms Sorted]###\n");
+        foreach (Banderwagon comm in CommsSorted)
+        {
+            stringBuilder.AppendJoin(", ", comm.ToBytesLittleEndian().Reverse().ToArray());
+            stringBuilder.Append('\n');
+        }
+        stringBuilder.Append("\n###[Inner Proof]###\n");
+        stringBuilder.Append(Proof.ToString());
+        return stringBuilder.ToString();
+    }
+
+    public byte[] Encode()
+    {
+        List<byte> encoded = new List<byte>();
+        encoded.AddRange(VerifyHint.Encode());
+
+        encoded.AddRange(CommsSorted.Length.ToByteArrayLittleEndian());
+        foreach (Banderwagon comm in CommsSorted)
+        {
+            encoded.AddRange(comm.ToBytesLittleEndian().Reverse());
+        }
+
+        encoded.AddRange(Proof.Encode());
+
+        return encoded.ToArray();
+    }
+
+    public static VerkleProofSerialized Decode(byte[] proof)
+    {
+        return new VerkleProofSerialized();
+    }
+}
+
 public struct VerkleProof
 {
     public VerificationHint VerifyHint;
