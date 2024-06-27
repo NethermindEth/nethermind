@@ -5,5 +5,5 @@ namespace Nethermind.Core;
 
 public static class Eip7251Constants
 {
-    public static readonly Address ConsolidationRequestPredeployAddress = new("0x00A3ca265EBcb825B45F985A16CEFB49958cE017");
+    public static readonly Address ConsolidationRequestPredeployAddress = new("0x00b42dbF2194e931E80326D950320f7d9Dbeac02");
 }
