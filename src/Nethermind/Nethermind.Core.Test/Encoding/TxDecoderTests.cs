@@ -386,12 +386,11 @@ namespace Nethermind.Core.Test.Encoding
         public static IEnumerable<AuthorizationTuple[]> SetCodeAuthorizationCases()
         {
             yield return
-                [
-                    new AuthorizationTuple(0, TestItem.AddressA, null, ulong.MinValue, [0x0], [0x0]),
-                    new AuthorizationTuple(0, TestItem.AddressF, 0, ulong.MinValue, [0x0], [0x0])
-                ];
+            [
+                new AuthorizationTuple(0, TestItem.AddressA, null, ulong.MinValue, [0x0], [0x0]),
+                new AuthorizationTuple(0, TestItem.AddressF, 0, ulong.MinValue, [0x0], [0x0])
+            ];
         }
-
 
         [TestCaseSource(nameof(SetCodeAuthorizationCases))]
         public void TxSetCodeEncodeAndDecode(AuthorizationTuple[] setCodeAuthorizations)

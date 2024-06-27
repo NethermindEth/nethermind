@@ -483,26 +483,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
-                    if (spec.UseTxAccessLists)
-                    {
-                        state.WarmUp(tx.AccessList); // eip-2930
-                    }
-
-                    if (spec.UseHotAndColdStorage)
-                    {
-                        state.WarmUp(tx.SenderAddress); // eip-2929
-                        state.WarmUp(env.ExecutingAccount); // eip-2929
-                    }
-
-                    if (spec.AddCoinbaseToTxAccessList)
-                    {
-                        state.WarmUp(header.GasBeneficiary);
-                    }
-
-                    foreach (Address authorized in env.TxExecutionContext.AuthorizedCode.AuthorizedAddresses)
-                    {
-                        state.WarmUp(authorized);
-                    }
+                    WarmUp(tx, header, spec, env, state);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -573,6 +554,31 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate && !tx.IsSystem())
                 header.GasUsed += spentGas;
+        }
+
+        private static void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionEnvironment env,
+            EvmState state)
+        {
+            if (spec.UseTxAccessLists)
+            {
+                state.WarmUp(tx.AccessList); // eip-2930
+            }
+
+            if (spec.UseHotAndColdStorage)
+            {
+                state.WarmUp(tx.SenderAddress); // eip-2929
+                state.WarmUp(env.ExecutingAccount); // eip-2929
+            }
+
+            if (spec.AddCoinbaseToTxAccessList)
+            {
+                state.WarmUp(header.GasBeneficiary!);
+            }
+
+            foreach (Address authorized in env.TxExecutionContext.AuthorizedCode.AuthorizedAddresses)
+            {
+                state.WarmUp(authorized);
+            }
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)

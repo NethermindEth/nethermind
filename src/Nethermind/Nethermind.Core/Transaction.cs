@@ -58,7 +58,7 @@ namespace Nethermind.Core
         public bool HasAuthorizationList =>
             Type == TxType.SetCode &&
             AuthorizationList is not null &&
-            AuthorizationList.Any();
+            AuthorizationList.Length > 0;
 
         private Hash256? _hash;
 
@@ -167,7 +167,7 @@ namespace Nethermind.Core
 
         /// <summary>
         /// List of EOA code authorizations.
-        /// https://eips.ethereum.org/EIPS/eip-7702 
+        /// https://eips.ethereum.org/EIPS/eip-7702
         /// </summary>
         public AuthorizationTuple[]? AuthorizationList { get; set; }
 

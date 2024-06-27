@@ -232,19 +232,15 @@ public class VirtualMachineTestsBase
         TestState.CommitTree(0);
         GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
-        if (transaction == null)
-        {
-            transaction =
-                Build.A.Transaction
-                .WithGasLimit(gasLimit)
-                .WithGasPrice(1)
-                .WithValue(value)
-                .WithBlobVersionedHashes(blobVersionedHashes)
-                .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
-                .To(senderRecipientAndMiner.Recipient)
-                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
-                .TestObject;
-        }
+        transaction ??= Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithValue(value)
+            .WithBlobVersionedHashes(blobVersionedHashes)
+            .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
+            .To(senderRecipientAndMiner.Recipient)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
         return (block, transaction);
