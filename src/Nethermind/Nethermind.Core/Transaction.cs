@@ -28,6 +28,9 @@ namespace Nethermind.Core
         /// </summary>
         public TxType Type { get; set; }
 
+        // Taiko Anchor transaction
+        public bool IsAnchorTx { get; set; }
+
         // Optimism deposit transaction fields
         // SourceHash uniquely identifies the source of the deposit
         public Hash256? SourceHash { get; set; }
