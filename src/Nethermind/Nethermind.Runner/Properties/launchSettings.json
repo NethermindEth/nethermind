@@ -147,6 +147,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Taiko Holesky": {
+      "commandName": "Project",
+      "commandLineArgs": "-c taiko-holesky -dd %NETHERMIND_DATA_DIR%",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Volta": {
       "commandName": "Project",
       "commandLineArgs": "-c volta -dd .data --JsonRpc.Enabled true",
