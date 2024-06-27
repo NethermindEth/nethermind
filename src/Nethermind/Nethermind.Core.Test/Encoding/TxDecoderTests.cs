@@ -391,7 +391,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         public static IEnumerable<AuthorizationTuple[]> AuthorizationTupleCases()
-        {            
+        {
             yield return null!;
             yield return [];
             yield return [new AuthorizationTuple(0, Address.Zero, 0, 0, [], [])];

@@ -97,7 +97,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
                 if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) nonce ({authTuple.Nonce}) does not match.");
                 continue;
             }
-            
+
             //TODO should we do insert if code is empty?
             CopyCodeAndOverwrite(worldState, authTuple.CodeAddress, authority, spec);
         }
