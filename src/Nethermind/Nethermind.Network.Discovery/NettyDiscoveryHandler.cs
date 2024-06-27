@@ -156,6 +156,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
     {
         if (!TryParseMessage(packet, out DiscoveryMsg? msg) || msg == null)
         {
+            packet.Content.ResetReaderIndex();
             ctx.FireChannelRead(packet.Retain());
             return;
         }
