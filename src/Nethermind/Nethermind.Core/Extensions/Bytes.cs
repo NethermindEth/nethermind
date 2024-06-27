@@ -1033,19 +1033,7 @@ namespace Nethermind.Core.Extensions
                 ThrowInvalidOperationException();
             }
 
-            bool isSuccess;
-            if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
-                hexString.Length >= Vector128<byte>.Count)
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf8_Vector128(hexString, result);
-            }
-            else
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1);
-            }
-
-            if (!isSuccess)
+            if (!HexConverter.TryDecodeFromUtf8(hexString, result))
             {
                 ThrowFormatException_IncorrectHexString();
             }
