@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Filters;
+using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Find
 {
@@ -29,6 +30,7 @@ namespace Nethermind.Blockchain.Find
         private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
+        private readonly LogIndexStorage _logIndexStorage;
 
         public LogFinder(IBlockFinder? blockFinder,
             IReceiptFinder? receiptFinder,
@@ -46,6 +48,7 @@ namespace Nethermind.Blockchain.Find
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
+            _logIndexStorage = new LogIndexStorage();
         }
 
         public IEnumerable<FilterLog> FindLogsTest(LogFilter filter, CancellationToken cancellationToken = default)
@@ -67,6 +70,23 @@ namespace Nethermind.Blockchain.Find
         public IEnumerable<FilterLog> FindLogsTest(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
             return FilterLogsWithIndex(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        public IEnumerable<FilterLog> FilterLogsWithIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+
+            if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
+            {
+                throw new ArgumentException($"From block {fromBlock.Number} is later than to block {toBlock.Number}.");
+            }
+            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
+            {
+                throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
+            }
+
+            return FindLogsWithLogIndex(filter, fromBlock, toBlock, cancellationToken);
+
+            throw new NotImplementedException();
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
@@ -118,6 +138,41 @@ namespace Nethermind.Blockchain.Find
         {
             var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
+        }
+
+        private IEnumerable<FilterLog> FindLogsWithLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        {
+            Hash256 FindBlockHash(long blockNumber, CancellationToken token)
+            {
+                token.ThrowIfCancellationRequested();
+                var blockHash = _blockFinder.FindBlockHash(blockNumber);
+                if (blockHash is null)
+                {
+                    if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+                }
+
+                return blockHash;
+            }
+
+            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+            {
+                var AddressFilter = f.AddressFilter;
+
+                var addresses = AddressFilter.Address is null ? (AddressFilter.Addresses is null ? [] : AddressFilter.Addresses.Select(key => key.Value)) : new[] { AddressFilter.Address };
+                var blocksAddressFiltered = addresses.SelectMany(address => LogIndexStorage.GetBlocksForAddress(address));
+                var setA = blocksAddressFiltered.ToHashSet();
+
+                var TopicsFilter = f.TopicsFilter;
+                var topics = TopicsFilter;
+
+                return setA.Intersect(setA);
+
+            }
+
+
+            var filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, true, cancellationToken);
+            return filterBlocks
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
