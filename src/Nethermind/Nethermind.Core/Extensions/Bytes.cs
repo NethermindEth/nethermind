@@ -150,7 +150,7 @@ namespace Nethermind.Core.Extensions
         }
 
         public static int GetHighestSetBitIndex(this byte b)
-            => 32 - BitOperations.LeadingZeroCount(b);
+            => 32 - BitOperations.LeadingZeroCount((uint)b);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
