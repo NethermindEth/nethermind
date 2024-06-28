@@ -14,6 +14,10 @@ using Nethermind.Taiko.Rpc;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc;
 using Nethermind.HealthChecks;
+using Nethermind.Db;
+using Google.Protobuf.WellKnownTypes;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using System.Xml.Linq;
 
 namespace Nethermind.Taiko;
 
@@ -26,6 +30,8 @@ public class TaikoPlugin : INethermindPlugin
     private ITaikoConfig? _taikoConfig;
     private NethermindApi? _api;
     private ILogger _logger;
+
+    private const string L1OriginDbName = "L1Origin";
 
     public bool ShouldRunSteps(INethermindApi api) => _taikoConfig?.Enabled == true && api.ChainSpec.SealEngineType == Core.SealEngineType.Taiko;
 
@@ -60,6 +66,7 @@ public class TaikoPlugin : INethermindPlugin
         ArgumentNullException.ThrowIfNull(_api.Wallet);
         ArgumentNullException.ThrowIfNull(_api.GasPriceOracle);
         ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
+        ArgumentNullException.ThrowIfNull(_api.DbProvider);
 
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
@@ -72,6 +79,12 @@ public class TaikoPlugin : INethermindPlugin
 
         FeeHistoryOracle feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
+
+
+        IDb db = _api.DbFactory!.CreateDb(new DbSettings(L1OriginDbName, L1OriginDbName.ToLower()));
+        _api.DbProvider!.RegisterDb(L1OriginDbName, db);
+        L1OriginStore l1OriginStore = new(db);
+
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
         TaikoRpcModule taikoRpc = new(
@@ -89,7 +102,8 @@ public class TaikoPlugin : INethermindPlugin
             _api.EthSyncingInfo,
             feeHistoryOracle,
             _api.Config<IBlocksConfig>().SecondsPerSlot,
-            _api.Config<ISyncConfig>()
+            _api.Config<ISyncConfig>(),
+            l1OriginStore
             );
 
         _api.RpcModuleProvider.RegisterSingle((ITaikoRpcModule)taikoRpc);

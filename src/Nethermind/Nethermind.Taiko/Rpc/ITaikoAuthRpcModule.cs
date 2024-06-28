@@ -9,12 +9,12 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Taiko.Rpc;
 
-[RpcModule(ModuleType.Engine)]
+[RpcModule(ModuleType.TaikoAuth)]
 public interface ITaikoAuthRpcModule : IRpcModule
 {
     [JsonRpcMethod(
         Description = "Retrieves the transaction pool content with the given upper limits.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<PreBuiltTxList?>> taiko_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, string[] locals, ulong maxTransactionsLists);
+    Task<ResultWrapper<PreBuiltTxList[]?>> taiko_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, Address[] localAccounts, ulong maxTransactionsLists);
 }

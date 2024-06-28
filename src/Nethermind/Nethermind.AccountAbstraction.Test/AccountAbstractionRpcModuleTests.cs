@@ -35,6 +35,27 @@ public partial class AccountAbstractionRpcModuleTests
     private readonly AbiEncoder _encoder = new();
     private static readonly int entryPointNum = 2;
 
+    [Test]
+    public void MakeAccs()
+    {
+        var str = "";
+
+        for (var i = 0; i < 10; i++)
+        {
+            var r = new Random();
+            byte[] priv = new byte[32];
+            r.NextBytes(priv);
+            var key = new PrivateKey(priv);
+
+            var pk = Convert.ToHexString(key.KeyBytes);
+            var addr = new PrivateKey(priv).PublicKey.Address;
+
+            str += $"{pk.ToLower()} {addr.ToString(true)}\n";
+
+        }
+    }
+
+
     public class Contracts
     {
         internal AbiDefinition SingletonFactory;
