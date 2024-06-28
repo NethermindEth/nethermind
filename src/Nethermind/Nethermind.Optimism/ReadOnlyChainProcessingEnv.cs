@@ -65,6 +65,7 @@ public class OptimismReadOnlyChainProcessingEnv(
             new BlockhashStore(specProvider, scope.WorldState),
             logManager,
             opSpecHelper,
+            scope.TransactionProcessor,
             contractRewriter,
             withdrawalProcessor);
     }

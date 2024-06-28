@@ -88,7 +88,8 @@ public class MultipleUnsignedOperations
             value: 0,
             transferValue: 0,
             txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, new AuthorizedCodeInfoRepository(codeInfoRepository, MainnetSpecProvider.Instance.ChainId)),
-            inputData: default
+            inputData: default,
+            isSystemExecutionEnv: false
         );
 
         _evmState = new EvmState(100_000_000L, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);

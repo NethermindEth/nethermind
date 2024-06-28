@@ -50,6 +50,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
+                transactionProcessor,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -79,6 +80,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
+                transactionProcessor,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

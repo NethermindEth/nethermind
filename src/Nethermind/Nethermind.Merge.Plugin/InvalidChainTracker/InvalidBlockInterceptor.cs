@@ -5,6 +5,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices.Marshalling;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
@@ -148,7 +149,10 @@ public class InvalidBlockInterceptor : IBlockValidator
         if (!BlockValidator.ValidateUnclesHashMatches(block, out _))
             return true;
 
-        return !BlockValidator.ValidateWithdrawalsHashMatches(block, out _);
+        if (!BlockValidator.ValidateWithdrawalsHashMatches(block, out _))
+            return true;
+
+        return !BlockValidator.ValidateRequestsHashMatches(block, out _);
     }
 
 }

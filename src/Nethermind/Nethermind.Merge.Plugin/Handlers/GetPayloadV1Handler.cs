@@ -23,13 +23,9 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// a payload has been cancelled due to the timeout then execution client must respond with error message.
 /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
 /// </remarks>
-public class GetPayloadV1Handler : GetPayloadHandlerBase<ExecutionPayload>
+public class GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ISpecProvider specProvider, ILogManager logManager)
+    : GetPayloadHandlerBase<ExecutionPayload>(1, payloadPreparationService, specProvider, logManager)
 {
-    public GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ISpecProvider specProvider, ILogManager logManager) : base(
-        1, payloadPreparationService, specProvider, logManager)
-    {
-    }
-
     protected override ExecutionPayload GetPayloadResultFromBlock(IBlockProductionContext context) =>
-        new(context.CurrentBestBlock!);
+        ExecutionPayload.Create(context.CurrentBestBlock!);
 }

@@ -109,6 +109,7 @@ namespace Ethereum.Test.Base
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
             header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
+            header.RequestsRoot = test.RequestsRoot;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -178,7 +179,7 @@ namespace Ethereum.Test.Base
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
+                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec, false);
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 

@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -202,5 +203,52 @@ namespace Nethermind.Blockchain.Test.Validators
 
             Assert.That(error, Does.StartWith(expectedError));
         }
+
+        [Test]
+        public void ValidateBodyAgainstHeader_BlockHasInvalidRequestRoot_ReturnsFalse()
+        {
+            Block block = Build.A.Block
+                .WithConsensusRequests(new ConsensusRequest[] {
+                    Build.Deposit.WithIndex(0).TestObject,
+                    Build.WithdrawalRequest.TestObject
+                })
+                .TestObject;
+            block.Header.RequestsRoot = Keccak.OfAnEmptyString;
+
+            Assert.That(
+                BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+                Is.False);
+        }
+
+        [Test]
+        public void ValidateBodyRequests_BlockHasReuests_InOrder_ReturnsTrue()
+        {
+            Block block = Build.A.Block
+                .WithConsensusRequests(new ConsensusRequest[] {
+                    Build.Deposit.WithIndex(0).TestObject,
+                    Build.WithdrawalRequest.TestObject
+                })
+                .TestObject;
+
+            Assert.That(
+                BlockValidator.ValidateRequestsOrder(block, out string? _),
+                Is.True);
+        }
+
+        [Test]
+        public void ValidateBodyRequests_BlockHasReuests_OutOfOrder_ReturnsFalse()
+        {
+            Block block = Build.A.Block
+                .WithConsensusRequests(new ConsensusRequest[] {
+                    Build.WithdrawalRequest.TestObject,
+                    Build.Deposit.WithIndex(0).TestObject
+                })
+                .TestObject;
+
+            Assert.That(
+                BlockValidator.ValidateRequestsOrder(block, out string? _),
+                Is.False);
+        }
+
     }
 }

@@ -17,6 +17,7 @@ namespace Nethermind.Evm
         in TxExecutionContext txExecutionContext,
         UInt256 transferValue,
         UInt256 value,
+        bool isSystemExecutionEnv,
         int callDepth = 0)
     {
         /// <summary>
@@ -63,5 +64,9 @@ namespace Nethermind.Evm
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth = callDepth;
+
+        /// <summary>
+        /// this field keeps track of wether the execution envirement was initiated by a systemTx.
+        public readonly bool IsSystemEnv = isSystemExecutionEnv;
     }
 }
