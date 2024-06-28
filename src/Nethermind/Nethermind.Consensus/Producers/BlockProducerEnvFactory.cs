@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.Producers
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
-                new BlockhashStore(_blockTree, _specProvider, readOnlyTxProcessingEnv.WorldState),
+                new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
                 logManager,
                 new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, logManager),
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));

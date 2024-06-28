@@ -177,7 +177,7 @@ namespace Ethereum.Test.Base
                     stateProvider),
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(blockTree, specProvider, stateProvider),
+                new BlockhashStore(specProvider, stateProvider),
                 _logManager,
                 new BeaconBlockRootHandler(txProcessor, _logManager));
 

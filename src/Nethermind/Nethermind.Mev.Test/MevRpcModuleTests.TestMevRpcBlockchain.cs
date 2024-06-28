@@ -188,7 +188,7 @@ namespace Nethermind.Mev.Test
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     ReceiptStorage,
-                    new BlockhashStore(BlockTree, SpecProvider, State),
+                    new BlockhashStore(SpecProvider, State),
                     LogManager,
                     new BeaconBlockRootHandler(TxProcessor, LogManager));
 
