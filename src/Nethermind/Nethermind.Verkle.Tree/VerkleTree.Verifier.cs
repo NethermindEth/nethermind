@@ -584,12 +584,13 @@ public partial class VerkleTree
         IEnumerable<byte> zs = allPathsAndZs.Select(elem => elem.Item2);
         SortedDictionary<(byte[], byte), FrE>.ValueCollection ys = ysByPathAndZ.Values;
 
-        List<VerkleVerifierQuerySerialized> queries = new(comms.Length);
+        VerkleVerifierQuerySerialized[] queries = new VerkleVerifierQuerySerialized[comms.Length];
 
-        foreach (((FrE y, var z), Banderwagon comm) in ys.Zip(zs).Zip(comms))
+        var zipped = ys.Zip(zs).Zip(comms).ToArray();
+        for (int i = 0; i < zipped.Length; i++)
         {
-            VerkleVerifierQuerySerialized query = new(comm.ToBytesUncompressedLittleEndian(), z, y.ToBytes());
-            queries.Add(query);
+            var ((y, z), comm) = zipped[i];
+            queries[i] = new VerkleVerifierQuerySerialized(comm.ToBytesUncompressedLittleEndian(), z, y.ToBytes());
         }
         // Console.WriteLine("Verifier Query");
         // foreach (VerkleVerifierQuery query in queries)
@@ -599,6 +600,6 @@ public partial class VerkleTree
 
         MultiProof proofVerifier = new(CRS.Instance, PreComputedWeights.Instance);
 
-        return proofVerifier.CheckMultiProofSerialized(queries.ToArray(), proof);
+        return proofVerifier.CheckMultiProofSerialized(queries, proof);
     }
 }
