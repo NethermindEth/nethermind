@@ -10,6 +10,7 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
+using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -19,7 +20,7 @@ namespace Nethermind.Benchmark.Runner
         {
             foreach (Job job in jobs)
             {
-                AddJob(job);
+                AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
             }
 
             AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Descriptor);
