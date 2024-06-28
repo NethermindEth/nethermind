@@ -149,7 +149,7 @@
     },
     "Taiko Devnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c taiko-devnet -dd %NETHERMIND_DATA_DIR%",
+      "commandLineArgs": "-c taiko-devnet -dd .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
