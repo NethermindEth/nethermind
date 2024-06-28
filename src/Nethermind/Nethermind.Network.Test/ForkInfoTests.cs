@@ -116,7 +116,7 @@ public class ForkInfoTests
     }
 
     [TestCase(0, 0ul, "0xFE3366E7", 1735371ul, "Sepolia genesis")]
-    [TestCase(1735370, 0ul, "0xFE3366E7", 1_735_371ul, "Sepolia Last block before MergeForkIdTranstion")]
+    [TestCase(1735370, 0ul, "0xFE3366E7", 1_735_371ul, "Sepolia Last block before MergeForkIdTransition")]
     [TestCase(1735371, 0ul, "0xb96cbd13", 1_677_557_088ul, "First block - Sepolia MergeForkIdTransition")]
     [TestCase(1735372, 1_677_557_088ul, "0xf7f9bc08", 1_706_655_072ul, "Shanghai")]
     [TestCase(1735372, 1_706_655_071ul, "0xf7f9bc08", 1_706_655_072ul, "Future Shanghai")]
