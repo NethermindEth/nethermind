@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -18,33 +17,8 @@ namespace Nethermind.Evm
         in TxExecutionContext txExecutionContext,
         UInt256 transferValue,
         UInt256 value,
-        IEnumerable<Address> authorizedAddresses,
         int callDepth = 0)
     {
-        public ExecutionEnvironment
-        (
-            CodeInfo codeInfo,
-            Address executingAccount,
-            Address caller,
-            Address? codeSource,
-            ReadOnlyMemory<byte> inputData,
-            in TxExecutionContext txExecutionContext,
-            UInt256 transferValue,
-            UInt256 value,
-            int callDepth = 0)
-            : this(
-                codeInfo,
-                executingAccount,
-                caller,
-                codeSource,
-                inputData,
-                txExecutionContext,
-                transferValue,
-                value,
-                Array.Empty<Address>(),
-                callDepth)
-        { }
-
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>

@@ -33,8 +33,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
         private readonly ICodeInfoRepository _codeInfoRepository;
-
-        private readonly AuthorizedCodeInfoRepository _authorizedCodeInfoRepository;
+        private AuthorizedCodeInfoRepository? _authorizedCodeInfoRepository;
 
         [Flags]
         protected enum ExecutionOptions
@@ -83,7 +82,6 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-            _authorizedCodeInfoRepository = new(codeInfoRepository, specProvider.ChainId, Logger);
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -133,16 +131,21 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
+            ICodeInfoRepository codeInfoRepository = _codeInfoRepository;
+
             if (spec.IsEip7702Enabled)
             {
+                _authorizedCodeInfoRepository ??= new(codeInfoRepository, SpecProvider.ChainId, Logger);
                 _authorizedCodeInfoRepository.ClearAuthorizations();
+                codeInfoRepository = _authorizedCodeInfoRepository;
+
                 if (tx.HasAuthorizationList)
                 {
                     _authorizedCodeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
                 }
             }
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _authorizedCodeInfoRepository);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, codeInfoRepository);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
@@ -416,16 +419,16 @@ namespace Nethermind.Evm.TransactionProcessing
             in BlockExecutionContext blCtx,
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
-            AuthorizedCodeInfoRepository authorizedCode)
+            ICodeInfoRepository codeInfoRepository)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, authorizedCode);
+            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : _authorizedCodeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
+                : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -476,7 +479,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tx.IsContractCreation)
                 {
                     // if transaction is a contract creation then recipient address is the contract deployment address
-                    PrepareAccountForContractDeployment(env.ExecutingAccount, spec);
+                    PrepareAccountForContractDeployment(env.ExecutingAccount, env.TxExecutionContext.CodeInfoRepository, spec);
                 }
 
                 ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
@@ -523,7 +526,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+                            env.TxExecutionContext.CodeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
                             unspentGas -= codeDepositGasCost;
                         }
@@ -556,8 +559,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += spentGas;
         }
 
-        private static void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionEnvironment env,
-            EvmState state)
+        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionEnvironment env, EvmState state)
         {
             if (spec.UseTxAccessLists)
             {
@@ -575,9 +577,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 state.WarmUp(header.GasBeneficiary!);
             }
 
-            foreach (Address authorized in env.TxExecutionContext.AuthorizedCode.AuthorizedAddresses)
+            if (spec.IsEip7702Enabled)
             {
-                state.WarmUp(authorized);
+                foreach (Address authorized in _authorizedCodeInfoRepository!.AuthorizedAddresses)
+                {
+                    state.WarmUp(authorized);
+                }
             }
         }
 
@@ -602,9 +607,9 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
+        private void PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, WorldState))
+            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, codeInfoRepository, WorldState))
             {
                 if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 

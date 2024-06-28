@@ -7,7 +7,12 @@ using Nethermind.Int256;
 using System;
 
 namespace Nethermind.Core;
-public class AuthorizationTuple
+public class AuthorizationTuple(
+    ulong chainId,
+    Address codeAddress,
+    UInt256? nonce,
+    Signature sig,
+    Address? authority = null)
 {
     public AuthorizationTuple(
         ulong chainId,
@@ -19,25 +24,13 @@ public class AuthorizationTuple
         Address? authority = null) : this(chainId, codeAddress, nonce, new Signature(r, s, yParity + Signature.VOffset), authority)
     { }
 
-    public AuthorizationTuple(
-        ulong chainId,
-        Address codeAddress,
-        UInt256? nonce,
-        Signature sig, Address? authority = null)
-    {
-        ChainId = chainId;
-        CodeAddress = codeAddress ?? throw new System.ArgumentNullException(nameof(codeAddress));
-        Nonce = nonce;
-        AuthoritySignature = sig ?? throw new System.ArgumentNullException(nameof(sig));
-        Authority = authority;
-    }
+    public ulong ChainId { get; } = chainId;
+    public Address CodeAddress { get; } = codeAddress ?? throw new ArgumentNullException(nameof(codeAddress));
+    public UInt256? Nonce { get; } = nonce;
+    public Signature AuthoritySignature { get; } = sig ?? throw new ArgumentNullException(nameof(sig));
 
-    public ulong ChainId { get; }
-    public Address CodeAddress { get; }
-    public UInt256? Nonce { get; }
-    public Signature AuthoritySignature { get; }
     /// <summary>
     /// <see cref="Authority"/> may be recovered at a later point.
     /// </summary>
-    public Address? Authority { get; set; }
+    public Address? Authority { get; set; } = authority;
 }
