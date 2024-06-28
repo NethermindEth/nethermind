@@ -49,7 +49,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         _payloadAttrsTxSource = payloadAttrsTxSource;
     }
 
-    public override Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+    protected override Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
         OptimismPayloadAttributes attrs = (payloadAttributes as OptimismPayloadAttributes)
             ?? throw new InvalidOperationException("Payload attributes are not set");
@@ -58,31 +58,10 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
         IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
 
-        Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
-
-        if (_producingBlockLock.Wait(BlockProductionTimeout))
-        {
-            try
-            {
-                if (TrySetState(parent.StateRoot))
-                {
-                    return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
-                }
-                else
-                {
-                    throw new EmptyBlockProductionException($"Setting state for processing block failed: couldn't set state to stateRoot {parent.StateRoot}");
-                }
-            }
-            finally
-            {
-                _producingBlockLock.Release();
-            }
-        }
-
-        throw new EmptyBlockProductionException("Setting state for processing block failed");
+        return new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
     }
 
-    protected override void AmendHeader(BlockHeader blockHeader, BlockHeader parent)
+    protected override void AmendHeader(BlockHeader blockHeader, BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
         base.AmendHeader(blockHeader, parent);
 
