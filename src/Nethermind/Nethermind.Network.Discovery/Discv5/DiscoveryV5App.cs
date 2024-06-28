@@ -23,6 +23,7 @@ using System.Net;
 using Nethermind.Core;
 using Nethermind.Api;
 using System.Collections.Concurrent;
+using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Network.Discovery.Discv5;
 
 namespace Nethermind.Network.Discovery;
@@ -38,6 +39,7 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly SimpleFilePublicKeyDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
+    private readonly IServiceProvider _serviceProvider;
 
     public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
@@ -90,21 +92,22 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(_networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(_networkConfig.DiscoveryPort));
 
-        _discv5Protocol = new Discv5ProtocolBuilder(services)
+        IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
             .WithConnectionOptions(new ConnectionOptions
             {
-                UdpPort = _networkConfig.DiscoveryPort,
+                UdpPort = _networkConfig.DiscoveryPort
             })
             .WithSessionOptions(sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
-            .Build();
+            .WithServices(NettyDiscoveryV5Handler.Register);
 
-
+        _discv5Protocol = discv5Builder.Build();
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 
+        _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
     }
 
@@ -180,8 +183,13 @@ public class DiscoveryV5App : IDiscoveryApp
     public event EventHandler<NodeEventArgs>? NodeAdded;
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
-    public void Initialize(PublicKey masterPublicKey)
+    public void Initialize(PublicKey masterPublicKey) { }
+
+    public void InitializeChannel(IDatagramChannel channel)
     {
+        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        handler.InitializeChannel(channel);
+        channel.Pipeline.AddLast(handler);
     }
 
     public void Start()

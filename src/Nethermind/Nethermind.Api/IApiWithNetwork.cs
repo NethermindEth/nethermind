@@ -16,8 +16,6 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
-using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Api
 {
@@ -26,6 +24,7 @@ namespace Nethermind.Api
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
         IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
+        IConnectionsPool? DiscoveryConnections { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
         IDiscoveryApp? DiscoveryV5App { get; set; }
         IGrpcServer? GrpcServer { get; set; }

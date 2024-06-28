@@ -3,9 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Transport.Bootstrapping;
+using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -266,10 +271,41 @@ public class InitializeNetwork : IStep
         }
 
         if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
-        _api.DiscoveryApp.Start();
-        _api.DiscoveryV5App?.Start();
+        _ = BootstrapDiscovery();
         if (_logger.IsDebug) _logger.Debug("Discovery process started.");
         return Task.CompletedTask;
+    }
+
+    private async Task BootstrapDiscovery()
+    {
+        IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
+
+        Bootstrap bootstrap = new();
+        bootstrap.Group(new MultithreadEventLoopGroup(1));
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            bootstrap.ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork));
+        else
+            bootstrap.Channel<SocketDatagramChannel>();
+
+        IDiscoveryApp? discoveryApp = (discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0
+            ? _api.DiscoveryApp!
+            : null;
+
+        IDiscoveryApp? discoveryV5App = (discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0
+            ? _api.DiscoveryV5App!
+            : null;
+
+        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(channel =>
+        {
+            discoveryApp?.InitializeChannel(channel);
+            discoveryV5App?.InitializeChannel(channel);
+        }));
+
+        await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
+
+        discoveryApp?.Start();
+        discoveryV5App?.Start();
     }
 
     private void StartPeer()
@@ -307,24 +343,23 @@ public class InitializeNetwork : IStep
         IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
 
         SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
-        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
 
-        if (discoveryConfig.Discv5Enabled)
-        {
-            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
-                "EnrDiscoveryDB",
-                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
-                _api.LogManager);
+        _api.DiscoveryConnections = new DiscoveryConnectionsPool(_logger, _networkConfig, discoveryConfig);
 
-            _api.DiscoveryApp = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
-            _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
-            return;
-        }
+        if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
+            InitDiscoveryV4(discoveryConfig, privateKeyProvider);
 
+        if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
+            InitDiscoveryV5(discoveryConfig, privateKeyProvider);
+    }
+
+    private void InitDiscoveryV4(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
+    {
+        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa!);
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
         IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
             _api.MessageSerializationService,
-            _api.EthereumEcdsa,
+            _api.EthereumEcdsa!,
             privateKeyProvider,
             nodeIdResolver);
 
@@ -338,7 +373,7 @@ public class InitializeNetwork : IStep
         NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
             nodeTable,
             evictionManager,
-            _api.NodeStatsManager,
+            _api.NodeStatsManager!,
             selfNodeRecord,
             discoveryConfig,
             _api.Timestamper,
@@ -380,7 +415,18 @@ public class InitializeNetwork : IStep
             _api.Timestamper,
             _api.LogManager);
 
-        _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+        _api.DiscoveryApp.Initialize(_api.NodeKey!.PublicKey);
+    }
+
+    private void InitDiscoveryV5(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
+    {
+        SimpleFilePublicKeyDb discv5DiscoveryDb = new(
+            "EnrDiscoveryDB",
+            DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
+            _api.LogManager);
+
+        _api.DiscoveryV5App = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
+        _api.DiscoveryV5App.Initialize(_api.NodeKey!.PublicKey);
     }
 
     private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
