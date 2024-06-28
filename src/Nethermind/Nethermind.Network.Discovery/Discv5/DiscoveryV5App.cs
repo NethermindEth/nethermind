@@ -90,12 +90,12 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(sessionOptions.Signer.PublicKey))
             .WithEntry(EnrEntryKey.Ip, new EntryIp(_api.IpResolver!.ExternalIp))
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(_networkConfig.P2PPort))
-            .WithEntry(EnrEntryKey.Udp, new EntryUdp(_networkConfig.DiscoveryV5Port));
+            .WithEntry(EnrEntryKey.Udp, new EntryUdp(_networkConfig.DiscoveryPort));
 
         IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
             .WithConnectionOptions(new ConnectionOptions
             {
-                UdpPort = _networkConfig.DiscoveryV5Port
+                UdpPort = _networkConfig.DiscoveryPort
             })
             .WithSessionOptions(sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))

@@ -32,7 +32,6 @@ namespace Nethermind.Network.Config
         public string Bootnodes { get; set; } = string.Empty;
         public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
-        public int DiscoveryV5Port { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
         public long SimulateSendLatencyMs { get; set; } = 0;
         public int NumConcurrentOutgoingConnects { get; set; } = 0;

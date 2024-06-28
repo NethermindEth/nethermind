@@ -43,5 +43,5 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public string Bootnodes { get; set; } = string.Empty;
 
-    public bool Discv5Enabled { get; set; } = false;
+    public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.All;
 }

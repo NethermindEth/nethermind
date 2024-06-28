@@ -278,6 +278,8 @@ public class InitializeNetwork : IStep
 
     private async Task BootstrapDiscovery()
     {
+        IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
+
         Bootstrap bootstrap = new();
         bootstrap.Group(new MultithreadEventLoopGroup(1));
 
@@ -286,29 +288,24 @@ public class InitializeNetwork : IStep
         else
             bootstrap.Channel<SocketDatagramChannel>();
 
-        IDiscoveryApp? discoveryApp = _api.DiscoveryApp;
-        IDiscoveryApp? discoveryV5App = _api.DiscoveryV5App;
-        bool isV4Enabled = discoveryApp != null && _networkConfig.DiscoveryPort > 0;
-        bool isV5Enabled = discoveryV5App != null && _networkConfig.DiscoveryV5Port > 0;
+        IDiscoveryApp? discoveryApp = (discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0
+            ? _api.DiscoveryApp!
+            : null;
+
+        IDiscoveryApp? discoveryV5App = (discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0
+            ? _api.DiscoveryV5App!
+            : null;
 
         bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(channel =>
         {
-            if (isV4Enabled) discoveryApp!.InitializeChannel(channel);
-            if (isV5Enabled) discoveryV5App!.InitializeChannel(channel);
+            discoveryApp?.InitializeChannel(channel);
+            discoveryV5App?.InitializeChannel(channel);
         }));
 
-        isV4Enabled = false;
-        if (isV4Enabled)
-        {
-            await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
-            _api.DiscoveryApp!.Start();
-        }
+        await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
 
-        if (isV5Enabled)
-        {
-            await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryV5Port);
-            _api.DiscoveryV5App!.Start();
-        }
+        discoveryApp?.Start();
+        discoveryV5App?.Start();
     }
 
     private void StartPeer()
@@ -349,26 +346,20 @@ public class InitializeNetwork : IStep
 
         _api.DiscoveryConnections = new DiscoveryConnectionsPool(_logger, _networkConfig, discoveryConfig);
 
-        // TODO should port checks or separate bool values be used here?
-        if (_networkConfig.DiscoveryV5Port > 0)
-        {
-            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
-                "EnrDiscoveryDB",
-                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
-                _api.LogManager);
+        if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
+            InitDiscoveryV4(discoveryConfig, privateKeyProvider);
 
-            _api.DiscoveryV5App = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
-            _api.DiscoveryV5App.Initialize(_api.NodeKey.PublicKey);
-        }
+        if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
+            InitDiscoveryV5(discoveryConfig, privateKeyProvider);
+    }
 
-        if (_networkConfig.DiscoveryPort <= 0)
-            return;
-
-        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
+    private void InitDiscoveryV4(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
+    {
+        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa!);
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
         IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
             _api.MessageSerializationService,
-            _api.EthereumEcdsa,
+            _api.EthereumEcdsa!,
             privateKeyProvider,
             nodeIdResolver);
 
@@ -382,7 +373,7 @@ public class InitializeNetwork : IStep
         NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
             nodeTable,
             evictionManager,
-            _api.NodeStatsManager,
+            _api.NodeStatsManager!,
             selfNodeRecord,
             discoveryConfig,
             _api.Timestamper,
@@ -424,7 +415,18 @@ public class InitializeNetwork : IStep
             _api.Timestamper,
             _api.LogManager);
 
-        _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+        _api.DiscoveryApp.Initialize(_api.NodeKey!.PublicKey);
+    }
+
+    private void InitDiscoveryV5(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
+    {
+        SimpleFilePublicKeyDb discv5DiscoveryDb = new(
+            "EnrDiscoveryDB",
+            DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
+            _api.LogManager);
+
+        _api.DiscoveryV5App = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
+        _api.DiscoveryV5App.Initialize(_api.NodeKey!.PublicKey);
     }
 
     private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
