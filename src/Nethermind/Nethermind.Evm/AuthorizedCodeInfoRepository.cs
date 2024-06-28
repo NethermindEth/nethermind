@@ -39,8 +39,8 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) => _codeInfoRepository.GetOrAdd(codeHash, initCode);
 
-    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        _codeInfoRepository.InsertCode(state, code, codeOwner, spec);
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, bool isSystemEnv) =>
+        _codeInfoRepository.InsertCode(state, code, codeOwner, spec, isSystemEnv);
 
     /// <summary>
     /// Copy code from <paramref name="codeSource"/> and set it to override <paramref name="target"/>.

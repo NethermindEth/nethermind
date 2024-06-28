@@ -306,15 +306,12 @@ namespace Nethermind.Core.Specs
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
-
-<<<<<<< HEAD
+        
         /// <summary>
         /// Transactions that allows code for EOA temporarily
         /// </summary>
         bool IsEip7702Enabled { get; }
 
-=======
->>>>>>> pectra
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
