@@ -147,6 +147,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Taiko Devnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c taiko-devnet -dd .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Volta": {
       "commandName": "Project",
       "commandLineArgs": "-c volta -dd .data --JsonRpc.Enabled true",
