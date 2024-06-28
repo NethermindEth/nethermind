@@ -39,7 +39,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IBeaconBlockRootHandler? beaconBlockRootHandler = null,
         IBlockCachePreWarmer? preWarmer = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, blockhashStore, txProcessor, logManager, beaconBlockRootHandler,withdrawalProcessor,
+            stateProvider, receiptStorage, blockhashStore, txProcessor, logManager, beaconBlockRootHandler, withdrawalProcessor,
             receiptsRootCalculator: ReceiptsRootCalculator.Instance, preWarmer: preWarmer)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);

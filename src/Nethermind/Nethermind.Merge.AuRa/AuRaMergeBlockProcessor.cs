@@ -34,7 +34,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         IWithdrawalProcessor withdrawalProcessor,
         ITransactionProcessor transactionProcessor,
         IBeaconBlockRootHandler beaconBlockRootHandler,
-        IAuRaValidator? validator= null,
+        IAuRaValidator? validator = null,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
         ContractRewriter? contractRewriter = null,
