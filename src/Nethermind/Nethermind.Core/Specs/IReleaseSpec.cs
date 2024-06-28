@@ -306,6 +306,11 @@ namespace Nethermind.Core.Specs
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
+        
+        /// <summary>
+        /// Transactions that allows code for EOA temporarily
+        /// </summary>
+        bool IsEip7702Enabled { get; }
 
         /// Secp256r1 precompile
         /// </summary>
@@ -410,6 +415,7 @@ namespace Nethermind.Core.Specs
         public bool AuRaSystemCalls { get; }
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
 
+        bool IsAuthorizationListEnabled => IsEip7702Enabled;
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }

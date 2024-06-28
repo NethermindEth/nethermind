@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -17,6 +20,7 @@ namespace Nethermind.Consensus.Processing
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
         private readonly ISpecProvider _specProvider;
+        private readonly AuthorizationTupleDecoder _authorizationTupleDecoder = new();
         private readonly ILogger _logger;
 
         /// <summary>
@@ -100,6 +104,38 @@ namespace Nethermind.Consensus.Processing
                     blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
 
                     if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
+                }
+            }
+
+            if (releaseSpec.IsAuthorizationListEnabled)
+            {
+                void RecoverAuthority(AuthorizationTuple tuple)
+                {
+                    Span<byte> msg = stackalloc byte[128];
+                    msg[0] = Eip7702Constants.Magic;
+                    RlpStream rlpStream = _authorizationTupleDecoder.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+                    rlpStream.Data.AsSpan().CopyTo(msg.Slice(1));
+                    tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(msg.Slice(0, rlpStream.Data.Length + 1)));
+                }
+
+                foreach (Transaction tx in block.Transactions.AsSpan())
+                {
+                    if (!tx.HasAuthorizationList)
+                    {
+                        continue;
+                    }
+
+                    if (tx.AuthorizationList.Length >= 4)
+                    {
+                        Parallel.ForEach(tx.AuthorizationList, RecoverAuthority);
+                    }
+                    else
+                    {
+                        foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                        {
+                            RecoverAuthority(tuple);
+                        }
+                    }
                 }
             }
         }

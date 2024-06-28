@@ -1650,7 +1650,7 @@ namespace Nethermind.TxPool.Test
             // No need to check for deposit tx
             if (txType == TxType.DepositTx) return;
 
-            ISpecProvider specProvider = GetCancunSpecProvider();
+            ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
 
@@ -1674,8 +1674,10 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(0)
                 .WithType(txType)
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                .WithAuthorizationCodeIfAuthorizationListType()
                 .WithMaxFeePerGas(9.GWei())
                 .WithMaxPriorityFeePerGas(9.GWei())
+                .WithGasLimit(txType != TxType.SetCode ? GasCostOf.Transaction : GasCostOf.Transaction + GasCostOf.PerAuthBaseCost)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
@@ -1752,6 +1754,14 @@ namespace Nethermind.TxPool.Test
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
             specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Cancun.Instance);
+            return specProvider;
+        }
+
+        private static ISpecProvider GetPragueSpecProvider()
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Prague.Instance);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Prague.Instance);
             return specProvider;
         }
 
