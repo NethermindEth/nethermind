@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -44,12 +45,14 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
+            ITransactionProcessor transactionProcessor,
             IBeaconBlockRootHandler beaconBlockRootProcessor,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null)
+            IBlockCachePreWarmer? preWarmer = null,
+            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -58,10 +61,12 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider, stateProvider),
+                transactionProcessor,
                 logManager,
                 beaconBlockRootProcessor,
                 withdrawalProcessor,
-                preWarmer: preWarmer)
+                preWarmer: preWarmer,
+                consensusRequestsProcessor: consensusRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

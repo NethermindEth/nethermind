@@ -167,17 +167,12 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(
-                    new TransactionProcessor(
-                        specProvider,
-                        stateProvider,
-                        virtualMachine,
-                        codeInfoRepository,
-                        _logManager),
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor,
                     stateProvider),
                 stateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider, stateProvider),
+                txProcessor,
                 _logManager,
                 new BeaconBlockRootHandler(txProcessor, _logManager));
 

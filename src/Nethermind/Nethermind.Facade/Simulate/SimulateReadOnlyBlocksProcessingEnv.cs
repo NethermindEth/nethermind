@@ -113,6 +113,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             StateProvider,
             NullReceiptStorage.Instance,
             new BlockhashStore(SpecProvider, StateProvider),
+            _transactionProcessor,
             _logManager,
             new BeaconBlockRootHandler(_transactionProcessor, _logManager)
             );

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -10,9 +9,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -22,12 +21,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -43,6 +42,8 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+
+    private readonly IConsensusRequestsProcessor _consensusRequestsProcessor;
     private readonly IBlockhashStore _blockhashStore;
     private readonly IBlockCachePreWarmer? _preWarmer;
     private const int MaxUncommittedBlocks = 64;
@@ -61,11 +62,13 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IBlockhashStore? blockHashStore,
+        ITransactionProcessor transactionProcessor,
         ILogManager? logManager,
-        IBeaconBlockRootHandler? beaconBlockRootHandler,
+        IBeaconBlockRootHandler? beaconBlockRootHandler = null,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -77,6 +80,9 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+        _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
+        _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor(transactionProcessor);
+
         _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         _preWarmer = preWarmer;
         ReceiptsTracer = new BlockReceiptsTracer();
@@ -270,6 +276,8 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        _consensusRequestsProcessor.ProcessRequests(spec, _stateProvider, block, receipts);
+
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitStorageRoots: true);
@@ -294,7 +302,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
-        // Setting canonical is done when the BlockAddedToMain event is firec
+        // Setting canonical is done when the BlockAddedToMain event is fired
         _receiptStorage.Insert(block, txReceipts, false);
     }
 
@@ -327,8 +335,9 @@ public partial class BlockProcessor : IBlockProcessor
             ReceiptsRoot = bh.ReceiptsRoot,
             BaseFeePerGas = bh.BaseFeePerGas,
             WithdrawalsRoot = bh.WithdrawalsRoot,
+            RequestsRoot = bh.RequestsRoot,
             IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
+            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot
         };
 
         if (!ShouldComputeStateRoot(bh))

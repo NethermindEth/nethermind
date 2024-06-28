@@ -191,6 +191,7 @@ namespace Nethermind.AccountAbstraction.Test
                     State,
                     ReceiptStorage,
                     new BlockhashStore(SpecProvider, State),
+                    TxProcessor,
                     LogManager,
                     new BeaconBlockRootHandler(TxProcessor, LogManager));
 

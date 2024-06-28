@@ -33,12 +33,14 @@ public class OptimismBlockProcessor : BlockProcessor
         IBlockhashStore? blockhashStore,
         ILogManager? logManager,
         IOptimismSpecHelper opSpecHelper,
+        ITransactionProcessor txProcessor,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IBeaconBlockRootHandler? beaconBlockRootHandler = null,
         IBlockCachePreWarmer? preWarmer = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, blockhashStore, logManager, beaconBlockRootHandler, withdrawalProcessor, ReceiptsRootCalculator.Instance, preWarmer)
+            stateProvider, receiptStorage, blockhashStore, txProcessor, logManager, beaconBlockRootHandler,withdrawalProcessor,
+            receiptsRootCalculator: ReceiptsRootCalculator.Instance, preWarmer: preWarmer)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;

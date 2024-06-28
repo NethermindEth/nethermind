@@ -77,6 +77,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(specProvider, stateProvider),
+                transactionProcessor,
                 LimboLogs.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance));
 

@@ -51,8 +51,9 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
+                transactionProcessor,
                 LimboLogs.Instance,
-                new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance));
+                beaconBlockRootHandler: new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance));
 
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -82,6 +83,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
+                transactionProcessor,
                 LimboLogs.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance));
 

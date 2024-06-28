@@ -30,8 +30,8 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IReleaseSpec Spec { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
-        private readonly ICodeInfoRepository _codeInfoRepository;
 
+        private readonly ICodeInfoRepository _codeInfoRepository;
         public SystemTxProcessor(
             IReleaseSpec? spec,
             IWorldState? worldState,
@@ -44,6 +44,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Spec = spec ?? throw new ArgumentNullException(nameof(spec));
             WorldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             VirtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
+            _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
             Ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _codeInfoRepository = codeInfoRepository;
         }

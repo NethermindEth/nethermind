@@ -267,6 +267,30 @@ namespace Nethermind.Core.Specs
         bool IsEip4788Enabled { get; }
         Address? Eip4788ContractAddress { get; }
 
+
+        /// <summary>
+        /// EIP-6110: Supply validator deposits on chain
+        /// </summary>
+        bool IsEip6110Enabled { get; }
+        bool DepositsEnabled => IsEip6110Enabled;
+        Address DepositContractAddress { get; }
+
+        /// <summary>
+        /// Execution layer triggerable exits
+        /// </summary>
+        bool IsEip7002Enabled { get; }
+        bool WithdrawalRequestsEnabled => IsEip7002Enabled;
+        Address Eip7002ContractAddress { get; }
+
+
+        /// <summary>
+        /// EIP-7251: triggered consolidations
+        /// </summary>
+        bool IsEip7251Enabled { get; }
+        bool ConsolidationRequestsEnabled => IsEip7251Enabled;
+        Address Eip7251ContractAddress { get; }
+
+
         /// <summary>
         /// Save historical block hashes in state
         /// </summary>
@@ -283,7 +307,6 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip6780Enabled { get; }
 
-        /// <summary>
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
@@ -386,5 +409,7 @@ namespace Nethermind.Core.Specs
         /// </remarks>
         public bool AuRaSystemCalls { get; }
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }

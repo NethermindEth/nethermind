@@ -6,6 +6,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -22,8 +23,7 @@ namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProcessor : AuRaBlockProcessor
 {
-    public AuRaMergeBlockProcessor(
-        ISpecProvider specProvider,
+    public AuRaMergeBlockProcessor(ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
@@ -32,12 +32,14 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         ILogManager logManager,
         IBlockTree blockTree,
         IWithdrawalProcessor withdrawalProcessor,
+        ITransactionProcessor transactionProcessor,
         IBeaconBlockRootHandler beaconBlockRootHandler,
-        IAuRaValidator? validator,
+        IAuRaValidator? validator= null,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
         ContractRewriter? contractRewriter = null,
-        IBlockCachePreWarmer? preWarmer = null
+        IBlockCachePreWarmer? preWarmer = null,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null
     ) : base(
             specProvider,
             blockValidator,
@@ -48,12 +50,14 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             logManager,
             blockTree,
             withdrawalProcessor,
+            transactionProcessor,
             beaconBlockRootHandler,
             validator,
             txFilter,
             gasLimitOverride,
             contractRewriter,
-            preWarmer
+            preWarmer,
+            consensusRequestsProcessor
         )
     { }
 
