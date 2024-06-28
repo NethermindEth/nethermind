@@ -31,8 +31,18 @@ public class BlockInvalidTxExecutor(IWorldState worldState, ITransactionProcesso
         {
             Transaction tx = block.Transactions[i];
             using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
-            if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
+            try
+            {
+                if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
+                    // if the transaction was invalid, we ignore it and continue
+                    continue;
+            }
+            catch
+            {
+                // sometimes invalid transactions can throw exceptions because
+                // they are detected later in the processing pipeline
                 continue;
+            }
             // only end the trace if the transaction was successful
             // so that we don't increment the receipt index for failed transactions
             receiptsTracer.EndTxTrace();
