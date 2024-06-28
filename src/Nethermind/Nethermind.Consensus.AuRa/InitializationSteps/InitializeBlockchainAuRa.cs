@@ -110,6 +110,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
+            _api.TransactionProcessor!,
             new BeaconBlockRootHandler(_api.TransactionProcessor!, _api.LogManager),
             CreateAuRaValidator(),
             txFilter,

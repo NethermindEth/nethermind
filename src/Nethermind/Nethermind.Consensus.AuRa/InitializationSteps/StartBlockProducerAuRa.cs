@@ -158,6 +158,7 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,
+            changeableTxProcessingEnv.TransactionProcessor,
             new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor, _api.LogManager),
             _validator,
             auRaTxFilter,
