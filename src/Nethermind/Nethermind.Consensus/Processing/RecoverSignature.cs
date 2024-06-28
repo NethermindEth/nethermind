@@ -127,12 +127,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (tx.AuthorizationList.Length >= 4)
                     {
-                        Parallel.ForEach(
-                            tx.AuthorizationList,
-                            tuple =>
-                            {
-                                RecoverAuthority(tuple);
-                            });
+                        Parallel.ForEach(tx.AuthorizationList, RecoverAuthority);
                     }
                     else
                     {
