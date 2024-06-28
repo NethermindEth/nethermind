@@ -504,11 +504,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-<<<<<<< HEAD
                             _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec, false);
-=======
-                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec, env.IsSystemEnv);
->>>>>>> pectra
 
                             unspentGas -= codeDepositGasCost;
                         }
