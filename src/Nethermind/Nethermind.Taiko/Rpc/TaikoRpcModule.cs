@@ -173,6 +173,6 @@ public class TaikoRpcModule(
         using var stream = new MemoryStream();
         using var enc = new ZLibStream(stream, CompressionLevel.Optimal);
         enc.Write(rlp);
-        return stream.ToBytes();
+        return stream.ToArray();
     }
 }
