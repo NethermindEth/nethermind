@@ -31,6 +31,11 @@ public class BlockInvalidTxExecutor(IWorldState worldState, ITransactionProcesso
         {
             Transaction tx = block.Transactions[i];
             using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
+            if (tx.Type == TxType.Blob)
+            {
+                // Skip blob transactions
+                continue;
+            }
             try
             {
                 if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
