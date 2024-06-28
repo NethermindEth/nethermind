@@ -109,15 +109,6 @@ namespace Nethermind.Consensus.Processing
 
             if (releaseSpec.IsAuthorizationListEnabled)
             {
-                void RecoverAuthority(AuthorizationTuple tuple)
-                {
-                    Span<byte> msg = stackalloc byte[128];
-                    msg[0] = Eip7702Constants.Magic;
-                    RlpStream rlpStream = _authorizationTupleDecoder.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-                    rlpStream.Data.AsSpan().CopyTo(msg.Slice(1));
-                    tuple.Authority = _ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(msg.Slice(0, rlpStream.Data.Length + 1)));
-                }
-
                 foreach (Transaction tx in block.Transactions.AsSpan())
                 {
                     if (!tx.HasAuthorizationList)
@@ -127,13 +118,16 @@ namespace Nethermind.Consensus.Processing
 
                     if (tx.AuthorizationList.Length >= 4)
                     {
-                        Parallel.ForEach(tx.AuthorizationList, RecoverAuthority);
+                        Parallel.ForEach(tx.AuthorizationList, (tuple) =>
+                        {
+                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                        });
                     }
                     else
                     {
                         foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
                         {
-                            RecoverAuthority(tuple);
+                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
                         }
                     }
                 }

@@ -141,6 +141,7 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
+                new RecoverAuthorityFilter(ecdsa, _logger),
             };
 
             if (incomingTxFilter is not null)
