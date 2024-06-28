@@ -100,6 +100,7 @@ public class AuRaContractGasLimitOverrideTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                TxProcessor,
                 new BeaconBlockRootHandler(TxProcessor, LimboLogs.Instance),
                 null,
                 null,
