@@ -6,10 +6,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -38,7 +37,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Synchronization;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -155,7 +153,7 @@ public class TestBlockchain : IDisposable
 
         byte[] code = Bytes.FromHexString("0xabcd");
         Hash256 codeHash = Keccak.Compute(code);
-        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+        State.InsertCode(TestItem.AddressA, codeHash, code, SpecProvider.GenesisSpec);
 
         State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
 
@@ -390,7 +388,7 @@ public class TestBlockchain : IDisposable
             new BlockhashStore(SpecProvider, State),
             TxProcessor,
             LogManager,
-            consensusRequestsProcessor: ConsensusRequestsProcessor);
+            new BeaconBlockRootHandler(TxProcessor, LogManager));
 
     public async Task WaitForNewHead()
     {

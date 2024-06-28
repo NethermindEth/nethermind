@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
@@ -157,7 +158,8 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,
-            _api.TransactionProcessor,
+            changeableTxProcessingEnv.TransactionProcessor,
+            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor, _api.LogManager),
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator(_api) as AuRaContractGasLimitOverride,

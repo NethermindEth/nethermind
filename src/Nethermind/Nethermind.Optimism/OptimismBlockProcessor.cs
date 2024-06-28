@@ -3,6 +3,8 @@
 
 using System;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -34,9 +36,10 @@ public class OptimismBlockProcessor : BlockProcessor
         ITransactionProcessor txProcessor,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null,
+        IBeaconBlockRootHandler? beaconBlockRootHandler = null,
         IBlockCachePreWarmer? preWarmer = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, blockhashStore, txProcessor, logManager, withdrawalProcessor,
+            stateProvider, receiptStorage, blockhashStore, txProcessor, logManager, beaconBlockRootHandler, withdrawalProcessor,
             receiptsRootCalculator: ReceiptsRootCalculator.Instance, preWarmer: preWarmer)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);

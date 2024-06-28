@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -83,6 +84,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                 )
             ),
             readOnlyTxProcessingEnv.TransactionProcessor,
+            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, logManager),
             consensusRequestsProcessor: _consensusRequestsProcessor);
     }
 

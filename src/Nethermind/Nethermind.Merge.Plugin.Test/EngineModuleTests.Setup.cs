@@ -257,9 +257,9 @@ public partial class EngineModuleTests
                 new BlockhashStore(SpecProvider, State),
                 TxProcessor,
                 LogManager,
+                BeaconBlockRootHandler,
                 WithdrawalProcessor,
                 consensusRequestsProcessor: ConsensusRequestsProcessor);
-
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
