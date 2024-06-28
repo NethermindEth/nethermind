@@ -40,6 +40,7 @@ public class TaikoBlockProcessor : BlockProcessor
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
     {
+        block.Transactions[0].IsAnchorTx = true;
         return base.ProcessBlock(block, blockTracer, options);
     }
 }
