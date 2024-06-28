@@ -89,7 +89,5 @@ namespace Nethermind.Evm
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth = callDepth;
-
-        public readonly IEnumerable<Address> AuthorizedAddresses = authorizedAddresses;
     }
 }
