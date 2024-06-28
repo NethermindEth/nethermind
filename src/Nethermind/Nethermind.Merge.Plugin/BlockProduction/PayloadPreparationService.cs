@@ -72,7 +72,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         _logger = logManager.GetClassLogger();
     }
 
-    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    public virtual string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         if (!_payloadStorage.ContainsKey(payloadId))
@@ -85,7 +85,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         return payloadId;
     }
 
-    private Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
         Block emptyBlock = _blockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
