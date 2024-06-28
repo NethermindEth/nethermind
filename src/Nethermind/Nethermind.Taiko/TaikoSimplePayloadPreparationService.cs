@@ -149,5 +149,5 @@ public class TaikoSimplePayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
-    //public event EventHandler<BlockEventArgs>? BlockImproved;
+    public event EventHandler<BlockEventArgs>? BlockImproved = (s, e) => { };
 }
