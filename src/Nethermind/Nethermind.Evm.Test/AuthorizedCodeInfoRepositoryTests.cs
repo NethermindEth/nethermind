@@ -75,16 +75,16 @@ public class AuthorizedCodeInfoRepositoryTests
     public void InsertFromAuthorizations_AuthorityHasCode_NoCodeIsInserted()
     {
         PrivateKey authority = TestItem.PrivateKeyA;
-        ICodeInfoRepository mockCodeRepository = Substitute.For<ICodeInfoRepository>();
-        mockCodeRepository
-            .GetCachedCodeInfo(Arg.Any<IWorldState>(), authority.Address, Arg.Any<IReleaseSpec>())
-            .Returns(new CodeInfo([(byte)0x0]));
-        AuthorizedCodeInfoRepository sut = new(mockCodeRepository, 1, NullLogger.Instance);
+        Address codeSource = TestItem.AddressB;
+        IWorldState mockWorldState = Substitute.For<IWorldState>();
+        mockWorldState.HasCode(authority.Address).Returns(true);
+        AuthorizedCodeInfoRepository sut = new(Substitute.For<ICodeInfoRepository>(), 1, NullLogger.Instance);
         var tuples = new[]
         {
-            CreateAuthorizationTuple(authority, 1, TestItem.AddressB, (UInt256)0),
+            CreateAuthorizationTuple(authority, 1, codeSource, (UInt256)0),
         };
-        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
+
+        sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
 
         sut.AuthorizedAddresses.Count().Should().Be(0);
     }

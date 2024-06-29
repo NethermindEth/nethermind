@@ -17,7 +17,6 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
 {
     public IEnumerable<Address> AuthorizedAddresses => _authorizedCode.Keys;
     private readonly Dictionary<Address, CodeInfo> _authorizedCode = new();
-    private readonly AuthorizationTupleDecoder _authorizationTupleDecoder = new();
     private readonly EthereumEcdsa _ethereumEcdsa;
     private readonly ICodeInfoRepository _codeInfoRepository;
     private readonly ulong _chainId;
@@ -77,7 +76,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
             authTuple.Authority = authTuple.Authority ?? _ethereumEcdsa.RecoverAddress(authTuple);
 
             string? error;
-            if (!authTuple.IsWellformed(worldState, _chainId, out error))
+            if (!authTuple.IsValidForExecution(worldState, _chainId, out error))
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list: {error}");
                 continue;

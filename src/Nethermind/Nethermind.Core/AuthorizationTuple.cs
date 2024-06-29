@@ -44,7 +44,7 @@ public class AuthorizationTuple(
     /// <param name="error"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException">When <see cref="Authority"/> has not been set.</exception>
-    public bool IsWellformed(IAccountStateProvider accountStateProvider, ulong chainId, [NotNullWhen(false)] out string? error)
+    public bool IsValidForExecution(IAccountStateProvider accountStateProvider, ulong chainId, [NotNullWhen(false)] out string? error)
     {
         if (Authority is null)
             throw new InvalidOperationException($"Cannot determine correctness when {nameof(Authority)} is null.");
