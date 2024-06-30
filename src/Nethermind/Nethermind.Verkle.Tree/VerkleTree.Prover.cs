@@ -344,9 +344,9 @@ public partial class VerkleTree
         rootPoint = Banderwagon.FromBytesUncompressedUnchecked(queries[0].NodeCommitPoint, isBigEndian: false);
         foreach (VerkleProverQuerySerialized query in queries)
         {
-            if (query.NodeCommitPoint == rootPoint.ToBytesUncompressedLittleEndian()) continue;
+            if (query.NodeCommitPoint.SequenceEqual(rootPoint.ToBytesUncompressedLittleEndian())) continue;
 
-            if (sortedCommitments.Count == 0 || sortedCommitments[^1].ToBytesUncompressedLittleEndian() != query.NodeCommitPoint)
+            if (sortedCommitments.Count == 0 || !sortedCommitments[^1].ToBytesUncompressedLittleEndian().SequenceEqual(query.NodeCommitPoint))
                 sortedCommitments.Add(Banderwagon.FromBytesUncompressedUnchecked(query.NodeCommitPoint, isBigEndian: false));
         }
 
