@@ -8,6 +8,7 @@
         "bedrockBlockNumber": "0x645C277",
         "canyonTimestamp": "0x65a01e91",
         "ecotoneTimestamp": "0x65f23e01",
+        "fjordTimestamp": "0x668eb001",
         "l1FeeRecipient": "0x420000000000000000000000000000000000001A",
         "l1BlockAddress": "0x4200000000000000000000000000000000000015",
         "canyonBaseFeeChangeDenominator": "250"
@@ -65,6 +66,8 @@
     "eip4844TransitionTimestamp": "0x65f23e01",
     "eip5656TransitionTimestamp": "0x65f23e01",
     "eip6780TransitionTimestamp": "0x65f23e01",
+
+    "rip7212TransitionTimestamp": "0x668eb001",
 
     "terminalTotalDifficulty": "0"
   },
