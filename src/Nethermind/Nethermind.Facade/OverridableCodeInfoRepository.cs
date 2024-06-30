@@ -26,7 +26,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(state, code, codeOwner, spec);
 
-
     public void SetCodeOverwrite(
         IWorldState worldState,
         IReleaseSpec vmSpec,
@@ -40,5 +39,10 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         }
 
         _codeOverwrites[key] = value;
+    }
+
+    public void ClearOverwrites()
+    {
+        _codeOverwrites.Clear();
     }
 }

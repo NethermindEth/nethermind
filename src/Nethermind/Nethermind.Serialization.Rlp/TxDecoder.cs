@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp.Eip2930;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -39,6 +44,7 @@ namespace Nethermind.Serialization.Rlp
         where T : Transaction, new()
     {
         private readonly AccessListDecoder _accessListDecoder = new();
+        private AuthorizationTupleDecoder _authTupleDecoder = new();
         private readonly bool _lazyHash;
 
         protected TxDecoder(bool lazyHash = true)
@@ -89,6 +95,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+                    break;
+                case TxType.SetCode:
+                    DecodeAuthorizationListWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
                     TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
@@ -307,6 +316,11 @@ namespace Nethermind.Serialization.Rlp
             byte[][] proofs = decoderContext.DecodeByteArrays();
             transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
         }
+        private void DecodeAuthorizationListWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        {
+            DecodeEip1559PayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+            transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder, !rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes));
+        }
 
         private static void DecodeDepositPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
@@ -318,6 +332,12 @@ namespace Nethermind.Serialization.Rlp
             transaction.GasLimit = decoderContext.DecodeLong();
             transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
             transaction.Data = decoderContext.DecodeByteArray();
+        }
+
+        private void DecodeAuthorizationListWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        {
+            DecodeEip1559PayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+            transaction.AuthorizationList = rlpStream.DecodeArray<AuthorizationTuple>((s) => _authTupleDecoder.Decode(s, rlpBehaviors));
         }
 
         private static void EncodeLegacyWithoutPayload(T item, RlpStream stream)
@@ -368,6 +388,12 @@ namespace Nethermind.Serialization.Rlp
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
             stream.Encode(item.MaxFeePerBlobGas.Value);
             stream.Encode(item.BlobVersionedHashes);
+        }
+
+        private void EncodeAuthorizationListWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
+        {
+            EncodeEip1559PayloadWithoutPayload(item, stream, rlpBehaviors);
+            stream.EncodeArray(item.AuthorizationList, rlpBehaviors);
         }
 
         private static void EncodeDepositTxPayloadWithoutPayload(T item, RlpStream stream)
@@ -460,6 +486,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+                    break;
+                case TxType.SetCode:
+                    DecodeAuthorizationListWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
                     TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
@@ -659,6 +688,9 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
+                case TxType.SetCode:
+                    EncodeAuthorizationListWithoutPayload(item, stream, rlpBehaviors);
+                    break;
                 case TxType.DepositTx:
                     TxDecoder<T>.EncodeDepositTxPayloadWithoutPayload(item, stream);
                     break;
@@ -767,6 +799,12 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 
+        private int GetAuthorizationListLength(T item)
+        {
+            return GetEip1559ContentLength(item)
+                   + (item.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(_authTupleDecoder.GetContentLength(item.AuthorizationList, RlpBehaviors.None)));
+        }
+
         private static int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
         {
             ShardBlobNetworkWrapper networkWrapper = item.NetworkWrapper as ShardBlobNetworkWrapper;
@@ -806,6 +844,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.Blob:
                     contentLength = GetShardBlobContentLength(item);
+                    break;
+                case TxType.SetCode:
+                    contentLength = GetAuthorizationListLength(item);
                     break;
                 case TxType.DepositTx:
                     contentLength = TxDecoder<T>.GetDepositTxContentLength(item);

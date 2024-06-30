@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -17,6 +20,7 @@ namespace Nethermind.Consensus.Processing
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
         private readonly ISpecProvider _specProvider;
+        private readonly AuthorizationTupleDecoder _authorizationTupleDecoder = new();
         private readonly ILogger _logger;
 
         /// <summary>
@@ -100,6 +104,32 @@ namespace Nethermind.Consensus.Processing
                     blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
 
                     if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
+                }
+            }
+
+            if (releaseSpec.IsAuthorizationListEnabled)
+            {
+                foreach (Transaction tx in block.Transactions.AsSpan())
+                {
+                    if (!tx.HasAuthorizationList)
+                    {
+                        continue;
+                    }
+
+                    if (tx.AuthorizationList.Length >= 4)
+                    {
+                        Parallel.ForEach(tx.AuthorizationList, (tuple) =>
+                        {
+                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                        });
+                    }
+                    else
+                    {
+                        foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                        {
+                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                        }
+                    }
                 }
             }
         }

@@ -158,7 +158,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         return codeInfo;
     }
 
-
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         CodeInfo codeInfo = new(code);
