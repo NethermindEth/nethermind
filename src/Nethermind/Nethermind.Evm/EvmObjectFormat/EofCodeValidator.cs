@@ -57,8 +57,10 @@ public static class EvmObjectFormat
         ValidateSubContainers = Validate | 2,
         ValidateFullBody = Validate | 4,
         ValidateInitcodeMode = Validate | 8,
-        AllowTrailingBytes = Validate | 16,
-        ExractHeader = 32,
+        ValidateRuntimeMode = Validate | 16,
+        AllowTrailingBytes = Validate | 32,
+        ExractHeader = 64,
+        HasEofMagic = 128,
 
     }
 
@@ -109,6 +111,12 @@ public static class EvmObjectFormat
         {
             header = null;
             return true;
+        }
+
+        if(strategy.HasFlag(ValidationStrategy.HasEofMagic) && !container.StartsWith(MAGIC))
+        {
+            header = null;
+            return false;
         }
 
         if (container.Length > VERSION_OFFSET
@@ -440,10 +448,8 @@ public static class EvmObjectFormat
                 visitedSections[sectionIdx] = true;
                 (int codeSectionStartOffset, int codeSectionSize) = header.CodeSections[sectionIdx];
 
-                bool isInitCodeValidationMode = strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode);
-                bool isNonReturning = typesection[sectionIdx * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
                 ReadOnlySpan<byte> code = container.Slice(header.CodeSections.Start + codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(sectionIdx, isNonReturning, isInitCodeValidationMode, typesection, code, header, container, validationQueue, out ushort jumpsCount))
+                if (!ValidateInstructions(sectionIdx, strategy, typesection, code, header, container, validationQueue))
                 {
                     ArrayPool<bool>.Shared.Return(visitedSections, true);
                     return false;
@@ -497,11 +503,10 @@ public static class EvmObjectFormat
             return true;
         }
 
-        bool ValidateInstructions(ushort sectionId, bool isNonReturning, bool isInitcodeMode, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, in ReadOnlySpan<byte> container, Queue<ushort> worklist, out ushort jumpsCount)
+        bool ValidateInstructions(ushort sectionId, ValidationStrategy strategy, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, in ReadOnlySpan<byte> container, Queue<ushort> worklist)
         {
             byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
             byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
-            jumpsCount = 1;
             try
             {
                 int pos;
@@ -511,7 +516,12 @@ public static class EvmObjectFormat
                     Instruction opcode = (Instruction)code[pos];
                     int postInstructionByte = pos + 1;
 
-                    if(isInitcodeMode && opcode is Instruction.RETURN or Instruction.STOP)
+                    if (strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode) && opcode is Instruction.RETURN or Instruction.STOP)
+                    {
+                        return false;
+                    }
+
+                    if (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode) && opcode is Instruction.RETURNCONTRACT)
                     {
                         return false;
                     }
@@ -539,7 +549,6 @@ public static class EvmObjectFormat
                             return false;
                         }
 
-                        jumpsCount += opcode is Instruction.RJUMP ? ONE_BYTE_LENGTH : TWO_BYTE_LENGTH;
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpdests, ref rjumpdest);
                         BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
@@ -594,7 +603,6 @@ public static class EvmObjectFormat
                         }
 
                         ushort count = (ushort)(code[postInstructionByte] + 1);
-                        jumpsCount += count;
                         if (count < MINIMUMS_ACCEPTABLE_JUMPV_JUMPTABLE_LENGTH)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RJUMPV} jumptable must have at least 1 entry");
@@ -681,12 +689,20 @@ public static class EvmObjectFormat
                             return false;
                         }
 
-                        ushort containerId = code[postInstructionByte];
-                        if ( containerId >= header.ContainerSection?.Count)
+                        ushort runtimeContainerId = code[postInstructionByte];
+                        if (runtimeContainerId >= header.ContainerSection?.Count)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate argument must be less than containersection.Count i.e: {header.ContainerSection?.Count}");
                             return false;
                         }
+
+                        ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSection.Value.Start + header.ContainerSection.Value[runtimeContainerId].Start, header.ContainerSection.Value[runtimeContainerId].Size);
+                        if (!IsValidEof(subcontainer, ValidationStrategy.ValidateRuntimeMode, out _))
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate must be a valid Eof");
+                            return false;
+                        }
+
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
 

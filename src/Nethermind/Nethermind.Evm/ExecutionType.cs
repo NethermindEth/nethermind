@@ -29,6 +29,10 @@ namespace Nethermind.Evm
                 ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
                 ExecutionType.CREATE => Instruction.CREATE,
                 ExecutionType.CREATE2 => Instruction.CREATE2,
+                ExecutionType.EOFCREATE => Instruction.EOFCREATE,
+                ExecutionType.EOFCALL => Instruction.EXTCALL,
+                ExecutionType.EOFSTATICCALL => Instruction.EXTSTATICCALL,
+                ExecutionType.EOFDELEGATECALL => Instruction.EXTDELEGATECALL,
                 _ => throw new NotSupportedException($"Execution type {executionType} is not supported.")
             };
     }
@@ -39,12 +43,15 @@ namespace Nethermind.Evm
         TRANSACTION,
         CALL,
         STATICCALL,
-        CALLCODE,
         DELEGATECALL,
+        CALLCODE,
         CREATE,
         CREATE2,
         EOFCREATE,
         TXCREATE,
+        EOFCALL,
+        EOFSTATICCALL,
+        EOFDELEGATECALL,
     }
     // ReSharper restore IdentifierTypo InconsistentNaming
 }

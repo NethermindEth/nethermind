@@ -13,10 +13,10 @@ public class EofCodeInfo : ICodeInfo
 {
     private readonly ICodeInfo _codeInfo;
 
-    private readonly EofHeader _header;
+    public EofHeader Header { get; private set; }
     public ReadOnlyMemory<byte> MachineCode => _codeInfo.MachineCode;
     public IPrecompile? Precompile => _codeInfo.Precompile;
-    public int Version => _header.Version;
+    public int Version => Header.Version;
     public bool IsEmpty => _codeInfo.IsEmpty;
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection { get; }
@@ -29,14 +29,14 @@ public class EofCodeInfo : ICodeInfo
             return Memory<byte>.Empty;
         else
         {
-            return MachineCode.Slice(_header.ContainerSection.Value.Start + offset.Value.Start, offset.Value.Size);
+            return MachineCode.Slice(Header.ContainerSection.Value.Start + offset.Value.Start, offset.Value.Size);
         }
     }
-    public SectionHeader CodeSectionOffset(int sectionId) => _header.CodeSections[sectionId];
+    public SectionHeader CodeSectionOffset(int sectionId) => Header.CodeSections[sectionId];
     public SectionHeader? ContainerSectionOffset(int containerId) =>
-        _header.ContainerSection is null
+        Header.ContainerSection is null
             ? null
-            : _header.ContainerSection.Value[containerId];
+            : Header.ContainerSection.Value[containerId];
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
     {
         ReadOnlySpan<byte> typesectionSpan = TypeSection.Span;
@@ -52,9 +52,9 @@ public class EofCodeInfo : ICodeInfo
     public EofCodeInfo(ICodeInfo codeInfo, in EofHeader header)
     {
         _codeInfo = codeInfo;
-        _header = header;
-        TypeSection = MachineCode.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
-        DataSection = MachineCode.Slice(_header.DataSection.Start, _header.DataSection.Size);
-        CodeSection = MachineCode.Slice(_header.CodeSections.Start, _header.CodeSections.Size);
+        Header = header;
+        TypeSection = MachineCode.Slice(Header.TypeSection.Start, Header.TypeSection.Size);
+        DataSection = MachineCode.Slice(Header.DataSection.Start, Header.DataSection.Size);
+        CodeSection = MachineCode.Slice(Header.CodeSections.Start, Header.CodeSections.Size);
     }
 }

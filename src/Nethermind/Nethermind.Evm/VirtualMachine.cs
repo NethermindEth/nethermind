@@ -404,7 +404,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             int containerIndex = callResult.Output.ContainerIndex.Value;
                             ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
                             ReadOnlySpan<byte> container = previousState.Env.CodeInfo.ContainerSection(containerIndex).Span;
-                            bool isEof_invalidated = !EvmObjectFormat.TryExtractHeader(container, out EofHeader? header) && header?.DataSection.Size != auxExtraData.Length;
+                            bool isEof_invalidated = !EvmObjectFormat.TryExtractHeader(container, out EofHeader? header) || header?.DataSection.Size != auxExtraData.Length;
                             byte[] bytecodeResultArray = null;
 
                             if (!isEof_invalidated)
@@ -2291,7 +2291,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
 
-                        byte sectionIdx = codeSection[programCounter];
+                        byte sectionIdx = codeSection[programCounter++];
                         stack.PopUInt256(out a);
                         stack.PopUInt256(out b);
 
@@ -2680,13 +2680,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         UpdateGas(GasCostOf.CallValue, ref gasAvailable);
 
-        if (!targetBytes[20..].IsZero())
+        if (!targetBytes[0..11].IsZero())
         {
             return EvmExceptionType.AddressOutOfRange;
         }
 
         Address caller = instruction == Instruction.EXTDELEGATECALL ? env.Caller : env.ExecutingAccount;
-        Address targetAddress = new Address(targetBytes.ToArray());  
+        Address targetAddress = new Address(targetBytes[12..].ToArray());  
 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength)) return EvmExceptionType.OutOfGas;
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, targetAddress, spec)) return EvmExceptionType.OutOfGas;
@@ -2864,7 +2864,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
-
+        EofCodeInfo container = env.CodeInfo as EofCodeInfo;
         var currentContext = ExecutionType.EOFCREATE;
         if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
             return (EvmExceptionType.OutOfGas, null);
@@ -2877,17 +2877,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataSize)) return (EvmExceptionType.OutOfGas, null);
 
-        ReadOnlyMemory<byte> initCode = ReadOnlyMemory<byte>.Empty;
         int initCodeIdx = codeSection[vmState.ProgramCounter++];
-        initCode = env.CodeInfo.ContainerSection(initCodeIdx);
+        ReadOnlyMemory<byte> initCode = container.ContainerSection(initCodeIdx);
+        int initcode_size = container.Header.ContainerSection.Value[initCodeIdx].Size;
+        
 
-        //EIP-3860
-        if (spec.IsEip3860Enabled)
-        {
-            if (initCode.Length > spec.MaxInitCodeSize) return (EvmExceptionType.InvalidCode, null);
-        }
-
-        long gasCost = GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initCode.Length);
+        long gasCost = GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcode_size);
 
         if (!UpdateGas(gasCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
@@ -2900,8 +2895,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        Span<byte> calldata = vmState.Memory.LoadSpan(dataOffset, dataSize);
-
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
@@ -2909,6 +2902,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             stack.PushZero();
             return (EvmExceptionType.None, null);
         }
+
+        Span<byte> calldata = vmState.Memory.LoadSpan(dataOffset, dataSize);
 
         UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
         UInt256 maxNonce = ulong.MaxValue;
@@ -2925,7 +2920,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
-        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initCode.Span, env.InputData.Span);
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -3079,7 +3074,21 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.WarmUp(contractAddress);
         }
 
-        _state.IncrementNonce(env.ExecutingAccount);
+        // Do not add the initCode to the cache as it is
+        // pointing to data in this tx and will become invalid
+        // for another tx as returned to pool.
+        if (CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.HasEofMagic))
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            UpdateGasUp(callGas, ref gasAvailable);
+            return (EvmExceptionType.None, null);
+        }
+
+        if (codeinfo is CodeInfo classicalCode)
+        {
+            classicalCode.AnalyseInBackgroundIfRequired();
+        }
 
         Snapshot snapshot = _state.TakeSnapshot();
 
@@ -3101,14 +3110,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        // Do not add the initCode to the cache as it is
-        // pointing to data in this tx and will become invalid
-        // for another tx as returned to pool.
-        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.ExractHeader);
-        if(codeinfo is CodeInfo classicalCode)
-        {
-            classicalCode.AnalyseInBackgroundIfRequired();
-        }
+        _state.IncrementNonce(env.ExecutingAccount);
 
         ExecutionEnvironment callEnv = new
         (
@@ -3364,6 +3366,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
+            EvmExceptionType.AddressOutOfRange => CallResult.InvalidAddressRange,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }
@@ -3443,29 +3446,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
-    {
-        ExecutionType executionType;
-        if (instruction is Instruction.CALL or Instruction.EXTCALL)
+        => instruction switch
         {
-            executionType = ExecutionType.CALL;
-        }
-        else if (instruction is Instruction.DELEGATECALL or Instruction.EXTDELEGATECALL)
-        {
-            executionType = ExecutionType.DELEGATECALL;
-        }
-        else if (instruction is Instruction.STATICCALL or Instruction.EXTSTATICCALL)
-        {
-            executionType = ExecutionType.STATICCALL;
-        }
-        else if (instruction is Instruction.CALLCODE)
-        {
-            executionType = ExecutionType.CALLCODE;
-        }
-        else
-        {
-            throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
-        }
-
-        return executionType;
-    }
+            Instruction.CALL => ExecutionType.CALL,
+            Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
+            Instruction.STATICCALL => ExecutionType.STATICCALL,
+            Instruction.CALLCODE => ExecutionType.CALLCODE,
+            Instruction.EXTCALL => ExecutionType.EOFCALL,
+            Instruction.EXTDELEGATECALL => ExecutionType.EOFDELEGATECALL,
+            Instruction.EXTSTATICCALL => ExecutionType.EOFSTATICCALL,
+            _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
+        };
 }
