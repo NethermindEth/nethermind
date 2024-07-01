@@ -134,14 +134,14 @@ namespace Nethermind.Merge.AuRa
             return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
 
-        public override ValueTask DisposeAsync()
+        public override async ValueTask DisposeAsync()
         {
             if (_eonUpdateHandler is not null)
             {
                 _api.BlockTree!.NewHeadBlock -= _eonUpdateHandler;
             }
-            _shutterP2P?.DisposeAsync();
-            return base.DisposeAsync();
+            await (_shutterP2P?.DisposeAsync() ?? default);
+            await base.DisposeAsync();
         }
 
         private void ValidateShutterConfig(IShutterConfig shutterConfig)
