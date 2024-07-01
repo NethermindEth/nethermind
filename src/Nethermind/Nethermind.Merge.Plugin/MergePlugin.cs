@@ -49,7 +49,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
     private IPeerRefresher _peerRefresher = null!;
 
-    private ManualBlockFinalizationManager _blockFinalizationManager = null!;
+    protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
     public virtual string Name => "Merge";
@@ -259,14 +259,18 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-
-            _api.FinalizationManager = new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
+            _api.FinalizationManager = InitializeMergeFinilizationManager();
 
             // Need to do it here because blockprocessor is not available in init
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor!);
         }
 
         return Task.CompletedTask;
+    }
+
+    protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
+    {
+        return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
     }
 
     public Task InitRpcModules()
