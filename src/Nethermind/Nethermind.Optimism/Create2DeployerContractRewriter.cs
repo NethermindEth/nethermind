@@ -26,7 +26,7 @@ public class Create2DeployerContractRewriter
     {
         IReleaseSpec spec = _specProvider.GetSpec(header);
         BlockHeader? parent = _blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
-        if ((parent is null || !_opSpecHelper.IsCanyon(parent)) && _opSpecHelper.IsCanyon(header))
+        if ((parent is null || !_opSpecHelper.IsCanyon(parent)) && _opSpecHelper.IsCanyon(header) && header.Number is not 0)
         {
             worldState.InsertCode(_opSpecHelper.Create2DeployerAddress!, _opSpecHelper.Create2DeployerCode, spec);
         }
