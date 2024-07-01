@@ -97,11 +97,11 @@ public class ShutterP2P(
         }, _cancellationTokenSource.Token);
     }
 
-    public void DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _router?.UnsubscribeAll();
-        _ = _serviceProvider?.DisposeAsync();
-        _cancellationTokenSource?.Cancel();
+        await (_serviceProvider?.DisposeAsync() ?? default);
+        await (_cancellationTokenSource?.CancelAsync() ?? Task.CompletedTask);
     }
 
     internal class MyProto : IDiscoveryProtocol
