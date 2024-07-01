@@ -12,19 +12,19 @@ public interface IShutterConfig : IConfig
 
     [ConfigItem(Description = "The address of the Shutter sequencer contract.",
         DefaultValue = "null")]
-    string SequencerContractAddress { get; set; }
+    string? SequencerContractAddress { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter validator registry contract.",
         DefaultValue = "null")]
-    string ValidatorRegistryContractAddress { get; set; }
+    string? ValidatorRegistryContractAddress { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter key broadcast contract.",
         DefaultValue = "null")]
-    string KeyBroadcastContractAddress { get; set; }
+    string? KeyBroadcastContractAddress { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter keyper set manager contract.",
         DefaultValue = "null")]
-    string KeyperSetManagerContractAddress { get; set; }
+    string? KeyperSetManagerContractAddress { get; set; }
 
     [ConfigItem(Description = "The p2p addresses of the Shutter keypers.",
         DefaultValue = "[]")]
@@ -36,7 +36,7 @@ public interface IShutterConfig : IConfig
 
     [ConfigItem(Description = "The filepath of the validator info json file.",
         DefaultValue = "null")]
-    string ValidatorInfoFile { get; set; }
+    string? ValidatorInfoFile { get; set; }
 
     [ConfigItem(Description = "The Shutter P2P protocol version.",
         DefaultValue = "/shutter/0.1.0")]
