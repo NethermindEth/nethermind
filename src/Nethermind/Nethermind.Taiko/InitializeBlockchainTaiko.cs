@@ -33,8 +33,8 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             _api.SpecProvider,
             _api.WorldState,
             virtualMachine,
-            _api.LogManager,
-            codeInfoRepository
+            codeInfoRepository,
+            _api.LogManager
         );
     }
 
