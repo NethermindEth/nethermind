@@ -70,7 +70,11 @@ public class ShutterEon(
         }
         catch (AbiException e)
         {
-            if (logger.IsDebug) logger.Error($"Error when calling Shutter Keyper contracts", e);
+            if (logger.IsError) logger.Error($"Error when calling Shutter Keyper contracts", e);
+        }
+        catch (Bls.Exception e)
+        {
+            if (logger.IsError) logger.Error($"Invalid Shutter Eon key ", e);
         }
     }
 

@@ -17,7 +17,6 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
-using System.IO.Abstractions;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
