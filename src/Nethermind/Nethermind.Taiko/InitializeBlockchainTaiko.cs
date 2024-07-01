@@ -55,6 +55,9 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
     {
         if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
         if (_api.TxValidator is null) throw new StepDependencyException(nameof(_api.TxValidator));
+        if (_api.HeaderValidator is null) throw new StepDependencyException(nameof(_api.HeaderValidator));
+        if (_api.UnclesValidator is null) throw new StepDependencyException(nameof(_api.UnclesValidator));
+        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
         TaikoBlockValidator blockValidator = new(
             _api.TxValidator,
