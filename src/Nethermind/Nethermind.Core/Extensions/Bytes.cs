@@ -29,6 +29,7 @@ namespace Nethermind.Core.Extensions
         public static readonly BytesComparer Comparer = new();
         public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+        public static readonly ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {

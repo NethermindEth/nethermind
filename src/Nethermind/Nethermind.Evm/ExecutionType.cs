@@ -19,6 +19,18 @@ namespace Nethermind.Evm
         public static bool IsAnyCreate(this ExecutionType executionType) =>
             IsAnyCreateLegacy(executionType) || IsAnyCreateEof(executionType);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCall(this ExecutionType executionType) =>
+            IsAnyCallLegacy(executionType) || IsAnyCallEof(executionType);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCallLegacy(this ExecutionType executionType) =>
+            executionType is ExecutionType.CALL or ExecutionType.STATICCALL or ExecutionType.DELEGATECALL or ExecutionType.CALLCODE;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCallEof(this ExecutionType executionType) =>
+            executionType is ExecutionType.EOFCALL or ExecutionType.EOFSTATICCALL or ExecutionType.EOFDELEGATECALL;
+
         public static Instruction ToInstruction(this ExecutionType executionType) =>
             executionType switch
             {

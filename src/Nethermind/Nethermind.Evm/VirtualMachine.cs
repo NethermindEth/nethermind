@@ -458,7 +458,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     else
                     {
                         _returnDataBuffer = callResult.Output.Bytes;
-                        previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
+                        previousCallResult = callResult.PrecompileSuccess.HasValue
+                            ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
+                            : StatusCode.SuccessBytes;
                         previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
                         if (previousState.IsPrecompile)
@@ -485,7 +487,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 {
                     worldState.Restore(previousState.Snapshot);
                     _returnDataBuffer = callResult.Output.Bytes;
-                    previousCallResult = StatusCode.FailureBytes;
+                    previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.RevertBytes : StatusCode.FailureBytes;
                     previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
                     previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
@@ -521,7 +523,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, isTracing);
                 }
 
-                previousCallResult = StatusCode.FailureBytes;
+                previousCallResult = currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
                 previousCallOutputDestination = UInt256.Zero;
                 _returnDataBuffer = Array.Empty<byte>();
                 previousCallOutput = ZeroPaddedSpan.Empty;
