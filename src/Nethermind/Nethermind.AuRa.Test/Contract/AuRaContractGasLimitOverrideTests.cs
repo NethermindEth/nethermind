@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -101,6 +102,7 @@ public class AuRaContractGasLimitOverrideTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                new BeaconBlockRootHandler(TxProcessor, LimboLogs.Instance),
                 null,
                 null,
                 GasLimitCalculator as AuRaContractGasLimitOverride);

@@ -172,18 +172,6 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
 
-            Account GetThroughCacheCheckExists()
-            {
-                Account result = GetThroughCache(address);
-                if (result is null)
-                {
-                    if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                    throw new InvalidOperationException("Updating balance of a non-existing account");
-                }
-
-                return result;
-            }
-
             bool isZero = balanceChange.IsZero;
             if (isZero)
             {
@@ -192,7 +180,9 @@ namespace Nethermind.State
                 // hitting non-existing account when substractin Zero-value from the sender
                 if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
-                    Account touched = GetThroughCacheCheckExists();
+                    Account touched = GetThroughCache(address);
+                    if (touched is null) return;
+
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     if (touched.IsEmpty)
                     {
@@ -203,7 +193,8 @@ namespace Nethermind.State
                 return;
             }
 
-            Account account = GetThroughCacheCheckExists();
+            Account account = GetThroughCache(address);
+            if (account is null) return;
 
             if (isSubtracting && account.Balance < balanceChange)
             {
@@ -758,7 +749,7 @@ namespace Nethermind.State
 
         private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
-            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
+            if (isZero && releaseSpec.IsEip158IgnoredAccount(address) && releaseSpec.AuRaSystemCalls) return;
             Push(ChangeType.Touch, address, account);
         }
 

@@ -43,6 +43,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie;
+using Nethermind.Blockchain.BeaconBlockRoot;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -302,7 +303,8 @@ namespace Nethermind.Synchronization.Test
                 stateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider, stateProvider),
-                logManager);
+                logManager,
+                new BeaconBlockRootHandler(txProcessor, logManager));
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
             BlockchainProcessor processor = new(tree, blockProcessor, step, stateReader, logManager,
@@ -324,7 +326,8 @@ namespace Nethermind.Synchronization.Test
                 devState,
                 receiptStorage,
                 new BlockhashStore(specProvider, devState),
-                logManager);
+                logManager,
+                new BeaconBlockRootHandler(devTxProcessor, logManager));
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.NoReceipts);

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -157,8 +158,8 @@ public class TxCertifierFilterTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                null
-                );
+                new BeaconBlockRootHandler(TxProcessor, LimboLogs.Instance),
+                null);
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -68,7 +69,8 @@ namespace Nethermind.Consensus.Processing
                 scope.WorldState,
                 receiptStorage,
                 new BlockhashStore(specProvider, scope.WorldState),
-                logManager);
+                logManager,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, logManager));
         }
 
         public void Dispose()

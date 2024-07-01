@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -188,7 +189,8 @@ namespace Nethermind.Mev.Test
                     State,
                     ReceiptStorage,
                     new BlockhashStore(SpecProvider, State),
-                    LogManager);
+                    LogManager,
+                    new BeaconBlockRootHandler(TxProcessor, LogManager));
 
                 _tracerFactory = new TracerFactory(
                     BlockTree,

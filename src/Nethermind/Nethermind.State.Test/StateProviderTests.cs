@@ -69,7 +69,7 @@ namespace Nethermind.Store.Test
             provider.Commit(Homestead.Instance);
 
             var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true };
-            provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
+            provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec, false);
             provider.Commit(releaseSpec);
 
             provider.GetAccount(systemUser).Should().NotBeNull();
@@ -111,7 +111,7 @@ namespace Nethermind.Store.Test
         public void Update_balance_on_non_existing_account_throws()
         {
             WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
-            Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
+            Assert.Throws<InvalidOperationException>(() => provider.AddBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance, false));
         }
 
         [Test]
@@ -182,7 +182,7 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
-            provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance);
+            provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance, false);
             provider.UpdateStorageRoot(_address1, Hash2);
 
             Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));

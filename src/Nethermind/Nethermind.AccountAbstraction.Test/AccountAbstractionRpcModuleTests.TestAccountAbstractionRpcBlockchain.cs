@@ -38,6 +38,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using Nethermind.Config;
+using Nethermind.Blockchain.BeaconBlockRoot;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -190,7 +191,8 @@ namespace Nethermind.AccountAbstraction.Test
                     State,
                     ReceiptStorage,
                     new BlockhashStore(SpecProvider, State),
-                    LogManager);
+                    LogManager,
+                    new BeaconBlockRootHandler(TxProcessor, LogManager));
 
                 AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
 
