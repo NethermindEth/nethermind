@@ -104,7 +104,7 @@ namespace Nethermind.Merge.AuRa
                 Dictionary<ulong, byte[]> validatorsInfo;
                 try
                 {
-                    validatorsInfo = LoadValidatorInfo(_shutterConfig.ValidatorInfoFile);
+                    validatorsInfo = LoadValidatorInfo(_shutterConfig.ValidatorInfoFile!);
                 }
                 catch (Exception e)
                 {
@@ -146,6 +146,11 @@ namespace Nethermind.Merge.AuRa
 
         private void ValidateShutterConfig(IShutterConfig shutterConfig)
         {
+            if (shutterConfig.ValidatorInfoFile is null || !File.Exists(shutterConfig.ValidatorInfoFile))
+            {
+                throw new ArgumentException("Must set Shutter validator info file to a valid filepath.");
+            }
+
             if (shutterConfig.SequencerContractAddress is null || !Address.TryParse(shutterConfig.SequencerContractAddress, out _))
             {
                 throw new ArgumentException("Must set Shutter sequencer contract address to valid address.");
