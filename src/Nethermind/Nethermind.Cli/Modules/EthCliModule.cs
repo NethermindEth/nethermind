@@ -7,6 +7,7 @@ using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
@@ -48,6 +49,10 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("eth_call", tx, blockParameter ?? "latest").Result;
         }
+
+        [CliFunction("eth", "simulateV1")]
+        public JsValue SimulateV1(ulong version, object[] blockCalls, string? blockParameter = null, bool traceTransfers = true) =>
+            NodeManager.PostJint("eth_simulateV1", 1, blockCalls, blockParameter ?? "latest", traceTransfers).Result;
 
         [CliFunction("eth", "getBlockByHash")]
         public JsValue GetBlockByHash(string hash, bool returnFullTransactionObjects)

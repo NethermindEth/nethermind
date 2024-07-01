@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization
 
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
-        private INodeStorage _nodeStorage;
+        private readonly INodeStorage _nodeStorage;
         private readonly ProgressTracker _progressTracker;
 
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(

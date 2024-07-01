@@ -82,8 +82,10 @@ public class ShutterTxSource(
 
     private bool IsRegistered(BlockHeader parent)
     {
-        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = envFactory.Create().Build(parent.StateRoot!);
-        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, abiEncoder, _validatorRegistryContractAddress, _logger, specProvider.ChainId, _validatorRegistryMessageVersion);
+        IReadOnlyTxProcessingScope scope = envFactory.Create().Build(parent.StateRoot!);
+        ITransactionProcessor processor = scope.TransactionProcessor;
+
+        ValidatorRegistryContract validatorRegistryContract = new(processor, abiEncoder, _validatorRegistryContractAddress, _logger, specProvider.ChainId, _validatorRegistryMessageVersion);
         if (!validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
             if (_logger.IsError) _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");

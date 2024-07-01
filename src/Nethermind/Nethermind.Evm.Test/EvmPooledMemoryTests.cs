@@ -158,14 +158,17 @@ namespace Nethermind.Evm.Test
                     new MemDb(),
                     LimboLogs.Instance);
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
+            CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
                 new TestBlockhashProvider(specProvider),
                     specProvider,
+                    codeInfoRepository,
                     LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new TransactionProcessor(
                     specProvider,
                     stateProvider,
                     virtualMachine,
+                    codeInfoRepository,
                     LimboLogs.Instance);
 
             stateProvider.CreateAccount(to, 123);

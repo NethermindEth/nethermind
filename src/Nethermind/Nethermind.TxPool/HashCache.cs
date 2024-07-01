@@ -23,13 +23,11 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
 
-        private readonly LruKeyCacheLowObject<ValueHash256> _longTermCache = new(
-            MemoryAllowance.TxHashCacheSize,
-            "long term hash cache");
+        private readonly ClockKeyCache<ValueHash256> _longTermCache = new(
+            MemoryAllowance.TxHashCacheSize);
 
-        private readonly LruKeyCacheLowObject<ValueHash256> _currentBlockCache = new(
-            SafeCapacity,
-            "current block hash cache");
+        private readonly ClockKeyCache<ValueHash256> _currentBlockCache = new(
+            SafeCapacity);
 
         public bool Get(Hash256 hash)
         {

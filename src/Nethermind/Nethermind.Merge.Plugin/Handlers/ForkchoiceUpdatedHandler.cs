@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -22,9 +21,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -155,6 +152,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (!blockInfo.WasProcessed)
         {
+            if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+            {
+                if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            }
+
             BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
             if (blockParent is null)
             {
@@ -186,7 +189,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
-                if (_logger.IsInfo) _logger.Info($"Syncing beacon headers, Request: {requestStr}");
+                // Debug as already output in Received ForkChoice
+                if (_logger.IsDebug) _logger.Debug($"Syncing beacon headers, Request: {requestStr}");
             }
             else
             {
