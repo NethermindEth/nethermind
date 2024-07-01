@@ -20,8 +20,6 @@ using Nethermind.Blockchain;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
-using LoadedTransactions = ShutterTxLoader.LoadedTransactions;
-
 public class ShutterTxSource(
     ILogFinder logFinder,
     ReadOnlyTxProcessingEnvFactory envFactory,
@@ -34,7 +32,7 @@ public class ShutterTxSource(
     ILogManager logManager)
     : ITxSource
 {
-    private LoadedTransactions _loadedTransactions;
+    private ShutterTransactions _shutterTransactions;
     private bool _validatorsRegistered;
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ShutterTxLoader _txLoader = new(logFinder, shutterConfig, specProvider, ethereumEcdsa, readOnlyBlockTree, logManager);
@@ -57,23 +55,23 @@ public class ShutterTxSource(
         ulong nextSlot = GetNextSlot();
 
         // atomic fetch
-        LoadedTransactions loadedTransactions = _loadedTransactions;
-        if (loadedTransactions.Slot == nextSlot)
+        ShutterTransactions shutterTransactions = _shutterTransactions;
+        if (shutterTransactions.Slot == nextSlot)
         {
-            return loadedTransactions.Transactions;
+            return shutterTransactions.Transactions;
         }
 
         if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions.");
-        if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {loadedTransactions.Slot}");
+        if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {shutterTransactions.Slot}");
         return [];
     }
 
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        _loadedTransactions = _txLoader.LoadTransactions(eon, txPointer, slot, keys);
+        _shutterTransactions = _txLoader.LoadTransactions(eon, txPointer, slot, keys);
     }
 
-    public ulong GetLoadedTransactionsSlot() => _loadedTransactions.Slot;
+    public ulong GetLoadedTransactionsSlot() => _shutterTransactions.Slot;
 
     private ulong GetNextSlot()
     {

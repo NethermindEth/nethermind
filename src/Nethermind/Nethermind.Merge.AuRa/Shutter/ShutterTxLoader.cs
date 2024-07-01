@@ -40,40 +40,29 @@ public class ShutterTxLoader(
     private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
 
-    public LoadedTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
+    public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        Block head = readOnlyBlockTree.Head!;
+        Block? head = readOnlyBlockTree.Head;
 
-        List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head.Number);
+        List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0);
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
-        if (_logger.IsDebug)
-        {
-            StringBuilder msg = new("Decrypted Shutter transactions:");
-            transactions.ForEach(tx => msg.Append("\n" + tx.ToShortString()));
-            _logger.Debug(msg.ToString());
-        }
+        if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
         // question for reviewers: what is correct thing to do here if head is null?
         IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
         Transaction[] filtered = FilterTransactions(transactions, releaseSpec).ToArray();
 
-        LoadedTransactions loadedTransactions = new()
+        ShutterTransactions shutterTransactions = new()
         {
             Transactions = filtered,
             Slot = slot
         };
 
-        if (_logger.IsDebug)
-        {
-            StringBuilder msg = new("Filtered Shutter transactions:");
-            loadedTransactions.Transactions.ForEach(tx => msg.Append("\n" + tx.ToShortString()));
-            _logger.Debug(msg.ToString());
-        }
-
-        return loadedTransactions;
+        if (_logger.IsDebug) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
+        return shutterTransactions;
     }
 
     internal IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, IReleaseSpec releaseSpec)
@@ -84,12 +73,8 @@ public class ShutterTxLoader(
 
             if (_logger.IsDebug)
             {
-                if (!wellFormed)
-                {
-                    string msgEnd = (error is null) ? "." : ": " + error;
-                    _logger.Debug($"Decrypted Shutter transactions was not well-formed{msgEnd}");
-                }
-                if (tx.Type == TxType.Blob) _logger.Debug($"Decrypted Shutter transaction was blob, cannot include.");
+                if (!wellFormed) _logger.Debug($"Decrypted Shutter transactions was not well-formed{(error is null ? "." : ": " + error)}");
+                if (tx.Type == TxType.Blob) _logger.Debug("Decrypted Shutter transaction was blob, cannot include.");
             }
 
             if (wellFormed && tx.Type != TxType.Blob)
@@ -202,12 +187,6 @@ public class ShutterTxLoader(
         }
 
         return txs;
-    }
-
-    public struct LoadedTransactions
-    {
-        public Transaction[] Transactions { get; init; }
-        public ulong Slot { get; init; }
     }
 
     internal struct SequencedTransaction
