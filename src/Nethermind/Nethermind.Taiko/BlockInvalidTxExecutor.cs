@@ -10,7 +10,7 @@ using Nethermind.State;
 
 namespace Nethermind.Taiko;
 
-public class BlockInvalidTxExecutor(IWorldState worldState, ITransactionProcessorAdapter txProcessor) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly IWorldState _worldState = worldState;
     private readonly ITransactionProcessorAdapter _txProcessor = txProcessor;

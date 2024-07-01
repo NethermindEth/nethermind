@@ -66,7 +66,7 @@ namespace Nethermind.Init.Steps
         {
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
-            setApi.TxValidator = new TxValidator(_api.SpecProvider!.ChainId);
+            setApi.TxValidator = CreateTxValidator(_api.SpecProvider!.ChainId);
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
@@ -143,6 +143,11 @@ namespace Nethermind.Init.Steps
             _api.DisposeStack.Push(backgroundTaskScheduler);
 
             return Task.CompletedTask;
+        }
+
+        protected virtual ITxValidator? CreateTxValidator(ulong v)
+        {
+            return new TxValidator(_api.SpecProvider!.ChainId);
         }
 
         protected virtual IBlockValidator CreateBlockValidator()
