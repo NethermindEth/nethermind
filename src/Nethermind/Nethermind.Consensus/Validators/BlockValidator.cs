@@ -284,7 +284,7 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
+    protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
 
