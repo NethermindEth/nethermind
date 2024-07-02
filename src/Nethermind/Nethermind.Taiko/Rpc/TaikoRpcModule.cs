@@ -141,6 +141,8 @@ public class TaikoRpcModule(
                     }
                 }
 
+                lastCompressed = compressed;
+                gasUsed += (ulong)nextTx.GasLimit;
                 source.First().Value.Dequeue();
             }
 
@@ -171,8 +173,9 @@ public class TaikoRpcModule(
         var rlp = Rlp.Encode(txRlps).Bytes;
 
         using var stream = new MemoryStream();
-        using var enc = new ZLibStream(stream, CompressionLevel.Optimal);
+        using var enc = new ZLibStream(stream, CompressionMode.Compress, false);
         enc.Write(rlp);
+        enc.Close();
         return stream.ToArray();
     }
 }
