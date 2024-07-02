@@ -528,11 +528,6 @@ public class DiscoveryApp : IDiscoveryApp
         NodeAdded?.Invoke(this, e);
     }
 
-    public List<Node> LoadInitialList()
-    {
-        return new List<Node>();
-    }
-
     public event EventHandler<NodeEventArgs>? NodeAdded;
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
