@@ -142,7 +142,7 @@ namespace Nethermind.Consensus.Processing
 
             public IBlockProcessor.IBlockTransactionsExecutor WithNewStateProvider(IWorldState worldState)
             {
-                return new BlockProductionTransactionsExecutor(_transactionProcessor, worldState,
+                return new BlockProductionTransactionsExecutor(_transactionProcessor.WithNewStateProvider(worldState), worldState,
                     _blockProductionTransactionPicker, _logManager);
             }
 
