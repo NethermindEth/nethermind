@@ -38,18 +38,18 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void Or(this Span<byte> thisSpam, Span<byte> valueSpam)
+        public static void Or(this Span<byte> thisSpan, Span<byte> valueSpan)
         {
-            var length = thisSpam.Length;
-            if (length != valueSpam.Length)
+            var length = thisSpan.Length;
+            if (length != valueSpan.Length)
             {
                 throw new ArgumentException("Both byte spans has to be same length.");
             }
 
             int i = 0;
 
-            fixed (byte* thisPtr = thisSpam)
-            fixed (byte* valuePtr = valueSpam)
+            fixed (byte* thisPtr = thisSpan)
+            fixed (byte* valuePtr = valueSpan)
             {
                 if (Avx2.IsSupported)
                 {
@@ -73,7 +73,47 @@ namespace Nethermind.Core.Extensions
 
             for (; i < length; i++)
             {
-                thisSpam[i] |= valueSpam[i];
+                thisSpan[i] |= valueSpan[i];
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public static void Xor(this Span<byte> thisSpan, Span<byte> valueSpan)
+        {
+            var length = thisSpan.Length;
+            if (length != valueSpan.Length)
+            {
+                throw new ArgumentException("Both byte spans has to be same length.");
+            }
+
+            int i = 0;
+
+            fixed (byte* thisPtr = thisSpan)
+            fixed (byte* valuePtr = valueSpan)
+            {
+                if (Avx2.IsSupported)
+                {
+                    for (; i < length - (Vector256<byte>.Count - 1); i += Vector256<byte>.Count)
+                    {
+                        Vector256<byte> b1 = Avx2.LoadVector256(thisPtr + i);
+                        Vector256<byte> b2 = Avx2.LoadVector256(valuePtr + i);
+                        Avx2.Store(thisPtr + i, Avx2.Xor(b1, b2));
+                    }
+                }
+                else if (Sse2.IsSupported)
+                {
+                    for (; i < length - (Vector128<byte>.Count - 1); i += Vector128<byte>.Count)
+                    {
+                        Vector128<byte> b1 = Sse2.LoadVector128(thisPtr + i);
+                        Vector128<byte> b2 = Sse2.LoadVector128(valuePtr + i);
+                        Sse2.Store(thisPtr + i, Sse2.Xor(b1, b2));
+                    }
+                }
+            }
+
+            for (; i < length; i++)
+            {
+                thisSpan[i] ^= valueSpan[i];
             }
         }
 
