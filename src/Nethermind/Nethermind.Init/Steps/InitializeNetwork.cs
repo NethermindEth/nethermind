@@ -555,7 +555,9 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
         }
 
-        CompositeNodeSource nodeSources = _api.DiscoveryV5App is null ? new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp) : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp, _api.DiscoveryV5App);
+        CompositeNodeSource nodeSources = _api.DiscoveryV5App is null 
+          ? new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp) 
+          : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp, _api.DiscoveryV5App);
         _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
