@@ -26,10 +26,14 @@ public class TaikoBlockValidator(
 
     private static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
-    private readonly Address TaikoL2Address = new(specProvider.ChainId.ToString().TrimStart('0') + TaikoL2AddressSuffix.PadLeft(40, '0'));
+    private readonly Address TaikoL2Address = new(
+        specProvider.ChainId.ToString().TrimStart('0')
+        .PadRight(40 - TaikoL2AddressSuffix.Length, '0') +
+        TaikoL2AddressSuffix);
     private const string TaikoL2AddressSuffix = "1001";
 
     private const long AnchorGasLimit = 250_000;
+
 
     protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
     {
@@ -40,6 +44,12 @@ public class TaikoBlockValidator(
 
     protected override bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
+        if (block.IsGenesis)
+        {
+            errorMessage = null;
+            return true;
+        }
+
         if (block.Transactions.Length == 0)
         {
             errorMessage = "Missing required Anchor Transaction.";

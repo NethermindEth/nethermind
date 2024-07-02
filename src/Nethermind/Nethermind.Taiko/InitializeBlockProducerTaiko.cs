@@ -10,7 +10,7 @@ using Nethermind.Init.Steps;
 
 namespace Nethermind.Taiko;
 
-public class InitializeBlockProducerOptimism(TaikoNethermindApi api) : InitializeBlockProducer(api)
+public class InitializeBlockProducerTaiko(TaikoNethermindApi api) : InitializeBlockProducer(api)
 {
     private readonly TaikoNethermindApi _api = api;
 

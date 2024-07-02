@@ -21,6 +21,9 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
     {
         if (block.Transactions.Length == 0)
         {
+            if (block.IsGenesis)
+                return [];
+
             throw new ArgumentException("Block must contain at least the anchor transaction");
         }
 

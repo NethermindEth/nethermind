@@ -26,7 +26,7 @@ public class BlockProductionPolicy : IBlockProductionPolicy
 
 public class NeverStartBlockProductionPolicy : IBlockProductionPolicy
 {
-    public bool ShouldStartBlockProduction() => true;
+    public bool ShouldStartBlockProduction() => false;
 
     public static NeverStartBlockProductionPolicy Instance =>
         LazyInitializer.EnsureInitialized(ref _instance, () => new());
