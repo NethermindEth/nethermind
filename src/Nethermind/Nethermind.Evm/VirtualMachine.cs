@@ -2723,9 +2723,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
-        // 10. Perform the call with the available gas and configuration.
-        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
         if (typeof(TLogger) == typeof(IsTracing))
         {
             _logger.Trace($"caller {caller}");
@@ -2737,14 +2734,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ICodeInfo targetCodeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, targetAddress, spec);
 
         if (instruction is Instruction.EXTDELEGATECALL
-                            && targetCodeInfo is not EofCodeInfo)
+            && targetCodeInfo is not EofCodeInfo)
         {
-            // TODO: Don't see this condition in EIP-7069
+            // https://github.com/ipsilon/eof/blob/main/spec/eof.md#new-behavior
+            // EXTDELEGATECALL to a non-EOF contract (legacy contract, EOA, empty account) is disallowed,
+            // and it returns 1 (same as when the callee frame reverts) to signal failure.
+            // Only initial gas cost of EXTDELEGATECALL is consumed (similarly to the call depth check)
+            // and the target address still becomes warm.
             _returnDataBuffer = Array.Empty<byte>();
-            // 0 is success code should it be a failure code 2?
-            stack.PushZero();
+            stack.PushOne();
             return EvmExceptionType.None;
         }
+
+        // 10. Perform the call with the available gas and configuration.
+        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
