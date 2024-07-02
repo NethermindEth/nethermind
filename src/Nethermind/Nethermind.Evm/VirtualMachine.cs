@@ -2268,9 +2268,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.EXTDELEGATECALL:
                 case Instruction.EXTSTATICCALL:
                     {
-                        if (!spec.IsEofEnabled)
-                            goto InvalidInstruction;
-
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         exceptionType = InstructionEofCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
@@ -2650,10 +2647,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingRefunds : struct, IIsTracing
     {
         returnData = null;
-        ref readonly ExecutionEnvironment env = ref vmState.Env;
 
-        if (instruction == Instruction.EXTDELEGATECALL && !spec.DelegateCallEnabled ||
-            instruction == Instruction.EXTSTATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
+        if (!spec.IsEofEnabled ||
+            (instruction == Instruction.EXTDELEGATECALL && !spec.DelegateCallEnabled) ||
+            (instruction == Instruction.EXTSTATICCALL && !spec.StaticCallEnabled))
+            return EvmExceptionType.BadInstruction;
+
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
 
         stack.PopWord256(out Span<byte> targetBytes);
         stack.PopUInt256(out UInt256 dataOffset);
