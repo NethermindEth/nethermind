@@ -4,11 +4,13 @@
 using System;
 using System.Threading;
 
+using System.Runtime.CompilerServices;
+using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo : IThreadPoolWorkItem
+    public class CodeInfo : ICodeInfo, IThreadPoolWorkItem
     {
         public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
@@ -54,6 +56,16 @@ namespace Nethermind.Evm.CodeAnalysis
             {
                 ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
             }
+        }
+
+        public SectionHeader CodeSectionOffset(int idx)
+        {
+            throw new NotImplementedException();
+        }
+
+        public SectionHeader? ContainerSectionOffset(int idx)
+        {
+            throw new NotImplementedException();
         }
     }
 }

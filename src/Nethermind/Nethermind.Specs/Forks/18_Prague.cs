@@ -15,6 +15,7 @@ public class Prague : Cancun
     {
         Name = "Prague";
         IsEip2537Enabled = true;
+        IsEofEnabled = true;
         IsEip2935Enabled = true;
         IsRip7212Enabled = true;
         Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;

@@ -320,6 +320,18 @@ public ref struct EvmStack<TTracing>
         return new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
     }
 
+    public bool PopAddress(out Address address)
+    {
+        if (Head-- == 0)
+        {
+            address = null;
+            return false;
+        }
+
+        address = new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+        return true;
+    }
+
     public ref byte PopBytesByRef()
     {
         if (Head-- == 0)
@@ -338,6 +350,18 @@ public ref struct EvmStack<TTracing>
         }
 
         return _bytes.Slice(Head * WordSize, WordSize);
+    }
+
+    public bool PopWord256(out Span<byte> word)
+    {
+        if (Head-- == 0)
+        {
+            word = default;
+            return false;
+        }
+
+        word = _bytes.Slice(Head * WordSize, WordSize);
+        return true;
     }
 
     public byte PopByte()
@@ -420,6 +444,27 @@ public ref struct EvmStack<TTracing>
         if (typeof(TTracing) == typeof(IsTracing))
         {
             Trace(depth);
+        }
+
+        return true;
+    }
+
+    public readonly bool Exchange(int n, int m)
+    {
+        if (!EnsureDepth(n + m + 1)) return false;
+
+        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+
+        ref byte bottom = ref Unsafe.Add(ref bytes, (Head - n - m - 1) * WordSize);
+        ref byte top = ref Unsafe.Add(ref bytes, (Head - n - 2) * WordSize);
+
+        Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
+        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
+        Unsafe.WriteUnaligned(ref top, buffer);
+
+        if (typeof(TTracing) == typeof(IsTracing))
+        {
+            Trace(n + m + 1);
         }
 
         return true;

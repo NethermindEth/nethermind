@@ -14,14 +14,14 @@ namespace Nethermind.Facade;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : ICodeInfoRepository
 {
-    private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
+    private readonly Dictionary<Address, ICodeInfo> _codeOverwrites = new();
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
-        _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
+    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
+        _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result)
             ? result
             : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
 
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) => codeInfoRepository.GetOrAdd(codeHash, initCode);
+    public ICodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode, IReleaseSpec spec) => codeInfoRepository.GetOrAdd(codeHash, initCode, spec);
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(state, code, codeOwner, spec);
@@ -31,7 +31,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         IWorldState worldState,
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value,
+        ICodeInfo value,
         Address? redirectAddress = null)
     {
         if (redirectAddress is not null)
