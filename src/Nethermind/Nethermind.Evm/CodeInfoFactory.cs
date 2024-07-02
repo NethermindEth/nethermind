@@ -21,6 +21,7 @@ public static class CodeInfoFactory
             }
             return false;
         }
+        (codeinfo as CodeInfo).AnalyseInBackgroundIfRequired();
         return true;
     }
 

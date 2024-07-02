@@ -127,8 +127,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             }
 
             CodeInfoFactory.CreateCodeInfo(code, vmSpec, out cachedCodeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
-            if(cachedCodeInfo is CodeInfo eof0CodeInfo)
-                eof0CodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -163,9 +161,6 @@ public class CodeInfoRepository : ICodeInfoRepository
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         CodeInfoFactory.CreateCodeInfo(code, spec, out ICodeInfo codeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
-        if(codeInfo is CodeInfo eof0CodeInfo)
-                eof0CodeInfo.AnalyseInBackgroundIfRequired();
-
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);

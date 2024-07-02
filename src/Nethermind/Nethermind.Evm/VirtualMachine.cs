@@ -404,21 +404,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             int containerIndex = callResult.Output.ContainerIndex.Value;
                             ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
                             ReadOnlySpan<byte> container = previousState.Env.CodeInfo.ContainerSection(containerIndex).Span;
-                            bool isEof_invalidated = !EvmObjectFormat.TryExtractHeader(container, out EofHeader? header) || header?.DataSection.Size != auxExtraData.Length;
                             byte[] bytecodeResultArray = null;
+                            Span<byte> bytecodeResult = new byte[container.Length + auxExtraData.Length];
 
-                            if (!isEof_invalidated)
-                            {
-                                Span<byte> bytecodeResult = new byte[container.Length + auxExtraData.Length];
+                            // copy old container
+                            container.CopyTo(bytecodeResult);
+                            // copy aux data to dataSection
+                            auxExtraData.CopyTo(bytecodeResult[container.Length..]);
+                            bytecodeResultArray = bytecodeResult.ToArray();
 
-                                // copy old container
-                                container.CopyTo(bytecodeResult);
-                                // copy aux data to dataSection
-                                auxExtraData.CopyTo(bytecodeResult[container.Length..]);
-                                bytecodeResultArray = bytecodeResult.ToArray();
-                            }
-
-                            bool invalidCode = !isEof_invalidated && !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.ValidateFullBody, out _)
+                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.ValidateFullBody, out _)
                                 && bytecodeResultArray.Length < spec.MaxCodeSize;
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray?.Length ?? 0, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
