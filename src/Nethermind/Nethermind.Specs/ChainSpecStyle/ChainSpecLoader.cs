@@ -347,6 +347,10 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
             };
         }
+        else if (chainSpecJson.Engine?.Taiko is not null)
+        {
+            chainSpec.SealEngineType = SealEngineType.Taiko;
+        }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
             chainSpec.SealEngineType = SealEngineType.NethDev;
