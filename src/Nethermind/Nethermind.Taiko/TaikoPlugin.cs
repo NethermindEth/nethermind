@@ -117,7 +117,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.TransactionProcessor);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
-        ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
+        // ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
 
