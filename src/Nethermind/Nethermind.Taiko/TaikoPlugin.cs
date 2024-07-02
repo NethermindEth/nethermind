@@ -326,7 +326,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     }
 
     // IInitializationPlugin
-    public bool ShouldRunSteps(INethermindApi api) => _taikoConfig?.Enabled == true && api.ChainSpec.SealEngineType == SealEngineType;
+    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
     // IConsensusPlugin
 
