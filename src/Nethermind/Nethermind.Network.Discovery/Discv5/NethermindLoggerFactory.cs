@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Logging;
 using Nethermind.Logging;
+using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
 
@@ -21,33 +22,49 @@ internal class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLeve
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
-        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public bool IsEnabled(MsLogLevel logLevel)
+        {
+            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
+            {
+                logLevel = MsLogLevel.Debug;
+            }
 
-        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, EventId eventId,
+            return logLevel switch
+            {
+                MsLogLevel.Critical or MsLogLevel.Error => logger.IsError,
+                MsLogLevel.Warning => logger.IsWarn,
+                MsLogLevel.Information => logger.IsInfo,
+                MsLogLevel.Debug => logger.IsDebug,
+                MsLogLevel.Trace => logger.IsTrace,
+                _ => false,
+            };
+        }
+
+        public void Log<TState>(MsLogLevel logLevel, EventId eventId,
                                 TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (lowerLogLevel && logLevel > Microsoft.Extensions.Logging.LogLevel.Debug)
+            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
             {
-                logLevel = Microsoft.Extensions.Logging.LogLevel.Debug;
+                logLevel = MsLogLevel.Debug;
             }
 
             switch (logLevel)
             {
-                case Microsoft.Extensions.Logging.LogLevel.Critical:
-                case Microsoft.Extensions.Logging.LogLevel.Error:
-                    if (logger.IsError) logger.Error(formatter(state, exception));
+                case MsLogLevel.Critical:
+                case MsLogLevel.Error:
+                    logger.Error(formatter(state, exception));
                     break;
-                case Microsoft.Extensions.Logging.LogLevel.Warning:
-                    if (logger.IsWarn) logger.Warn(formatter(state, exception));
+                case MsLogLevel.Warning:
+                    logger.Warn(formatter(state, exception));
                     break;
-                case Microsoft.Extensions.Logging.LogLevel.Information:
-                    if (logger.IsInfo) logger.Info(formatter(state, exception));
+                case MsLogLevel.Information:
+                    logger.Info(formatter(state, exception));
                     break;
-                case Microsoft.Extensions.Logging.LogLevel.Debug:
-                    if (logger.IsDebug) logger.Debug(formatter(state, exception));
+                case MsLogLevel.Debug:
+                    logger.Debug(formatter(state, exception));
                     break;
-                case Microsoft.Extensions.Logging.LogLevel.Trace:
-                    if (logger.IsTrace) logger.Trace(formatter(state, exception));
+                case MsLogLevel.Trace:
+                    logger.Trace(formatter(state, exception));
                     break;
             }
         }
