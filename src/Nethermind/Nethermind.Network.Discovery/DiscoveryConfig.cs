@@ -42,4 +42,6 @@ public class DiscoveryConfig : IDiscoveryConfig
     public int MaxOutgoingMessagePerSecond { get; set; } = 100;
 
     public string Bootnodes { get; set; } = string.Empty;
+
+    public bool Discv5Enabled { get; set; } = false;
 }

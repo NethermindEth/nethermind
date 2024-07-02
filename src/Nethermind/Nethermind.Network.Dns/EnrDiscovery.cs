@@ -67,8 +67,6 @@ public class EnrDiscovery : INodeSource
             : null;
     }
 
-    public List<Node> LoadInitialList() => new();
-
     public event EventHandler<NodeEventArgs>? NodeAdded;
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }

@@ -294,6 +294,8 @@ namespace Nethermind.Core.Crypto
         }
 
         public Hash256StructRef ToStructRef() => new(Bytes);
+
+        public bool IsZero => Extensions.Bytes.IsZero(Bytes);
     }
 
     public ref struct Hash256StructRef
