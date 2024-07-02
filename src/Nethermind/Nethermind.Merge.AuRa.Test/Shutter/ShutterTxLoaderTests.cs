@@ -34,14 +34,14 @@ class ShutterTxLoaderSourceTests
     [SetUp]
     public void Setup()
     {
-        ShutterConfig shutterConfig = new()
+        ShutterConfig cfg = new()
         {
             SequencerContractAddress = "0x0000000000000000000000000000000000000000"
         };
 
         _txLoader = new ShutterTxLoader(
             Substitute.For<ILogFinder>(),
-            shutterConfig,
+            cfg,
             ChiadoSpecProvider.Instance,
             new EthereumEcdsa(BlockchainIds.Chiado, LimboLogs.Instance),
             Substitute.For<IReadOnlyBlockTree>(),
