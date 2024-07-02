@@ -46,12 +46,6 @@
     "eip3651TransitionTimestamp": "0x0",
     "eip3855TransitionTimestamp": "0x0",
     "eip3860TransitionTimestamp": "0x0",
-    "eip1153TransitionTimestamp": "0x0",
-    "eip4788TransitionTimestamp": "0x0",
-    "eip4844TransitionTimestamp": "0x0",
-    "eip5656TransitionTimestamp": "0x0",
-    "eip6780TransitionTimestamp": "0x0",
-    "rip7212TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0"
   },
   "genesis": {
@@ -63,19 +57,19 @@
     },
     "number": "0x0",
     "difficulty": "0x0",
-    "author": "0x4200000000000000000000000000000000000011",
+    "author": "0x0000000000000000000000000000000000000000",
     "timestamp": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "extraData": "0x42",
-    "baseFeePerGas": "0x7",
-    "gasLimit": "0xe4e1c00"
+    "extraData": "0x",
+    "baseFeePerGas": "0x989680",
+    "gasLimit": "0xe4e1c0"
   },
   "nodes": [
     "enode://2f7ee605f84362671e7d7c6d47b69a3358b0d87e9ba4648befcae8b19453275ed19059db347c459384c1a3e5486419233c06bf6c4c6f489d81ace6f301a2a446@43.153.55.134:30303",
     "enode://c067356146268d2855ad356c1ce36ba9f78c1633a72f9b7f686679c2ffe04bab6d24e48ef6eefb0e01aa00dff5024f7f94bc583da90b6027f40be4129bbbc5fd@43.153.90.191:30303",
     "enode://acc2bdb6416feddff9734bee1e6de91e684e9df5aeb1d36698cc78b920600aed36a2871e4ad0cf4521afcdc2cde8e2cd410a57038767c356d4ce6c69b9107a5a@170.106.109.12:30303",
     "enode://eb5079aae185d5d8afa01bfd2d349da5b476609aced2b57c90142556cf0ee4a152bcdd724627a7de97adfc2a68af5742a8f58781366e6a857d4bde98de6fe986@34.66.210.65:30303",
-"enode://2294f526cbb7faa778192289c252307420532191438ce821d3c50232e019a797bda8c8f8541de0847e953bb03096123856935e32294de9814d15d120131499ba@34.72.186.213:30303"
+    "enode://2294f526cbb7faa778192289c252307420532191438ce821d3c50232e019a797bda8c8f8541de0847e953bb03096123856935e32294de9814d15d120131499ba@34.72.186.213:30303"
   ],
   "accounts": {
     "0xd26010814C620F80A70cbD58cE353A10fa05491a": {

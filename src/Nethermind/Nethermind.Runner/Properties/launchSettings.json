@@ -154,6 +154,20 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Taiko Hekla": {
+      "commandName": "Project",
+      "commandLineArgs": "-c taiko-hekla -dd .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Taiko Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c taiko-mainnet -dd .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Volta": {
       "commandName": "Project",
       "commandLineArgs": "-c volta -dd .data --JsonRpc.Enabled true",

@@ -46,12 +46,6 @@
     "eip3651TransitionTimestamp": "0x0",
     "eip3855TransitionTimestamp": "0x0",
     "eip3860TransitionTimestamp": "0x0",
-    "eip1153TransitionTimestamp": "0x0",
-    "eip4788TransitionTimestamp": "0x0",
-    "eip4844TransitionTimestamp": "0x0",
-    "eip5656TransitionTimestamp": "0x0",
-    "eip6780TransitionTimestamp": "0x0",
-    "rip7212TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0"
   },
   "genesis": {
@@ -63,12 +57,12 @@
     },
     "number": "0x0",
     "difficulty": "0x0",
-    "author": "0x4200000000000000000000000000000000000011",
+    "author": "0x0000000000000000000000000000000000000000",
     "timestamp": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "extraData": "0x42",
-    "baseFeePerGas": "0x7",
-    "gasLimit": "0x1c9c380"
+    "extraData": "0x",
+    "baseFeePerGas": "0x989680",
+    "gasLimit": "0xe4e1c0"
   },
   "nodes": [
     "enode://7a8955b27eda2ddf361b59983fce9c558b18ad60d996ac106629f7f913247ef13bc842c7cf6ec6f87096a3ea8048b04873c40d3d873c0276d38e222bddd72e88@43.153.44.186:30303",
