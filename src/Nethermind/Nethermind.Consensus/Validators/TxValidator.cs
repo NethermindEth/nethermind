@@ -150,7 +150,7 @@ namespace Nethermind.Consensus.Validators
             return !spec.ValidateChainId;
         }
 
-        private static bool Validate4844Fields(Transaction transaction, ref string error)
+        private static bool Validate4844Fields(Transaction transaction, ref string? error)
         {
             // Execution-payload version verification
             if (!transaction.SupportsBlobs)

@@ -12,7 +12,6 @@ using System.Runtime.Intrinsics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Evm;
 

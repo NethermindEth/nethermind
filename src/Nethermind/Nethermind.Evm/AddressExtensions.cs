@@ -30,13 +30,12 @@ namespace Nethermind.Evm
             // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code) ++ sha3(aux_data))
             Span<byte> bytes = new byte[1 + Address.Size + Keccak.Size + salt.Length];
             bytes[0] = 0xff;
-            deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
+            deployingAddress.Bytes.CopyTo(bytes.Slice(1, Address.Size));
             salt.CopyTo(bytes.Slice(1 + Address.Size, salt.Length));
             ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(1 + Address.Size + salt.Length, Keccak.Size));
 
             ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes);
-            Span<byte> addressBytes = contractAddressKeccak.BytesAsSpan[12..];
-            return new Address(addressBytes.ToArray());
+            return new Address(in contractAddressKeccak);
         }
 
         // See https://eips.ethereum.org/EIPS/eip-7610
