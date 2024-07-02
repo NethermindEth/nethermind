@@ -26,10 +26,11 @@ public static class Progress
 
     public static string GetMeter(float value, int max)
     {
-        float progressF = value / max * WidthBar;
+        float progressF = Math.Clamp(value / max, 0, 1) * WidthBar;
         int progress = (int)Math.Floor(progressF);
-        int progressChar = (int)((progressF - progress) * _progressChars.Length);
+        int progressChar = Math.Clamp((int)((progressF - progress) * _progressChars.Length), 0, _progressChars.Length - 1);
+        int empty = Math.Clamp(WidthBar - progress - 1, 0, WidthBar);
 
-        return string.Concat(_fullChunks[progress], _progressChars[progressChar], _emptyChunks[WidthBar - progress - 1]);
+        return string.Concat(_fullChunks[progress], _progressChars[progressChar], _emptyChunks[empty]);
     }
 }
