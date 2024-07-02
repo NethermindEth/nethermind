@@ -10,16 +10,10 @@ using Nethermind.State.Snap;
 namespace Nethermind.Synchronization.VerkleSync;
 
 
-public class PivotChangedEventArgs : EventArgs
+public class PivotChangedEventArgs(long fromBlock, long toBlock) : EventArgs
 {
-    public long FromBlock { get; }
-    public long ToBlock { get; }
-
-    public PivotChangedEventArgs(long fromBlock, long toBlock)
-    {
-        FromBlock = fromBlock;
-        ToBlock = toBlock;
-    }
+    public long FromBlock { get; } = fromBlock;
+    public long ToBlock { get; } = toBlock;
 }
 
 public class Pivot
@@ -34,7 +28,7 @@ public class Pivot
     {
         get
         {
-            return (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
+            return (_blockTree.BestProcessedStatelessHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
         }
     }
 
@@ -46,9 +40,9 @@ public class Pivot
 
     public BlockHeader GetPivotHeader()
     {
-        if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 35)
+        if (_bestHeader is null || _blockTree.BestProcessedStatelessHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 35)
         {
-            BlockHeader? newBestSuggestedHeader = _blockTree.BestSuggestedHeader;
+            BlockHeader? newBestSuggestedHeader = _blockTree.BestProcessedStatelessHeader;
             LogPivotChanged($"distance from HEAD:{Diff}");
             PivotChanged?.Invoke(this, new PivotChangedEventArgs(_bestHeader.Number, newBestSuggestedHeader.Number));
             _bestHeader = newBestSuggestedHeader;
@@ -68,17 +62,17 @@ public class Pivot
 
     private void LogPivotChanged(string msg)
     {
-        _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+        _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestProcessedStatelessHeader?.Number}");
     }
 
     public void UpdateHeaderForcefully()
     {
-        if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
+        if (_blockTree.BestProcessedStatelessHeader?.Number > _bestHeader.Number)
         {
-            BlockHeader? newBestSuggestedHeader = _blockTree.BestSuggestedHeader;
+            BlockHeader? newBestSuggestedHeader = _blockTree.BestProcessedStatelessHeader;
             LogPivotChanged("too many empty responses");
             PivotChanged?.Invoke(this, new PivotChangedEventArgs(_bestHeader.Number, newBestSuggestedHeader.Number));
-            _bestHeader = _blockTree.BestSuggestedHeader;
+            _bestHeader = newBestSuggestedHeader;
         }
     }
 }
