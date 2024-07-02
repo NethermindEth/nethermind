@@ -14,6 +14,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Filters;
 using Nethermind.Db;
+using Nethermind.Blockchain.Filters.Topics;
 
 namespace Nethermind.Blockchain.Find
 {
@@ -181,11 +182,10 @@ namespace Nethermind.Blockchain.Find
 
                 var blocksAddressFiltered = AddressFilter.GetBlockNumbersFrom(_logIndexStorage);
                 var setA = blocksAddressFiltered.ToHashSet();
-                Console.WriteLine($"setA: {setA.Count}");
                 var blocksTopicFiltered = TopicsFilter.GetBlockNumbersFrom(_logIndexStorage);
                 var setB = blocksTopicFiltered.ToHashSet();
-                Console.WriteLine($"setA: {setA.Count}");
-                if (blocksTopicFiltered.First() == -1) {
+                if (blocksTopicFiltered == SequenceTopicsFilter.Any)
+                {
                     return setA;
                 }
 
