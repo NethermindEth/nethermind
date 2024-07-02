@@ -4,8 +4,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,8 +19,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.Intrinsics;
+using Nethermind.Evm.EOF;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -28,23 +31,7 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 
-using System.Collections.Frozen;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Reflection.PortableExecutable;
-using System.Security.Cryptography;
-using DotNetty.Common.Utilities;
-using System.Threading;
-
 using Int256;
-using Nethermind.Evm.EOF;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
-using Org.BouncyCastle.Asn1.X509;
-using SectionHeader = EOF.SectionHeader;
-
-using Nethermind.Core.Collections;
-using System.Diagnostics;
-using System.Runtime.Intrinsics.X86;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -2646,6 +2633,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
     {
+        const int MIN_RETAINED_GAS = 5000;
+
         returnData = null;
 
         if (!spec.IsEofEnabled ||
@@ -2655,6 +2644,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
+        // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
         stack.PopWord256(out Span<byte> targetBytes);
         stack.PopUInt256(out UInt256 dataOffset);
         stack.PopUInt256(out UInt256 dataLength);
@@ -2668,57 +2658,73 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             case Instruction.EXTDELEGATECALL:
                 callValue = env.Value;
                 break;
-            default:
+            default: // Instruction.EXTCALL
                 stack.PopUInt256(out callValue);
                 break;
         }
 
         UInt256 transferValue = instruction == Instruction.EXTDELEGATECALL ? UInt256.Zero : callValue;
+        // 3. If value is non-zero:
+        //  a: Halt with exceptional failure if the current frame is in static-mode.
         if (vmState.IsStatic && !transferValue.IsZero) return EvmExceptionType.StaticCallViolation;
+        //  b. Charge CALL_VALUE_COST gas.
+        if (!UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        UpdateGas(GasCostOf.CallValue, ref gasAvailable);
-
+        // 4. If target_address has any of the high 12 bytes set to a non-zero value
+        // (i.e. it does not contain a 20-byte address)
         if (!targetBytes[0..11].IsZero())
         {
+            //  then halt with an exceptional failure.
             return EvmExceptionType.AddressOutOfRange;
         }
 
         Address caller = instruction == Instruction.EXTDELEGATECALL ? env.Caller : env.ExecutingAccount;
         Address targetAddress = new Address(targetBytes[12..].ToArray());
 
+        // 5. Perform (and charge for) memory expansion using [input_offset, input_size].
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength)) return EvmExceptionType.OutOfGas;
+        // 1. Charge WARM_STORAGE_READ_COST (100) gas.
+        // 6. If target_address is not in the warm_account_list, charge COLD_ACCOUNT_ACCESS - WARM_STORAGE_READ_COST (2500) gas.
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, targetAddress, spec)) return EvmExceptionType.OutOfGas;
 
         if ((!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(targetAddress))
             || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(targetAddress)))
         {
-            UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+            // 7. If target_address is not in the state and the call configuration would result in account creation,
+            //    charge ACCOUNT_CREATION_COST (25000) gas. (The only such case in this EIP is if value is non-zero.)
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
         }
 
-        long callGas = gasAvailable - Math.Max(gasAvailable / 64, 5000);
-        if (callGas >= long.MaxValue) return EvmExceptionType.OutOfGas;
-        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        // 8. Calculate the gas available to callee as caller’s remaining gas reduced by max(floor(gas/64), MIN_RETAINED_GAS).
+        long callGas = gasAvailable - Math.Max(gasAvailable / 64, MIN_RETAINED_GAS);
 
-        if (callGas < GasCostOf.CallStipend || env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+        // 9. Fail with status code 1 returned on stack if any of the following is true (only gas charged until this point is consumed):
+        //  a: Gas available to callee at this point is less than MIN_CALLEE_GAS.
+        //  b: Balance of the current account is less than value.
+        //  c: Current call stack depth equals 1024.
+        if (callGas < GasCostOf.CallStipend ||
+            (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue) ||
+            env.CallDepth >= MaxCallDepth)
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushOne();
 
+            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                 ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
                 _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
+                _txTracer.ReportOperationRemainingGas(gasAvailable);
+                _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                _txTracer.ReportGasUpdateForVmTrace(callGas, gasAvailable);
             }
 
-            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
-            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(gasAvailable);
-            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
-
-            UpdateGasUp(callGas, ref gasAvailable);
-            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportGasUpdateForVmTrace(callGas, gasAvailable);
             return EvmExceptionType.None;
         }
+
+        // 10. Perform the call with the available gas and configuration.
+        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         if (typeof(TLogger) == typeof(IsTracing))
         {
@@ -2733,7 +2739,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (instruction is Instruction.EXTDELEGATECALL
                             && targetCodeInfo is not EofCodeInfo)
         {
+            // TODO: Don't see this condition in EIP-7069
             _returnDataBuffer = Array.Empty<byte>();
+            // 0 is success code should it be a failure code 2?
             stack.PushZero();
             return EvmExceptionType.None;
         }
@@ -2741,7 +2749,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
         Snapshot snapshot = _state.TakeSnapshot();
-        _state.SubtractFromBalance(caller, transferValue, spec);
+        if (!transferValue.IsZero) _state.SubtractFromBalance(caller, transferValue, spec);
 
         ExecutionEnvironment callEnv = new
         (
