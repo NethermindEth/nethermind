@@ -17,11 +17,15 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         private readonly TopicExpression[] _expressions;
 
+        public static IEnumerable<long> Any = [-1];
+
         public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
         {
             if (_expressions.Length > 0)
             {
                 var blocks = new HashSet<long>(_expressions[0].GetBlockNumbersFrom(logIndexStorage));
+
+                // TODO: get N enumerators for each filter
                 foreach (var expression in _expressions[1..])
                 {
                     var toAddBlocks = expression.GetBlockNumbersFrom(logIndexStorage);
@@ -33,8 +37,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 
                 return blocks;
             }
+
             // TODO: Handle the case when there is no filter for topics
-            return [-1];
+            return Any;
         }
 
         public SequenceTopicsFilter(params TopicExpression[] expressions)
