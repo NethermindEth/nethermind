@@ -22,8 +22,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Api;
-using System.Collections.Concurrent;
 using Nethermind.Network.Discovery.Discv5;
+using NBitcoin.Secp256k1;
 
 namespace Nethermind.Network.Discovery;
 
@@ -136,10 +136,10 @@ public class DiscoveryV5App : IDiscoveryApp
 
     private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
     {
-        static PublicKey GetPublicKeyFromEnr(IEnr entry)
+        static PublicKey? GetPublicKeyFromEnr(IEnr entry)
         {
             byte[] keyBytes = entry.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value;
-            return new PublicKey(keyBytes.Length == 33 ? NBitcoin.Secp256k1.Context.Instance.CreatePubKey(keyBytes).ToBytes(false) : keyBytes);
+            return Context.Instance.TryCreatePubKey(keyBytes, out _, out ECPubKey? key) ? new PublicKey(key.ToBytes(false)) : null;
         }
 
         node = null;
@@ -164,7 +164,13 @@ public class DiscoveryV5App : IDiscoveryApp
             return false;
         }
 
-        PublicKey key = GetPublicKeyFromEnr(enr);
+        PublicKey? key = GetPublicKeyFromEnr(enr);
+        if (key is null)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, unable to extract public key.");
+            return false;
+        }
+
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
         int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
 
@@ -172,22 +178,14 @@ public class DiscoveryV5App : IDiscoveryApp
         return true;
     }
 
-    public List<Node> LoadInitialList()
-    {
-        return [];
-    }
+    public List<Node> LoadInitialList() => [];
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
-    public void Initialize(PublicKey masterPublicKey)
-    {
-    }
+    public void Initialize(PublicKey masterPublicKey) { }
 
-    public void Start()
-    {
-        _ = DiscoverViaCustomRandomWalk();
-    }
+    public void Start() => _ = DiscoverViaCustomRandomWalk();
 
     private async Task DiscoverViaCustomRandomWalk()
     {
@@ -195,10 +193,12 @@ public class DiscoveryV5App : IDiscoveryApp
         {
             static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
             {
-                const int totalDistances = 3;
-                int[] distances = new int[totalDistances];
+                const int WiderDistanceRange = 3;
+
+                int[] distances = new int[WiderDistanceRange];
                 distances[0] = TableUtility.Log2Distance(srcNodeId, destNodeId);
-                for (int n = 1, i = 1; n < totalDistances; i++)
+
+                for (int n = 1, i = 1; n < WiderDistanceRange; i++)
                 {
                     if (distances[0] - i > 0)
                     {
@@ -213,7 +213,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 return distances;
             }
 
-            ConcurrentQueue<IEnr> nodesToCheck = new(getAllNodes);
+            Queue<IEnr> nodesToCheck = new(getAllNodes);
             HashSet<IEnr> checkedNodes = [];
 
             while (!token.IsCancellationRequested)
@@ -253,14 +253,17 @@ public class DiscoveryV5App : IDiscoveryApp
 
         if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
 
+        const int RandomNodesToLookupCount = 3;
+
         byte[] randomNodeId = new byte[32];
+
         while (!_appShutdownSource.IsCancellationRequested)
         {
             try
             {
                 await DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId, _appShutdownSource.Token);
 
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < RandomNodesToLookupCount; i++)
                 {
                     random.NextBytes(randomNodeId);
                     await DiscoverAsync(GetStartingNodes(), randomNodeId, _appShutdownSource.Token);
@@ -285,9 +288,10 @@ public class DiscoveryV5App : IDiscoveryApp
             return;
         }
 
-        List<EntrySecp256K1> activeNodes = _api.PeerManager.ActivePeers.Select(x => new EntrySecp256K1(NBitcoin.Secp256k1.Context.Instance.CreatePubKey(x.Node.Id.PrefixedBytes).ToBytes(false))).ToList();
+        HashSet<EntrySecp256K1> activeNodes = _api.PeerManager.ActivePeers.Select(x => new EntrySecp256K1(Context.Instance.CreatePubKey(x.Node.Id.PrefixedBytes).ToBytes(false)))
+                                                                          .ToHashSet(new EntrySecp256K1EqualityComparer());
 
-        IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes.Where(x => activeNodes.Any(n => n.Equals(x.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1))));
+        IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes.Where(x => activeNodes.Contains(x.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1)));
 
         if (activeNodeEnrs.Any())
         {
@@ -303,7 +307,20 @@ public class DiscoveryV5App : IDiscoveryApp
         _discoveryDb.Clear();
     }
 
-    public void AddNodeToDiscovery(Node node)
+    public void AddNodeToDiscovery(Node node) { }
+
+    class EntrySecp256K1EqualityComparer : IEqualityComparer<EntrySecp256K1>
     {
+        public bool Equals(EntrySecp256K1? x, EntrySecp256K1? y)
+        {
+            return !(x is null ^ y is null) && (x is null || x.Value.SequenceEqual(y!.Value));
+        }
+
+        public int GetHashCode([DisallowNull] EntrySecp256K1 entry)
+        {
+            var hash = new HashCode();
+            hash.AddBytes(entry.Value);
+            return hash.ToHashCode();
+        }
     }
 }
