@@ -59,8 +59,15 @@ namespace Nethermind.Blockchain
         public Block? Head { get; private set; }
 
         public BlockHeader? BestSuggestedHeader { get; private set; }
-
         public Block? BestSuggestedBody { get; private set; }
+
+        // for stateless chain
+        public BlockHeader? BestProcessedStatelessHeader { get; private set; }
+        public Block? BestProcessedStatelessBlock { get; private set; }
+
+        public BlockHeader? BestSuggestedStatelessHeader { get; private set; }
+        public Block? BestSuggestedStatelessBlock { get; private set; }
+
         public BlockHeader? LowestInsertedHeader { get; private set; }
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
@@ -1483,7 +1490,7 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
 
         public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
-        public event EventHandler<BlockEventArgs>? OnProcessStatelessBlock;
+        public event EventHandler<BlockEventArgs>? OnUpdateStatelessChain;
 
         public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
 
@@ -1493,12 +1500,14 @@ namespace Nethermind.Blockchain
 
         public void UpdateStatelessBlock(Block block)
         {
-            OnProcessStatelessBlock?.Invoke(this, new BlockEventArgs(block));
+            BestProcessedStatelessHeader = block.Header;
+            BestProcessedStatelessBlock = block;
+            OnUpdateStatelessChain?.Invoke(this, new BlockEventArgs(block));
         }
 
         /// <summary>
         /// Can delete a slice of the chain (usually invoked when the chain is corrupted in the DB).
-        /// This will only allow to delete a slice starting somewhere before the head of the chain
+        /// This will only allow deleting a slice starting somewhere before the head of the chain
         /// and ending somewhere after the head (in case there are some hanging levels later).
         /// </summary>
         /// <param name="startNumber">Start level of the slice to delete</param>

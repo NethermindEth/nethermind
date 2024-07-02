@@ -34,6 +34,7 @@ namespace Nethermind.Blockchain
         /// Best header that has been suggested for processing
         /// </summary>
         BlockHeader? BestSuggestedHeader { get; }
+        BlockHeader? BestProcessedStatelessHeader { get; }
 
         /// <summary>
         /// Best block that has been suggested for processing
@@ -178,7 +179,7 @@ namespace Nethermind.Blockchain
         /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
 
-        event EventHandler<BlockEventArgs> OnProcessStatelessBlock;
+        event EventHandler<BlockEventArgs> OnUpdateStatelessChain;
 
         public void UpdateStatelessBlock(Block block);
 

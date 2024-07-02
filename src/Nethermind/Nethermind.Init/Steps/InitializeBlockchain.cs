@@ -200,39 +200,21 @@ namespace Nethermind.Init.Steps
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            BlockProcessor processor;
-            if (initConfig.StatelessProcessingEnabled)
+            return new BlockProcessor(
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
+                _api.WorldState,
+                _api.ReceiptStorage,
+                _api.WitnessCollector,
+                _api.BlockTree,
+                _api.LogManager,
+                canProcessStatelessBlocks: initConfig.StatelessProcessingEnabled)
             {
-                processor = new StatelessBlockProcessor(
-                    _api.SpecProvider,
-                    _api.BlockValidator,
-                    _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                    new BlockProcessor.BlockStatelessValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
-                    _api.WorldState,
-                    _api.ReceiptStorage,
-                    _api.WitnessCollector,
-                    _api.BlockTree,
-                    _api.LogManager);
-            }
-            else
-            {
-                processor = new BlockProcessor(
-                    _api.SpecProvider,
-                    _api.BlockValidator,
-                    _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                    new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
-                    _api.WorldState,
-                    _api.ReceiptStorage,
-                    _api.WitnessCollector,
-                    _api.BlockTree,
-                    _api.LogManager)
-                {
-                    ShouldGenerateWitness = initConfig.GenerateVerkleProofsForBlock,
-                    ShouldVerifyIncomingWitness = initConfig.VerifyProofsInBlock
-                };
-            }
-
-            return processor;
+                ShouldGenerateWitness = initConfig.GenerateVerkleProofsForBlock,
+                ShouldVerifyIncomingWitness = initConfig.VerifyProofsInBlock
+            };
         }
 
         // TODO: remove from here - move to consensus?

@@ -117,6 +117,7 @@ namespace Nethermind.Blockchain.Test
                     }
                 }
 
+                public bool CanProcessStatelessBlock { get; } = false;
                 public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
                 public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;

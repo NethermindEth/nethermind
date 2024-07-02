@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -78,13 +79,15 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
 
     public void ActivateHealingCache()
     {
-        _blockTree.OnProcessStatelessBlock += OnNewBlock;
+        _blockTree.OnUpdateStatelessChain += OnNewBlock;
+        _pivot.PivotChanged += OnPivotChange;
     }
 
     public void DisableHealingCache()
     {
         _healingCache.Clear();
-        _blockTree.OnProcessStatelessBlock -= OnNewBlock;
+        _blockTree.OnUpdateStatelessChain -= OnNewBlock;
+        _pivot.PivotChanged -= OnPivotChange;
     }
 
     private readonly Dictionary<long, VerkleMemoryDb> _healingCache = new();
@@ -99,11 +102,13 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
     {
         var fromBlock = pivotChangedEventArgs.FromBlock;
         var toBlock = pivotChangedEventArgs.ToBlock;
-
-        var tree = new VerkleTree(_verkleStore, LimboLogs.Instance);
-        for (long i = fromBlock; i <= toBlock; i++)
+        // we start with fromBlock+1, because we already have the data corresponding to fromBlock
+        for (long i = fromBlock + 1; i <= toBlock; i++)
         {
-            tree.HealThyTree(i, _healingCache[i]);
+            var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(),  LimboLogs.Instance);
+            var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
+            localTree.HealThyTree(i, _healingCache[i]);
+            _verkleStore.InsertSyncBatch(i, localTree._treeCache);
         }
     }
 
@@ -134,7 +139,8 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
             // TODO: clean the cache, there can be a case when the verkle sync is stuck for some reason, we don't want
             // to keep growing the cache, we should define a value that should be the maximum size of the cache
         }
-        _healingCache.Add(block.Number, cache);
+        _healingCache.TryAdd(block.Number, cache);
+
         var elapsed = stopwatch.ElapsedMilliseconds;
         stopwatch.Stop();
         Console.WriteLine($"AddToHealingCache: Time:{elapsed} Block:{block.Number} LT:{tree._treeCache.LeafTable.Count} IT:{tree._treeCache.InternalTable.Count} CacheCount:{_healingCache.Count}");

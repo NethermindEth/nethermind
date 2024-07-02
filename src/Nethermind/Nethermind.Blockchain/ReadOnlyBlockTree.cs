@@ -31,6 +31,7 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
+        public BlockHeader BestProcessedStatelessHeader => _wrapped.BestProcessedStatelessHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
 
         public long? LowestInsertedBodyNumber
@@ -152,7 +153,7 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        public event EventHandler<BlockEventArgs>? OnProcessStatelessBlock
+        public event EventHandler<BlockEventArgs>? OnUpdateStatelessChain
         {
             add { }
             remove { }
