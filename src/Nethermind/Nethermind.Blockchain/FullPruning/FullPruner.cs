@@ -138,6 +138,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
             catch (Exception e)
             {
+                Console.Out.WriteLine($"Its {e}");
                 if (_logger.IsError) _logger.Error("full pruning failed. ", e);
             }
             finally

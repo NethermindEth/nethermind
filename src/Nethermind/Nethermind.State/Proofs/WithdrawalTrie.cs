@@ -17,7 +17,7 @@ public class WithdrawalTrie : PatriciaTrie<Withdrawal>
 
     /// <inheritdoc/>
     /// <param name="withdrawals">The withdrawals to build the trie of.</param>
-    public WithdrawalTrie(Withdrawal[] withdrawals, bool canBuildProof = false)
+    public WithdrawalTrie(Withdrawal[]? withdrawals, bool canBuildProof = false)
         : base(withdrawals, canBuildProof) => ArgumentNullException.ThrowIfNull(withdrawals);
 
     protected override void Initialize(Withdrawal[] withdrawals)

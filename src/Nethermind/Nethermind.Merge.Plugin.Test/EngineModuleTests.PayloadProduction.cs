@@ -343,8 +343,8 @@ public partial class EngineModuleTests
 
         using SemaphoreSlim blockImprovementLock = new(0);
 
-        MergeTestBlockchain blockchain = CreateBaseBlockchain(null, null, LimboLogs.Instance);
-        blockchain.InitialStateMutator = (state) =>
+        MergeTestBlockchain blockchain = CreateBaseBlockchain(logManager: LimboLogs.Instance);
+        blockchain.InitialStateMutator = state =>
         {
             state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
         };
@@ -472,7 +472,7 @@ public partial class EngineModuleTests
 
         // we build one more block on the same level
         Block block31B = chain.PostMergeBlockProducer!.PrepareEmptyBlock(block30.Header, payloadAttributes);
-        await rpc.engine_newPayloadV1(new ExecutionPayload(block31B));
+        await rpc.engine_newPayloadV1(ExecutionPayload.Create(block31B));
 
         // ...and we change the main chain, so main chain now is 30->31B, block improvement for block 32A is still in progress
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
@@ -585,7 +585,7 @@ public partial class EngineModuleTests
 
         PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
         Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
-        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(new ExecutionPayload(emptyBlock));
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(ExecutionPayload.Create(emptyBlock));
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 
@@ -608,7 +608,7 @@ public partial class EngineModuleTests
             Withdrawals = [TestItem.WithdrawalA_1Eth]
         };
         Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, payloadAttributes);
-        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(new ExecutionPayload(emptyBlock));
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(ExecutionPayload.Create(emptyBlock));
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 

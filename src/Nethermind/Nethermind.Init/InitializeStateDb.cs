@@ -86,6 +86,7 @@ public class InitializeStateDb : IStep
             syncConfig.DownloadBodiesInFastSync = true;
         }
 
+        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb;
         IKeyValueStoreWithBatching stateDb = getApi.DbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;

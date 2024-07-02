@@ -188,6 +188,7 @@ namespace Nethermind.Mev.Test
                     State,
                     ReceiptStorage,
                     new BlockhashStore(SpecProvider, State),
+                    TxProcessor,
                     LogManager);
 
                 _tracerFactory = new TracerFactory(

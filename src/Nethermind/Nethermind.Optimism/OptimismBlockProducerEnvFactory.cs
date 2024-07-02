@@ -79,6 +79,7 @@ public class OptimismBlockProducerEnvFactory(
             new BlockhashStore(specProvider, readOnlyTxProcessingEnv.WorldState),
             logManager,
             specHelper,
+            readOnlyTxProcessingEnv.TransactionProcessor,
             new Create2DeployerContractRewriter(specHelper, _specProvider, _blockTree),
             new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }

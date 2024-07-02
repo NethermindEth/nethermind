@@ -82,6 +82,7 @@ namespace Nethermind.Consensus.Ethash
                 scope.WorldState,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                getFromApi.TransactionProcessor,
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

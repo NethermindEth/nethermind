@@ -195,4 +195,10 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.ParentBeaconBlockRoot = parentBeaconBlockRoot;
         return this;
     }
+
+    public BlockHeaderBuilder WithRequestsRoot(Hash256? requestsRoot)
+    {
+        TestObjectInternal.RequestsRoot = requestsRoot;
+        return this;
+    }
 }

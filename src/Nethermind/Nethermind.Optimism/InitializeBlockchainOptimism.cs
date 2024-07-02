@@ -107,6 +107,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             new BlockhashStore(_api.SpecProvider, _api.WorldState),
             _api.LogManager,
             _api.SpecHelper,
+            _api.TransactionProcessor,
             contractRewriter,
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
             preWarmer: preWarmer);
