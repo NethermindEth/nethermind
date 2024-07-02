@@ -189,7 +189,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
-                if (_logger.IsInfo) _logger.Info($"Syncing beacon headers, Request: {requestStr}");
+                // Debug as already output in Received ForkChoice
+                if (_logger.IsDebug) _logger.Debug($"Syncing beacon headers, Request: {requestStr}");
             }
             else
             {
