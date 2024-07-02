@@ -129,15 +129,15 @@ public partial class VerkleTree
     {
         foreach (KeyValuePair<byte[], InternalNode> internalNode in cache.InternalTable)
         {
+            if(internalNode.Value is null) continue;
             SetInternalNode(internalNode.Key, internalNode.Value);
         }
 
         foreach (KeyValuePair<byte[], byte[]> leaf in cache.LeafTable)
         {
+            if(leaf.Value is null ) continue;
             SetLeafCache(leaf.Key, leaf.Value);
         }
-
-        CommitTree(blockNumber);
     }
 
     public VerkleMemoryDb GetStatelessStateDiffFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root, StemStateDiff[] stateDiff)
