@@ -397,10 +397,14 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         try
         {
             var timeoutTask = Task.Delay(_timeout);
-
-            AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
-                .AsTask().TimeoutOn(timeoutTask);
+            AddBlockResult addResult = AddBlockResult.UnknownParent;
+            bool processStateless = processingOptions.ContainsFlag(ProcessingOptions.StatelessProcessing);
+            if (!processStateless)
+            {
+                addResult = await _blockTree
+                    .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
+                    .AsTask().TimeoutOn(timeoutTask);
+            }
 
             result = addResult switch
             {
