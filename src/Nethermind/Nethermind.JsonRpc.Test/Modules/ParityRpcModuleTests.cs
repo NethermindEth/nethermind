@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             LimboLogs logger = LimboLogs.Instance;
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            _ethereumEcdsa = new(specProvider.ChainId, logger);
+            _ethereumEcdsa = new(specProvider.ChainId);
 
             Peer peerA = SetUpPeerA();      //standard case
             Peer peerB = SetUpPeerB();      //Session is null

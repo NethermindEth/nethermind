@@ -27,7 +27,7 @@ namespace Nethermind.Mev.Test
                     return tx;
                 }
 
-                EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet, LimboLogs.Instance);
+                EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
 
                 BundleTransaction tx = BuildTransaction(TestItem.PrivateKeyB);
                 BundleTransaction revertingTx = BuildTransaction(TestItem.PrivateKeyA, true);

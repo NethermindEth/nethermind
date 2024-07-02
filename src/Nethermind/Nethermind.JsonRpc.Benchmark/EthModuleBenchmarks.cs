@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Benchmark
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
                 stateProvider, NullReceiptStorage.Instance, new BlockhashStore(specProvider, stateProvider), LimboLogs.Instance);
 
-            EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,
                 blockProcessor,

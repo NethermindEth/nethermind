@@ -56,7 +56,7 @@ public class TxBroadcasterTests
     {
         _logManager = LimboLogs.Instance;
         _specProvider = MainnetSpecProvider.Instance;
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
         _blockTree = Substitute.For<IBlockTree>();
         _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
         _txPoolConfig = new TxPoolConfig();

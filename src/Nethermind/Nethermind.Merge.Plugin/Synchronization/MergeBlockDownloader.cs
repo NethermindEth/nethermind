@@ -65,7 +65,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
-            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
+            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider);
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _logger = logManager.GetClassLogger();
         }

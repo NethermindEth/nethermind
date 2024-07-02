@@ -27,20 +27,14 @@ namespace Nethermind.Crypto
                 NumberStyles.HexNumber);
 
         private readonly ulong _chainIdValue;
-        private readonly ILogger _logger;
 
-        public EthereumEcdsa(ulong chainId, ILogManager logManager)
+        public EthereumEcdsa(ulong chainId)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _chainIdValue = chainId;
         }
 
         public void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled)
         {
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
-
             if (tx.Type != TxType.Legacy)
             {
                 tx.ChainId = _chainIdValue;
@@ -53,8 +47,6 @@ namespace Nethermind.Crypto
             {
                 tx.Signature.V = tx.Signature.V + 8 + 2 * _chainIdValue;
             }
-
-            if (_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
         }
 
         /// <summary>

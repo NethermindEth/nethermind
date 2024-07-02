@@ -99,7 +99,7 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);
             decoded!.SenderAddress =
-                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+                new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.EqualToTransaction(testCase.Tx);
         }
@@ -115,7 +115,7 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
-                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+                new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.EqualToTransaction(testCase.Tx);
         }
@@ -130,7 +130,7 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
-                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+                new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.EqualToTransaction(testCase.Tx);
         }

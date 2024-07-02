@@ -81,7 +81,7 @@ namespace Nethermind.Evm.TransactionProcessing
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
 
-            Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            Ecdsa = new EthereumEcdsa(specProvider.ChainId);
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>

@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
 
-        private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet, LimboLogs.Instance);
+        private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet);
 
         private readonly byte[] _zero31 = new byte[31];
 

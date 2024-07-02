@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(BlockchainIds.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Olympic);
             TestEncodeDecode(ecdsa);
         }
 
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(BlockchainIds.Sepolia)]
         public void Encode_decode_with_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Olympic);
             TestEncodeDecode(ecdsa);
         }
     }

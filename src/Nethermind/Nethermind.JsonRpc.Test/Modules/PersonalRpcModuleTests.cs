@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Initialize()
         {
             _wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-            _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
             _keyStore = Substitute.For<IKeyStore>();
         }
 

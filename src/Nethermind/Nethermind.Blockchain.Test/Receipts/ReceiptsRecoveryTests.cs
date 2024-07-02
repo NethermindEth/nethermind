@@ -20,7 +20,7 @@ public class ReceiptsRecoveryTests
     public void Setup()
     {
         MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-        EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
+        EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId);
 
         _receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
     }

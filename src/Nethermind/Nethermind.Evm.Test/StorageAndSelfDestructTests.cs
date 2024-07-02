@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1);
             Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
@@ -142,7 +142,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // invoke create 2 to deploy contract
@@ -247,7 +247,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // invoke create 2 to deploy contract
@@ -364,7 +364,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // call contract once

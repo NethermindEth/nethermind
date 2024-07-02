@@ -136,7 +136,7 @@ namespace Nethermind.Wallet.Test
         [Test]
         public void Can_sign_on_networks_with_chain_id([ValueSource(nameof(WalletTypes))] WalletType walletType, [Values(0ul, 1ul, 40000ul, ulong.MaxValue / 3)] ulong chainId)
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(chainId, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(chainId);
             Context ctx = _cachedWallets[walletType];
             for (int i = 1; i <= (walletType == WalletType.Memory ? 10 : 3); i++)
             {
