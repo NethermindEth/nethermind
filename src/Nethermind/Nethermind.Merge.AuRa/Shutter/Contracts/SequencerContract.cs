@@ -44,8 +44,17 @@ public class SequencerContract : Contract
             long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
             BlockParameter start = new(startBlockNumber);
             LogFilter logFilter = new(0, start, end, _addressFilter, _topicsFilter);
-
-            IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter);
+            
+            IEnumerable<FilterLog> logs;
+            try
+            {
+                logs = _logFinder.FindLogs(logFilter);
+            }
+            catch (ResourceNotFoundException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Cannot fetch Shutter transactions from logs: {e}");
+                yield break;
+            }
 
             bool shouldBreak = false;
             int count = 0;
