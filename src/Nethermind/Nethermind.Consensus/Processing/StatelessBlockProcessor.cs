@@ -24,8 +24,6 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
     private readonly ILogManager _logManager;
     private readonly VerkleWorldState _statelessWorldState;
 
-    bool IBlockProcessor.CanProcessStatelessBlock => true;
-
     public StatelessBlockProcessor(
         ISpecProvider? specProvider,
         IBlockValidator? blockValidator,
@@ -54,29 +52,30 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         NullVerkleTreeStore stateStore = new();
         VerkleStateTree? tree = new(stateStore, logManager);
         _statelessWorldState = new VerkleWorldState(tree, new MemDb(), logManager);
+        CanProcessStatelessBlock = true;
     }
 
-    protected override void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
+    protected override void InitBranch(Hash256 branchStateRoot, bool processStateless, bool incrementReorgMetric = true)
     {
 
     }
 
-    protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
+    protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block, bool processStateless)
     {
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor;
         IWorldState worldState;
-        if (!block.IsGenesis)
+        if (block.IsGenesis)
+        {
+            blockTransactionsExecutor = _blockTransactionsExecutor;
+            worldState = _stateProvider;
+        }
+        else
         {
             Banderwagon stateRoot = Banderwagon.FromBytes(block.ExecutionWitness!.StateRoot!.Bytes.ToArray())!.Value;
             _statelessWorldState.Reset();
             _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
             worldState = _statelessWorldState;
             blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider(worldState);
-        }
-        else
-        {
-            blockTransactionsExecutor = _blockTransactionsExecutor;
-            worldState = _stateProvider;
         }
 
         return (blockTransactionsExecutor, worldState);

@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Verkle;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -31,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Verkle.Curve;
+using Nethermind.Verkle.Tree.TreeStore;
 using Nethermind.Verkle.Tree.Utils;
 using Metrics = Nethermind.Blockchain.Metrics;
 
@@ -53,6 +55,9 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockTree _blockTree;
     private const int MaxUncommittedBlocks = 64;
 
+    public bool CanProcessStatelessBlock { get; protected init; }
+    private readonly VerkleWorldState _statelessWorldState;
+
     // these two are test flags that can be used to test witness generation and verification
     public bool ShouldVerifyIncomingWitness { get; set; } = false;
     public bool ShouldGenerateWitness { get; set; } = true;
@@ -74,7 +79,8 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockTree? blockTree,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null)
+        IReceiptsRootCalculator? receiptsRootCalculator = null,
+        bool canProcessStatelessBlocks = false)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -90,6 +96,13 @@ public partial class BlockProcessor : IBlockProcessor
         _blockHashInStateHandlerHandler = new BlockHashInStateHandler();
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
+        CanProcessStatelessBlock = canProcessStatelessBlocks;
+        if (CanProcessStatelessBlock)
+        {
+            NullVerkleTreeStore stateStore = new();
+            VerkleStateTree? tree = new(stateStore, logManager);
+            _statelessWorldState = new VerkleWorldState(tree, new MemDb(), logManager);
+        }
         ExecutionTracer = new BlockExecutionTracer(true, true);
     }
 
@@ -104,7 +117,8 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: move to branch processor
     public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
-        if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
+        bool shouldProcessStateless = options.ContainsFlag(ProcessingOptions.StatelessProcessing);
+        if (suggestedBlocks.Count == 0) return [];
 
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
@@ -113,11 +127,11 @@ public partial class BlockProcessor : IBlockProcessor
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
         Hash256 previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
+        InitBranch(newBranchStateRoot, shouldProcessStateless);
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
-        Block[] processedBlocks = new Block[blocksCount];
+        var processedBlocks = new Block[blocksCount];
         using IDisposable tracker = _witnessCollector.TrackOnThisThread();
         try
         {
@@ -133,14 +147,14 @@ public partial class BlockProcessor : IBlockProcessor
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+                if(!options.ContainsFlag(ProcessingOptions.StatelessProcessing)) PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
                 if (notReadOnly)
                 {
                     _witnessCollector.Persist(processedBlock.Hash!);
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
-                // CommitBranch in parts if we have long running branch
+                // CommitBranch in parts if we have long-running branch
                 bool isFirstInBatch = i == 0;
                 bool isLastInBatch = i == blocksCount - 1;
                 bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
@@ -150,7 +164,7 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = CreateCheckpoint();
                     Hash256? newStateRoot = suggestedBlocks[i].StateRoot;
-                    InitBranch(newStateRoot, false);
+                    InitBranch(newStateRoot, shouldProcessStateless, false);
                 }
             }
 
@@ -173,8 +187,9 @@ public partial class BlockProcessor : IBlockProcessor
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     // TODO: move to branch processor
-    protected virtual void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
+    protected virtual void InitBranch(Hash256 branchStateRoot, bool processStateless, bool incrementReorgMetric = true)
     {
+        if (processStateless) return;
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
         if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
@@ -278,9 +293,27 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
-    protected virtual (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
+    protected virtual (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block, bool processStateless)
     {
-        return (_blockTransactionsExecutor, _stateProvider);
+        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor;
+        IWorldState worldState;
+
+        if (block.IsGenesis || !processStateless)
+        {
+            blockTransactionsExecutor = _blockTransactionsExecutor;
+            worldState = _stateProvider;
+        }
+        else
+        {
+            _logger.Info($"Getting stateless providers");
+            Banderwagon stateRoot = Banderwagon.FromBytes(block.ExecutionWitness!.StateRoot!.Bytes.ToArray())!.Value;
+            _statelessWorldState.Reset();
+            _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
+            worldState = _statelessWorldState;
+            blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider(worldState);
+        }
+
+        return (blockTransactionsExecutor, worldState);
     }
 
     // TODO: block processor pipeline
@@ -289,9 +322,8 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockTracer blockTracer,
         ProcessingOptions options)
     {
-
         (IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor, IWorldState worldState) =
-            GetOrCreateExecutorAndState(block);
+            GetOrCreateExecutorAndState(block, options.ContainsFlag(ProcessingOptions.StatelessProcessing));
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 

@@ -15,6 +15,8 @@ namespace Nethermind.Consensus.Processing
 
         public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
 
+        public bool CanProcessStatelessBlock { get; } = false;
+
         public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
             return suggestedBlocks.ToArray();

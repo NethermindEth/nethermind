@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Processing
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
 
-        public bool CanProcessStatelessBlock => false;
+        public bool CanProcessStatelessBlock { get; }
 
         /// <summary>
         /// Fired when a branch is being processed.
