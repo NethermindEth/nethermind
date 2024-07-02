@@ -3036,13 +3036,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
 
-        if(initCode.Span.StartsWith(EvmObjectFormat.MAGIC))
-        {
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
-        }
-
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
@@ -3079,7 +3072,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
-        if (CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.HasEofMagic))
+        if(spec.IsEofEnabled && initCode.Span.StartsWith(EvmObjectFormat.MAGIC))
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
@@ -3087,6 +3080,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
+        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
         if (codeinfo is CodeInfo classicalCode)
         {
             classicalCode.AnalyseInBackgroundIfRequired();

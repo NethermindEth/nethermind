@@ -20,7 +20,6 @@ namespace Nethermind.Core
     public class Transaction
     {
         public const int BaseTxGasCost = 21000;
-        public const int MaxInitcodeCount = 256;
         public ulong? ChainId { get; set; }
 
         /// <summary>

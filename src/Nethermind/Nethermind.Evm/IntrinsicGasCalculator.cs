@@ -40,19 +40,6 @@ public static class IntrinsicGasCalculator
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-        long dataCost = CalculateCalldataCost(transaction, releaseSpec);
-
-        if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
-        {
-            dataCost += EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord;
-        }
-
-        return dataCost;
-    }
-
-    private static long CalculateCalldataCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
         long txDataNonZeroGasCost =
             releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
