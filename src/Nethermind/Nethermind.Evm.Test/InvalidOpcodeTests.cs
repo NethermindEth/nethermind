@@ -197,7 +197,7 @@ namespace Nethermind.Evm.Test
                         .Op((byte)i)
                         .Done; ;
 
-                if(InstructionExtensions.IsValid(opcode, true) && !InstructionExtensions.IsValid(opcode, false))
+                if (InstructionExtensions.IsValid(opcode, true) && !InstructionExtensions.IsValid(opcode, false))
                 {
                     var opcodeMetadata = InstructionExtensions.StackRequirements(opcode);
                     opcodeMetadata.InputCount ??= 1;
@@ -209,7 +209,7 @@ namespace Nethermind.Evm.Test
 
                     List<byte> codesection = new();
 
-                    for(var j = 0; j < opcodeMetadata.InputCount; j++)
+                    for (var j = 0; j < opcodeMetadata.InputCount; j++)
                     {
                         codesection.AddRange(
                             Prepare.EvmCode
@@ -222,7 +222,7 @@ namespace Nethermind.Evm.Test
 
                     for (var j = 0; j < (opcodeMetadata.immediates ?? 3); j++)
                     {
-                        if(isFunCall && j == 1)
+                        if (isFunCall && j == 1)
                         {
                             codesection.Add(1);
                             continue;
@@ -239,7 +239,7 @@ namespace Nethermind.Evm.Test
                         );
                     }
 
-                    if(opcode is not Instruction.JUMPF)
+                    if (opcode is not Instruction.JUMPF)
                     {
                         codesection.Add((byte)Instruction.STOP);
                     }
@@ -248,36 +248,46 @@ namespace Nethermind.Evm.Test
                     byte[] codeSectionSize = BitConverter.GetBytes((ushort)(codesection.Count));
                     code = [
                         // start header
-                        0xef, 0x00,
+                        0xef,
+                        0x00,
                         0x01,
                         0x01,
-                            0x00, (isFunCall ? (byte)0x08 : (byte)0x04),
+                        0x00,
+                        (isFunCall ? (byte)0x08 : (byte)0x04),
                         0x02,
-                            0x00, (isFunCall ? (byte)0x02 : (byte)0x01),
-                            codeSectionSize[1], codeSectionSize[0],
-                            .. (isFunCall ? [0x00, 0x01] : Array.Empty<byte>()),
+                        0x00,
+                        (isFunCall ? (byte)0x02 : (byte)0x01),
+                        codeSectionSize[1],
+                        codeSectionSize[0],
+                        .. (isFunCall ? [0x00, 0x01] : Array.Empty<byte>()),
                         0x03,
-                            0x00, 0x01,
-                            0x00, 0x02,
+                        0x00,
+                        0x01,
+                        0x00,
+                        0x02,
                         0x04,
-                            0x00, 0x20,
+                        0x00,
+                        0x20,
                         0x00,
                         // end header
                         // start typesection
-                            0x00, 0x80,
-                            stackHeighExpected[1], stackHeighExpected[0],
-                            .. (isFunCall ? [0x00, 0x00, 0x00, 0x00] : Array.Empty<byte>()),
+                        0x00,
+                        0x80,
+                        stackHeighExpected[1],
+                        stackHeighExpected[0],
+                        .. (isFunCall ? [0x00, 0x00, 0x00, 0x00] : Array.Empty<byte>()),
                         // end typesection
                         // start codesection
-                            // start codesection 0
-                            .. codesection,
-                            // end codesection 0
-                            // start codesection 1
-                            .. (isFunCall ? [(byte)Instruction.RETF]: Array.Empty<byte>()),
-                            // end codesection 1
+                        // start codesection 0
+                        .. codesection,
+                        // end codesection 0
+                        // start codesection 1
+                        .. (isFunCall ? [(byte)Instruction.RETF] : Array.Empty<byte>()),
+                        // end codesection 1
                         // end codesection
                         // start container section
-                        (byte)Instruction.RETURNCONTRACT, 0x00,
+                        (byte)Instruction.RETURNCONTRACT,
+                        0x00,
                         // end container section
                         // start data section
                         .. Enumerable.Range(0, 32).Select(b => (byte)b).ToArray()

@@ -34,12 +34,13 @@ public record struct CompoundSectionHeader(int Start, int[] SubSectionsSizes)
     {
         get
         {
-            if(subSectionsSizesAcc is null) {
+            if (subSectionsSizesAcc is null)
+            {
                 subSectionsSizesAcc = new int[SubSectionsSizes.Length];
                 subSectionsSizesAcc[0] = 0;
                 for (var i = 1; i < SubSectionsSizes.Length; i++)
                 {
-                    subSectionsSizesAcc[i] = subSectionsSizesAcc[i - 1] + SubSectionsSizes[i-1];
+                    subSectionsSizesAcc[i] = subSectionsSizesAcc[i - 1] + SubSectionsSizes[i - 1];
                 }
             }
 

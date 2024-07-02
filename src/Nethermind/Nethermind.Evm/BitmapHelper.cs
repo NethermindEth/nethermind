@@ -58,11 +58,12 @@ public static class BitmapHelper
 
 
         ushort setNBitsMask = (ushort)(~((1 << 32 - numbits) - 1));
-        if(numbits > 1)
+        if (numbits > 1)
         {
             bitvec.SetN(pc, setNBitsMask);
             pc += numbits;
-        } else
+        }
+        else
         {
             bitvec.Set1(pc);
             pc += numbits;

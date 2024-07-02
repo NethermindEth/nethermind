@@ -133,7 +133,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            if(!(result = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, out ExecutionEnvironment? env))) {
+            if (!(result = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, out ExecutionEnvironment? env)))
+            {
                 return result;
             }
 
@@ -422,15 +423,19 @@ namespace Nethermind.Evm.TransactionProcessing
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
             if (tx.IsContractCreation)
             {
-                if(CodeInfoFactory.CreateInitCodeInfo(tx.Data ?? default, spec, out codeInfo, out Memory<byte> trailingData)) {
+                if (CodeInfoFactory.CreateInitCodeInfo(tx.Data ?? default, spec, out codeInfo, out Memory<byte> trailingData))
+                {
                     inputData = trailingData.ToArray();
-                } else {
+                }
+                else
+                {
                     return "Eip 7698: Invalid CreateTx Initcode";
                 }
-            } else
+            }
+            else
             {
                 codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
-                if(codeInfo is CodeInfo eofv0CodeInfo)
+                if (codeInfo is CodeInfo eofv0CodeInfo)
                     eofv0CodeInfo.AnalyseInBackgroundIfRequired();
             }
 

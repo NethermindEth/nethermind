@@ -37,7 +37,8 @@ public static class EvmObjectFormat
         public short Max = -1;
         public short Min = 1023;
 
-        public void Combine(StackBounds other) {
+        public void Combine(StackBounds other)
+        {
             this.Max = Math.Max(this.Max, other.Max);
             this.Min = Math.Min(this.Min, other.Min);
         }
@@ -91,29 +92,30 @@ public static class EvmObjectFormat
     /// <returns></returns>
     public static bool IsEof(ReadOnlySpan<byte> container, [NotNullWhen(true)] out int version)
     {
-        if(container.Length >= MAGIC.Length + 1)
+        if (container.Length >= MAGIC.Length + 1)
         {
             version = container[MAGIC.Length];
             return container.StartsWith(MAGIC);
-        } else
+        }
+        else
         {
             version = 0;
             return false;
         }
-        
+
     }
 
     public static bool IsEofn(ReadOnlySpan<byte> container, byte version) => container.Length >= MAGIC.Length + 1 && container.StartsWith(MAGIC) && container[MAGIC.Length] == version;
 
     public static bool IsValidEof(ReadOnlySpan<byte> container, ValidationStrategy strategy, [NotNullWhen(true)] out EofHeader? header)
     {
-        if(strategy == ValidationStrategy.None)
+        if (strategy == ValidationStrategy.None)
         {
             header = null;
             return true;
         }
 
-        if(strategy.HasFlag(ValidationStrategy.HasEofMagic) && !container.StartsWith(MAGIC))
+        if (strategy.HasFlag(ValidationStrategy.HasEofMagic) && !container.StartsWith(MAGIC))
         {
             header = null;
             return false;
@@ -376,14 +378,14 @@ public static class EvmObjectFormat
             return true;
         }
 
-        public bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header,  ValidationStrategy strategy)
+        public bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header, ValidationStrategy strategy)
         {
             int startOffset = header.TypeSection.Start;
             int endOffset = header.DataSection.Start;
             int calculatedCodeLength =
                     header.TypeSection.Size
-                +   header.CodeSections.Size
-                +   (header.ContainerSection?.Size ?? 0);
+                + header.CodeSections.Size
+                + (header.ContainerSection?.Size ?? 0);
             CompoundSectionHeader codeSections = header.CodeSections;
             ReadOnlySpan<byte> contractBody = container[startOffset..endOffset];
             ReadOnlySpan<byte> dataBody = container[endOffset..];
@@ -724,7 +726,7 @@ public static class EvmObjectFormat
                         }
 
                         ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSection.Value.Start + header.ContainerSection.Value[initcodeSectionId].Start, header.ContainerSection.Value[initcodeSectionId].Size);
-                        if(!IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody | ValidationStrategy.ValidateInitcodeMode, out _))
+                        if (!IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody | ValidationStrategy.ValidateInitcodeMode, out _))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must be a valid Eof");
                             return false;
@@ -811,7 +813,7 @@ public static class EvmObjectFormat
                         outputs = (ushort)(isTargetSectionNonReturning ? 0 : outputs);
                         targetMaxStackHeight = typesection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-                        if(MAX_STACK_HEIGHT - targetMaxStackHeight + inputs < currentStackBounds.Max)
+                        if (MAX_STACK_HEIGHT - targetMaxStackHeight + inputs < currentStackBounds.Max)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack head during callf must not exceed {MAX_STACK_HEIGHT}");
                             return false;
@@ -845,7 +847,7 @@ public static class EvmObjectFormat
                     return false;
                 }
 
-                if(!opcode.IsTerminating())
+                if (!opcode.IsTerminating())
                 {
                     short delta = (short)(outputs - inputs);
                     currentStackBounds.Max = (short)(currentStackBounds.Max + delta);
@@ -870,15 +872,17 @@ public static class EvmObjectFormat
                             short offset = code.Slice(programCounter + 1, immediates.Value).ReadEthInt16();
                             int jumpDestination = posPostInstruction + immediates.Value + offset;
 
-                            if(opcode is Instruction.RJUMPI)
+                            if (opcode is Instruction.RJUMPI)
                             {
                                 recordedStackHeight[posPostInstruction + immediates.Value].Combine(currentStackBounds);
                             }
 
-                            if(jumpDestination > programCounter)
+                            if (jumpDestination > programCounter)
                             {
                                 recordedStackHeight[jumpDestination].Combine(currentStackBounds);
-                            } else {
+                            }
+                            else
+                            {
                                 if (recordedStackHeight[jumpDestination] != currentStackBounds)
                                 {
                                     if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid at {jumpDestination}");
@@ -912,7 +916,7 @@ public static class EvmObjectFormat
                             }
 
                             posPostInstruction += immediates.Value;
-                            if(posPostInstruction > code.Length)
+                            if (posPostInstruction > code.Length)
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
                                 return false;
@@ -926,11 +930,12 @@ public static class EvmObjectFormat
 
                 if (opcode.IsTerminating())
                 {
-                    if(programCounter < code.Length)
+                    if (programCounter < code.Length)
                     {
                         currentStackBounds = recordedStackHeight[programCounter];
                     }
-                } else
+                }
+                else
                 {
                     currentStackBounds.Combine(recordedStackHeight[programCounter]);
                     recordedStackHeight[programCounter] = currentStackBounds;

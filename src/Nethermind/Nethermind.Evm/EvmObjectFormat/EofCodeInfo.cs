@@ -25,7 +25,7 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> ContainerSection(int index)
     {
         var offset = ContainerSectionOffset(index);
-        if (offset  is null)
+        if (offset is null)
             return Memory<byte>.Empty;
         else
         {
