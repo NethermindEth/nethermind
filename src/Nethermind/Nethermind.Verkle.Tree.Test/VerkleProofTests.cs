@@ -39,7 +39,8 @@ public class VerkleProofTest
         };
         VerkleTree tree = VerkleTestUtils.CreateVerkleTreeWithKeysAndValues(keys, keys);
         VerkleProofSerialized proof = tree.CreateVerkleProofSerialized(keys, out Banderwagon root);
-        //TestProofSerialization(proof);
+
+        TestProofSerialization(proof);
 
         bool verified = VerkleTree.VerifyVerkleProofSer(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
@@ -68,7 +69,7 @@ public class VerkleProofTest
         VerkleTree tree = VerkleTestUtils.CreateVerkleTreeWithKeysAndValues(keys.ToArray(), values.ToArray());
 
         VerkleProofSerialized proof = tree.CreateVerkleProofSerialized(keys.ToArray(), out Banderwagon root);
-        //TestProofSerialization(proof);
+        TestProofSerialization(proof);
 
         bool verified = VerkleTree.VerifyVerkleProofSer(proof, keys, values, root, out _);
         Assert.That(verified, Is.True);
@@ -95,7 +96,7 @@ public class VerkleProofTest
         tree.CommitTree(0);
 
         VerkleProofSerialized proof = tree.CreateVerkleProofSerialized(keys, out Banderwagon root);
-        //TestProofSerialization(proof);
+        TestProofSerialization(proof);
 
         const string expectedProof = "00000000040000000a0a0a0a0800000056778fe0bcf12a14820d4c054d85cfcae4bdb7017107b6769cecd42629a3825e38f30e21c" +
                                      "79747190371df99e88b886638be445d44f8f9b56ca7c062ea3299446c650ce85c8b5d3cb5ccef8be82858aa2fa9c2cad512086db5" +
@@ -125,8 +126,6 @@ public class VerkleProofTest
                                      "50a858999ef45cba91cbbb2fc3aa85f4874a519813b771ad0e91f16665f9aff6b79f23d5aecff065e4362190459fc2551340ac112" +
                                      "0001c921a36dd8c2d441a93f4fa4fd6a71d54f0f862340cf9e401b";
 
-        Console.WriteLine(proof.Encode().ToHexString());
-
         Assert.That(proof.Encode().ToHexString().SequenceEqual(expectedProof), Is.True);
         bool verified = VerkleTree.VerifyVerkleProofSer(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
@@ -153,7 +152,7 @@ public class VerkleProofTest
         tree.CommitTree(0);
 
         VerkleProofSerialized proof = tree.CreateVerkleProofSerialized(keys, out Banderwagon root);
-        //TestProofSerialization(proof);
+        TestProofSerialization(proof);
 
         const string expectedProof = "00000000010000000a020000000b2cd97f2703f0e0030f8356c66ef9cda8587109aab48ebdf02fd49ceefa716d1731296" +
                                      "d27f24eddf8e4576bcf69395373a282be54e0d16966c5ac77f3423b9f4605765280e8099881f4cc64ead200148f7b826c" +
@@ -181,8 +180,6 @@ public class VerkleProofTest
                                      "2a90bed52bedba033bcd8c1034e61e4740c65d22853b04a3b8733987e93e1c77dffac49f50d09de4ecaf835f94f3877e6" +
                                      "480f9d8844fc5fa98f2ec370e18b24da702840f21f71e24ca999bbce608ca5f507";
 
-        Console.WriteLine(proof.Encode().ToHexString());
-
         Assert.That(proof.Encode().ToHexString().SequenceEqual(expectedProof), Is.True);
 
         bool verified = VerkleTree.VerifyVerkleProofSer(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
@@ -203,7 +200,7 @@ public class VerkleProofTest
         };
 
         VerkleProofSerialized proof = tree.CreateVerkleProofSerialized(keys, out Banderwagon root);
-        //TestProofSerialization(proof);
+        TestProofSerialization(proof);
 
         const string expectedProof =
                             "000000000100000008000000000000000000000000000000000000000000000000000000000000000000000000010000000000" +
@@ -302,12 +299,12 @@ public class VerkleProofTest
         Assert.That(verified, Is.True);
     }
 
-    private void TestProofSerialization(VerkleProof proof)
+    private void TestProofSerialization(VerkleProofSerialized proof)
     {
         VerkleProofSerializer ser = new();
         var stream = new RlpStream(Rlp.LengthOfSequence(ser.GetLength(proof, RlpBehaviors.None)));
         ser.Encode(stream, proof);
-        VerkleProof data = ser.Decode(new RlpStream(stream.Data!));
+        VerkleProofSerialized data = ser.Decode(new RlpStream(stream.Data!));
         data.ToString().Should().BeEquivalentTo(proof.ToString());
     }
 
