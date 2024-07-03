@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
-using static System.Collections.Specialized.BitVector32;
 
 namespace Nethermind.Evm.CodeAnalysis;
 

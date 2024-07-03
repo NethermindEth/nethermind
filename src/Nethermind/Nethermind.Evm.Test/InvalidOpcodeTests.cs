@@ -195,9 +195,9 @@ namespace Nethermind.Evm.Test
 
                 byte[] code = Prepare.EvmCode
                         .Op((byte)i)
-                        .Done; ;
+                        .Done;
 
-                if (InstructionExtensions.IsValid(opcode, true) && !InstructionExtensions.IsValid(opcode, false))
+                if (InstructionExtensions.IsValid(opcode, IsEofContext: true) && !InstructionExtensions.IsValid(opcode, IsEofContext: false))
                 {
                     var opcodeMetadata = InstructionExtensions.StackRequirements(opcode);
                     opcodeMetadata.InputCount ??= 1;

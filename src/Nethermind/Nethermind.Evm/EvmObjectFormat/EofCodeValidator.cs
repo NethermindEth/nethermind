@@ -435,7 +435,10 @@ public static class EvmObjectFormat
                 return false;
             }
 
-            bool[] visitedSections = ArrayPool<bool>.Shared.Rent(header.CodeSections.Count);
+            bool[] visitedSectionsArray = ArrayPool<bool>.Shared.Rent(header.CodeSections.Count);
+            Span<bool> visitedSections = visitedSectionsArray.AsSpan(0, header.CodeSections.Count);
+            visitedSections.Clear();
+
             Queue<ushort> validationQueue = new Queue<ushort>();
             validationQueue.Enqueue(0);
 
@@ -453,14 +456,22 @@ public static class EvmObjectFormat
                 ReadOnlySpan<byte> code = container.Slice(header.CodeSections.Start + codeSectionStartOffset, codeSectionSize);
                 if (!ValidateInstructions(sectionIdx, strategy, typesection, code, header, container, validationQueue))
                 {
-                    ArrayPool<bool>.Shared.Return(visitedSections, true);
+                    ArrayPool<bool>.Shared.Return(visitedSectionsArray);
                     return false;
                 }
             }
 
-            var HasNoNonReachableCodeSections = visitedSections[..header.CodeSections.Count].All(id => id);
-            ArrayPool<bool>.Shared.Return(visitedSections, true);
+            bool HasNoNonReachableCodeSections = false;
+            for (int i = 0; i < header.CodeSections.Count; i++)
+            {
+                if (!visitedSections[i])
+                {
+                    HasNoNonReachableCodeSections = true;
+                    break;
+                }
+            }
 
+            ArrayPool<bool>.Shared.Return(visitedSectionsArray);
             return HasNoNonReachableCodeSections;
         }
 
@@ -507,12 +518,19 @@ public static class EvmObjectFormat
 
         bool ValidateInstructions(ushort sectionId, ValidationStrategy strategy, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, in ReadOnlySpan<byte> container, Queue<ushort> worklist)
         {
-            byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
-            byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
+            int length = (code.Length / BYTE_BIT_COUNT) + 1;
+            byte[] codeBitmapArray = ArrayPool<byte>.Shared.Rent(length);
+            byte[] jumpDestsArray = ArrayPool<byte>.Shared.Rent(length);
             try
             {
-                int pos;
+                // ArrayPool may return a larger array than requested, so we need to slice it to the actual length
+                Span<byte> codeBitmap = codeBitmapArray.AsSpan(0, length);
+                Span<byte> jumpDests = jumpDestsArray.AsSpan(0, length);
+                // ArrayPool may return a larger array than requested, so we need to slice it to the actual length
+                codeBitmap.Clear();
+                jumpDests.Clear();
 
+                int pos;
                 for (pos = 0; pos < code.Length;)
                 {
                     Instruction opcode = (Instruction)code[pos];
@@ -551,7 +569,7 @@ public static class EvmObjectFormat
                             return false;
                         }
 
-                        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpdests, ref rjumpdest);
+                        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpDests, ref rjumpdest);
                         BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
 
@@ -627,7 +645,7 @@ public static class EvmObjectFormat
                                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RJUMPV} Destination outside of Code bounds");
                                 return false;
                             }
-                            BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpdests, ref rjumpdest);
+                            BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpDests, ref rjumpdest);
                         }
                         BitmapHelper.HandleNumbits(immediateValueSize, codeBitmap, ref postInstructionByte);
                     }
@@ -753,7 +771,7 @@ public static class EvmObjectFormat
                     return false;
                 }
 
-                bool result = !BitmapHelper.CheckCollision(codeBitmap, jumpdests);
+                bool result = !BitmapHelper.CheckCollision(codeBitmap, jumpDests);
                 if (!result)
                 {
                     if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Invalid Jump destination");
@@ -767,140 +785,119 @@ public static class EvmObjectFormat
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(codeBitmap, true);
-                ArrayPool<byte>.Shared.Return(jumpdests, true);
+                ArrayPool<byte>.Shared.Return(codeBitmapArray);
+                ArrayPool<byte>.Shared.Return(jumpDestsArray);
             }
         }
         public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection)
         {
-            StackBounds[] recordedStackHeight = ArrayPool<StackBounds>.Shared.Rent(code.Length);
-            Array.Fill(recordedStackHeight, new StackBounds());
-
-            ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
-
-            ushort currrentSectionOutputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-            short peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
-
-            int unreachedBytes = code.Length;
-            bool isTargetSectionNonReturning = false;
-
-            int targetMaxStackHeight = 0;
-            int programCounter = 0;
-            recordedStackHeight[0].Max = peakStackHeight;
-            recordedStackHeight[0].Min = peakStackHeight;
-            StackBounds currentStackBounds = recordedStackHeight[0];
-
-            while (programCounter < code.Length)
+            StackBounds[] recordedStackHeightArray = ArrayPool<StackBounds>.Shared.Rent(code.Length);
+            try
             {
-                Instruction opcode = (Instruction)code[programCounter];
-                (ushort? inputs, ushort? outputs, ushort? immediates) = opcode.StackRequirements();
+                Span<StackBounds> recordedStackHeight = recordedStackHeightArray.AsSpan(0, code.Length);
+                recordedStackHeight.Clear();
 
-                ushort posPostInstruction = (ushort)(programCounter + 1);
-                if (posPostInstruction > code.Length)
+                ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+                ushort currrentSectionOutputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                short peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+
+                int unreachedBytes = code.Length;
+                bool isTargetSectionNonReturning = false;
+
+                int targetMaxStackHeight = 0;
+                int programCounter = 0;
+                recordedStackHeight[0].Max = peakStackHeight;
+                recordedStackHeight[0].Min = peakStackHeight;
+                StackBounds currentStackBounds = recordedStackHeight[0];
+
+                while (programCounter < code.Length)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
-                    return false;
-                }
+                    Instruction opcode = (Instruction)code[programCounter];
+                    (ushort? inputs, ushort? outputs, ushort? immediates) = opcode.StackRequirements();
 
-                switch (opcode)
-                {
-                    case Instruction.CALLF or Instruction.JUMPF:
-                        ushort targetSectionId = code.Slice(posPostInstruction, immediates.Value).ReadEthUInt16();
-                        inputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+                    ushort posPostInstruction = (ushort)(programCounter + 1);
+                    if (posPostInstruction > code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
+                        return false;
+                    }
 
-                        outputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                        isTargetSectionNonReturning = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
-                        outputs = (ushort)(isTargetSectionNonReturning ? 0 : outputs);
-                        targetMaxStackHeight = typesection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
+                    switch (opcode)
+                    {
+                        case Instruction.CALLF or Instruction.JUMPF:
+                            ushort targetSectionId = code.Slice(posPostInstruction, immediates.Value).ReadEthUInt16();
+                            inputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
-                        if (MAX_STACK_HEIGHT - targetMaxStackHeight + inputs < currentStackBounds.Max)
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack head during callf must not exceed {MAX_STACK_HEIGHT}");
-                            return false;
-                        }
+                            outputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                            isTargetSectionNonReturning = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
+                            outputs = (ushort)(isTargetSectionNonReturning ? 0 : outputs);
+                            targetMaxStackHeight = typesection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currrentSectionOutputs + inputs - outputs == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currrentSectionOutputs + inputs - outputs} but found {currentStackBounds.Max}");
-                            return false;
-                        }
-                        break;
-                    case Instruction.DUPN:
-                        byte imm = code[posPostInstruction];
-                        inputs = (ushort)(imm + 1);
-                        outputs = (ushort)(inputs + 1);
-                        break;
-                    case Instruction.SWAPN:
-                        imm = code[posPostInstruction];
-                        outputs = inputs = (ushort)(2 + imm);
-                        break;
-                    case Instruction.EXCHANGE:
-                        byte imm_n = (byte)(code[posPostInstruction] >> 4);
-                        byte imm_m = (byte)(code[posPostInstruction] & 0x0F);
-                        outputs = inputs = (ushort)(imm_n + imm_m + 3);
-                        break;
-                }
-
-                if ((isTargetSectionNonReturning || opcode is not Instruction.JUMPF) && currentStackBounds.Min < inputs)
-                {
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack Underflow required {inputs} but found {currentStackBounds.Min}");
-                    return false;
-                }
-
-                if (!opcode.IsTerminating())
-                {
-                    short delta = (short)(outputs - inputs);
-                    currentStackBounds.Max = (short)(currentStackBounds.Max + delta);
-                    currentStackBounds.Min = (short)(currentStackBounds.Min + delta);
-                }
-                peakStackHeight = Math.Max(peakStackHeight, currentStackBounds.Max);
-
-                switch (opcode)
-                {
-                    case Instruction.RETF:
-                        {
-                            var expectedHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                            if (expectedHeight != currentStackBounds.Min || !currentStackBounds.BoundsEqual())
+                            if (MAX_STACK_HEIGHT - targetMaxStackHeight + inputs < currentStackBounds.Max)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid required height {expectedHeight} but found {currentStackBounds.Min}");
+                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack head during callf must not exceed {MAX_STACK_HEIGHT}");
+                                return false;
+                            }
+
+                            if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currrentSectionOutputs + inputs - outputs == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currrentSectionOutputs + inputs - outputs} but found {currentStackBounds.Max}");
                                 return false;
                             }
                             break;
-                        }
-                    case Instruction.RJUMP or Instruction.RJUMPI:
-                        {
-                            short offset = code.Slice(programCounter + 1, immediates.Value).ReadEthInt16();
-                            int jumpDestination = posPostInstruction + immediates.Value + offset;
+                        case Instruction.DUPN:
+                            byte imm = code[posPostInstruction];
+                            inputs = (ushort)(imm + 1);
+                            outputs = (ushort)(inputs + 1);
+                            break;
+                        case Instruction.SWAPN:
+                            imm = code[posPostInstruction];
+                            outputs = inputs = (ushort)(2 + imm);
+                            break;
+                        case Instruction.EXCHANGE:
+                            byte imm_n = (byte)(code[posPostInstruction] >> 4);
+                            byte imm_m = (byte)(code[posPostInstruction] & 0x0F);
+                            outputs = inputs = (ushort)(imm_n + imm_m + 3);
+                            break;
+                    }
 
-                            if (opcode is Instruction.RJUMPI)
-                            {
-                                recordedStackHeight[posPostInstruction + immediates.Value].Combine(currentStackBounds);
-                            }
+                    if ((isTargetSectionNonReturning || opcode is not Instruction.JUMPF) && currentStackBounds.Min < inputs)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack Underflow required {inputs} but found {currentStackBounds.Min}");
+                        return false;
+                    }
 
-                            if (jumpDestination > programCounter)
+                    if (!opcode.IsTerminating())
+                    {
+                        short delta = (short)(outputs - inputs);
+                        currentStackBounds.Max = (short)(currentStackBounds.Max + delta);
+                        currentStackBounds.Min = (short)(currentStackBounds.Min + delta);
+                    }
+                    peakStackHeight = Math.Max(peakStackHeight, currentStackBounds.Max);
+
+                    switch (opcode)
+                    {
+                        case Instruction.RETF:
                             {
-                                recordedStackHeight[jumpDestination].Combine(currentStackBounds);
-                            }
-                            else
-                            {
-                                if (recordedStackHeight[jumpDestination] != currentStackBounds)
+                                var expectedHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                                if (expectedHeight != currentStackBounds.Min || !currentStackBounds.BoundsEqual())
                                 {
-                                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid at {jumpDestination}");
+                                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid required height {expectedHeight} but found {currentStackBounds.Min}");
                                     return false;
                                 }
+                                break;
                             }
-
-                            break;
-                        }
-                    case Instruction.RJUMPV:
-                        {
-                            var count = code[posPostInstruction] + 1;
-                            immediates = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
-                            for (short j = 0; j < count; j++)
+                        case Instruction.RJUMP or Instruction.RJUMPI:
                             {
-                                int case_v = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
-                                int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
+                                short offset = code.Slice(programCounter + 1, immediates.Value).ReadEthInt16();
                                 int jumpDestination = posPostInstruction + immediates.Value + offset;
+
+                                if (opcode is Instruction.RJUMPI)
+                                {
+                                    recordedStackHeight[posPostInstruction + immediates.Value].Combine(currentStackBounds);
+                                }
+
                                 if (jumpDestination > programCounter)
                                 {
                                     recordedStackHeight[jumpDestination].Combine(currentStackBounds);
@@ -913,54 +910,83 @@ public static class EvmObjectFormat
                                         return false;
                                     }
                                 }
-                            }
 
-                            posPostInstruction += immediates.Value;
-                            if (posPostInstruction > code.Length)
+                                break;
+                            }
+                        case Instruction.RJUMPV:
                             {
-                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
-                                return false;
+                                var count = code[posPostInstruction] + 1;
+                                immediates = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
+                                for (short j = 0; j < count; j++)
+                                {
+                                    int case_v = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
+                                    int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
+                                    int jumpDestination = posPostInstruction + immediates.Value + offset;
+                                    if (jumpDestination > programCounter)
+                                    {
+                                        recordedStackHeight[jumpDestination].Combine(currentStackBounds);
+                                    }
+                                    else
+                                    {
+                                        if (recordedStackHeight[jumpDestination] != currentStackBounds)
+                                        {
+                                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid at {jumpDestination}");
+                                            return false;
+                                        }
+                                    }
+                                }
+
+                                posPostInstruction += immediates.Value;
+                                if (posPostInstruction > code.Length)
+                                {
+                                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
+                                    return false;
+                                }
+                                break;
                             }
-                            break;
-                        }
-                }
+                    }
 
-                unreachedBytes -= 1 + immediates.Value;
-                programCounter += 1 + immediates.Value;
+                    unreachedBytes -= 1 + immediates.Value;
+                    programCounter += 1 + immediates.Value;
 
-                if (opcode.IsTerminating())
-                {
-                    if (programCounter < code.Length)
+                    if (opcode.IsTerminating())
                     {
-                        currentStackBounds = recordedStackHeight[programCounter];
+                        if (programCounter < code.Length)
+                        {
+                            currentStackBounds = recordedStackHeight[programCounter];
+                        }
+                    }
+                    else
+                    {
+                        currentStackBounds.Combine(recordedStackHeight[programCounter]);
+                        recordedStackHeight[programCounter] = currentStackBounds;
                     }
                 }
-                else
+
+                if (unreachedBytes != 0)
                 {
-                    currentStackBounds.Combine(recordedStackHeight[programCounter]);
-                    recordedStackHeight[programCounter] = currentStackBounds;
+                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, bytecode has unreachable segments");
+                    return false;
                 }
-            }
 
-            if (unreachedBytes != 0)
-            {
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, bytecode has unreachable segments");
-                return false;
-            }
+                if (peakStackHeight != suggestedMaxHeight)
+                {
+                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
+                    return false;
+                }
 
-            if (peakStackHeight != suggestedMaxHeight)
-            {
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
-                return false;
+                bool result = peakStackHeight < MAX_STACK_HEIGHT;
+                if (!result)
+                {
+                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
+                    return false;
+                }
+                return result;
             }
-
-            bool result = peakStackHeight < MAX_STACK_HEIGHT;
-            if (!result)
+            finally
             {
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
-                return false;
+                ArrayPool<StackBounds>.Shared.Return(recordedStackHeightArray);
             }
-            return result;
         }
     }
 }

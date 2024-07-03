@@ -39,7 +39,7 @@ public static class BitmapHelper
         return bitvec;
     }
 
-    public static void HandleNumbits(int numbits, byte[] bitvec, scoped ref int pc)
+    public static void HandleNumbits(int numbits, Span<byte> bitvec, scoped ref int pc)
     {
         if (numbits >= 8)
         {
@@ -72,17 +72,17 @@ public static class BitmapHelper
     /// <summary>
     /// Checks if the position is in a code segment.
     /// </summary>
-    public static bool IsCodeSegment(byte[] bitvec, int pos)
+    public static bool IsCodeSegment(Span<byte> bitvec, int pos)
     {
         return (bitvec[pos / 8] & (0x80 >> (pos % 8))) == 0;
     }
 
-    private static void Set1(this byte[] bitvec, int pos)
+    private static void Set1(this Span<byte> bitvec, int pos)
     {
         bitvec[pos / 8] |= _lookup[pos % 8];
     }
 
-    private static void SetN(this byte[] bitvec, int pos, UInt16 flag)
+    private static void SetN(this Span<byte> bitvec, int pos, UInt16 flag)
     {
         ushort a = (ushort)(flag >> (pos % 8));
         bitvec[pos / 8] |= (byte)(a >> 8);
@@ -95,14 +95,14 @@ public static class BitmapHelper
         }
     }
 
-    private static void Set8(this byte[] bitvec, int pos)
+    private static void Set8(this Span<byte> bitvec, int pos)
     {
         byte a = (byte)(0xFF >> (pos % 8));
         bitvec[pos / 8] |= a;
         bitvec[pos / 8 + 1] = (byte)~a;
     }
 
-    private static void Set16(this byte[] bitvec, int pos)
+    private static void Set16(this Span<byte> bitvec, int pos)
     {
         byte a = (byte)(0xFF >> (pos % 8));
         bitvec[pos / 8] |= a;
