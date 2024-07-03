@@ -96,7 +96,7 @@ public partial class VerkleTree
         }
     }
 
-    public bool InsertIntoStatelessTree(VerkleProof proof, List<byte[]> keys, List<byte[]?> values, Banderwagon root)
+    public bool InsertIntoStatelessTree(VerkleProofSerialized proof, List<byte[]> keys, List<byte[]?> values, Banderwagon root)
     {
         var verification = VerifyVerkleProof(proof, keys, values, root, out UpdateHint? updateHint);
         if (!verification) return false;
@@ -397,7 +397,7 @@ public partial class VerkleTree
         }
 
         InsertStemBatchForSync(stemBatch, commByPath);
-        var verification = VerifyVerkleProofStructSer(proof.Proof, allPathsAndZs, leafValuesByPathAndZ, commByPath);
+        var verification = VerifyVerkleProofStruct(proof.Proof, allPathsAndZs, leafValuesByPathAndZ, commByPath);
         if (!verification) Reset();
         // else CommitTree(0);
 
