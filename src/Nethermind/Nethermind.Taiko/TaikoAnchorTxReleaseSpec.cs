@@ -4,9 +4,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Taiko;
 
-public class TaikoAnchorTxReleaseSpec(IReleaseSpec parent) : IReleaseSpec
+public class TaikoAnchorTxReleaseSpec(IReleaseSpec parent, Address? eip1559FeeCollector) : IReleaseSpec
 {
     private readonly IReleaseSpec _parent = parent;
+    private readonly Address? eip1559FeeCollector = eip1559FeeCollector;
 
     public string Name => _parent.Name;
 
@@ -144,7 +145,7 @@ public class TaikoAnchorTxReleaseSpec(IReleaseSpec parent) : IReleaseSpec
 
     public bool IsEip158IgnoredAccount(Address address) => _parent.IsEip158IgnoredAccount(address);
 
-    public Address? Eip1559FeeCollector => null;
+    public Address? Eip1559FeeCollector => eip1559FeeCollector;
 
     public UInt256? Eip1559BaseFeeMinValue => _parent.Eip1559BaseFeeMinValue;
 
