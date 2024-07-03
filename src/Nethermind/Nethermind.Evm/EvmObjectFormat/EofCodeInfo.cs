@@ -53,7 +53,7 @@ public class EofCodeInfo : ICodeInfo
         _codeInfo = codeInfo;
         Header = header;
         TypeSection = MachineCode.Slice(Header.TypeSection.Start, Header.TypeSection.Size);
-        DataSection = MachineCode.Slice(Header.DataSection.Start, Header.DataSection.Size);
         CodeSection = MachineCode.Slice(Header.CodeSections.Start, Header.CodeSections.Size);
+        DataSection = MachineCode.Slice(Header.DataSection.Start);
     }
 }

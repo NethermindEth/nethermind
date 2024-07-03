@@ -345,24 +345,24 @@ public static class EvmObjectFormat
 
             SectionHeader typeSectionHeader = new
             (
-                Start: HEADER_TERMINATOR_OFFSET + ONE_BYTE_LENGTH,
-                Size: sectionSizes.TypeSectionSize
+                start: HEADER_TERMINATOR_OFFSET + ONE_BYTE_LENGTH,
+                size: sectionSizes.TypeSectionSize
             );
 
             CompoundSectionHeader codeSectionHeader = new(
-                Start: typeSectionHeader.EndOffset,
-                SubSectionsSizes: codeSections
+                start: typeSectionHeader.EndOffset,
+                subSectionsSizes: codeSections
             );
 
             CompoundSectionHeader? containerSectionHeader = containerSections is null ? null
                 : new(
-                        Start: codeSectionHeader.EndOffset,
-                        SubSectionsSizes: containerSections
+                        start: codeSectionHeader.EndOffset,
+                        subSectionsSizes: containerSections
                     );
 
             SectionHeader dataSectionHeader = new(
-                Start: containerSectionHeader?.EndOffset ?? codeSectionHeader.EndOffset,
-                Size: sectionSizes.DataSectionSize
+                start: containerSectionHeader?.EndOffset ?? codeSectionHeader.EndOffset,
+                size: sectionSizes.DataSectionSize
             );
 
             header = new EofHeader
@@ -389,7 +389,8 @@ public static class EvmObjectFormat
             CompoundSectionHeader codeSections = header.CodeSections;
             ReadOnlySpan<byte> contractBody = container[startOffset..endOffset];
             ReadOnlySpan<byte> dataBody = container[endOffset..];
-            (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
+            var typeSection = header.TypeSection;
+            (int typeSectionStart, int typeSectionSize) = (typeSection.Start, typeSection.Size);
 
             if (header.ContainerSection?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS)
             {
@@ -451,9 +452,9 @@ public static class EvmObjectFormat
                 }
 
                 visitedSections[sectionIdx] = true;
-                (int codeSectionStartOffset, int codeSectionSize) = header.CodeSections[sectionIdx];
+                var codeSection = header.CodeSections[sectionIdx];
 
-                ReadOnlySpan<byte> code = container.Slice(header.CodeSections.Start + codeSectionStartOffset, codeSectionSize);
+                ReadOnlySpan<byte> code = container.Slice(header.CodeSections.Start + codeSection.Start, codeSection.Size);
                 if (!ValidateInstructions(sectionIdx, strategy, typesection, code, header, container, validationQueue))
                 {
                     ArrayPool<bool>.Shared.Return(visitedSectionsArray);

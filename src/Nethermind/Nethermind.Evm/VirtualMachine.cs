@@ -388,23 +388,44 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else if (previousState.ExecutionType.IsAnyCreateEof())
                         {
-                            int containerIndex = callResult.Output.ContainerIndex.Value;
-                            ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
-                            ReadOnlySpan<byte> container = previousState.Env.CodeInfo.ContainerSection(containerIndex).Span;
-                            byte[] bytecodeResultArray = null;
-                            Span<byte> bytecodeResult = new byte[container.Length + auxExtraData.Length];
+                            // ReturnContract was called with a container index and auxdata
 
-                            // copy old container
+                            EofCodeInfo eofCodeInfo = (EofCodeInfo)previousState.Env.CodeInfo;
+
+                            // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+                            int deployContainerIndex = callResult.Output.ContainerIndex.Value;
+                            ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
+                            ReadOnlySpan<byte> container = eofCodeInfo.ContainerSection(deployContainerIndex).Span;
+                            byte[] bytecodeResultArray = null;
+
+                            // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
+                            Span<byte> bytecodeResult = new byte[container.Length + auxExtraData.Length];
+                            // 2 - 1 - 1 - copy old container
                             container.CopyTo(bytecodeResult);
-                            // copy aux data to dataSection
+                            // 2 - 1 - 2 - copy aux data to dataSection
                             auxExtraData.CopyTo(bytecodeResult[container.Length..]);
+
+                            // 2 - 2 - update data section size in the header u16
+                            int dataSubheaderSectionStart =
+                                EvmObjectFormat.VERSION_OFFSET // magic + version
+                                + EvmObjectFormat.Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
+                                + EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+                                + (eofCodeInfo.Header.ContainerSection is null
+                                    ? 0 // container section :  (0 bytes if no container section is available)
+                                    : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.ContainerSection.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                                + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
+                            bytecodeResult[dataSubheaderSectionStart] = (byte)(bytecodeResult.Length >> 8);
+                            bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(bytecodeResult.Length & 0xFF);
+
                             bytecodeResultArray = bytecodeResult.ToArray();
 
-                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.ValidateFullBody, out _)
-                                && bytecodeResultArray.Length < spec.MaxCodeSize;
+                            // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
+                            bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray?.Length ?? 0, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
+                                // 4 - set state[new_address].code to the updated deploy container
+                                // push new_address onto the stack (already done before the ifs)
                                 ReadOnlyMemory<byte> code = callResult.Output.Bytes;
                                 _codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
@@ -2233,7 +2254,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
 
                         sectionIndex = index;
-                        (programCounter, _) = env.CodeInfo.CodeSectionOffset(index);
+                        programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
                         break;
                     }
                 case Instruction.RETF:
@@ -2282,14 +2303,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
 
-                        ReadOnlySpan<byte> auxData = Span<byte>.Empty;
+                        ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
                         if (b > UInt256.Zero)
                         {
+                            if(dataSection.Length + (int)b > (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
+                            {
+                                goto DataSectionAccessViolation;
+                            }
+
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-                            auxData = vmState.Memory.LoadSpan(a, b);
+                            auxData = vmState.Memory.Load(a, b);
                         }
 
-                        return new CallResult(sectionIdx, auxData.ToArray(), null, env.CodeInfo.Version);
+                        return new CallResult(sectionIdx, auxData, null, env.CodeInfo.Version);
                     }
                 case Instruction.DATASIZE:
                     {
@@ -2412,6 +2438,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
+        goto ReturnFailure;
+    DataSectionAccessViolation:
+        exceptionType = EvmExceptionType.DataSectionIndexOutOfRange;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     InvalidSubroutineEntry:
@@ -2884,28 +2913,37 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         EofCodeInfo container = env.CodeInfo as EofCodeInfo;
         var currentContext = ExecutionType.EOFCREATE;
+
+        // 1 - deduct TX_CREATE_COST gas
         if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
             return (EvmExceptionType.OutOfGas, null);
 
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopWord256(out Span<byte> salt) ||
-            !stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataSize))
-            return (EvmExceptionType.StackUnderflow, null);
+        // 2 - read immediate operand initcontainer_index, encoded as 8-bit unsigned value
+        int initcontainerIndex = codeSection[vmState.ProgramCounter++];
 
+        // 3 - pop value, salt, input_offset, input_size from the operand stack
+        // no stack checks becaue EOF guarantees no stack undeflows
+        stack.PopUInt256(out UInt256 value);
+        stack.PopWord256(out Span<byte> salt);
+        stack.PopUInt256(out UInt256 dataOffset) ;
+        stack.PopUInt256(out UInt256 dataSize);
+
+        // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataSize)) return (EvmExceptionType.OutOfGas, null);
 
-        int initCodeIdx = codeSection[vmState.ProgramCounter++];
-        ReadOnlyMemory<byte> initCode = container.ContainerSection(initCodeIdx);
-        int initcode_size = container.Header.ContainerSection.Value[initCodeIdx].Size;
+        // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
+        // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
+        ReadOnlyMemory<byte> initcontainer = container.ContainerSection(initcontainerIndex);
+        int initcontainerSize = container.Header.ContainerSection.Value[initcontainerIndex].Size;
 
+        // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
+        if (!UpdateGas(GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize), ref gasAvailable))
+            return (EvmExceptionType.OutOfGas, null);
 
-        long gasCost = GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcode_size);
-
-        if (!UpdateGas(gasCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
-
-        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
-        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+        // 7 - check that current call depth is below STACK_DEPTH_LIMIT and that caller balance is enough to transfer value
+        // in case of failure return 0 on the stack, caller’s nonce is not updated and gas for initcode execution is not consumed.
+        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+        if (env.CallDepth >= MaxCallDepth || value > balance) 
         {
             // TODO: need a test for this
             _returnDataBuffer = Array.Empty<byte>();
@@ -2913,16 +2951,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-        if (value > balance)
-        {
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
-        }
-
+        // 8 - caller’s memory slice [input_offset:input_size] is used as calldata
         Span<byte> calldata = vmState.Memory.LoadSpan(dataOffset, dataSize);
 
+        // 9 - execute the container and deduct gas for execution. The 63/64th rule from EIP-150 applies.
+        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
+
+        // 10 - increment sender account’s nonce
         UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
@@ -2932,27 +2968,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState?.Memory.Size ?? 0);
-        // todo: === below is a new call - refactor / move
-
-        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
-
-        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
-
+        // 11 - calculate new_address as keccak256(0xff || sender || salt || keccak256(initcontainer))[12:]
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initcontainer.Span);
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
             vmState.WarmUp(contractAddress);
         }
 
-        _state.IncrementNonce(env.ExecutingAccount);
+        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState?.Memory.Size ?? 0);
+        // todo: === below is a new call - refactor / move
 
         Snapshot snapshot = _state.TakeSnapshot();
 
         bool accountExists = _state.AccountExists(contractAddress);
-        if (accountExists && (_codeInfoRepository.GetCachedCodeInfo(_state, contractAddress, spec).MachineCode.Length != 0 ||
-                              _state.GetNonce(contractAddress) != 0))
+
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, _state))
         {
             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
             if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
@@ -2961,18 +2992,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (accountExists)
-        {
-            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
-        }
-        else if (_state.IsDeadAccount(contractAddress))
+        if (_state.IsDeadAccount(contractAddress))
         {
             _state.ClearStorage(contractAddress);
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.ExractHeader);
+        _state.IncrementNonce(env.ExecutingAccount);
+
+        CodeInfoFactory.CreateCodeInfo(initcontainer.ToArray(), spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy.ExractHeader);
 
         ExecutionEnvironment callEnv = new
         (
