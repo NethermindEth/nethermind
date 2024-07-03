@@ -8,7 +8,6 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 using Nethermind.Crypto;
 
@@ -17,7 +16,6 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
 {
     public IEnumerable<Address> AuthorizedAddresses => _authorizedCode.Keys;
     private readonly Dictionary<Address, CodeInfo> _authorizedCode = new();
-    private readonly AuthorizationTupleDecoder _authorizationTupleDecoder = new();
     private readonly EthereumEcdsa _ethereumEcdsa;
     private readonly ICodeInfoRepository _codeInfoRepository;
     private readonly ulong _chainId;
@@ -73,39 +71,17 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
         foreach (AuthorizationTuple? authTuple in authorizations)
         {
             if (authTuple is null)
-            {
                 continue;
-            }
-            if (authTuple.ChainId != 0 && _chainId != authTuple.ChainId)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list because chain id ({authTuple.ChainId}) does not match.");
-                continue;
-            }
+            authTuple.Authority = authTuple.Authority ?? _ethereumEcdsa.RecoverAddress(authTuple);
 
-            Address authority = authTuple.Authority ?? RecoverAuthority(authTuple);
-            CodeInfo authorityCodeInfo = _codeInfoRepository.GetCachedCodeInfo(worldState, authority, spec);
-            if (authorityCodeInfo.MachineCode.Length > 0)
+            string? error;
+            if (!authTuple.IsValidForExecution(worldState, _chainId, out error))
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) has code deployed.");
+                if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list: {error}");
                 continue;
             }
-            if (authTuple.Nonce is not null && worldState.GetNonce(authority) != authTuple.Nonce)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Skipping tuple in authorization_list because authority ({authority}) nonce ({authTuple.Nonce}) does not match.");
-                continue;
-            }
-
-            //TODO should we do insert if code is empty?
-            CopyCodeAndOverwrite(worldState, authTuple.CodeAddress, authority, spec);
+            CopyCodeAndOverwrite(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
         }
-    }
-
-    private Address RecoverAuthority(AuthorizationTuple authTuple)
-    {
-        Span<byte> encoded = _internalBuffer.AsSpan();
-        RlpStream stream = _authorizationTupleDecoder.EncodeWithoutSignature(authTuple.ChainId, authTuple.CodeAddress, authTuple.Nonce);
-        stream.Data.AsSpan().CopyTo(encoded.Slice(1));
-        return _ethereumEcdsa.RecoverAddress(authTuple.AuthoritySignature, Keccak.Compute(encoded.Slice(0, stream.Data.Length + 1)));
     }
 
     public void ClearAuthorizations()

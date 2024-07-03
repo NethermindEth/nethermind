@@ -33,4 +33,6 @@ public class OptimismEthereumEcdsa : Ecdsa, IEthereumEcdsa
     public Address? RecoverAddress(Span<byte> signatureBytes, Hash256 message) => _ethereumEcdsa.RecoverAddress(signatureBytes, message);
 
     public bool Verify(Address sender, Transaction tx) => _ethereumEcdsa.Verify(sender, tx);
+
+    public Address? RecoverAddress(AuthorizationTuple tuple) => _ethereumEcdsa.RecoverAddress(tuple);
 }
