@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
@@ -21,25 +22,60 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
         {
-            if (_expressions.Length > 0)
+            if (_expressions is null || _expressions.Length == 0)
             {
-                var blocks = new HashSet<long>(_expressions[0].GetBlockNumbersFrom(logIndexStorage));
+                yield return Any.First();
+                yield break;
+            }
 
-                // TODO: get N enumerators for each filter
-                foreach (var expression in _expressions[1..])
+            var blocks = _expressions.Select(e => e.GetBlockNumbersFrom(logIndexStorage));
+            IEnumerator<long>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
+
+            try
+            {
+                DictionarySortedSet<long, IEnumerator<long>> transactions = new();
+
+                for (int i = 0; i < enumerators.Length; i++)
                 {
-                    var toAddBlocks = expression.GetBlockNumbersFrom(logIndexStorage);
-                    if (toAddBlocks is not null && toAddBlocks.Count() > 0 && toAddBlocks.First() != -1)
+                    IEnumerator<long> enumerator = enumerators[i];
+                    if (enumerator.MoveNext())
                     {
-                        blocks.IntersectWith(toAddBlocks);
+                        transactions.Add(enumerator.Current!, enumerator);
                     }
                 }
 
-                return blocks;
+
+                while (transactions.Count == enumerators.Length)
+                {
+                    (long blockNumber, IEnumerator<long> enumerator) = transactions.Min;
+
+
+                    (long blockNumber2, IEnumerator<long> enumerator2) = transactions.Max;
+
+                    bool isIntersection = blockNumber == blockNumber2;
+                    transactions.Remove(blockNumber);
+
+                    if (enumerator.MoveNext())
+                    {
+                        transactions.Add(enumerator.Current!, enumerator);
+                    }
+
+                    if (isIntersection)
+                    {
+                        yield return blockNumber;
+                    }
+                }
+
+            }
+            finally
+            {
+
+                for (int i = 0; i < enumerators.Length; i++)
+                {
+                    enumerators[i].Dispose();
+                }
             }
 
-            // TODO: Handle the case when there is no filter for topics
-            return Any;
         }
 
         public SequenceTopicsFilter(params TopicExpression[] expressions)
