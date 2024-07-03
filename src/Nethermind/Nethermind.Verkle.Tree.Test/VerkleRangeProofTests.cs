@@ -47,7 +47,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
 
 
 
@@ -100,7 +100,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(stem, stem, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stem, stem, out Banderwagon root);
 
         List<PathWithSubTree> subTrees = [];
         List<LeafInSubTree> leafs = [];
@@ -156,7 +156,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
 
         // bool verified = VerkleTree.VerifyVerkleRangeProof(proof, stems[0], stems[^1], stems, root, out _);
         // Assert.That(verified, Is.True);

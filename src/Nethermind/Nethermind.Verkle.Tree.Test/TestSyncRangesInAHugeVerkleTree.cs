@@ -205,7 +205,7 @@ public class TestSyncRangesInAHugeVerkleTree
 
         Stem endStem = range[^1].Path;
 
-        VerkleProof proof = tree.CreateVerkleRangeProof(startStem, endStem, out Banderwagon root, stateRootToUse);
+        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(startStem, endStem, out Banderwagon root, stateRootToUse);
         var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
         var tempTree = new VerkleTree(stateStore, LimboLogs.Instance);
         bool isTrue = tempTree.CreateStatelessTreeFromRange(proof, root, startStem, endStem, range);
@@ -396,10 +396,10 @@ public class TestSyncRangesInAHugeVerkleTree
         return data;
     }
 
-    private static VerkleProof TestProofSerialization(VerkleProof proof)
+    private static VerkleProofSerialized TestProofSerialization(VerkleProofSerialized proof)
     {
         VerkleProofSerializer ser = new();
-        VerkleProof data = ser.Decode(new RlpStream(proof.EncodeRlp()));
+        VerkleProofSerialized data = ser.Decode(new RlpStream(proof.EncodeRlp()));
         // data.Should().BeEquivalentTo(proof, options =>
         // {
         //     EquivalencyAssertionOptions<VerkleProof>? excluded = options.Excluding(c => c.Name == "RlpLength");
@@ -416,7 +416,7 @@ public class TestSyncRangesInAHugeVerkleTree
         Stem endStem = subTrees[^1].Path;
         // Stem limitHash = Stem.MaxValue;
 
-        VerkleProof proof = remoteTree.CreateVerkleRangeProof(startingStem, endStem, out Banderwagon root, stateRoot);
+        VerkleProofSerialized proof = remoteTree.CreateVerkleRangeProof(startingStem, endStem, out Banderwagon root, stateRoot);
 
         var message = new SubTreeRangeMessage()
         {
@@ -424,7 +424,7 @@ public class TestSyncRangesInAHugeVerkleTree
             Proofs = proof.EncodeRlp()
         };
 
-        VerkleProof newProof = TestProofSerialization(proof);
+        VerkleProofSerialized newProof = TestProofSerialization(proof);
         SubTreeRangeMessage? newMessage = TestSubTreeRangeSerializer(message);
         var newStore =
             new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);

@@ -232,7 +232,7 @@ public partial class VerkleTree
         return finalProof;
     }
 
-    public VerkleProof CreateVerkleRangeProof(Stem startStem, Stem endStem, out Banderwagon rootPoint, Hash256? rootHash = null)
+    public VerkleProofSerialized CreateVerkleRangeProof(Stem startStem, Stem endStem, out Banderwagon rootPoint, Hash256? rootHash = null)
     {
         ProofBranchPolynomialCache.Clear();
         ProofStemPolynomialCache.Clear();
@@ -314,7 +314,7 @@ public partial class VerkleTree
                 break;
             }
 
-        VerkleProof finalProof = CreateProofStruct(stemList, neededOpenings, false, out rootPoint, rootHash);
+        VerkleProofSerialized finalProof = CreateProofStructSerialized(stemList, neededOpenings, false, out rootPoint, rootHash);
         finalProof.VerifyHint.Depths = depthsByStem.Values.ToArray();
         finalProof.VerifyHint.ExtensionPresent = extStatus;
 

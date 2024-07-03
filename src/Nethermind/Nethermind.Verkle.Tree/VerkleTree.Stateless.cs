@@ -208,7 +208,7 @@ public partial class VerkleTree
         }
     }
 
-    public bool CreateStatelessTreeFromRange(VerkleProof proof, Banderwagon rootPoint, Stem startStem, Stem endStem,
+    public bool CreateStatelessTreeFromRange(VerkleProofSerialized proof, Banderwagon rootPoint, Stem startStem, Stem endStem,
         in ReadOnlySpan<PathWithSubTree> subTrees)
     {
         var numberOfStems = 2;
@@ -397,7 +397,7 @@ public partial class VerkleTree
         }
 
         InsertStemBatchForSync(stemBatch, commByPath);
-        var verification = VerifyVerkleProofStruct(proof.Proof, allPathsAndZs, leafValuesByPathAndZ, commByPath);
+        var verification = VerifyVerkleProofStructSer(proof.Proof, allPathsAndZs, leafValuesByPathAndZ, commByPath);
         if (!verification) Reset();
         // else CommitTree(0);
 

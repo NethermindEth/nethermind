@@ -9,7 +9,7 @@ namespace Nethermind.Synchronization.VerkleSync;
 
 public static class VerkleProofExtensions
 {
-    public static byte[] EncodeRlp(this VerkleProof proof)
+    public static byte[] EncodeRlp(this VerkleProofSerialized proof)
     {
         VerkleProofSerializer ser = VerkleProofSerializer.Instance;
         var encodedData = new RlpStream(Rlp.LengthOfSequence(ser.GetLength(proof, RlpBehaviors.None)));

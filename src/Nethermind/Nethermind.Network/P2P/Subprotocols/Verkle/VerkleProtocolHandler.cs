@@ -226,7 +226,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         }
 
         SubTreeRange? accountRange = getAccountRangeMessage.SubTreeRange;
-        (List<PathWithSubTree>, VerkleProof) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
+        (List<PathWithSubTree>, VerkleProofSerialized) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
             accountRange.LimitStem, getAccountRangeMessage.ResponseBytes, out _);
         SubTreeRangeMessage? response = new();
         response.PathsWithSubTrees = data.Item1.ToArray();

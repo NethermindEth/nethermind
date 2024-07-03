@@ -73,7 +73,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         try
         {
             VerkleProofSerializer ser = VerkleProofSerializer.Instance;
-            VerkleProof vProof = ser.Decode(new RlpStream(proofs!));
+            VerkleProofSerialized vProof = ser.Decode(new RlpStream(proofs!));
             try
             {
                 var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), _logManager);
@@ -107,7 +107,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
 
 
     public AddRangeResult AddSubTreeRange(long blockNumber, Banderwagon rootPoint, byte[] startingStem,
-        PathWithSubTree[] subTrees, VerkleProof proof, byte[] limitStem)
+        PathWithSubTree[] subTrees, VerkleProofSerialized proof, byte[] limitStem)
     {
         IVerkleTreeStore store = _trieStorePool.Get();
         VerkleTree tree = new VerkleTree(store, LimboLogs.Instance);
