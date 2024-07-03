@@ -1351,7 +1351,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                     stack.PeekUInt256IsZero())
                             {
                                 optimizeAccess = true;
-                                stack.PopLimbo();
+                                if (!stack.PopLimbo()) goto StackUnderflow;
                             }
 
                             if (optimizeAccess)
@@ -1607,7 +1607,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        stack.PopLimbo();
+                        if (!stack.PopLimbo()) goto StackUnderflow;
                         break;
                     }
                 case Instruction.MLOAD:
@@ -1846,7 +1846,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             goto OutOfGas;
 
                         byte imm = codeSection[programCounter];
-                        stack.Swap(imm + 2);
+                        if (!stack.Swap(imm + 2)) goto StackUnderflow;
 
                         programCounter += 1;
                         break;
@@ -1981,7 +1981,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a >= 256UL)
                         {
-                            stack.PopLimbo();
+                            if (!stack.PopLimbo()) goto StackUnderflow;
                             stack.PushZero();
                         }
                         else
@@ -2002,7 +2002,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a >= 256)
                         {
-                            stack.PopLimbo();
+                            if (!stack.PopLimbo()) goto StackUnderflow;
                             stack.PushZero();
                         }
                         else
@@ -2171,7 +2171,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (spec.IsEofEnabled && env.CodeInfo.Version > 0)
                         {
                             if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
-                            stack.PopUInt256(out a);
+                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
                             var count = codeSection[programCounter] + 1;
                             var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
                             if (a < count)
@@ -2279,8 +2279,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
 
                         byte sectionIdx = codeSection[programCounter++];
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
 
                         ReadOnlySpan<byte> auxData = Span<byte>.Empty;
                         if (b > UInt256.Zero)
@@ -2308,7 +2308,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(a, 32);
                         stack.PushBytes(zpbytes);
                         break;
@@ -2332,9 +2332,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                             goto InvalidInstruction;
 
-                        stack.PopUInt256(out UInt256 memOffset);
-                        stack.PopUInt256(out UInt256 offset);
-                        stack.PopUInt256(out UInt256 size);
+                        if (!stack.PopUInt256(out UInt256 memOffset)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out UInt256 offset)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out UInt256 size)) goto StackUnderflow;
 
                         if (size > UInt256.Zero)
                         {

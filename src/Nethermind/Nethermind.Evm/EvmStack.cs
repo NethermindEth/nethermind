@@ -219,12 +219,14 @@ public ref struct EvmStack<TTracing>
         PushUInt256(Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
     }
 
-    public void PopLimbo()
+    public bool PopLimbo()
     {
         if (Head-- == 0)
         {
-            EvmStack.ThrowEvmStackUnderflowException();
+            return false;
         }
+
+        return true;
     }
 
     /// <summary>
