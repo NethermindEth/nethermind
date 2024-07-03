@@ -110,50 +110,41 @@ public static class BitmapHelper
         bitvec[pos / 8 + 2] = (byte)~a;
     }
 
-    private const uint Vector128ByteCount = 16;
-    private const uint Vector128IntCount = 4;
-    private const uint Vector256ByteCount = 32;
-    private const uint Vector256IntCount = 8;
-
     public static bool CheckCollision(ReadOnlySpan<byte> codeSegments, ReadOnlySpan<byte> jumpmask)
     {
         int count = Math.Min(codeSegments.Length, jumpmask.Length);
 
-        uint i = 0;
+        int i = 0;
 
         ref byte left = ref MemoryMarshal.GetReference<byte>(codeSegments);
         ref byte right = ref MemoryMarshal.GetReference<byte>(jumpmask);
 
-        if (Vector256.IsHardwareAccelerated)
+        if (Vector256.IsHardwareAccelerated && count >= Vector256<byte>.Count)
         {
-            Vector256<byte> zeros = Vector256.Create<byte>(0);
-            for (; i < (uint)count - (Vector256IntCount - 1u); i += Vector256IntCount)
+            for (; (uint)(i + Vector256<byte>.Count) <= (uint)count; i += Vector256<byte>.Count)
             {
-                Vector256<byte> result = Vector256.LoadUnsafe(ref left, i) & Vector256.LoadUnsafe(ref right, i);
-                result = Vector256.Min(result, zeros);
-                if (Vector256.Sum(result) != 0)
+                Vector256<byte> result = Vector256.LoadUnsafe(ref left, (uint)i) & Vector256.LoadUnsafe(ref right, (uint)i);
+                if (result != default)
                 {
                     return true;
                 }
             }
         }
-        else if (Vector128.IsHardwareAccelerated)
+        else if (Vector128.IsHardwareAccelerated && count >= Vector128<byte>.Count)
         {
-            Vector128<byte> zeros = Vector128.Create<byte>(0);
-            for (; i < (uint)count - (Vector128IntCount - 1u); i += Vector128IntCount)
+            for (; (i + Vector128<byte>.Count) <= (uint)count; i += Vector128<byte>.Count)
             {
-                Vector128<byte> result = Vector128.LoadUnsafe(ref left, i) & Vector128.LoadUnsafe(ref right, i);
-                result = Vector128.Min(result, zeros);
-                if (Vector128.Sum(result) != 0)
+                Vector128<byte> result = Vector128.LoadUnsafe(ref left, (uint)i) & Vector128.LoadUnsafe(ref right, (uint)i);
+                if (result != default)
                 {
                     return true;
                 }
             }
         }
 
-        for (int j = (int)i; j < (uint)count; j++)
+        for (; i < count; i++)
         {
-            if ((codeSegments[j] & jumpmask[j]) != 0)
+            if ((codeSegments[i] & jumpmask[i]) != 0)
             {
                 return true;
             }
