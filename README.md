@@ -14,7 +14,7 @@
 [![Ask on Discourse](https://img.shields.io/discourse/posts?style=social&label=Community&logo=discourse&server=https%3A%2F%2Fcommunity.nethermind.io)](https://community.nethermind.io/c/nethermind-client)
 [![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
-Nethermind is a high-performance, highly configurable Ethereum execution client built on .NET that runs on Linux, Windows, and macOS and supports Clique, Aura, and Ethash. With breakneck sync speeds and support for external plugins, it provides reliable access to rich on-chain data thanks to a high-performance JSON-RPC interface and node health monitoring with Grafana and Seq.
+Nethermind is a high-performance, highly configurable Ethereum execution client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, and Ethash. With breakneck sync speeds and support for external plugins, it provides reliable access to rich on-chain data, thanks to a high-performance JSON-RPC interface and node health monitoring with Grafana and Seq.
 
 ## Documentation
 
@@ -66,7 +66,7 @@ The official Docker images of Nethermind are available on [Docker Hub](https://h
 
 ### Get the digest of the Docker image
 
-In case of any Docker image need to be updated in the repository, you can update the digest of these images as follows:
+In case any Docker image needs to be updated in the repository, you can update the digest of these images as follows:
 
 ```sh
 docker inspect --format='{{index .RepoDigests 0}}' <image_name>
