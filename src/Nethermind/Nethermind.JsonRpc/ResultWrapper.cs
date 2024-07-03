@@ -47,7 +47,16 @@ namespace Nethermind.JsonRpc
                 ? Fail("Missing result.")
                 : rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
 
+        public static ResultWrapper<T> From(IResultWrapper source, object? data = null) => new ResultWrapper<T>
+        {
+            Data = (T)data ?? (T)source.Data,
+            Result = source.Result,
+            ErrorCode = source.ErrorCode,
+            IsTemporary = source.IsTemporary,
+        };
+
         public static implicit operator Task<ResultWrapper<T>>(ResultWrapper<T> resultWrapper) => Task.FromResult(resultWrapper);
+
         public void Dispose()
         {
             if (Data is IDisposable disposable)
