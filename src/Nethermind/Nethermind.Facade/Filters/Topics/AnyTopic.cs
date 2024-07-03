@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Filters.Topics
         public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
         {
             // TODO: Handle the case when there is no filter for topics
-            return Enumerable.Empty<long>();
+            return [-1];
         }
 
 

@@ -181,15 +181,40 @@ namespace Nethermind.Blockchain.Find
                 var TopicsFilter = f.TopicsFilter;
 
                 var blocksAddressFiltered = AddressFilter.GetBlockNumbersFrom(_logIndexStorage);
-                var setA = blocksAddressFiltered.ToHashSet();
+                var addressFilteredEnumerator = blocksAddressFiltered.GetEnumerator();
                 var blocksTopicFiltered = TopicsFilter.GetBlockNumbersFrom(_logIndexStorage);
-                var setB = blocksTopicFiltered.ToHashSet();
-                if (blocksTopicFiltered == SequenceTopicsFilter.Any)
+                var topicFilteredEnumerator = blocksAddressFiltered.GetEnumerator();
+                if (blocksTopicFiltered.First() == SequenceTopicsFilter.Any.First())
                 {
-                    return setA;
+                    while (addressFilteredEnumerator.MoveNext())
+                    {
+                        yield return addressFilteredEnumerator.Current;
+                    }
                 }
+                else
+                {
 
-                return setA.Intersect(setB);
+                    var hasNext = addressFilteredEnumerator.MoveNext();
+                    var hasNext2 = topicFilteredEnumerator.MoveNext();
+
+                    while (hasNext && hasNext2)
+                    {
+                        if (addressFilteredEnumerator.Current == topicFilteredEnumerator.Current)
+                        {
+                            yield return addressFilteredEnumerator.Current;
+                            hasNext = addressFilteredEnumerator.MoveNext();
+                            hasNext2 = topicFilteredEnumerator.MoveNext();
+                        }
+                        else if (addressFilteredEnumerator.Current < topicFilteredEnumerator.Current)
+                        {
+                            hasNext = addressFilteredEnumerator.MoveNext();
+                        }
+                        else
+                        {
+                            hasNext2 = topicFilteredEnumerator.MoveNext();
+                        }
+                    }
+                }
 
             }
 

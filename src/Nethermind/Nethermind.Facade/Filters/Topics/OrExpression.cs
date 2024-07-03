@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
@@ -16,12 +17,60 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
         {
-            var blocks = new HashSet<long>();
-            foreach (var expression in _subexpressions)
+
+            var blocks = _subexpressions.Select(e => e.GetBlockNumbersFrom(logIndexStorage));
+            IEnumerator<long>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
+
+
+
+            try
             {
-                blocks.UnionWith(expression.GetBlockNumbersFrom(logIndexStorage));
+
+                DictionarySortedSet<long, IEnumerator<long>> transactions = new();
+
+                for (int i = 0; i < enumerators.Length; i++)
+                {
+                    IEnumerator<long> enumerator = enumerators[i];
+                    if (enumerator.MoveNext())
+                    {
+                        transactions.Add(enumerator.Current!, enumerator);
+                    }
+                }
+
+
+                while (transactions.Count > 0)
+                {
+                    (long blockNumber, IEnumerator<long> enumerator) = transactions.Min;
+
+                    transactions.Remove(blockNumber);
+                    bool isRepeated = false;
+
+                    if (transactions.Count > 0)
+                    {
+                        (long blockNumber2, IEnumerator<long> enumerator2) = transactions.Min;
+                        isRepeated = blockNumber == blockNumber2;
+                    }
+
+                    if (enumerator.MoveNext())
+                    {
+                        transactions.Add(enumerator.Current!, enumerator);
+                    }
+                    if (!isRepeated)
+                    {
+                        yield return blockNumber;
+                    }
+
+                }
+
             }
-            return blocks;
+            finally
+            {
+
+                for (int i = 0; i < enumerators.Length; i++)
+                {
+                    enumerators[i].Dispose();
+                }
+            }
         }
 
         public OrExpression(params TopicExpression[] subexpressions)
