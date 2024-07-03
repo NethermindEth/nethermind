@@ -52,7 +52,7 @@ Branch names must follow the `kebab-case` or `snake_case` pattern and be all low
 - `fix/1234-bug-decription`
 - `shanghai/refactor/title`
 
-## File Headers
+### File headers
 
 The following notice must be included as a header in all source files if possible.
 
