@@ -20,7 +20,7 @@ Before filing a new issue, please search our [open issues](https://github.com/Ne
 
 If you find an existing issue, please include your feedback in the discussion. Do consider upvoting (👍 reaction) the original post instead of a "+1" comment, as this helps us prioritize popular issues in our backlog.
 
-## Contributing to the codebase
+## Contributing changes
 
 The project maintainers will accept changes that improve the product significantly at their discretion.
 
