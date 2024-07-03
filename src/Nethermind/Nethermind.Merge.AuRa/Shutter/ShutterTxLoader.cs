@@ -49,7 +49,7 @@ public class ShutterTxLoader(
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
-        if (_logger.IsDebug)
+        if (_logger.IsDebug && transactions.Length > 0)
         {
             StringBuilder msg = new("Decrypted Shutter transactions:");
             transactions.ForEach(tx => msg.Append("\n" + tx.ToShortString()));
@@ -66,7 +66,7 @@ public class ShutterTxLoader(
             Slot = slot
         };
 
-        if (_logger.IsDebug)
+        if (_logger.IsDebug && loadedTransactions.Transactions.Length > 0)
         {
             StringBuilder msg = new("Filtered Shutter transactions:");
             loadedTransactions.Transactions.ForEach(tx => msg.Append("\n" + tx.ToShortString()));
