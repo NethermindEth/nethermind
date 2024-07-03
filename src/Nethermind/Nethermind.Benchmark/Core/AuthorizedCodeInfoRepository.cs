@@ -50,12 +50,10 @@ public class AuthorizedCodeInfoRepositoryBenchmark
         var list = new List<AuthorizationTuple>();
         var rnd = new Random();
         var addressBuffer = new byte[20];
-        var keyBuffer = new byte[32];
         for (int i = 0; i < 1000; i++)
         {
             rnd.NextBytes(addressBuffer);
-            rnd.NextBytes(keyBuffer);
-            var signer = new PrivateKey(keyBuffer);
+            PrivateKey signer = Build.A.PrivateKey.TestObject;
             list.Add(CreateAuthorizationTuple(
                 signer,
                 1,

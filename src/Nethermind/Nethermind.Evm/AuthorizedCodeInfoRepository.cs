@@ -8,7 +8,6 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 using Nethermind.Crypto;
 

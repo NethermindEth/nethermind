@@ -43,11 +43,13 @@ public class AuthorizationTuple(
     /// <param name="chainId"></param>
     /// <param name="error"></param>
     /// <returns></returns>
-    /// <exception cref="InvalidOperationException">When <see cref="Authority"/> has not been set.</exception>
     public bool IsValidForExecution(IAccountStateProvider accountStateProvider, ulong chainId, [NotNullWhen(false)] out string? error)
     {
         if (Authority is null)
-            throw new InvalidOperationException($"Cannot determine correctness when {nameof(Authority)} is null.");
+        {
+            error = "Bad signature.";
+            return false;
+        }
         if (ChainId != 0 && chainId != ChainId)
         {
             error = $"Chain id ({ChainId}) does not match.";
