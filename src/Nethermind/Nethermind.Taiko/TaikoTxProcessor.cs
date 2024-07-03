@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -41,9 +42,14 @@ public class TaikoTransactionProcessor(
     protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
     {
-        if (!tx.IsAnchorTx)
+        if (tx.IsAnchorTx)
             opts |= ExecutionOptions.NoValidation;
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);
+    }
+
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
+    {
+        base.PayFees(tx, header, new TaikoAnchorTxReleaseSpec(spec), tracer, substate, spentGas, premiumPerGas, statusCode);
     }
 }
