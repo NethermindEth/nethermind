@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText:2023 Demerzel Solutions Limited
 // SPDX-License-Identifier:LGPL-3.0-only
 
+using System;
 using FastEnumUtility;
 using Nethermind.Core.Verkle;
 using Nethermind.Serialization.Rlp;
@@ -10,20 +11,20 @@ using Nethermind.Verkle.Proofs;
 
 namespace Nethermind.Verkle.Tree.Serializers;
 
-public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
+public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProofSerialized>
 {
     public static VerkleProofSerializer Instance = new VerkleProofSerializer();
-    public int GetLength(VerkleProof item, RlpBehaviors rlpBehaviors)
+    public int GetLength(VerkleProofSerialized item, RlpBehaviors rlpBehaviors)
     {
         int contentLength = 0;
 
         int verkleProofStructLength = 0;
         int ipaLength = 0;
         ipaLength += 33; //Rlp.LengthOf(FrE A)
-        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProof.L.Length * 33) +
-                     Rlp.LengthOfSequence(item.Proof.IpaProof.R.Length * 33);
+        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.L.Length * 66) +
+                     Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.R.Length * 66);
         verkleProofStructLength += Rlp.LengthOfSequence(ipaLength);
-        verkleProofStructLength += 33;
+        verkleProofStructLength += 66;
 
         contentLength += Rlp.LengthOfSequence(verkleProofStructLength);
 
@@ -37,13 +38,13 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
         return contentLength;
     }
 
-    public VerkleProof Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public VerkleProofSerialized Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         rlpStream.ReadSequenceLength();
-        VerkleProofStruct proofStruct = DecodeVerkleProofStruct(rlpStream);
+        VerkleProofStructSerialized proofStruct = DecodeVerkleProofStruct(rlpStream);
         Banderwagon[] comsSorted = rlpStream.DecodeArray(DecodeBanderwagon);
         VerificationHint hint = DecodeVerifyHint(rlpStream);
-        return new VerkleProof()
+        return new VerkleProofSerialized()
         {
             CommsSorted = comsSorted,
             Proof = proofStruct,
@@ -51,21 +52,21 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
         };
     }
 
-    private VerkleProofStruct DecodeVerkleProofStruct(RlpStream stream)
+    private VerkleProofStructSerialized DecodeVerkleProofStruct(RlpStream stream)
     {
         stream.ReadSequenceLength();
-        IpaProofStruct proofStruct = DecodeIpaProofStruct(stream);
-        Banderwagon d = Banderwagon.FromBytes(stream.DecodeByteArray(), subgroupCheck: false)!.Value;
-        return new VerkleProofStruct(proofStruct, d);
+        IpaProofStructSerialized proofStruct = DecodeIpaProofStruct(stream);
+        byte[] d = stream.DecodeByteArray();
+        return new VerkleProofStructSerialized(proofStruct, d);
     }
 
-    private IpaProofStruct DecodeIpaProofStruct(RlpStream stream)
+    private IpaProofStructSerialized DecodeIpaProofStruct(RlpStream stream)
     {
         stream.ReadSequenceLength();
-        var a = FrE.FromBytes(stream.DecodeByteArray());
-        Banderwagon[] cl = stream.DecodeArray(DecodeBanderwagon);
-        Banderwagon[] cr = stream.DecodeArray(DecodeBanderwagon);
-        return new IpaProofStruct(cl, a, cr);
+        byte[] a = stream.DecodeByteArray();
+        byte[][] cl = stream.DecodeArray(DecodeBanderwagonS);
+        byte[][] cr = stream.DecodeArray(DecodeBanderwagonS);
+        return new IpaProofStructSerialized(cl, a, cr);
     }
 
     private VerificationHint DecodeVerifyHint(RlpStream stream)
@@ -94,7 +95,12 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
         return Banderwagon.FromBytes(stream.DecodeByteArray(), subgroupCheck: false)!.Value;
     }
 
-    public void Encode(RlpStream stream, VerkleProof item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private byte[] DecodeBanderwagonS(RlpStream stream)
+    {
+        return stream.DecodeByteArray();
+    }
+
+    public void Encode(RlpStream stream, VerkleProofSerialized item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         var contentLength = GetLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
@@ -102,18 +108,18 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
         int verkleProofStructLength = 0;
         int ipaLength = 0;
         ipaLength += 33; //Rlp.LengthOf(FrE A)
-        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProof.L.Length * 33) +
-                     Rlp.LengthOfSequence(item.Proof.IpaProof.R.Length * 33);
+        ipaLength += Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.L.Length * 66) +
+                     Rlp.LengthOfSequence(item.Proof.IpaProofSerialized.R.Length * 66);
         verkleProofStructLength += Rlp.LengthOfSequence(ipaLength);
-        verkleProofStructLength += 33;
+        verkleProofStructLength += 65;
         stream.StartSequence(verkleProofStructLength);
         stream.StartSequence(ipaLength);
-        stream.Encode(item.Proof.IpaProof.A.ToBytes());
-        stream.StartSequence(item.Proof.IpaProof.L.Length * 33);
-        foreach (Banderwagon data in item.Proof.IpaProof.L) stream.Encode(data.ToBytes());
-        stream.StartSequence(item.Proof.IpaProof.R.Length * 33);
-        foreach (Banderwagon data in item.Proof.IpaProof.R) stream.Encode(data.ToBytes());
-        stream.Encode(item.Proof.D.ToBytes());
+        stream.Encode(item.Proof.IpaProofSerialized.A);
+        stream.StartSequence(item.Proof.IpaProofSerialized.L.Length * 66);
+        foreach (byte[] data in item.Proof.IpaProofSerialized.L) stream.Encode(data);
+        stream.StartSequence(item.Proof.IpaProofSerialized.R.Length * 66);
+        foreach (byte[] data in item.Proof.IpaProofSerialized.R) stream.Encode(data);
+        stream.Encode(item.Proof.D);
 
         if (item.CommsSorted.Length == 0)
         {
