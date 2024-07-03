@@ -56,6 +56,7 @@ public class ShutterTxSource(
 
         // atomic fetch
         ShutterTransactions shutterTransactions = _shutterTransactions;
+        if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {shutterTransactions.Slot} with {shutterTransactions.Transactions.Length} transactions.");
         if (shutterTransactions.Slot == nextSlot)
         {
             return shutterTransactions.Transactions;
