@@ -2263,6 +2263,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             break;
                         }
+                        if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                        {
+                            // Result pushed to stack
+                            continue;
+                        }
 
                         goto DataReturn;
                     }
@@ -2708,6 +2713,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue) ||
             env.CallDepth >= MaxCallDepth)
         {
+            returnData = CallResult.BoxedEmpty;
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushOne();
 
@@ -2743,6 +2749,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             // and it returns 1 (same as when the callee frame reverts) to signal failure.
             // Only initial gas cost of EXTDELEGATECALL is consumed (similarly to the call depth check)
             // and the target address still becomes warm.
+            returnData = CallResult.BoxedEmpty;
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushOne();
             return EvmExceptionType.None;
