@@ -207,6 +207,17 @@ class ShutterCryptoTests
 
     [Test]
     [TestCase(
+        "02F8768227D882027384B2D05E0084B2D05E0E830186A094C34B4858CF5F89916559FAB2F864384D74B2F99687038D7EA4C6800080C001A07098F6E9A7A28BD3D78221658E9668C17413DF03920F261193A3355CA71E8BA1A02024DE99EAE02A59FDFBC549316320349C2CF9D968F2E69E5C35609194F671A6"
+    )]
+    public void Can_decode_transaction(string encodedTxHex)
+    {
+        Transaction tx = Rlp.Decode<Transaction>(Convert.FromHexString(encodedTxHex));
+        Console.WriteLine(tx.ToShortString());
+        Assert.That(false);
+    }
+
+    [Test]
+    [TestCase(
         7649174914161947266ul,
         16729082666370017565ul,
         8333205535599204084ul,
