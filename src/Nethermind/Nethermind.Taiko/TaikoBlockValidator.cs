@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -19,6 +20,7 @@ public class TaikoBlockValidator(
     IHeaderValidator headerValidator,
     IUnclesValidator unclesValidator,
     ISpecProvider specProvider,
+    IEthereumEcdsa ecdsa,
     ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
 {
     private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").BytesToArray()[0..4];
@@ -33,6 +35,7 @@ public class TaikoBlockValidator(
 
     private const long AnchorGasLimit = 250_000;
 
+    private readonly IEthereumEcdsa _ecdsa = ecdsa;
 
     protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
     {
@@ -100,7 +103,9 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (!tx.SenderAddress?.Equals(GoldenTouchAccount) ?? throw new InvalidOperationException("Sender address is null"))
+        tx.SenderAddress = _ecdsa.RecoverAddress(tx)
+            ?? throw new InvalidOperationException("Couldn't recover sender address for Anchor Transaction");
+        if (!tx.SenderAddress!.Equals(GoldenTouchAccount))
         {
             errorMessage = "Anchor Transaction must be sent by the Golden Touch account.";
             return false;
