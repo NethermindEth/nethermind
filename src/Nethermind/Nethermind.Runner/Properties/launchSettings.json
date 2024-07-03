@@ -107,7 +107,7 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet -dd .data",
+      "commandLineArgs": "-c mainnet -dd .data --JsonRpc.JwtSecretFile=/tmp/jwtsecret",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

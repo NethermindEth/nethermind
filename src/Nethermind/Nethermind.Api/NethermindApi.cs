@@ -233,7 +233,6 @@ namespace Nethermind.Api
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-        public VerkleSyncServer? VerkleSyncServer { get; set; }
         public IVerkleTreeStore? VerkleTreeStore { get; set; }
         public IReadOnlyVerkleTreeStore? ReadOnlyVerkleTrieStore { get; set; }
         public VerkleArchiveStore? VerkleArchiveStore { get; set; }
