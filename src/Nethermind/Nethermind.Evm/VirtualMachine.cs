@@ -419,6 +419,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             bytecodeResultArray = bytecodeResult.ToArray();
 
+                            int dataSize = bytecodeResult[dataSubheaderSectionStart..].ReadEthUInt16();
+
                             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
                             bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray?.Length ?? 0, spec);

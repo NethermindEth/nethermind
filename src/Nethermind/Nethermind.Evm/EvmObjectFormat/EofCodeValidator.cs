@@ -9,6 +9,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using DotNetty.Common.Utilities;
 using FastEnumUtility;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -473,7 +474,7 @@ public static class EvmObjectFormat
             }
 
             ArrayPool<bool>.Shared.Return(visitedSectionsArray);
-            return HasNoNonReachableCodeSections;
+            return !HasNoNonReachableCodeSections;
         }
 
         bool ValidateTypeSection(ReadOnlySpan<byte> types)
@@ -792,12 +793,11 @@ public static class EvmObjectFormat
         }
         public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection)
         {
-            StackBounds[] recordedStackHeightArray = ArrayPool<StackBounds>.Shared.Rent(code.Length);
+            StackBounds[] recordedStackHeight = ArrayPool<StackBounds>.Shared.Rent(code.Length);
+            recordedStackHeight.Fill(new StackBounds());
+
             try
             {
-                Span<StackBounds> recordedStackHeight = recordedStackHeightArray.AsSpan(0, code.Length);
-                recordedStackHeight.Clear();
-
                 ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
 
                 ushort currrentSectionOutputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
@@ -872,8 +872,8 @@ public static class EvmObjectFormat
                     if (!opcode.IsTerminating())
                     {
                         short delta = (short)(outputs - inputs);
-                        currentStackBounds.Max = (short)(currentStackBounds.Max + delta);
-                        currentStackBounds.Min = (short)(currentStackBounds.Min + delta);
+                        currentStackBounds.Max += delta;
+                        currentStackBounds.Min += delta;
                     }
                     peakStackHeight = Math.Max(peakStackHeight, currentStackBounds.Max);
 
@@ -959,8 +959,8 @@ public static class EvmObjectFormat
                     }
                     else
                     {
-                        currentStackBounds.Combine(recordedStackHeight[programCounter]);
-                        recordedStackHeight[programCounter] = currentStackBounds;
+                        recordedStackHeight[programCounter].Combine(currentStackBounds);
+                        currentStackBounds = recordedStackHeight[programCounter];
                     }
                 }
 
@@ -986,7 +986,7 @@ public static class EvmObjectFormat
             }
             finally
             {
-                ArrayPool<StackBounds>.Shared.Return(recordedStackHeightArray);
+                ArrayPool<StackBounds>.Shared.Return(recordedStackHeight);
             }
         }
     }
