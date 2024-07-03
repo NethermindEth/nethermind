@@ -2636,13 +2636,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         const int MIN_RETAINED_GAS = 5000;
 
         returnData = null;
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
 
+        // Instruction is undefined in legacy code and only available in EOF
         if (!spec.IsEofEnabled ||
+            env.CodeInfo.Version == 0 ||
             (instruction == Instruction.EXTDELEGATECALL && !spec.DelegateCallEnabled) ||
             (instruction == Instruction.EXTSTATICCALL && !spec.StaticCallEnabled))
             return EvmExceptionType.BadInstruction;
 
-        ref readonly ExecutionEnvironment env = ref vmState.Env;
 
         // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
         stack.PopWord256(out Span<byte> targetBytes);
