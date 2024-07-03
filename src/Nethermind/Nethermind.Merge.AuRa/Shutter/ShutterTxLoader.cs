@@ -49,7 +49,7 @@ public class ShutterTxLoader(
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
-        if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
+        if (_logger.IsDebug && transactions.Length > 0) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
         // question for reviewers: what is correct thing to do here if head is null?
         IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
@@ -61,7 +61,7 @@ public class ShutterTxLoader(
             Slot = slot
         };
 
-        if (_logger.IsDebug) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
+        if (_logger.IsDebug && shutterTransactions.Transactions.Length > 0) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
         return shutterTransactions;
     }
 
