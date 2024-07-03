@@ -306,7 +306,7 @@ namespace Nethermind.Core.Specs
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
-        
+
         /// <summary>
         /// Transactions that allows code for EOA temporarily
         /// </summary>
