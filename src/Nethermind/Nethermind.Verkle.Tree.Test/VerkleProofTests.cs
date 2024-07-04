@@ -380,7 +380,6 @@ public class VerkleProofTest
         Console.WriteLine(payload);
         IJsonSerializer serializer = new EthereumJsonSerializer();
         ExecutionPayload? result = serializer.Deserialize<ExecutionPayload>(payload);
-        Console.WriteLine(result);
 
         VerkleWorldState state = new VerkleWorldState(result.ExecutionWitness,
             Banderwagon.FromBytes(
