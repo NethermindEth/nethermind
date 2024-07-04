@@ -30,8 +30,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     private readonly Dictionary<string, int> _4ByteIds = new();
     private Instruction _op;
 
-    public Native4ByteTracer(
-        GethTraceOptions options) : base(options)
+    public Native4ByteTracer(GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
     }

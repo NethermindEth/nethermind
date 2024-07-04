@@ -206,6 +206,18 @@ namespace Evm.T8NTool
             _receiptTracer.ReportFees(fees, burntFees);
         }
 
+        public void ReportLog(LogEntry log)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool IsTracingLogs => false;
+
         public bool IsTracingReceipt => _receiptTracer.IsTracingReceipt;
 
         public bool IsTracingActions => _receiptTracer.IsTracingActions;

@@ -18,7 +18,7 @@ namespace Nethermind.Trie;
 /// <param name="base"></param>
 public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 {
-    private NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
+    private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {

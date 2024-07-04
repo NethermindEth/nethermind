@@ -154,8 +154,8 @@ namespace Nethermind.Core
                 //
                 // Method Nethermind.Core.AccountStruct:get_IsNull():bool:this (FullOpts)
                 // G_M000_IG01:
-                //        vzeroupper 
-                // 
+                //        vzeroupper
+                //
                 // G_M000_IG02:
                 //        vmovups  ymm0, ymmword ptr [rcx]
                 //        vpor     ymm0, ymm0, ymmword ptr [rcx+0x20]
@@ -164,10 +164,10 @@ namespace Nethermind.Core
                 //        vptest   ymm0, ymm0
                 //        sete     al
                 //        movzx    rax, al
-                // 
+                //
                 // G_M000_IG03:                ;; offset=0x0021
-                //        vzeroupper 
-                //        ret      
+                //        vzeroupper
+                //        ret
                 // ; Total bytes of code: 37
 
                 return (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _balance)) |

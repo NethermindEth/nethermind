@@ -10,6 +10,8 @@ namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 [JsonConverter(typeof(NativePrestateTracerAccountConverter))]
 public class NativePrestateTracerAccount
 {
+    public NativePrestateTracerAccount() { }
+
     public NativePrestateTracerAccount(UInt256 balance, bool isPrestate = true)
     {
         Balance = balance;
@@ -24,11 +26,11 @@ public class NativePrestateTracerAccount
         IsPrestate = isPrestate;
     }
 
-    public UInt256 Balance { get; }
+    public UInt256? Balance { get; set; }
 
-    public UInt256? Nonce { get; }
+    public UInt256? Nonce { get; set; }
 
-    public byte[]? Code { get; }
+    public byte[]? Code { get; set; }
 
     public Dictionary<UInt256, UInt256>? Storage { get; set; }
 

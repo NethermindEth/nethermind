@@ -16,6 +16,7 @@ namespace Nethermind.Specs
             _spec = spec;
         }
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
+        public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
 
         public string Name => "System";
 
@@ -93,9 +94,7 @@ namespace Nethermind.Specs
 
         public bool IsEip2200Enabled => _spec.IsEip2200Enabled;
 
-        public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
-
-        public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
+        public bool IsEip2537Enabled => _spec.IsEip2537Enabled;
 
         public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
@@ -130,6 +129,9 @@ namespace Nethermind.Specs
         public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
+        public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
+        public bool IsEip7709Enabled => _spec.IsEip7709Enabled;
+        public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;

@@ -150,15 +150,18 @@ public class T8NTool
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
 
         var blockhashProvider = new T8NBlockHashProvider();
+        CodeInfoRepository codeInfoRepository = new();
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             specProvider,
+            codeInfoRepository,
             _logManager);
 
         TransactionProcessor transactionProcessor = new(
             specProvider,
             stateProvider,
             virtualMachine,
+            codeInfoRepository,
             _logManager);
 
         GeneralStateTestBase.InitializeTestPreState(allocJson, stateProvider, specProvider);
@@ -260,7 +263,7 @@ public class T8NTool
 
         Hash256 stateRoot = stateProvider.StateRoot;
         Hash256 txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
-        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, includedTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
+        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, includedTxReceipts.ToArray(), new ReceiptMessageDecoder());
 
         var logEntries = includedTxReceipts.SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>()).ToArray();
         var bloom = new Bloom(logEntries);
@@ -300,8 +303,8 @@ public class T8NTool
 
     private bool IsEmptyAccount(NativePrestateTracerAccount account)
     {
-        return account.Balance.IsZero && (!account.Nonce.HasValue || account.Nonce.Value.IsZero)
-                                      && account.Code.IsNullOrEmpty() && account.Storage.IsNullOrEmpty();
+        return (account.Balance is null || account.Balance.Value.IsZero) && (!account.Nonce.HasValue || account.Nonce.Value.IsZero)
+                                                       && account.Code.IsNullOrEmpty() && account.Storage.IsNullOrEmpty();
     }
 
     private NativePrestateTracerAccount ConvertAccountToNativePrestateTracerAccount(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, UInt256>> storages)
