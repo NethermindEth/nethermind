@@ -44,7 +44,7 @@ public class SequencerContract : Contract
             long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
             BlockParameter start = new(startBlockNumber);
             LogFilter logFilter = new(0, start, end, _addressFilter, _topicsFilter);
-            
+
             IEnumerable<FilterLog> logs;
             try
             {
