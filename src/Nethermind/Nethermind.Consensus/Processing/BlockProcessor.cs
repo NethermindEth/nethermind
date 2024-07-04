@@ -9,10 +9,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -61,6 +61,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IBlockhashStore? blockHashStore,
+        IBeaconBlockRootHandler? beaconBlockRootHandler,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null,
@@ -75,9 +76,9 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+        _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
         _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         _preWarmer = preWarmer;
-        _beaconBlockRootHandler = new BeaconBlockRootHandler();
         ReceiptsTracer = new BlockReceiptsTracer();
         _clearCaches = _ => _preWarmer.ClearCachesInBackground();
     }
@@ -264,9 +265,8 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
         _blockhashStore.ApplyBlockhashStateChanges(block.Header);
-
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);

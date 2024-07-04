@@ -1,39 +1,54 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Specs;
+using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
-namespace Nethermind.Consensus.BeaconBlockRoot;
-
-public class BeaconBlockRootHandler : IBeaconBlockRootHandler
+namespace Nethermind.Blockchain.BeaconBlockRoot;
+public class BeaconBlockRootHandler(
+    ITransactionProcessor processor,
+    ILogManager? logManager)
+    : IBeaconBlockRootHandler
 {
-    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider)
+    private static readonly Address Default4788Address = new("0x000f3df6d732807ef1319fb7b8bb8522d0beac02");
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger();
+    private const long GasLimit = 30_000_000L;
+
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
-        if (!spec.IsBeaconBlockRootAvailable ||
-            block.IsGenesis ||
-            block.Header.ParentBeaconBlockRoot is null)
-            return;
+        BlockHeader? header = block.Header;
+        var canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
+                                  && !header.IsGenesis
+                                  && header.ParentBeaconBlockRoot is not null;
 
-        Address eip4788Account = spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress;
+        if (canInsertBeaconRoot)
+        {
+            Transaction transaction = new()
+            {
+                Value = UInt256.Zero,
+                Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
+                To = spec.Eip4788ContractAddress ?? Default4788Address,
+                SenderAddress = Address.SystemUser,
+                GasLimit = GasLimit,
+                GasPrice = UInt256.Zero,
+            };
 
-        if (!stateProvider.AccountExists(eip4788Account))
-            return;
+            transaction.Hash = transaction.CalculateHash();
 
-        UInt256 timestamp = (UInt256)block.Timestamp;
-        Hash256 parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
-
-        UInt256.Mod(timestamp, Eip4788Constants.HistoryBufferLength, out UInt256 timestampReduced);
-        UInt256 rootIndex = timestampReduced + Eip4788Constants.HistoryBufferLength;
-
-        StorageCell tsStorageCell = new(eip4788Account, timestampReduced);
-        StorageCell brStorageCell = new(eip4788Account, rootIndex);
-
-        stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
-        stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
+            try
+            {
+                processor.Execute(transaction, header, NullTxTracer.Instance);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Error during calling BeaconBlockRoot contract", e);
+            }
+        }
     }
 }

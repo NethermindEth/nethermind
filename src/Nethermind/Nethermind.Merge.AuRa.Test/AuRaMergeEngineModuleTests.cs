@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -132,6 +133,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 State,
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor, LimboLogs.Instance),
                 LogManager,
                 WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());

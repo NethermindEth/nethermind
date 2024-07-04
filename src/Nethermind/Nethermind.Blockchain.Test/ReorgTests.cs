@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
@@ -78,6 +79,7 @@ public class ReorgTests
             stateProvider,
             NullReceiptStorage.Instance,
             new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
@@ -14,7 +15,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -159,7 +160,7 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
+        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LogManager);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
@@ -172,7 +173,7 @@ public class TestBlockchain : IDisposable
             SpecProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),
-            LimboLogs.Instance);
+            LogManager);
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
@@ -208,7 +209,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler();
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -325,8 +326,7 @@ public class TestBlockchain : IDisposable
         {
             MinGasPrice = 0
         };
-        ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
-            SpecProvider, blocksConfig);
+        ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LogManager, SpecProvider, blocksConfig);
         return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
     }
 
@@ -377,6 +377,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             new BlockhashStore(SpecProvider, State),
+            new BeaconBlockRootHandler(TxProcessor),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer());
 

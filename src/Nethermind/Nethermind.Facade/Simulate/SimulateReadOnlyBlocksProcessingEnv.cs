@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -114,5 +115,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             StateProvider,
             NullReceiptStorage.Instance,
             new BlockhashStore(SpecProvider, StateProvider),
+            new BeaconBlockRootHandler(_transactionProcessor, _logManager),
             _logManager);
 }
