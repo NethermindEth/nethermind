@@ -146,9 +146,14 @@ namespace Nethermind.Merge.AuRa
 
         private void ValidateShutterConfig(IShutterConfig shutterConfig)
         {
-            if (shutterConfig.ValidatorInfoFile is null || !File.Exists(shutterConfig.ValidatorInfoFile))
+            if (shutterConfig.Validator && shutterConfig.ValidatorInfoFile is null)
             {
-                throw new ArgumentException("Must set Shutter validator info file to a valid filepath.");
+                throw new ArgumentException($"Must set Shutter.ValidatorInfoFile to a valid json file.");
+            }
+
+            if (shutterConfig.ValidatorInfoFile is not null && !File.Exists(shutterConfig.ValidatorInfoFile))
+            {
+                throw new ArgumentException($"Shutter validator info file \"{shutterConfig.ValidatorInfoFile}\" does not exist.");
             }
 
             if (shutterConfig.SequencerContractAddress is null || !Address.TryParse(shutterConfig.SequencerContractAddress, out _))

@@ -41,6 +41,11 @@ public class ShutterTxSource(
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
+        if (!shutterConfig.Validator)
+        {
+            return [];
+        }
+
         // assume validator will stay registered
         if (!_validatorsRegistered)
         {
