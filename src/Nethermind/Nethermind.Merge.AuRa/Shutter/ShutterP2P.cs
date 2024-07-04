@@ -88,6 +88,11 @@ public class ShutterP2P(
                         }
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
+                    break;
+                }
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Shutter processing thread error", e);
