@@ -4,6 +4,8 @@ Welcome, and thank you for your interest in contributing to Nethermind!
 
 There are several ways to contribute beyond writing code. This guide provides a high-level overview of how you can get involved.
 
+We expect project participants to adhere to our [code of conduct](./CODE_OF_CONDUCT.md). Please read the full text so that you can understand what actions will and will not be tolerated.
+
 ## Asking questions and providing feedback
 
 Have a question? Instead of opening an issue, please ask on our [Discord channel](https://discord.gg/N6Fhbg9u).
