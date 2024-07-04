@@ -30,6 +30,7 @@ public class ShutterP2P(
     private PubsubRouter? _router;
     private ServiceProvider? _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
+    private const int DisconnectionLogTimeoutMins = 5;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -76,16 +77,26 @@ public class ShutterP2P(
 
         Task.Run(async () =>
         {
+            long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
             while (true)
             {
                 try
                 {
-                    if (await _msgQueue.Reader.WaitToReadAsync(_cancellationTokenSource.Token))
+                    Task<bool> whenMsgOrTimeout = await Task.WhenAny([
+                        _msgQueue.Reader.WaitToReadAsync(_cancellationTokenSource.Token).AsTask(),
+                        Task.Delay(DisconnectionLogTimeoutMins * 60 * 1000, _cancellationTokenSource.Token).ContinueWith(_ => false)
+                    ]);
+
+                    if (await whenMsgOrTimeout)
                     {
                         var msg = await _msgQueue.Reader.ReadAsync(_cancellationTokenSource.Token);
-                        {
-                            ProcessP2PMessage(msg);
-                        }
+                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                        ProcessP2PMessage(msg);
+                    }
+                    else
+                    {
+                        long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+                        if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                     }
                 }
                 catch (OperationCanceledException)
