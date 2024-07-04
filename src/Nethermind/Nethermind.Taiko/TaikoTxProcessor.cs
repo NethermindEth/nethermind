@@ -58,4 +58,12 @@ public class TaikoTransactionProcessor(
     {
         base.PayFees(tx, header, new TaikoAnchorTxReleaseSpec(spec, tx.IsAnchorTx? null: TaikoL2Address), tracer, substate, spentGas, premiumPerGas, statusCode);
     }
+
+    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    {
+        if (tx.IsAnchorTx)
+            WorldState.CreateAccountIfNotExists(tx.SenderAddress!, UInt256.Zero, UInt256.Zero);
+
+        return base.IncrementNonce(tx, header, spec, tracer, opts);
+    }
 }
