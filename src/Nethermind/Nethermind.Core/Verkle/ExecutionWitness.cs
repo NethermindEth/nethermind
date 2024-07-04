@@ -39,14 +39,14 @@ public class WitnessVerkleProofSerialized
     public IpaProofStructSerialized IpaProof { get; set; }
 
     public WitnessVerkleProofSerialized(
-        Stem[] stems,
+        Stem[] otherStems,
         byte[] depthExtensionPresent,
         Banderwagon[] commitmentsByPath,
         byte[] d,
         IpaProofStructSerialized ipaProof
     )
     {
-        OtherStems = stems;
+        OtherStems = otherStems;
         DepthExtensionPresent = depthExtensionPresent;
         CommitmentsByPath = commitmentsByPath;
         D = d;
