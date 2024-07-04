@@ -6,6 +6,7 @@ namespace Nethermind.Consensus.AuRa.Config
     public class ShutterConfig : IShutterConfig
     {
         public bool Enabled { get; set; }
+        public bool Validator { get; set; }
         public string ValidatorRegistryContractAddress { get; set; }
         public string SequencerContractAddress { get; set; }
         public string KeyBroadcastContractAddress { get; set; }
