@@ -106,8 +106,6 @@ public static class EvmObjectFormat
 
     }
 
-    public static bool IsEofn(ReadOnlySpan<byte> container, byte version) => container.Length >= MAGIC.Length + 1 && container.StartsWith(MAGIC) && container[MAGIC.Length] == version;
-
     public static bool IsValidEof(ReadOnlySpan<byte> container, ValidationStrategy strategy, [NotNullWhen(true)] out EofHeader? header)
     {
         if (strategy == ValidationStrategy.None)
@@ -129,13 +127,13 @@ public static class EvmObjectFormat
             bool validateBody = true || strategy.HasFlag(ValidationStrategy.Validate);
             if (validateBody && handler.ValidateBody(container, header.Value, strategy))
             {
-                if (strategy.HasFlag(ValidationStrategy.ValidateSubContainers) && header?.ContainerSection?.Count > 0)
+                if (strategy.HasFlag(ValidationStrategy.ValidateSubContainers) && header?.ContainerSections?.Count > 0)
                 {
-                    int containerSize = header.Value.ContainerSection.Value.Count;
+                    int containerSize = header.Value.ContainerSections.Value.Count;
 
                     for (int i = 0; i < containerSize; i++)
                     {
-                        ReadOnlySpan<byte> subContainer = container.Slice(header.Value.ContainerSection.Value.Start + header.Value.ContainerSection.Value[i].Start, header.Value.ContainerSection.Value[i].Size);
+                        ReadOnlySpan<byte> subContainer = container.Slice(header.Value.ContainerSections.Value.Start + header.Value.ContainerSections.Value[i].Start, header.Value.ContainerSections.Value[i].Size);
                         if (!IsValidEof(subContainer, strategy, out _))
                         {
                             return false;
@@ -150,21 +148,6 @@ public static class EvmObjectFormat
 
         header = null;
         return false;
-    }
-
-    public static bool TryExtractHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
-    {
-        header = null;
-        return container.Length > VERSION_OFFSET
-               && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
-               && handler.TryParseEofHeader(container, out header);
-    }
-
-    public static byte GetCodeVersion(ReadOnlySpan<byte> container)
-    {
-        return container.Length <= VERSION_OFFSET
-            ? byte.MinValue
-            : container[VERSION_OFFSET];
     }
 
     internal class Eof1 : IEofVersionHandler
@@ -372,7 +355,7 @@ public static class EvmObjectFormat
                 PrefixSize = HEADER_TERMINATOR_OFFSET,
                 TypeSection = typeSectionHeader,
                 CodeSections = codeSectionHeader,
-                ContainerSection = containerSectionHeader,
+                ContainerSections = containerSectionHeader,
                 DataSection = dataSectionHeader,
             };
 
@@ -386,17 +369,17 @@ public static class EvmObjectFormat
             int calculatedCodeLength =
                     header.TypeSection.Size
                 + header.CodeSections.Size
-                + (header.ContainerSection?.Size ?? 0);
+                + (header.ContainerSections?.Size ?? 0);
             CompoundSectionHeader codeSections = header.CodeSections;
             ReadOnlySpan<byte> contractBody = container[startOffset..endOffset];
             ReadOnlySpan<byte> dataBody = container[endOffset..];
             var typeSection = header.TypeSection;
             (int typeSectionStart, int typeSectionSize) = (typeSection.Start, typeSection.Size);
 
-            if (header.ContainerSection?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS)
+            if (header.ContainerSections?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS)
             {
                 // move this check where `header.ExtraContainers.Count` is parsed
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, initcode Containers bount must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSection?.Count}");
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, initcode Containers bount must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSections?.Count}");
                 return false;
             }
 
@@ -437,8 +420,8 @@ public static class EvmObjectFormat
                 return false;
             }
 
-            bool[] visitedSectionsArray = ArrayPool<bool>.Shared.Rent(header.CodeSections.Count);
-            Span<bool> visitedSections = visitedSectionsArray.AsSpan(0, header.CodeSections.Count);
+            Span<bool> visitedSections = stackalloc bool[header.CodeSections.Count];
+            Span<byte> visitedContainerSections = stackalloc byte[header.ContainerSections is null ? 0 : header.ContainerSections.Value.Count];
             visitedSections.Clear();
 
             Queue<ushort> validationQueue = new Queue<ushort>();
@@ -456,25 +439,17 @@ public static class EvmObjectFormat
                 var codeSection = header.CodeSections[sectionIdx];
 
                 ReadOnlySpan<byte> code = container.Slice(header.CodeSections.Start + codeSection.Start, codeSection.Size);
-                if (!ValidateInstructions(sectionIdx, strategy, typesection, code, header, container, validationQueue))
+                if (!ValidateInstructions(sectionIdx, strategy, typesection, code, header, container, validationQueue, ref visitedContainerSections))
                 {
-                    ArrayPool<bool>.Shared.Return(visitedSectionsArray);
                     return false;
                 }
             }
 
-            bool HasNoNonReachableCodeSections = false;
-            for (int i = 0; i < header.CodeSections.Count; i++)
-            {
-                if (!visitedSections[i])
-                {
-                    HasNoNonReachableCodeSections = true;
-                    break;
-                }
-            }
+            bool HasNoNonReachableSections =
+                visitedSections[..header.CodeSections.Count].Contains(false)
+                || (header.ContainerSections is not null && visitedContainerSections[..header.ContainerSections.Value.Count].Contains((byte)0));
 
-            ArrayPool<bool>.Shared.Return(visitedSectionsArray);
-            return !HasNoNonReachableCodeSections;
+            return !HasNoNonReachableSections;
         }
 
         bool ValidateTypeSection(ReadOnlySpan<byte> types)
@@ -518,11 +493,12 @@ public static class EvmObjectFormat
             return true;
         }
 
-        bool ValidateInstructions(ushort sectionId, ValidationStrategy strategy, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, in ReadOnlySpan<byte> container, Queue<ushort> worklist)
+        bool ValidateInstructions(ushort sectionId, ValidationStrategy strategy, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, in ReadOnlySpan<byte> container, Queue<ushort> worklist, ref Span<byte> visitedContainers)
         {
             int length = (code.Length / BYTE_BIT_COUNT) + 1;
             byte[] codeBitmapArray = ArrayPool<byte>.Shared.Rent(length);
             byte[] jumpDestsArray = ArrayPool<byte>.Shared.Rent(length);
+
             try
             {
                 // ArrayPool may return a larger array than requested, so we need to slice it to the actual length
@@ -712,13 +688,21 @@ public static class EvmObjectFormat
                         }
 
                         ushort runtimeContainerId = code[postInstructionByte];
-                        if (runtimeContainerId >= header.ContainerSection?.Count)
+                        if (runtimeContainerId >= header.ContainerSections?.Count)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate argument must be less than containersection.Count i.e: {header.ContainerSection?.Count}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate argument must be less than containersection.Count i.e: {header.ContainerSections?.Count}");
                             return false;
                         }
 
-                        ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSection.Value.Start + header.ContainerSection.Value[runtimeContainerId].Start, header.ContainerSection.Value[runtimeContainerId].Size);
+                        if (visitedContainers[runtimeContainerId] != 0 && visitedContainers[runtimeContainerId] != (byte)ValidationStrategy.ValidateRuntimeMode)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s target container can only be a runtime mode bytecode");
+                            return false;
+                        }
+
+                        visitedContainers[runtimeContainerId] = (byte)ValidationStrategy.ValidateRuntimeMode;
+                        ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSections.Value.Start + header.ContainerSections.Value[runtimeContainerId].Start, header.ContainerSections.Value[runtimeContainerId].Size);
+
                         if (!IsValidEof(subcontainer, ValidationStrategy.ValidateRuntimeMode, out _))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate must be a valid Eof");
@@ -739,13 +723,20 @@ public static class EvmObjectFormat
                         byte initcodeSectionId = code[postInstructionByte];
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
-                        if (initcodeSectionId >= header.ContainerSection?.Count)
+                        if (initcodeSectionId >= header.ContainerSections?.Count)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must falls within the Containers' range available, i.e: {header.CodeSections.Count}");
                             return false;
                         }
 
-                        ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSection.Value.Start + header.ContainerSection.Value[initcodeSectionId].Start, header.ContainerSection.Value[initcodeSectionId].Size);
+                        if (visitedContainers[initcodeSectionId] != 0 && visitedContainers[initcodeSectionId] != (byte)ValidationStrategy.ValidateInitcodeMode)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s target container can only be a initcode mode bytecode");
+                            return false;
+                        }
+
+                        visitedContainers[initcodeSectionId] = (byte)ValidationStrategy.ValidateInitcodeMode;
+                        ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSections.Value.Start + header.ContainerSections.Value[initcodeSectionId].Start, header.ContainerSections.Value[initcodeSectionId].Size);
                         if (!IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody | ValidationStrategy.ValidateInitcodeMode, out _))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must be a valid Eof");

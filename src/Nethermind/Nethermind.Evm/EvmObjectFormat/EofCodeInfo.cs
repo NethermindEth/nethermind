@@ -28,14 +28,14 @@ public class EofCodeInfo : ICodeInfo
             return Memory<byte>.Empty;
         else
         {
-            return MachineCode.Slice(Header.ContainerSection.Value.Start + offset.Value.Start, offset.Value.Size);
+            return MachineCode.Slice(Header.ContainerSections.Value.Start + offset.Value.Start, offset.Value.Size);
         }
     }
     public SectionHeader CodeSectionOffset(int sectionId) => Header.CodeSections[sectionId];
     public SectionHeader? ContainerSectionOffset(int containerId) =>
-        Header.ContainerSection is null
+        Header.ContainerSections is null
             ? null
-            : Header.ContainerSection.Value[containerId];
+            : Header.ContainerSections.Value[containerId];
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
     {
         ReadOnlySpan<byte> typesectionSpan = TypeSection.Span;

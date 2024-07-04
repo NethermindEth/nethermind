@@ -90,6 +90,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
+        public static CallResult InvalidDataSectionIndex => new(EvmExceptionType.DataSectionIndexOutOfRange);
         public static object BoxedEmpty { get; } = new object();
         public static CallResult Empty(int fromVersion) => new(default, null, fromVersion);
 
@@ -410,9 +411,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 EvmObjectFormat.VERSION_OFFSET // magic + version
                                 + EvmObjectFormat.Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
                                 + EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                                + (eofCodeInfo.Header.ContainerSection is null
+                                + (eofCodeInfo.Header.ContainerSections is null
                                     ? 0 // container section :  (0 bytes if no container section is available)
-                                    : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.ContainerSection.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                                    : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
                                 + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
                             bytecodeResult[dataSubheaderSectionStart] = (byte)(bytecodeResult.Length >> 8);
                             bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(bytecodeResult.Length & 0xFF);
@@ -2308,12 +2309,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
                         if (b > UInt256.Zero)
                         {
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
                             if(dataSection.Length + (int)b > (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
                             {
                                 goto DataSectionAccessViolation;
                             }
 
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
                             auxData = vmState.Memory.Load(a, b);
                         }
 
@@ -2936,7 +2937,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
         // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
         ReadOnlyMemory<byte> initcontainer = container.ContainerSection(initcontainerIndex);
-        int initcontainerSize = container.Header.ContainerSection.Value[initcontainerIndex].Size;
+        int initcontainerSize = container.Header.ContainerSections.Value[initcontainerIndex].Size;
 
         // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
         if (!UpdateGas(GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize), ref gasAvailable))
@@ -3410,6 +3411,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
             EvmExceptionType.AddressOutOfRange => CallResult.InvalidAddressRange,
+            EvmExceptionType.DataSectionIndexOutOfRange => CallResult.InvalidDataSectionIndex,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }

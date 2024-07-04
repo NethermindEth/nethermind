@@ -14,7 +14,7 @@ public struct EofHeader()
     public required int PrefixSize;
     public required SectionHeader TypeSection;
     public required CompoundSectionHeader CodeSections;
-    public required CompoundSectionHeader? ContainerSection;
+    public required CompoundSectionHeader? ContainerSections;
     public required SectionHeader DataSection;
 }
 
