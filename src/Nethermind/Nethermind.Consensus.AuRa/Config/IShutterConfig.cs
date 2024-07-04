@@ -7,8 +7,11 @@ namespace Nethermind.Consensus.AuRa.Config;
 
 public interface IShutterConfig : IConfig
 {
-    [ConfigItem(Description = "Whether to enable shuttering.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to enable Shutter.", DefaultValue = "false")]
     bool Enabled { get; set; }
+
+    [ConfigItem(Description = "Whether to build Shutter blocks.", DefaultValue = "true")]
+    bool Validator { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter sequencer contract.",
         DefaultValue = "null")]
