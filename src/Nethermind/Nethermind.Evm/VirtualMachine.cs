@@ -2310,7 +2310,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (b > UInt256.Zero)
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-                            if(dataSection.Length + (int)b > (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
+                            if (dataSection.Length + (int)b > (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
                             {
                                 goto DataSectionAccessViolation;
                             }
@@ -2928,7 +2928,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // no stack checks becaue EOF guarantees no stack undeflows
         stack.PopUInt256(out UInt256 value);
         stack.PopWord256(out Span<byte> salt);
-        stack.PopUInt256(out UInt256 dataOffset) ;
+        stack.PopUInt256(out UInt256 dataOffset);
         stack.PopUInt256(out UInt256 dataSize);
 
         // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
@@ -2946,7 +2946,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // 7 - check that current call depth is below STACK_DEPTH_LIMIT and that caller balance is enough to transfer value
         // in case of failure return 0 on the stack, caller’s nonce is not updated and gas for initcode execution is not consumed.
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-        if (env.CallDepth >= MaxCallDepth || value > balance) 
+        if (env.CallDepth >= MaxCallDepth || value > balance)
         {
             // TODO: need a test for this
             _returnDataBuffer = Array.Empty<byte>();
