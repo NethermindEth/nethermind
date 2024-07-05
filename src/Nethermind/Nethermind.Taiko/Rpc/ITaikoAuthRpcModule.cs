@@ -16,5 +16,5 @@ public interface ITaikoAuthRpcModule : IRpcModule
         Description = "Retrieves the transaction pool content with the given upper limits.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<PreBuiltTxList[]?>> taiko_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, Address[] localAccounts, ulong maxTransactionsLists);
+    Task<ResultWrapper<PreBuiltTxList[]?>> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, Address[] localAccounts, ulong maxTransactionsLists);
 }
