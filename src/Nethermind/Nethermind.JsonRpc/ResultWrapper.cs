@@ -47,9 +47,9 @@ namespace Nethermind.JsonRpc
                 ? Fail("Missing result.")
                 : rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
 
-        public static ResultWrapper<T> From(IResultWrapper source, object? data = null) => new ResultWrapper<T>
+        public static ResultWrapper<T> From(IResultWrapper source, T? data = default) => new()
         {
-            Data = (T)data ?? (T)source.Data,
+            Data = data ?? (T)source.Data,
             Result = source.Result,
             ErrorCode = source.ErrorCode,
             IsTemporary = source.IsTemporary,
