@@ -5,6 +5,7 @@ using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -12,15 +13,21 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public sealed class SystemTransactionProcessor(
-    ISpecProvider? specProvider,
-    IWorldState? worldState,
-    IVirtualMachine? virtualMachine,
-    ICodeInfoRepository? codeInfoRepository,
-    ILogManager? logManager)
-    : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+public sealed class SystemTransactionProcessor : TransactionProcessorBase
 {
-    protected override IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => new SystemTransactionReleaseSpec(base.GetSpec(tx, header));
+    private readonly bool _isAura;
+
+    public SystemTransactionProcessor(ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager)
+        : base(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    {
+        _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
+    }
+
+    protected override IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => new SystemTransactionReleaseSpec(base.GetSpec(tx, header), _isAura);
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long intrinsicGas, bool validate) => TransactionResult.Ok;
 

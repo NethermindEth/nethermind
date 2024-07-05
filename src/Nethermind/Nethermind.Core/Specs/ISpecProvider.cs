@@ -63,6 +63,11 @@ namespace Nethermind.Core.Specs
         ulong ChainId { get; }
 
         /// <summary>
+        /// Original engine of the chain
+        /// </summary>
+        string SealEngine => SealEngineType.Ethash;
+
+        /// <summary>
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
         ForkActivation[] TransitionActivations { get; }
