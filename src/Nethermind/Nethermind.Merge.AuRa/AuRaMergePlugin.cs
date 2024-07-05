@@ -101,14 +101,17 @@ namespace Nethermind.Merge.AuRa
             {
                 ValidateShutterConfig(_shutterConfig);
 
-                Dictionary<ulong, byte[]> validatorsInfo;
-                try
+                Dictionary<ulong, byte[]> validatorsInfo = [];
+                if (_shutterConfig.ValidatorInfoFile is not null)
                 {
-                    validatorsInfo = LoadValidatorInfo(_shutterConfig.ValidatorInfoFile!);
-                }
-                catch (Exception e)
-                {
-                    throw new ShutterLoadingException("Could not load Shutter validator info file", e);
+                    try
+                    {
+                        validatorsInfo = LoadValidatorInfo(_shutterConfig.ValidatorInfoFile);
+                    }
+                    catch (Exception e)
+                    {
+                        throw new ShutterLoadingException("Could not load Shutter validator info file", e);
+                    }
                 }
 
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
