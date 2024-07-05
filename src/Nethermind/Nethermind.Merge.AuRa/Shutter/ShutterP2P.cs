@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using Multiformats.Address;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
+using Nethermind.Core.Extensions;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
@@ -42,9 +43,14 @@ public class ShutterP2P(
                 ProtocolVersion = shutterConfig.P2PProtocolVersion,
                 AgentVersion = shutterConfig.P2PAgentVersion
             })
+            // pubsub settings
             .AddSingleton(new Settings()
             {
-                ReconnectionAttempts = int.MaxValue
+                ReconnectionAttempts = int.MaxValue,
+                Degree = 3,
+                LowestDegree = 2,
+                HighestDegree = 6,
+                LazyDegree = 3
             })
             // .AddLogging(builder =>
             //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
@@ -139,7 +145,9 @@ public class ShutterP2P(
 
     private void ConnectToPeers(MyProto proto, IEnumerable<string> p2pAddresses)
     {
-        foreach (string addr in p2pAddresses)
+        // shuffle peers to connect to random subset of keypers
+        int seed = (int)(DateTimeOffset.Now.ToUnixTimeSeconds() % int.MaxValue);
+        foreach (string addr in p2pAddresses.Shuffle(new Random(seed)))
         {
             proto.OnAddPeer?.Invoke([addr]);
         }
