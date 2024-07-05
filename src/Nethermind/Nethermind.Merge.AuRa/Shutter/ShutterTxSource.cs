@@ -43,6 +43,7 @@ public class ShutterTxSource(
     {
         if (!shutterConfig.Validator)
         {
+            if (_logger.IsDebug) _logger.Debug($"Not building Shutter block since running in non-validator mode.");
             return [];
         }
 
