@@ -59,3 +59,16 @@ jobs:
             --build-arg CI=$CI \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
             . --push
+            
+  upgrade_node:
+    name: Update 24/7 node
+    runs-on: [sync-agent-1280gb]
+    needs: [publish-docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - name: Pull images and upgrade container
+        working-directory: /root
+        run: |
+          docker compose stop
+          docker compose pull
+          docker compose up -d
