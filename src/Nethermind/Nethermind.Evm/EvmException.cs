@@ -30,6 +30,5 @@ namespace Nethermind.Evm
         Other,
         Revert,
         InvalidCode,
-        DataSectionIndexOutOfRange
     }
 }

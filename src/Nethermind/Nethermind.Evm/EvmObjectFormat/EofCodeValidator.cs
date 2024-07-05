@@ -134,7 +134,7 @@ public static class EvmObjectFormat
                     for (int i = 0; i < containerSize; i++)
                     {
                         ReadOnlySpan<byte> subContainer = container.Slice(header.Value.ContainerSections.Value.Start + header.Value.ContainerSections.Value[i].Start, header.Value.ContainerSections.Value[i].Size);
-                        if (!IsValidEof(subContainer, strategy, out _))
+                        if (!IsValidEof(subContainer, ValidationStrategy.Validate, out _))
                         {
                             return false;
                         }
@@ -154,10 +154,10 @@ public static class EvmObjectFormat
     {
         private ref struct Sizes
         {
-            public ushort TypeSectionSize;
-            public ushort CodeSectionSize;
-            public ushort DataSectionSize;
-            public ushort ContainerSectionSize;
+            public ushort? TypeSectionSize;
+            public ushort? CodeSectionSize;
+            public ushort? DataSectionSize;
+            public ushort? ContainerSectionSize;
         }
 
         public const byte VERSION = 0x01;
@@ -204,7 +204,208 @@ public static class EvmObjectFormat
                                             + MINIMUM_TYPESECTION_SIZE // minimum type section body size
                                             + MINIMUM_CODESECTION_SIZE // minimum code section body size
                                             + MINIMUM_DATASECTION_SIZE; // minimum data section body size
+
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, out EofHeader? header)
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static ushort GetUInt16(ReadOnlySpan<byte> container, int offset) =>
+                container.Slice(offset, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+            header = null;
+            // we need to be able to parse header + minimum section lenghts
+            if (container.Length < MINIMUM_SIZE)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                return false;
+            }
+
+            if (!container.StartsWith(MAGIC))
+            {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code doesn't start with Magic byte sequence expected {MAGIC.ToHexString(true)} ");
+                return false;
+            }
+
+            if (container[VERSION_OFFSET] != VERSION)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not Eof version {VERSION}");
+                return false;
+            }
+
+            Sizes sectionSizes = new();
+            int[] codeSections = null;
+            int[] containerSections = null;
+            int pos = VERSION_OFFSET + 1;
+
+            bool continueParsing = true;
+            while(continueParsing && pos < container.Length)
+            {
+                Separator separator = (Separator)container[pos++];
+
+                switch(separator)
+                {
+                    case Separator.KIND_TYPE:
+                        if(container.Length < pos + TWO_BYTE_LENGTH)
+                        {
+                            if(Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            return false;
+                        }
+
+                        sectionSizes.TypeSectionSize = GetUInt16(container, pos);
+                        if (sectionSizes.TypeSectionSize < MINIMUM_TYPESECTION_SIZE)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, TypeSection Size must be at least 3, but found {sectionSizes.TypeSectionSize}");
+                            return false;
+                        }
+
+                        pos += TWO_BYTE_LENGTH;
+                        break;
+                    case Separator.KIND_CODE:
+                        if(sectionSizes.TypeSectionSize is null)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
+                            return false;
+                        }
+
+                        if (container.Length < pos + TWO_BYTE_LENGTH)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            return false;
+                        }
+
+                        ushort numberOfCodeSections = GetUInt16(container, pos);
+                        sectionSizes.CodeSectionSize = (ushort)(numberOfCodeSections * TWO_BYTE_LENGTH);
+                        if (numberOfCodeSections > MAXIMUM_NUM_CODE_SECTIONS)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, code sections count must not exceed {MAXIMUM_NUM_CODE_SECTIONS}");
+                            return false;
+                        }
+
+                        if(container.Length < pos + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * numberOfCodeSections)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            return false;
+                        }
+
+                        codeSections = new int[numberOfCodeSections];
+                        int CODESECTION_HEADER_PREFIX_SIZE = pos + TWO_BYTE_LENGTH;
+                        for (ushort i = 0; i < numberOfCodeSections; i++)
+                        {
+                            int currentCodeSizeOffset = CODESECTION_HEADER_PREFIX_SIZE + i * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
+                            int codeSectionSize = GetUInt16(container, currentCodeSizeOffset);
+
+                            if (codeSectionSize == 0)
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSectionSize}");
+                                return false;
+                            }
+
+                            codeSections[i] = codeSectionSize;
+                        }
+
+                        pos += TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * numberOfCodeSections;
+                        break;
+                    case Separator.KIND_CONTAINER:
+                        if(sectionSizes.CodeSectionSize is null)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
+                            return false;
+                        }
+
+                        if (container.Length < pos + TWO_BYTE_LENGTH)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            return false;
+                        }
+
+                        ushort numberOfContainerSections = GetUInt16(container, pos);
+                        sectionSizes.ContainerSectionSize = (ushort)(numberOfContainerSections * TWO_BYTE_LENGTH);
+                        if (numberOfContainerSections is > MAXIMUM_NUM_CONTAINER_SECTIONS or 0)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, code sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
+                            return false;
+                        }
+
+                        if (container.Length < pos + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * numberOfContainerSections)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            return false;
+                        }
+
+                        containerSections = new int[numberOfContainerSections];
+                        int CONTAINER_SECTION_HEADER_PREFIX_SIZE = pos + TWO_BYTE_LENGTH;
+                        for (ushort i = 0; i < numberOfContainerSections; i++)
+                        {
+                            int currentContainerSizeOffset = CONTAINER_SECTION_HEADER_PREFIX_SIZE + i * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
+                            int containerSectionSize = GetUInt16(container, currentContainerSizeOffset);
+
+                            if (containerSectionSize == 0)
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Empty Container Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
+                                return false;
+                            }
+
+                            containerSections[i] = containerSectionSize;
+                        }
+
+                        pos += TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * numberOfContainerSections;
+                        break;
+                    case Separator.KIND_DATA:
+                        if (sectionSizes.CodeSectionSize is null)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
+                            return false;
+                        }
+
+                        if (container.Length < pos + TWO_BYTE_LENGTH)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            return false;
+                        }
+
+                        sectionSizes.DataSectionSize = GetUInt16(container, pos);
+
+                        pos += TWO_BYTE_LENGTH;
+                        break;
+                    case Separator.TERMINATOR:
+                        if (container.Length < pos + ONE_BYTE_LENGTH)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            return false;
+                        }
+
+                        continueParsing = false;
+                        break;
+                    default:
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code header is not well formatted");
+                        return false;
+                }
+            }
+
+            if (sectionSizes.TypeSectionSize is null || sectionSizes.CodeSectionSize is null || sectionSizes.DataSectionSize is null)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
+                return false;
+            }
+
+            SectionHeader typeSectionSubHeader = new SectionHeader(pos, sectionSizes.TypeSectionSize.Value);
+            CompoundSectionHeader codeSectionSubHeader = new CompoundSectionHeader(typeSectionSubHeader.EndOffset, codeSections);
+            CompoundSectionHeader? containerSectionSubHeader = containerSections is null ? null
+                : new CompoundSectionHeader(codeSectionSubHeader.EndOffset, containerSections);
+            SectionHeader dataSectionSubHeader = new SectionHeader(containerSectionSubHeader?.EndOffset ?? codeSectionSubHeader.EndOffset, sectionSizes.DataSectionSize.Value);
+
+            header = new EofHeader
+            {
+                Version = VERSION,
+                PrefixSize = pos,
+                TypeSection = typeSectionSubHeader,
+                CodeSections = codeSectionSubHeader,
+                ContainerSections = containerSectionSubHeader,
+                DataSection = dataSectionSubHeader,
+            };
+
+            return true;
+        }
+        public bool TryParseEofHeader2(ReadOnlySpan<byte> container, out EofHeader? header)
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             static ushort GetUInt16(ReadOnlySpan<byte> container, int offset) =>
@@ -330,7 +531,7 @@ public static class EvmObjectFormat
             SectionHeader typeSectionHeader = new
             (
                 start: HEADER_TERMINATOR_OFFSET + ONE_BYTE_LENGTH,
-                size: sectionSizes.TypeSectionSize
+                size: sectionSizes.TypeSectionSize.Value
             );
 
             CompoundSectionHeader codeSectionHeader = new(
@@ -346,7 +547,7 @@ public static class EvmObjectFormat
 
             SectionHeader dataSectionHeader = new(
                 start: containerSectionHeader?.EndOffset ?? codeSectionHeader.EndOffset,
-                size: sectionSizes.DataSectionSize
+                size: sectionSizes.DataSectionSize.Value
             );
 
             header = new EofHeader
@@ -737,7 +938,7 @@ public static class EvmObjectFormat
 
                         visitedContainers[initcodeSectionId] = (byte)ValidationStrategy.ValidateInitcodeMode;
                         ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSections.Value.Start + header.ContainerSections.Value[initcodeSectionId].Start, header.ContainerSections.Value[initcodeSectionId].Size);
-                        if (!IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody | ValidationStrategy.ValidateInitcodeMode, out _))
+                        if (!IsValidEof(subcontainer, ValidationStrategy.ValidateInitcodeMode | ValidationStrategy.ValidateSubContainers | ValidationStrategy.ValidateFullBody, out _))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must be a valid Eof");
                             return false;

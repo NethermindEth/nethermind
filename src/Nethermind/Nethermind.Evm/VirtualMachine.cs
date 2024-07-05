@@ -90,7 +90,6 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
-        public static CallResult InvalidDataSectionIndex => new(EvmExceptionType.DataSectionIndexOutOfRange);
         public static object BoxedEmpty { get; } = new object();
         public static CallResult Empty(int fromVersion) => new(default, null, fromVersion);
 
@@ -415,15 +414,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                     ? 0 // container section :  (0 bytes if no container section is available)
                                     : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
                                 + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
+
+                            ushort dataSize = (ushort)(eofCodeInfo.Header.DataSection.Size + auxExtraData.Length);
                             bytecodeResult[dataSubheaderSectionStart] = (byte)(bytecodeResult.Length >> 8);
                             bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(bytecodeResult.Length & 0xFF);
 
                             bytecodeResultArray = bytecodeResult.ToArray();
 
-                            int dataSize = bytecodeResult[dataSubheaderSectionStart..].ReadEthUInt16();
-
                             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-                            bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
+                            bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize) || dataSize != eofCodeInfo.Header.DataSection.Size;
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray?.Length ?? 0, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
@@ -2305,15 +2304,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         byte sectionIdx = codeSection[programCounter++];
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
-
                         ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
                         if (b > UInt256.Zero)
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-                            if (dataSection.Length + (int)b > (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
-                            {
-                                goto DataSectionAccessViolation;
-                            }
 
                             auxData = vmState.Memory.Load(a, b);
                         }
@@ -2441,9 +2435,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
-        goto ReturnFailure;
-    DataSectionAccessViolation:
-        exceptionType = EvmExceptionType.DataSectionIndexOutOfRange;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     InvalidSubroutineEntry:
@@ -3411,7 +3402,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
             EvmExceptionType.AddressOutOfRange => CallResult.InvalidAddressRange,
-            EvmExceptionType.DataSectionIndexOutOfRange => CallResult.InvalidDataSectionIndex,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }
