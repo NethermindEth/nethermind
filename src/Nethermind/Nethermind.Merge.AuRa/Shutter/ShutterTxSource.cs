@@ -34,7 +34,7 @@ public class ShutterTxSource(
     ILogManager logManager)
     : ITxSource
 {
-    private LoadedTransactions _loadedTransactions;
+    private LoadedTransactions? _loadedTransactions;
     private bool _validatorsRegistered;
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ShutterTxLoader _txLoader = new(logFinder, shutterConfig, specProvider, ethereumEcdsa, readOnlyBlockTree, logManager);
@@ -63,15 +63,23 @@ public class ShutterTxSource(
         ulong nextSlot = GetNextSlot();
 
         // atomic fetch
-        LoadedTransactions loadedTransactions = _loadedTransactions;
-        if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {nextSlot} with {loadedTransactions.Transactions.Length} transactions.");
-        if (loadedTransactions.Slot == nextSlot)
+        LoadedTransactions? loadedTransactions = _loadedTransactions;
+        if (loadedTransactions is null)
         {
-            return loadedTransactions.Transactions;
+            if (_logger.IsWarn) _logger.Warn($"Decryption keys have not been received, cannot include Shutter transactions.");
+        }
+        else
+        {
+            if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {nextSlot} with {loadedTransactions.Value.Transactions.Length} transactions.");
+            if (loadedTransactions.Value.Slot == nextSlot)
+            {
+                return loadedTransactions.Value.Transactions;
+            }
+
+            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions.");
+            if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {loadedTransactions.Value.Slot}");
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions.");
-        if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {loadedTransactions.Slot}");
         return [];
     }
 
@@ -80,7 +88,7 @@ public class ShutterTxSource(
         _loadedTransactions = _txLoader.LoadTransactions(eon, txPointer, slot, keys);
     }
 
-    public ulong GetLoadedTransactionsSlot() => _loadedTransactions.Slot;
+    public ulong GetLoadedTransactionsSlot() => _loadedTransactions is null ? 0 : _loadedTransactions.Value.Slot;
 
     private ulong GetNextSlot()
     {
