@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

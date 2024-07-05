@@ -33,6 +33,11 @@ public class TaikoTransactionProcessor(
     {
         if (tx.IsAnchorTx)
             opts |= ExecutionOptions.NoValidation;
+
+        if (tx.SenderAddress is null)
+        {
+            tx.SenderAddress = Ecdsa.RecoverAddress(tx);
+        }
         return base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
     }
 
