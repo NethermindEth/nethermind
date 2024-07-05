@@ -291,17 +291,16 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         // TODO Should we remove this already
-        protected bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
+        protected virtual bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
         {
-            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
-            bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            bool noValidation = opts.HasFlag(ExecutionOptions.NoValidation);
-
             bool deleteCallerAccount = false;
-
-            Address sender = tx.SenderAddress!;
+            Address? sender = tx.SenderAddress;
             if (sender is null || !WorldState.AccountExists(sender))
             {
+                bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
+                bool restore = opts.HasFlag(ExecutionOptions.Restore);
+                bool noValidation = opts.HasFlag(ExecutionOptions.NoValidation);
+
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
                 // hacky fix for the potential recovery issue

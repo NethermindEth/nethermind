@@ -54,4 +54,11 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     {
         base.ExecuteEvmCall(tx, header, spec, tracer, opts | ExecutionOptions.NoValidation, in gasAvailable, in env, out substate, out spentGas, out statusCode);
     }
+
+    protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
+    {
+        Address? sender = tx.SenderAddress;
+        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
+               && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
+    }
 }
