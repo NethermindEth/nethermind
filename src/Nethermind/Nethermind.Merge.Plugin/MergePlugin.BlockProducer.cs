@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
+using System.Diagnostics;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -18,6 +18,14 @@ namespace Nethermind.Merge.Plugin
 
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
+
+        protected virtual BlockProducerEnv CreateBlockProducerEnv()
+        {
+            Debug.Assert(_api?.BlockProducerEnvFactory is not null,
+                $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
+
+            return _api.BlockProducerEnvFactory.Create();
+        }
 
         public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource)
         {
@@ -45,7 +53,7 @@ namespace Nethermind.Merge.Plugin
                     ? baseBlockProducerFactory.InitBlockProducer(txSource)
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
-                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
+                BlockProducerEnv blockProducerEnv = CreateBlockProducerEnv();
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
