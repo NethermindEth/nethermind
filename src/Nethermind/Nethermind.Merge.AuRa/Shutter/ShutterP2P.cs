@@ -30,7 +30,7 @@ public class ShutterP2P(
     private PubsubRouter? _router;
     private ServiceProvider? _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
-    private const int DisconnectionLogTimeoutMins = 5;
+    private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -82,27 +82,25 @@ public class ShutterP2P(
             {
                 try
                 {
-                    Task<bool> whenMsgOrTimeout = await Task.WhenAny([
-                        _msgQueue.Reader.WaitToReadAsync(_cancellationTokenSource.Token).AsTask(),
-                        Task.Delay(DisconnectionLogTimeoutMins * 60 * 1000, _cancellationTokenSource.Token).ContinueWith(_ => false)
-                    ]);
+                    using var timeoutSource = new CancellationTokenSource(DisconnectionLogTimeout);
+                    using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
 
-                    if (await whenMsgOrTimeout)
+                    byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
+                    lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                    ProcessP2PMessage(msg);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_cancellationTokenSource.IsCancellationRequested)
                     {
-                        var msg = await _msgQueue.Reader.ReadAsync(_cancellationTokenSource.Token);
-                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                        ProcessP2PMessage(msg);
+                        if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
+                        break;
                     }
                     else
                     {
                         long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
                         if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                     }
-                }
-                catch (OperationCanceledException)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
-                    break;
                 }
                 catch (Exception e)
                 {
