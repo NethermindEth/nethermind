@@ -16,6 +16,7 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
 {
     public IEnumerable<Address> AuthorizedAddresses => _authorizedCode.Keys;
     private readonly Dictionary<Address, CodeInfo> _authorizedCode = new();
+    private readonly Dictionary<Address, Hash256> _codeHashCache = new();
     private readonly EthereumEcdsa _ethereumEcdsa;
     private readonly ICodeInfoRepository _codeInfoRepository;
     private readonly ulong _chainId;
@@ -84,8 +85,24 @@ public class AuthorizedCodeInfoRepository : ICodeInfoRepository
         }
     }
 
+    public ValueHash256 GetCodeHash(IWorldState worldState, Address address)
+    {
+        if (_authorizedCode.ContainsKey(address))
+        {
+            Hash256 hash;
+            if (!_codeHashCache.TryGetValue(address, out hash))
+            {
+                hash = Keccak.Compute(_authorizedCode[address].MachineCode.Span);
+                _codeHashCache.Add(address, hash);
+            }
+            return hash;
+        }
+        return worldState.GetCodeHash(address);
+    }
+
     public void ClearAuthorizations()
     {
         _authorizedCode.Clear();
+        _codeHashCache.Clear();
     }
 }

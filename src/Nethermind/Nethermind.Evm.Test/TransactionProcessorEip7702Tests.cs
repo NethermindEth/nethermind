@@ -376,6 +376,161 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
     }
 
+    [TestCase]
+    public void Execute_EOACodeSavesCodeHashOfSigner_ExpectedHashIsStored()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        byte[] code = Prepare.EvmCode
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODEHASH)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    codeSource,
+                    null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+
+        Assert.That(new Hash256(_stateProvider.Get(new StorageCell(signer.Address, 0))), Is.EqualTo(Keccak.Compute(code)));
+    }
+
+    [TestCase]
+    public void Execute_EOACodeSavesCodeSizeOfSigner_ExpectedSizeIsStored()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        byte[] code = Prepare.EvmCode
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    codeSource,
+                    null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+
+        Assert.That(new UInt256(_stateProvider.Get(new StorageCell(signer.Address, 0))), Is.EqualTo((UInt256)code.Length));
+    }
+
+    [TestCase]
+    public void Execute_EOAHasCodeThatCopiesAndReturnsCodeOfSigner_ReturnsExpectedCode()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        byte[] code = Prepare.EvmCode
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODESIZE)
+            .PushData(0)
+            .PushData(0)
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODECOPY)
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.RETURN)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    codeSource,
+                    null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+        CallOutputTracer tracer = new ();
+        _transactionProcessor.Execute(tx, block.Header, tracer);
+
+        Assert.That(tracer.ReturnValue, Is.EquivalentTo(code));
+    }
+
+    [TestCase]
+    public void Execute_EOAHasCodeThatCopiesCurrentRunningCodeAndReturnsIt_ReturnsExpectedCode()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        byte[] code = Prepare.EvmCode
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODESIZE)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.CODECOPY)
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.RETURN)
+            .Done;
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(60_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    codeSource,
+                    null))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+        CallOutputTracer tracer = new();
+        _transactionProcessor.Execute(tx, block.Header, tracer);
+
+        Assert.That(tracer.ReturnValue, Is.EquivalentTo(code));
+    }
+
     private void DeployCode(Address codeSource, byte[] code)
     {
         _stateProvider.CreateAccountIfNotExists(codeSource, 0);

@@ -1890,7 +1890,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                            stack.PushBytes(txCtx.CodeInfoRepository.GetCodeHash(_state, address).Bytes);
                         }
 
                         break;

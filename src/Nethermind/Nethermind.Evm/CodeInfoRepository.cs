@@ -174,6 +174,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
         new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
+    public ValueHash256 GetCodeHash(IWorldState worldState, Address address)
+    {
+        return worldState.GetCodeHash(address);
+    }
+
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,

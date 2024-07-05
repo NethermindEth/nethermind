@@ -41,6 +41,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverwrites[key] = value;
     }
 
+    public ValueHash256 GetCodeHash(IWorldState worldState, Address address) =>
+        codeInfoRepository.GetCodeHash(worldState, address);
+
     public void ClearOverwrites()
     {
         _codeOverwrites.Clear();
