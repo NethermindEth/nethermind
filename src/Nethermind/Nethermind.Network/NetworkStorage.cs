@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
-
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -20,7 +19,8 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
-        public static LruKeyCache<IPAddress> NodesFilter { get; } = new(2048, "Ip Filter");
+        public ClockKeyCache<IpAddressAsKey> NodesFilter { get; } = new(2048);
+
 
         private readonly object _lock = new();
         private readonly IFullDb _fullDb;
@@ -214,6 +214,15 @@ namespace Nethermind.Network
             }
 
             _logger.Trace(sb.ToString());
+        }
+
+        public readonly struct IpAddressAsKey(IPAddress ipAddress) : IEquatable<IpAddressAsKey>
+        {
+            private readonly IPAddress _ipAddress = ipAddress;
+            public static implicit operator IpAddressAsKey(IPAddress ip) => new (ip);
+            public bool Equals(IpAddressAsKey other) => _ipAddress.Equals(other._ipAddress);
+            public override bool Equals(object obj) => obj is IpAddressAsKey ip && _ipAddress.Equals(ip._ipAddress);
+            public override int GetHashCode() => _ipAddress.GetHashCode();
         }
     }
 }
