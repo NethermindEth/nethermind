@@ -219,7 +219,7 @@ namespace Nethermind.Network
         public readonly struct IpAddressAsKey(IPAddress ipAddress) : IEquatable<IpAddressAsKey>
         {
             private readonly IPAddress _ipAddress = ipAddress;
-            public static implicit operator IpAddressAsKey(IPAddress ip) => new (ip);
+            public static implicit operator IpAddressAsKey(IPAddress ip) => new(ip);
             public bool Equals(IpAddressAsKey other) => _ipAddress.Equals(other._ipAddress);
             public override bool Equals(object obj) => obj is IpAddressAsKey ip && _ipAddress.Equals(ip._ipAddress);
             public override int GetHashCode() => _ipAddress.GetHashCode();
