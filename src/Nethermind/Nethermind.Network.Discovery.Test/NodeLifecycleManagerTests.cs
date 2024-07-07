@@ -10,6 +10,7 @@ using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -48,7 +49,6 @@ namespace Nethermind.Network.Discovery.Test
         [SetUp]
         public void Setup()
         {
-            _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
             _discoveryConfigMock = Substitute.For<IDiscoveryConfig>();
 
             NetworkNodeDecoder.Init();
@@ -86,6 +86,7 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManager.MsgSender = udpClient;
 
             _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
+            _discoveryManagerMock.NodesFilter.Returns(new ClockKeyCache<IDiscoveryManager.IpAddressAsKey>(16));
         }
 
         [Test]
