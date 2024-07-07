@@ -163,9 +163,10 @@ namespace Ethereum.Test.Base
                 bool isValid = _txValidator.IsWellFormed(tx, spec) && IsValidBlock(block, specProvider);
                 if (isValid)
                 {
-                    txTracer.StartNewTxTrace(tx);
+                    txTracer?.StartNewTxTrace(tx);
                     TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), tracer);
-                    txTracer.EndTxTrace();
+                    txTracer?.EndTxTrace();
+                    if (txTracer == null) continue;
                     includedTx.Add(tx);
                     if (transactionResult.Success)
                     {
