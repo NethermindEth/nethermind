@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -49,6 +50,8 @@ public class DiscoveryManager : IDiscoveryManager
     {
         set => _msgSender = value;
     }
+
+    public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
 
     public void OnIncomingMsg(DiscoveryMsg msg)
     {

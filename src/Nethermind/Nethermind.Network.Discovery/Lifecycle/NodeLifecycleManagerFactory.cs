@@ -38,6 +38,7 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
     }
 
     public IDiscoveryManager? DiscoveryManager { private get; set; }
+    public NodeRecord SelfNodeRecord => _selfNodeRecord;
 
     public INodeLifecycleManager CreateNodeLifecycleManager(Node node)
     {
