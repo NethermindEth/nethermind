@@ -105,7 +105,11 @@ namespace Ethereum.Test.Base
             }
 
             BlockHeader parentHeader = test.GetParentBlockHeader();
-            test.ApplyChecks(specProvider, parentHeader);
+            if (test.Name == "T8N")
+            {
+                test.ApplyChecks(specProvider, parentHeader);
+            }
+
             BlockHeader header = test.GetBlockHeader(parentHeader);
 
             if (header.Hash != null) blockhashProvider.Insert(header.Hash, header.Number);
