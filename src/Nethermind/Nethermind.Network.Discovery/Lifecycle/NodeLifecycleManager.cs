@@ -192,7 +192,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
         RefreshNodeContactTime();
 
-        IPAddress? externalIp = _discoveryManager.SelfNodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
+        IPAddress? externalIp = _discoveryManager.SelfNodeRecord?.GetObj<IPAddress>(EnrContentKey.Ip);
         foreach (Node? node in msg.Nodes)
         {
             if (node is null)
