@@ -286,7 +286,7 @@ public class T8NTool
         
         var accounts = allocJson.Keys.ToDictionary(address => address, 
             address => ConvertAccountToNativePrestateTracerAccount(address, stateProvider, tracer.storages));
-        foreach (Ommer ommer in envInfo.Ommers)
+        foreach (JsonTypes.Ommer ommer in envInfo.Ommers)
         {
             accounts.Add(ommer.Address, ConvertAccountToNativePrestateTracerAccount(ommer.Address, stateProvider, tracer.storages));
         }

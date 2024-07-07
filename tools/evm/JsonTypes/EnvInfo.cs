@@ -5,10 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
-using Org.BouncyCastle.Utilities;
-using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Evm.JsonTypes
 {
@@ -36,6 +33,21 @@ namespace Evm.JsonTypes
         public ulong? ParentBlobGasUsed { get; set; }
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
         public Ommer[] Ommers { get; set; } = [];
+
+        public Hash256? GetCurrentRandomHash256()
+        {
+            if (CurrentRandom == null) return null;
+
+            if (CurrentRandom.Length < Hash256.Size)
+            {
+                var currentRandomWithLeadingZeros = new byte[Hash256.Size];
+                Array.Copy(CurrentRandom, 0, currentRandomWithLeadingZeros, Hash256.Size - CurrentRandom.Length,
+                    CurrentRandom.Length);
+                CurrentRandom = currentRandomWithLeadingZeros;
+            }
+
+            return new Hash256(CurrentRandom);
+        }
 
         public BlockHeader GetBlockHeader()
         {
@@ -149,7 +161,39 @@ namespace Evm.JsonTypes
 
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
 
-            CurrentDifficulty = difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash != null);
+            CurrentDifficulty = difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash is not null);
+        }
+        
+        public UInt256 CalculateCurrentDifficultyWithMergeChecks(ISpecProvider specProvider)
+        {
+            if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
+            {
+                if (CurrentRandom == null) throw new T8NException("post-merge requires currentRandom to be defined in env", ExitCodes.ErrorConfig);
+                if (CurrentDifficulty?.IsZero ?? false) return CurrentDifficulty.Value;
+                throw new T8NException("post-merge difficulty must be zero (or omitted) in env", ExitCodes.ErrorConfig);
+            }
+
+            if (CurrentDifficulty.HasValue) return CurrentDifficulty.Value;
+
+            if (!ParentDifficulty.HasValue)
+            {
+                throw new T8NException(
+                    "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty", ExitCodes.ErrorConfig);
+            }
+
+            if (CurrentNumber == 0)
+            {
+                throw new T8NException("currentDifficulty needs to be provided for block number 0", ExitCodes.ErrorConfig);
+            }
+
+            if (CurrentTimestamp <= ParentTimestamp)
+            {
+                throw new T8NException($"currentDifficulty cannot be calculated -- currentTime ({CurrentTimestamp}) needs to be after parent time ({ParentTimestamp})", ExitCodes.ErrorConfig);
+            }
+
+            EthashDifficultyCalculator difficultyCalculator = new(specProvider);
+
+            return difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash != null);
         }
     }
 }

@@ -227,7 +227,10 @@ namespace Ethereum.Test.Base
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre;
-                    test.Transaction = Convert(stateJson, testJson.Transaction);
+                    if (testJson.Transaction != null)
+                    {
+                        test.Transactions = [Convert(stateJson, testJson.Transaction)];
+                    }
 
                     blockchainTests.Add(test);
                     ++iterationNumber;

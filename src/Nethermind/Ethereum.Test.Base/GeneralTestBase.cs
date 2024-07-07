@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
@@ -26,6 +27,12 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
+using Microsoft.IdentityModel.Tokens;
+using Nethermind.Evm.Tracing.GethStyle.Custom;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
+using Nethermind.Trie;
 
 namespace Ethereum.Test.Base
 {
@@ -108,13 +115,16 @@ namespace Ethereum.Test.Base
             header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
             header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
+            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transactions);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
-            if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+            foreach (var transaction in test.Transactions)
+            {
+                transaction.ChainId ??= MainnetSpecProvider.Instance.ChainId;
+            }
+
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
                 BlockHeader parent = new(
@@ -134,13 +144,40 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
+            Block block = Build.A.Block.WithTransactions(test.Transactions).WithHeader(header).TestObject;
 
-            bool isValid = _txValidator.IsWellFormed(test.Transaction, spec) && IsValidBlock(block, specProvider);
+            T8NToolTracer tracer = new();
+            tracer.StartNewBlockTrace(block);
+            List<RejectedTx> rejectedTxReceipts = [];
+            int txIndex = 0;
+            List<Transaction> includedTx = [];
+            List<Transaction> successfulTxs = [];
+            List<TxReceipt> includedTxReceipts = [];
 
-            if (isValid)
+            foreach (var tx in test.Transactions)
             {
-                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                bool isValid = _txValidator.IsWellFormed(tx, spec) && IsValidBlock(block, specProvider);
+                if (isValid)
+                {
+                    tracer.StartNewTxTrace(tx);
+                    TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), txTracer);
+                    tracer.EndTxTrace();
+                    includedTx.Add(tx);
+                    if (transactionResult.Success)
+                    {
+                        successfulTxs.Add(tx);
+                        tracer.LastReceipt.PostTransactionState = null;
+                        tracer.LastReceipt.BlockHash = null;
+                        tracer.LastReceipt.BlockNumber = 0;
+                        includedTxReceipts.Add(tracer.LastReceipt);
+                    } else if (transactionResult.Error != null)
+                    {
+                        rejectedTxReceipts.Add(new RejectedTx(txIndex,  GethErrorMappings.GetErrorMapping(transactionResult.Error, tx.SenderAddress.ToString(true), tx.Nonce, stateProvider.GetNonce(tx.SenderAddress))));
+                        stateProvider.Reset();
+                    }
+                    stateProvider.RecalculateStateRoot();
+                    txIndex++;
+                }
             }
 
             stopwatch.Stop();
@@ -162,9 +199,62 @@ namespace Ethereum.Test.Base
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
             testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
+            Hash256 txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
+            IReceiptSpec receiptSpec = specProvider.GetSpec(header);
+            Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, includedTxReceipts.ToArray(), new ReceiptMessageDecoder());
+            var logEntries = includedTxReceipts.SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>()).ToArray();
+            var bloom = new Bloom(logEntries);
+            ulong gasUsed = 0;
+            if (!tracer.TxReceipts.IsNullOrEmpty())
+            {
+                gasUsed = (ulong) tracer.LastReceipt.GasUsedTotal;
+            }
+            if (test.Name == "T8N")
+            {
+                testResult.TxRoot = txRoot;
+                testResult.ReceiptsRoot = receiptsRoot;
+                testResult.LogsBloom = bloom;
+                testResult.LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes);
+                testResult.Receipts = includedTxReceipts.ToArray();
+                testResult.Rejected = rejectedTxReceipts.IsNullOrEmpty() ? null : rejectedTxReceipts.ToArray();
+                testResult.CurrentDifficulty = test.CurrentDifficulty;
+                testResult.GasUsed = new UInt256(gasUsed);
+                testResult.CurrentBaseFee = test.CurrentBaseFee;
+                testResult.WithdrawalsRoot = block.WithdrawalsRoot;
+                testResult.CurrentExcessBlobGas = header.ExcessBlobGas;
+                testResult.BlobGasUsed = header.BlobGasUsed;
+                
+                var accounts = test.Pre.Keys.ToDictionary(address => address, 
+                    address => ConvertAccountToNativePrestateTracerAccount(address, stateProvider, tracer.storages));
+                foreach (Ommer ommer in test.Ommers)
+                {
+                    accounts.Add(ommer.Address, ConvertAccountToNativePrestateTracerAccount(ommer.Address, stateProvider, tracer.storages));
+                }
+                if (header.Beneficiary != null)
+                {
+                    accounts.Add(header.Beneficiary, ConvertAccountToNativePrestateTracerAccount(header.Beneficiary, stateProvider, tracer.storages));
+                }
+ 
+                testResult.Accounts = accounts;
+                testResult.TransactionsRlp = Rlp.Encode(successfulTxs.ToArray()).Bytes;
+            }
 
             //            Assert.Zero(differences.Count, "differences");
             return testResult;
+        }
+
+        private NativePrestateTracerAccount ConvertAccountToNativePrestateTracerAccount(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, UInt256>> storages)
+        {
+            var account = stateProvider.GetAccount(address);
+            var code = stateProvider.GetCode(address);
+            var accountState = new NativePrestateTracerAccount(account.Balance, account.Nonce, code, false);
+
+            if (storages.TryGetValue(address, out var storage))
+            {
+                accountState.Storage = storage;
+            }
+
+            return accountState;
         }
 
         public static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider, ISpecProvider specProvider)

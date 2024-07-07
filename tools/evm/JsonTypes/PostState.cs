@@ -25,16 +25,3 @@ public class PostState
     public UInt256? CurrentExcessBlobGas { get; set; }
     public UInt256? BlobGasUsed { get; set; }
 }
-
-public class RejectedTx
-{
-    public RejectedTx(int index, string error)
-    {
-        Index = index;
-        Error = error;
-    }
-
-    public int Index { get; set; }
-    public string? Error { get; set; }
-}
-

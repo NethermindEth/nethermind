@@ -43,12 +43,14 @@ public class OutputParams
 public class T8NTests
 {
     private T8NTool _t8NTool;
+    private Tool tool;
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
 
     [SetUp]
     public void Setup()
     {
         _t8NTool = new T8NTool();
+        tool = new Tool();
     }
 
     [Test]
@@ -250,7 +252,7 @@ public class T8NTests
 
     private void Execute(InputParams inputParams, OutputParams outputParams, int expectedExitCode, string? expectedOutputFile = null)
     {
-        var output = _t8NTool.Execute(
+        var output = tool.Execute(
             inputParams.Alloc,
             inputParams.Env,
             inputParams.Txs,
@@ -268,8 +270,9 @@ public class T8NTests
             false
         );
 
+        Console.WriteLine(output);
         Assert.That(output.ExitCode, Is.EqualTo(expectedExitCode));
-
+        
         if (expectedOutputFile != null)
         {
             var outputString = _ethereumJsonSerializer.Serialize(output, true);
