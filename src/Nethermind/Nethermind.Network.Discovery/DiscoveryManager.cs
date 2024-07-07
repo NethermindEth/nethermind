@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -23,6 +24,7 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
+    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; } = new(8096);
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
     private IMsgSender? _msgSender;
@@ -207,7 +209,6 @@ public class DiscoveryManager : IDiscoveryManager
             return false;
         }
 
-        #region
         // port will be different as we dynamically open ports for each socket connection
         // if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
         // {
@@ -226,7 +227,6 @@ public class DiscoveryManager : IDiscoveryManager
         //     // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
         //     // if (_logger.IsWarn) _logger.Warn($"TRACE/WARN Received a message with incorrect source port, message: {message}");
         // }
-        #endregion
 
         return true;
     }
