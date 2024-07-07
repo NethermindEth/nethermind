@@ -98,6 +98,11 @@ namespace Ethereum.Test.Base
 
             InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
+            foreach (var transaction in test.Transactions)
+            {
+                transaction.ChainId ??= MainnetSpecProvider.Instance.ChainId;
+            }
+
             var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
             foreach (var transaction in test.Transactions)
             {
@@ -121,11 +126,6 @@ namespace Ethereum.Test.Base
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
-
-            foreach (var transaction in test.Transactions)
-            {
-                transaction.ChainId ??= MainnetSpecProvider.Instance.ChainId;
-            }
 
             BlockHeader[] uncles = test.Ommers
                 .Select(ommer => Build.A.BlockHeader
