@@ -194,7 +194,10 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
             }
             else
             {
-                _prestate.Add(addr, new NativePrestateTracerAccount(UInt256.Zero));
+                _prestate.Add(addr, new NativePrestateTracerAccount
+                {
+                    Balance = UInt256.Zero
+                });
             }
         }
     }
