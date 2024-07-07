@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
+using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -89,7 +90,7 @@ public class Tool : GeneralStateTestBase
         var generalStateTest = InputProcessor.Convert(inputAlloc, inputEnv, inputTxs, stateFork, stateReward);
 
         generalStateTest.Name = "T8N";
-        var res = RunTest(generalStateTest);
+        var res = RunTest(generalStateTest, new T8NToolTracer());
 
         PostState postState = new PostState();
         postState.StateRoot = res.StateRoot;

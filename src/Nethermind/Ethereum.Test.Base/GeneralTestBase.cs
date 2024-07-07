@@ -28,11 +28,11 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Nethermind.Trie;
 
 namespace Ethereum.Test.Base
 {
@@ -40,8 +40,8 @@ namespace Ethereum.Test.Base
     {
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
-        private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
         private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
+        private readonly BeaconBlockRootHandler _beaconBlockRootHandler = new();
 
         [SetUp]
         public void Setup()
@@ -81,7 +81,7 @@ namespace Ethereum.Test.Base
 
             TrieStore trieStore = new(stateDb, _logManager);
             WorldState stateProvider = new(trieStore, codeDb, _logManager);
-            IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
+            var blockhashProvider = new T8NBlockHashProvider();
             CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
@@ -98,24 +98,22 @@ namespace Ethereum.Test.Base
 
             InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
-            BlockHeader header = new(
-                test.PreviousHash,
-                Keccak.OfAnEmptySequenceRlp,
-                test.CurrentCoinbase,
-                test.CurrentDifficulty,
-                test.CurrentNumber,
-                test.CurrentGasLimit,
-                test.CurrentTimestamp,
-                []);
-            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
-            header.StateRoot = test.PostHash;
-            header.Hash = header.CalculateHash();
-            header.IsPostMerge = test.CurrentRandom is not null;
-            header.MixHash = test.CurrentRandom;
-            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
-            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
-            header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transactions);
+            var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            foreach (var transaction in test.Transactions)
+            {
+                transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
+            }
+
+            BlockHeader parentHeader = test.GetParentBlockHeader();
+            test.ApplyChecks(specProvider, parentHeader);
+            BlockHeader header = test.GetBlockHeader(parentHeader);
+
+            if (header.Hash != null) blockhashProvider.Insert(header.Hash, header.Number);
+            if (parentHeader.Hash != null) blockhashProvider.Insert(parentHeader.Hash, parentHeader.Number);
+            foreach (var blockHash in test.BlockHashes)
+            {
+                blockhashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
+            }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -125,26 +123,15 @@ namespace Ethereum.Test.Base
                 transaction.ChainId ??= MainnetSpecProvider.Instance.ChainId;
             }
 
-            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
-            {
-                BlockHeader parent = new(
-                    parentHash: Keccak.Zero,
-                    unclesHash: Keccak.OfAnEmptySequenceRlp,
-                    beneficiary: test.CurrentCoinbase,
-                    difficulty: test.CurrentDifficulty,
-                    number: test.CurrentNumber - 1,
-                    gasLimit: test.CurrentGasLimit,
-                    timestamp: test.CurrentTimestamp,
-                    extraData: []
-                )
-                {
-                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
-                };
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-            }
+            BlockHeader[] uncles = test.Ommers
+                .Select(ommer => Build.A.BlockHeader
+                    .WithNumber(test.CurrentNumber - ommer.Delta)
+                    .WithBeneficiary(ommer.Address)
+                    .TestObject)
+                .ToArray();
 
-            Block block = Build.A.Block.WithTransactions(test.Transactions).WithHeader(header).TestObject;
+            Block block = Build.A.Block.WithHeader(header).WithTransactions(test.Transactions).WithWithdrawals(test.Withdrawals).WithUncles(uncles).TestObject;
+            _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
 
             T8NToolTracer? txTracer = null;
             if (tracer is T8NToolTracer)

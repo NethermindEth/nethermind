@@ -21,7 +21,7 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        private static IReleaseSpec ParseSpec(string network)
+        public static IReleaseSpec ParseSpec(string network)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
@@ -160,7 +160,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
+        public static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {

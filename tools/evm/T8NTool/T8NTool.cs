@@ -17,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -141,7 +142,9 @@ public class T8NTool
 
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)envInfo.CurrentNumber, spec));
 
-        if (IsPostMerge(spec))
+        // first part is done
+
+        if (IsPostMerge(spec)) // now missing
         {
             specProvider.UpdateMergeTransitionInfo(envInfo.CurrentNumber, 0);
         }
@@ -165,12 +168,13 @@ public class T8NTool
             _logManager);
 
         GeneralStateTestBase.InitializeTestPreState(allocJson, stateProvider, specProvider);
+        // done
 
         var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
         foreach (var transaction in transactions)
         {
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
-        }
+        } // was missing
 
         envInfo.ApplyChecks(specProvider, spec);
 
@@ -311,7 +315,7 @@ public class T8NTool
     {
         var account = stateProvider.GetAccount(address);
         var code = stateProvider.GetCode(address);
-        var accountState = new NativePrestateTracerAccount(account.Balance, account.Nonce, code, false);
+        var accountState = new NativePrestateTracerAccount(account.Balance, account.Nonce, code);
 
         if (storages.TryGetValue(address, out var storage))
         {
