@@ -12,18 +12,11 @@ public class NativePrestateTracerAccount
 {
     public NativePrestateTracerAccount() { }
 
-    public NativePrestateTracerAccount(UInt256 balance, bool isPrestate = true)
-    {
-        Balance = balance;
-        IsPrestate = isPrestate;
-    }
-
-    public NativePrestateTracerAccount(UInt256 balance, UInt256 nonce, byte[]? code, bool isPrestate = true)
+    public NativePrestateTracerAccount(UInt256? balance, UInt256 nonce, byte[]? code)
     {
         Balance = balance;
         Nonce = nonce > 0 ? nonce : null;
         Code = code is not null && code.Length > 0 ? code : null;
-        IsPrestate = isPrestate;
     }
 
     public UInt256? Balance { get; set; }
@@ -33,7 +26,4 @@ public class NativePrestateTracerAccount
     public byte[]? Code { get; set; }
 
     public Dictionary<UInt256, UInt256>? Storage { get; set; }
-
-    [JsonIgnore]
-    public bool IsPrestate { get; set; }
 }

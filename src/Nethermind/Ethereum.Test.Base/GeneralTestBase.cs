@@ -253,7 +253,7 @@ namespace Ethereum.Test.Base
         {
             var account = stateProvider.GetAccount(address);
             var code = stateProvider.GetCode(address);
-            var accountState = new NativePrestateTracerAccount(account.Balance, account.Nonce, code, false);
+            var accountState = new NativePrestateTracerAccount(account.Balance, account.Nonce, code);
 
             if (storages.TryGetValue(address, out var storage))
             {
