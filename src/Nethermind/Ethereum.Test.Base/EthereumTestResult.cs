@@ -40,7 +40,7 @@ namespace Ethereum.Test.Base
         public double TimeInMs { get; set; }
 
         public Hash256 StateRoot { get; set; } = Keccak.EmptyTreeHash;
-        
+
         public Hash256? TxRoot { get; set; }
         public Hash256? ReceiptsRoot { get; set; }
         public Hash256? WithdrawalsRoot { get; set; }

@@ -214,7 +214,7 @@ public class TransactionForRpc
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
         }
-        
+
         return tx;
     }
 

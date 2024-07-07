@@ -1,4 +1,4 @@
-﻿using Nethermind.Core;
+using Nethermind.Core;
 
 namespace Ethereum.Test.Base;
 
