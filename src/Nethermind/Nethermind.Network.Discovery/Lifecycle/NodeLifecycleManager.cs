@@ -3,6 +3,7 @@
 
 using System.Net;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -18,6 +19,8 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 public class NodeLifecycleManager : INodeLifecycleManager
 {
     private readonly static IPAddress _localhost = IPAddress.Parse("127.0.0.1");
+    private ClockKeyCache<IpAddressAsKey> _nodesFilter { get; } = new(2048);
+
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
     private readonly ILogger _logger;
@@ -203,7 +206,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
                 continue;
             }
-            else if (!NetworkStorage.NodesFilter.Set(node.Address.Address))
+            else if (!_nodesFilter.Set(node.Address.Address))
             {
                 // Already seen this node ip recently
                 continue;
@@ -411,5 +414,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
         {
             _logger.Error("Error during sending ping message", e);
         }
+    }
+
+    private readonly struct IpAddressAsKey(IPAddress ipAddress) : IEquatable<IpAddressAsKey>
+    {
+        private readonly IPAddress _ipAddress = ipAddress;
+        public static implicit operator IpAddressAsKey(IPAddress ip) => new(ip);
+        public bool Equals(IpAddressAsKey other) => _ipAddress.Equals(other._ipAddress);
+        public override bool Equals(object? obj) => obj is IpAddressAsKey ip && _ipAddress.Equals(ip._ipAddress);
+        public override int GetHashCode() => _ipAddress.GetHashCode();
     }
 }

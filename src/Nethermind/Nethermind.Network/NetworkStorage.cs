@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -19,9 +18,6 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
-        public ClockKeyCache<IpAddressAsKey> NodesFilter { get; } = new(2048);
-
-
         private readonly object _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
@@ -84,8 +80,6 @@ namespace Nethermind.Network
                 try
                 {
                     NetworkNode node = GetNode(nodeRlp);
-                    // Add to the filter
-                    NodesFilter.Set(node.HostIp);
                     // Only add one node per IpAddress
                     if (_hosts.TryAdd(node.HostIp, node))
                     {
@@ -214,15 +208,6 @@ namespace Nethermind.Network
             }
 
             _logger.Trace(sb.ToString());
-        }
-
-        public readonly struct IpAddressAsKey(IPAddress ipAddress) : IEquatable<IpAddressAsKey>
-        {
-            private readonly IPAddress _ipAddress = ipAddress;
-            public static implicit operator IpAddressAsKey(IPAddress ip) => new(ip);
-            public bool Equals(IpAddressAsKey other) => _ipAddress.Equals(other._ipAddress);
-            public override bool Equals(object obj) => obj is IpAddressAsKey ip && _ipAddress.Equals(ip._ipAddress);
-            public override int GetHashCode() => _ipAddress.GetHashCode();
         }
     }
 }
