@@ -126,7 +126,6 @@ public class ShutterTxLoader(
 
             // N.B. does not work with encodedTransaction.AsSpan()
             Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction);
-            // todo: test sending transactions with bad signatures to see if secp segfaults
             transaction.SenderAddress = ethereumEcdsa.RecoverAddress(transaction, true);
 
             return transaction;
