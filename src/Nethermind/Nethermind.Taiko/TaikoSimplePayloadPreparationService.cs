@@ -19,21 +19,31 @@ using Nethermind.State;
 
 namespace Nethermind.Taiko;
 
-public class TaikoSimplePayloadPreparationService(
-    IBlockchainProcessor processor,
-    IWorldState worldState,
-    IL1OriginStore l1OriginStore,
-    ILogManager logManager) : IPayloadPreparationService
+public class TaikoSimplePayloadPreparationService : IPayloadPreparationService
 {
     private const int _emptyBlockProcessingTimeout = 2000;
     private readonly SemaphoreSlim _worldStateLock = new(1);
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockchainProcessor _processor = processor;
-    private readonly IWorldState _worldState = worldState;
-    private readonly IL1OriginStore _l1OriginStore = l1OriginStore;
+    private readonly ILogger _logger;
+    private readonly IBlockchainProcessor _processor;
+    private readonly IWorldState _worldState;
+    private readonly IL1OriginStore _l1OriginStore;
+    private readonly TxDecoder _txDecoder;
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
+
+    public TaikoSimplePayloadPreparationService(
+        IBlockchainProcessor processor,
+        IWorldState worldState,
+        IL1OriginStore l1OriginStore,
+        ILogManager logManager)
+    {
+        _logger = logManager.GetClassLogger();
+        _processor = processor;
+        _worldState = worldState;
+        _l1OriginStore = l1OriginStore;
+        _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
+    }
 
     public virtual string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
@@ -115,7 +125,7 @@ public class TaikoSimplePayloadPreparationService(
         return header;
     }
 
-    private static List<Transaction> BuildTransactions(TaikoPayloadAttributes payloadAttributes)
+    private List<Transaction> BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
         RlpStream rlpStream = new(payloadAttributes.BlockMetadata!.TxList!);
 
@@ -125,7 +135,11 @@ public class TaikoSimplePayloadPreparationService(
         List<Transaction> transactions = [];
         while (rlpStream.Position < transactionsCheck)
         {
-            transactions.Add(Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.SkipTypedWrapping));
+            Transaction? transaction = _txDecoder.Decode(rlpStream, RlpBehaviors.None);
+            if (transaction is not null)
+            {
+                transactions.Add(transaction);
+            }
         }
 
         rlpStream.Check(transactionsCheck);
@@ -133,7 +147,7 @@ public class TaikoSimplePayloadPreparationService(
         return transactions;
     }
 
-    private static Block BuildBlock(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
+    private Block BuildBlock(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
     {
         BlockHeader header = BuildHeader(parentHeader, payloadAttributes);
         IEnumerable<Transaction> transactions = BuildTransactions(payloadAttributes);

@@ -11,9 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -29,39 +27,50 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Taiko.Rpc;
 
-public class TaikoRpcModule(
-    IJsonRpcConfig rpcConfig,
-    IBlockchainBridge blockchainBridge,
-    IBlockFinder blockFinder,
-    IReceiptFinder receiptFinder,
-    IStateReader stateReader,
-    ITxPool txPool,
-    ITxSender txSender,
-    IWallet wallet,
-    ILogManager logManager,
-    ISpecProvider specProvider,
-    IGasPriceOracle gasPriceOracle,
-    IEthSyncingInfo ethSyncingInfo,
-    IFeeHistoryOracle feeHistoryOracle,
-    ulong? secondsPerSlot,
-    ISyncConfig syncConfig,
-    IL1OriginStore l1OriginStore) : EthRpcModule(
-   rpcConfig,
-   blockchainBridge,
-   blockFinder,
-   receiptFinder,
-   stateReader,
-   txPool,
-   txSender,
-   wallet,
-   logManager,
-   specProvider,
-   gasPriceOracle,
-   ethSyncingInfo,
-   feeHistoryOracle,
-   secondsPerSlot), ITaikoRpcModule, ITaikoAuthRpcModule
+public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
 {
-    public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(syncConfig switch
+    private readonly ISyncConfig _syncConfig;
+    private readonly IL1OriginStore _l1OriginStore;
+    private readonly TxDecoder _txDecoder;
+
+    public TaikoRpcModule(
+        IJsonRpcConfig rpcConfig,
+        IBlockchainBridge blockchainBridge,
+        IBlockFinder blockFinder,
+        IReceiptFinder receiptFinder,
+        IStateReader stateReader,
+        ITxPool txPool,
+        ITxSender txSender,
+        IWallet wallet,
+        ILogManager logManager,
+        ISpecProvider specProvider,
+        IGasPriceOracle gasPriceOracle,
+        IEthSyncingInfo ethSyncingInfo,
+        IFeeHistoryOracle feeHistoryOracle,
+        ulong? secondsPerSlot,
+        ISyncConfig syncConfig,
+        IL1OriginStore l1OriginStore) : base(
+       rpcConfig,
+       blockchainBridge,
+       blockFinder,
+       receiptFinder,
+       stateReader,
+       txPool,
+       txSender,
+       wallet,
+       logManager,
+       specProvider,
+       gasPriceOracle,
+       ethSyncingInfo,
+       feeHistoryOracle,
+       secondsPerSlot)
+    {
+        _syncConfig = syncConfig;
+        _l1OriginStore = l1OriginStore;
+        _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
+    }
+
+    public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(_syncConfig switch
     {
         { SnapSync: true } => "snap",
         _ => "full",
@@ -69,20 +78,20 @@ public class TaikoRpcModule(
 
     public Task<ResultWrapper<L1Origin?>> taiko_headL1Origin()
     {
-        UInt256? head = l1OriginStore.ReadHeadL1Origin();
+        UInt256? head = _l1OriginStore.ReadHeadL1Origin();
         if (head is null)
         {
             return ResultWrapper<L1Origin?>.Fail("not found");
         }
 
-        L1Origin? origin = l1OriginStore.ReadL1Origin(head.Value);
+        L1Origin? origin = _l1OriginStore.ReadL1Origin(head.Value);
 
         return origin is null ? ResultWrapper<L1Origin?>.Fail("not found") : ResultWrapper<L1Origin?>.Success(origin);
     }
 
     public Task<ResultWrapper<L1Origin?>> taiko_l1OriginByID(UInt256 blockId)
     {
-        L1Origin? origin = l1OriginStore.ReadL1Origin(blockId);
+        L1Origin? origin = _l1OriginStore.ReadL1Origin(blockId);
 
         return origin is null ? ResultWrapper<L1Origin?>.Fail("not found") : ResultWrapper<L1Origin?>.Success(origin);
     }
@@ -105,6 +114,8 @@ public class TaikoRpcModule(
             .ToArray();
 
         List<KeyValuePair<AddressAsKey, Queue<Transaction>>> source = [.. localTxs, .. remoteTxs];
+
+        TxDecoder decoder = (Rlp.GetStreamDecoder<Transaction>() as TxDecoder)!;
 
         PreBuiltTxList PickTransactions()
         {
@@ -130,7 +141,7 @@ public class TaikoRpcModule(
 
                 txs.Add(nextTx);
 
-                byte[] compressed = EncodeAndCompress(txs);
+                byte[] compressed = EncodeAndCompress(txs.ToArray());
 
                 if ((ulong)compressed.LongLength > maxBytesPerTxList)
                 {
@@ -162,20 +173,21 @@ public class TaikoRpcModule(
         return ResultWrapper<PreBuiltTxList[]?>.Success([.. txLists]);
     }
 
-    private static byte[] EncodeAndCompress(List<Transaction> txs)
+    private byte[] EncodeAndCompress(Transaction[] txs)
     {
-        Rlp[] txRlps = new Rlp[txs.Count];
-        for (int i = 0; i < txs.Count; i++)
+        int contentLength = txs.Sum(tx => _txDecoder.GetLength(tx, RlpBehaviors.None));
+        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+
+        rlpStream.StartSequence(contentLength);
+        foreach (Transaction tx in txs)
         {
-            txRlps[i] = Rlp.Encode<Transaction>(txs[i]);
+            _txDecoder.Encode(rlpStream, tx);
         }
 
-        var rlp = Rlp.Encode(txRlps).Bytes;
-
-        using var stream = new MemoryStream();
-        using var enc = new ZLibStream(stream, CompressionMode.Compress, false);
-        enc.Write(rlp);
-        enc.Close();
+        using MemoryStream stream = new();
+        using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
+        compressingStream.Write(rlpStream.Data);
+        compressingStream.Close();
         return stream.ToArray();
     }
 }
