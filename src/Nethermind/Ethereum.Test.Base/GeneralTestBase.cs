@@ -81,7 +81,8 @@ namespace Ethereum.Test.Base
 
             TrieStore trieStore = new(stateDb, _logManager);
             WorldState stateProvider = new(trieStore, codeDb, _logManager);
-            var blockhashProvider = new T8NBlockHashProvider();
+            // var blockhashProvider = new T8NBlockHashProvider();
+            var blockhashProvider = new TestBlockhashProvider();
             CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
@@ -123,12 +124,12 @@ namespace Ethereum.Test.Base
                 test.ApplyChecks(specProvider, parentHeader);
             }
 
-            if (header.Hash != null) blockhashProvider.Insert(header.Hash, header.Number);
-            if (parentHeader?.Hash != null) blockhashProvider.Insert(parentHeader.Hash, parentHeader.Number);
-            foreach (var blockHash in test.BlockHashes)
-            {
-                blockhashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
-            }
+            // if (header.Hash != null) blockhashProvider.Insert(header.Hash, header.Number);
+            // if (parentHeader?.Hash != null) blockhashProvider.Insert(parentHeader.Hash, parentHeader.Number);
+            // foreach (var blockHash in test.BlockHashes)
+            // {
+            //     blockhashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
+            // }
 
             BlockHeader[] uncles = test.Ommers
                 .Select(ommer => Build.A.BlockHeader
