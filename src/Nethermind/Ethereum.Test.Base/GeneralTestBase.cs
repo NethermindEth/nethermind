@@ -78,11 +78,12 @@ namespace Ethereum.Test.Base
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
+            BlockHeader header = test.GetBlockHeader();
+            BlockHeader? parentHeader = test.GetParentBlockHeader();
+            var blockhashProvider = GetBlockHashProvider(test, header, parentHeader);
 
             TrieStore trieStore = new(stateDb, _logManager);
             WorldState stateProvider = new(trieStore, codeDb, _logManager);
-            // var blockhashProvider = new T8NBlockHashProvider();
-            var blockhashProvider = new TestBlockhashProvider();
             CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
@@ -104,17 +105,16 @@ namespace Ethereum.Test.Base
                 transaction.ChainId ??= MainnetSpecProvider.Instance.ChainId;
             }
 
-            // var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
-            // foreach (var transaction in test.Transactions)
-            // {
-            //     transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
-            // }
+            var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            foreach (var transaction in test.Transactions)
+            {
+                transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
+            }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
-            BlockHeader header = test.GetBlockHeader();
-            BlockHeader? parentHeader = test.GetParentBlockHeader();
+
             if (parentHeader != null)
             {
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
@@ -124,13 +124,6 @@ namespace Ethereum.Test.Base
                 test.ApplyChecks(specProvider, parentHeader);
             }
 
-            // if (header.Hash != null) blockhashProvider.Insert(header.Hash, header.Number);
-            // if (parentHeader?.Hash != null) blockhashProvider.Insert(parentHeader.Hash, parentHeader.Number);
-            // foreach (var blockHash in test.BlockHashes)
-            // {
-            //     blockhashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
-            // }
-
             BlockHeader[] uncles = test.Ommers
                 .Select(ommer => Build.A.BlockHeader
                     .WithNumber(test.CurrentNumber - ommer.Delta)
@@ -139,7 +132,6 @@ namespace Ethereum.Test.Base
                 .ToArray();
 
             Block block = Build.A.Block.WithHeader(header).WithTransactions(test.Transactions).TestObject; // missing uncles, missing withdrawals
-            // _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
 
             T8NToolTracer? txTracer = null;
             if (tracer is T8NToolTracer)
@@ -243,6 +235,28 @@ namespace Ethereum.Test.Base
 
             //            Assert.Zero(differences.Count, "differences");
             return testResult;
+        }
+
+        private IBlockhashProvider GetBlockHashProvider(GeneralStateTest test, BlockHeader header, BlockHeader? parent)
+        {
+            if (test.Name != "T8N")
+            {
+                return new TestBlockhashProvider();
+            }
+            var t8NBlockHashProvider = new T8NBlockHashProvider();
+
+            if (header.Hash != null) t8NBlockHashProvider.Insert(header.Hash, header.Number);
+            if (parent?.Hash != null) t8NBlockHashProvider.Insert(parent.Hash, parent.Number);
+            foreach (var blockHash in test.BlockHashes)
+            {
+                t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
+            }
+            return t8NBlockHashProvider;
+        }
+
+        private void T8NActions(Block block, IReleaseSpec spec, WorldState stateProvider)
+        {
+            _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
         }
 
         private NativePrestateTracerAccount ConvertAccountToNativePrestateTracerAccount(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, UInt256>> storages)
