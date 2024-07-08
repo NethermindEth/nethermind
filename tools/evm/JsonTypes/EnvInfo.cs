@@ -108,7 +108,6 @@ namespace Evm.JsonTypes
             {
                 throw new T8NException("EIP-1559 config but missing 'currentBaseFee' in env section", ExitCodes.ErrorConfig);
             }
-            CurrentBaseFee = BaseFeeCalculator.Calculate(GetParentBlockHeader(), spec);
         }
 
         private void ApplyShanghaiChecks(IReleaseSpec spec)
@@ -162,38 +161,6 @@ namespace Evm.JsonTypes
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
 
             CurrentDifficulty = difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash is not null);
-        }
-        
-        public UInt256 CalculateCurrentDifficultyWithMergeChecks(ISpecProvider specProvider)
-        {
-            if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
-            {
-                if (CurrentRandom == null) throw new T8NException("post-merge requires currentRandom to be defined in env", ExitCodes.ErrorConfig);
-                if (CurrentDifficulty?.IsZero ?? false) return CurrentDifficulty.Value;
-                throw new T8NException("post-merge difficulty must be zero (or omitted) in env", ExitCodes.ErrorConfig);
-            }
-
-            if (CurrentDifficulty.HasValue) return CurrentDifficulty.Value;
-
-            if (!ParentDifficulty.HasValue)
-            {
-                throw new T8NException(
-                    "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty", ExitCodes.ErrorConfig);
-            }
-
-            if (CurrentNumber == 0)
-            {
-                throw new T8NException("currentDifficulty needs to be provided for block number 0", ExitCodes.ErrorConfig);
-            }
-
-            if (CurrentTimestamp <= ParentTimestamp)
-            {
-                throw new T8NException($"currentDifficulty cannot be calculated -- currentTime ({CurrentTimestamp}) needs to be after parent time ({ParentTimestamp})", ExitCodes.ErrorConfig);
-            }
-
-            EthashDifficultyCalculator difficultyCalculator = new(specProvider);
-
-            return difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash != null);
         }
     }
 }

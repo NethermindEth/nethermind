@@ -5,6 +5,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 
 namespace Evm.T8NTool;
 
@@ -38,6 +40,9 @@ public class InputProcessor
         }
         
         IReleaseSpec spec = JsonToEthereumTest.ParseSpec(stateFork);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, spec));
+
+        envInfo.ApplyChecks(specProvider, spec);
 
         GeneralStateTest generalStateTest = new();
         generalStateTest.Fork = spec;
@@ -54,7 +59,7 @@ public class InputProcessor
         generalStateTest.ParentTimestamp = envInfo.ParentTimestamp;
         generalStateTest.ParentDifficulty = envInfo.ParentDifficulty;
         generalStateTest.CurrentBaseFee = envInfo.CurrentBaseFee;
-        // generalStateTest.CurrentDifficulty = envInfo.CalculateCurrentDifficultyWithMergeChecks(specProvider);
+        generalStateTest.CurrentDifficulty = envInfo.CurrentDifficulty;
         generalStateTest.ParentUncleHash = envInfo.ParentUncleHash;
         generalStateTest.ParentBeaconBlockRoot = envInfo.ParentBeaconBlockRoot;
         generalStateTest.ParentBaseFee = envInfo.ParentBaseFee;

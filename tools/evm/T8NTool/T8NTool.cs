@@ -176,12 +176,18 @@ public class T8NTool
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
         } // was missing
 
-        envInfo.ApplyChecks(specProvider, spec);
+        envInfo.ApplyChecks(specProvider, spec); // missing
 
         var header = envInfo.GetBlockHeader();
         var parent = envInfo.GetParentBlockHeader();
+        if (spec.IsEip1559Enabled)
+        {
+            header.BaseFeePerGas = envInfo.CurrentBaseFee.HasValue
+                ? envInfo.CurrentBaseFee.Value
+                : BaseFeeCalculator.Calculate(parent, spec);
+        }
 
-        if (IsPostMerge(spec))
+        if (IsPostMerge(spec)) // missing
         {
             header.IsPostMerge = true;
         }
@@ -191,7 +197,7 @@ public class T8NTool
         foreach (var envJsonBlockHash in envInfo.BlockHashes)
         {
             blockhashProvider.Insert(envJsonBlockHash.Value, long.Parse(envJsonBlockHash.Key));
-        }
+        } // done
 
         TxValidator txValidator = new(MainnetSpecProvider.Instance.ChainId);
         IReceiptSpec receiptSpec = specProvider.GetSpec(header);
@@ -205,10 +211,10 @@ public class T8NTool
                 .WithNumber(envInfo.CurrentNumber - ommer.Delta)
                 .WithBeneficiary(ommer.Address)
                 .TestObject)
-            .ToArray();
+            .ToArray(); // done
 
         var block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).WithUncles(uncles).TestObject;
-        new BeaconBlockRootHandler().ApplyContractStateChanges(block, spec, stateProvider);
+        new BeaconBlockRootHandler().ApplyContractStateChanges(block, spec, stateProvider); // done
         
 
         CalculateReward(stateReward, block, stateProvider, spec);
@@ -216,7 +222,7 @@ public class T8NTool
         T8NToolTracer tracer = new();
         tracer.StartNewBlockTrace(block);
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, spec); // done
         stateProvider.Commit(spec);
         stateProvider.RecalculateStateRoot();
 

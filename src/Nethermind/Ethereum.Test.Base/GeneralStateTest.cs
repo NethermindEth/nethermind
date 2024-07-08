@@ -24,7 +24,7 @@ namespace Ethereum.Test.Base
         public IReleaseSpec? Fork { get; set; }
         public string? ForkName { get; set; }
         public Address? CurrentCoinbase { get; set; }
-        public UInt256 CurrentDifficulty { get; set; }
+        public UInt256? CurrentDifficulty { get; set; }
 
         public UInt256? CurrentBaseFee { get; set; }
         public long CurrentGasLimit { get; set; }
@@ -54,7 +54,6 @@ namespace Ethereum.Test.Base
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
         public Ommer[] Ommers { get; set; } = [];
 
-        private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
 
         public override string ToString()
         {
@@ -66,21 +65,21 @@ namespace Ethereum.Test.Base
             BlockHeader header = new(
                 PreviousHash,
                 Keccak.OfAnEmptySequenceRlp,
-                CurrentCoinbase,
-                CurrentDifficulty,
+                CurrentCoinbase ?? throw new Exception("CurrentCoinbase is missing"),
+                CurrentDifficulty ?? UInt256.Zero,
                 CurrentNumber,
                 CurrentGasLimit,
                 CurrentTimestamp,
                 []);
-            header.BaseFeePerGas = Fork.IsEip1559Enabled ? CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
             header.StateRoot = PostHash;
             header.Hash = header.CalculateHash();
-            header.IsPostMerge = CurrentRandom is not null;
+            header.IsPostMerge = IsPostMerge();
             header.MixHash = CurrentRandom;
             header.WithdrawalsRoot = CurrentWithdrawalsRoot;
             header.ParentBeaconBlockRoot = CurrentBeaconRoot;
             header.ExcessBlobGas = CurrentExcessBlobGas ?? (Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(Transactions);
+            header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
 
             return header;
         }
@@ -93,93 +92,30 @@ namespace Ethereum.Test.Base
                     parentHash: Keccak.Zero,
                     unclesHash: Keccak.OfAnEmptySequenceRlp,
                     beneficiary: CurrentCoinbase,
-                    difficulty: CurrentDifficulty,
+                    difficulty: ParentDifficulty ?? CurrentDifficulty ?? UInt256.Zero,
                     number: CurrentNumber - 1,
-                    gasLimit: CurrentGasLimit,
-                    timestamp: CurrentTimestamp,
+                    gasLimit: ParentGasLimit,
+                    timestamp: ParentTimestamp,
                     extraData: []
                 )
                 {
                     BlobGasUsed = (ulong) ParentBlobGasUsed,
                     ExcessBlobGas = (ulong) ParentExcessBlobGas,
                 };
+                if (ParentBaseFee.HasValue) parent.BaseFeePerGas = ParentBaseFee.Value;
+                parent.GasUsed = ParentGasUsed;
+                if (ParentUncleHash != null) parent.UnclesHash = ParentUncleHash;
                 return parent;
             }
 
             return null;
         }
 
-        public void ApplyChecks(ISpecProvider specProvider, BlockHeader parentBlockHeader)
+        public bool IsPostMerge()
         {
-            ApplyLondonChecks(parentBlockHeader);
-            ApplyShanghaiChecks();
-            ApplyCancunChecks();
-            ApplyMergeChecks(specProvider);
-        }
-
-        private void ApplyLondonChecks(BlockHeader parentBlockHeader)
-        {
-            if (!Fork.IsEip1559Enabled) return;
-            if (CurrentBaseFee != null) return;
-
-            if (!ParentBaseFee.HasValue || CurrentNumber == 0)
-            {
-                throw new T8NException("EIP-1559 config but missing 'currentBaseFee' in env section", T8NToolExitCodes.ErrorConfig);
-            }
-            CurrentBaseFee = BaseFeeCalculator.Calculate(parentBlockHeader, Fork);
-        }
-
-        private void ApplyShanghaiChecks()
-        {
-            if (Fork is not Shanghai) return;
-            if (Withdrawals == null)
-            {
-                throw new T8NException("Shanghai config but missing 'withdrawals' in env section", T8NToolExitCodes.ErrorConfig);
-            }
-        }
-
-        private void ApplyCancunChecks()
-        {
-            if (Fork is not Cancun)
-            {
-                ParentBeaconBlockRoot = null;
-                return;
-            }
-
-            if (ParentBeaconBlockRoot == null)
-            {
-                throw new T8NException("post-cancun env requires parentBeaconBlockRoot to be set", T8NToolExitCodes.ErrorConfig);
-            }
-        }
-
-        private void ApplyMergeChecks(ISpecProvider specProvider)
-        {
-            // if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
-            // {
-            //     if (CurrentRandom == null) throw new T8NException("post-merge requires currentRandom to be defined in env", T8NToolExitCodes.ErrorConfig);
-            //     if (CurrentDifficulty?.IsZero ?? false) throw new T8NException("post-merge difficulty must be zero (or omitted) in env", T8NToolExitCodes.ErrorConfig);
-            //     return;
-            // }
-            // if (CurrentDifficulty != null) return;
-            // if (!ParentDifficulty.HasValue)
-            // {
-            //     throw new T8NException(
-            //         "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty", T8NToolExitCodes.ErrorConfig);
-            // }
-            //
-            // if (CurrentNumber == 0)
-            // {
-            //     throw new T8NException("currentDifficulty needs to be provided for block number 0", T8NToolExitCodes.ErrorConfig);
-            // }
-            //
-            // if (CurrentTimestamp <= ParentTimestamp)
-            // {
-            //     throw new T8NException($"currentDifficulty cannot be calculated -- currentTime ({CurrentTimestamp}) needs to be after parent time ({ParentTimestamp})", T8NToolExitCodes.ErrorConfig);
-            // }
-            //
-            // EthashDifficultyCalculator difficultyCalculator = new(specProvider);
-            //
-            // CurrentDifficulty = difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash is not null);
+            return Fork == Paris.Instance
+                   || Fork == Shanghai.Instance
+                   || Fork == Cancun.Instance;
         }
     }
 }
