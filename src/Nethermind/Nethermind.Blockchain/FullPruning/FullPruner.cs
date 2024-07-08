@@ -249,7 +249,7 @@ namespace Nethermind.Blockchain.FullPruning
                     // read key which are in HalfPath may be written to the new db. This cause a problem as Hash
                     // scheme can be started with some code not tracking path, which will be unable to read these HalfPath
                     // keys.
-                    if (_logger.IsWarn) _logger.Warn($"Full pruning from from HalfPath key to Hash key is not supported. Switching to HalfPath key scheme.");
+                    if (_logger.IsWarn) _logger.Warn($"Full pruning from HalfPath key to Hash key is not supported. Switching to HalfPath key scheme.");
                     targetNodeStorage.Scheme = INodeStorage.KeyScheme.HalfPath;
                 }
 
