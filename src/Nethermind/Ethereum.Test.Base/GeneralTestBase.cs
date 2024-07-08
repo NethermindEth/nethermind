@@ -137,7 +137,7 @@ namespace Ethereum.Test.Base
                     .TestObject)
                 .ToArray();
 
-            Block block = Build.A.Block.WithHeader(header).WithWithdrawals(test.Withdrawals).TestObject; // missing uncles
+            Block block = Build.A.Block.WithHeader(header).WithTransactions(test.Transactions).TestObject; // missing uncles, missing withdrawals
             // _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
 
             T8NToolTracer? txTracer = null;
