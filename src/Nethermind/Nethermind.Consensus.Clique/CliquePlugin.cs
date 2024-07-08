@@ -17,9 +17,11 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Clique
@@ -160,6 +162,11 @@ namespace Nethermind.Consensus.Clique
 
         public IBlockProducerRunner CreateBlockProducerRunner()
         {
+            if (_nethermindApi.Config<IMergeConfig>().Enabled)
+            {
+                throw new InvalidConfigurationException("Merge configuration is not supported for clique engine.",
+                    ExitCodes.ConflictingConfigurations);
+            }
             _blockProducerRunner = new CliqueBlockProducerRunner(
                 _nethermindApi.BlockTree,
                 _nethermindApi.Timestamper,
