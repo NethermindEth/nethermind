@@ -120,7 +120,7 @@ internal class TransactionProcessorEip7702Tests
         yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyA };
     }
     [TestCaseSource(nameof(SenderSignerCases))]
-    public void Execute_SenderAndSignerIsTheSameOrNotWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer)
+    public void Execute_SenderAndSignerIsTheSameAndNotWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer)
     {
         Address codeSource = TestItem.AddressB;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
