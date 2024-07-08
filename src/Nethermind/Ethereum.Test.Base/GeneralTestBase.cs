@@ -29,6 +29,7 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Consensus.BeaconBlockRoot;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
@@ -147,6 +148,8 @@ namespace Ethereum.Test.Base
             {
                 _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
             }
+
+            CalculateReward(test.StateReward, block, stateProvider, spec);
 
             T8NToolTracer? txTracer = null;
             if (tracer is T8NToolTracer)
@@ -334,6 +337,26 @@ namespace Ethereum.Test.Base
             IBlockValidator blockValidator = new BlockValidator(_txValidator, headerValidator, unclesValidator, specProvider, _logManager);
 
             return blockValidator.ValidateOrphanedBlock(block, out _);
+        }
+
+        private static void CalculateReward(string? stateReward, Block block, WorldState stateProvider, IReleaseSpec spec)
+        {
+            if (stateReward == null) return;
+
+            var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
+            BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+
+            foreach (BlockReward reward in rewards)
+            {
+                if (!stateProvider.AccountExists(reward.Address))
+                {
+                    stateProvider.CreateAccount(reward.Address, reward.Value);
+                }
+                else
+                {
+                    stateProvider.AddToBalance(reward.Address, reward.Value, spec);
+                }
+            }
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)

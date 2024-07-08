@@ -53,6 +53,7 @@ namespace Ethereum.Test.Base
         public long ParentGasLimit { get; set; }
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
         public Ommer[] Ommers { get; set; } = [];
+        public string? StateReward { get; set; }
 
 
         public override string ToString()

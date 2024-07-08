@@ -39,7 +39,16 @@ public class InputProcessor
             throw new NotSupportedException("Transactions file support only rlp, json formats");
         }
         
-        IReleaseSpec spec = JsonToEthereumTest.ParseSpec(stateFork);
+        IReleaseSpec spec;
+        try
+        {
+            spec = JsonToEthereumTest.ParseSpec(stateFork);
+        }
+        catch (NotSupportedException e)
+        {
+            throw new T8NException(e, ExitCodes.ErrorConfig);
+        }
+        
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, spec));
 
         envInfo.ApplyChecks(specProvider, spec);
@@ -68,6 +77,8 @@ public class InputProcessor
         generalStateTest.ParentExcessBlobGas = envInfo.ParentExcessBlobGas;
         generalStateTest.CurrentExcessBlobGas = envInfo.CurrentExcessBlobGas;
         generalStateTest.ParentBlobGasUsed = envInfo.ParentBlobGasUsed;
+        generalStateTest.Ommers = envInfo.Ommers;
+        generalStateTest.StateReward = stateReward;
 
         return generalStateTest;
     }

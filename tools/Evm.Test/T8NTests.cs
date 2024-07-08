@@ -270,7 +270,6 @@ public class T8NTests
             false
         );
 
-        Console.WriteLine(output);
         Assert.That(output.ExitCode, Is.EqualTo(expectedExitCode));
         
         if (expectedOutputFile != null)
