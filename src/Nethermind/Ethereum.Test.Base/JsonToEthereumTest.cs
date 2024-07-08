@@ -56,6 +56,7 @@ namespace Ethereum.Test.Base
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
                 "GrayGlacier" => GrayGlacier.Instance,
+                "ArrowGlacier" => ArrowGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
                 "Paris" => Paris.Instance,
