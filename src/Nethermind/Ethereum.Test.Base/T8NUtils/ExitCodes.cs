@@ -1,6 +1,6 @@
 ﻿namespace Ethereum.Test.Base;
 
-public class T8NToolExitCodes
+public class ExitCodes
 {
     public const int ErrorEVM = 2;
     public const int ErrorConfig = 3;
