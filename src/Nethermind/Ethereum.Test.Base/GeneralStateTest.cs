@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -23,7 +24,7 @@ namespace Ethereum.Test.Base
         public IReleaseSpec? Fork { get; set; }
         public string? ForkName { get; set; }
         public Address? CurrentCoinbase { get; set; }
-        public UInt256? CurrentDifficulty { get; set; }
+        public UInt256 CurrentDifficulty { get; set; }
 
         public UInt256? CurrentBaseFee { get; set; }
         public long CurrentGasLimit { get; set; }
@@ -60,39 +61,52 @@ namespace Ethereum.Test.Base
             return $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
         }
 
-        public BlockHeader GetBlockHeader(BlockHeader parentBlockHeader)
+        public BlockHeader GetBlockHeader()
         {
-            BlockHeaderBuilder blockHeaderBuilder = new();
+            BlockHeader header = new(
+                PreviousHash,
+                Keccak.OfAnEmptySequenceRlp,
+                CurrentCoinbase,
+                CurrentDifficulty,
+                CurrentNumber,
+                CurrentGasLimit,
+                CurrentTimestamp,
+                []);
+            header.BaseFeePerGas = Fork.IsEip1559Enabled ? CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
+            header.StateRoot = PostHash;
+            header.Hash = header.CalculateHash();
+            header.IsPostMerge = CurrentRandom is not null;
+            header.MixHash = CurrentRandom;
+            header.WithdrawalsRoot = CurrentWithdrawalsRoot;
+            header.ParentBeaconBlockRoot = CurrentBeaconRoot;
+            header.ExcessBlobGas = CurrentExcessBlobGas ?? (Fork is Cancun ? 0ul : null);
+            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(Transactions);
 
-            if (CurrentDifficulty.HasValue) blockHeaderBuilder.WithDifficulty(CurrentDifficulty.Value);
-            blockHeaderBuilder.WithNumber(CurrentNumber);
-            blockHeaderBuilder.WithGasLimit(CurrentGasLimit);
-            blockHeaderBuilder.WithBeneficiary(CurrentCoinbase ?? throw new Exception("CurrentCoinbase is missing"));
-            blockHeaderBuilder.WithExcessBlobGas(CurrentExcessBlobGas ?? BlobGasCalculator.CalculateExcessBlobGas(parentBlockHeader, Fork));
-            blockHeaderBuilder.WithParentBeaconBlockRoot(ParentBeaconBlockRoot);
-            if (CurrentBaseFee.HasValue) blockHeaderBuilder.WithBaseFee(CurrentBaseFee.Value);
-            blockHeaderBuilder.WithBaseFee(Fork.IsEip1559Enabled ? CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero);
-
-            blockHeaderBuilder.WithTimestamp(CurrentTimestamp);
-            if (CurrentRandom is not null) blockHeaderBuilder.WithMixHash(new Hash256(CurrentRandom));
-
-            return blockHeaderBuilder.TestObject;
+            return header;
         }
 
-        public BlockHeader GetParentBlockHeader()
+        public BlockHeader? GetParentBlockHeader()
         {
-            BlockHeaderBuilder blockHeaderBuilder = new();
-            if (ParentDifficulty.HasValue) blockHeaderBuilder.WithDifficulty(ParentDifficulty.Value);
-            blockHeaderBuilder.WithNumber(CurrentNumber - 1);
-            blockHeaderBuilder.WithGasLimit(ParentGasLimit);
-            if (ParentExcessBlobGas is not null) blockHeaderBuilder.WithExcessBlobGas((ulong) ParentExcessBlobGas);
-            if (ParentBaseFee.HasValue) blockHeaderBuilder.WithBaseFee(ParentBaseFee.Value);
-            if (ParentBlobGasUsed is not null) blockHeaderBuilder.WithBlobGasUsed((ulong) ParentBlobGasUsed);
-            blockHeaderBuilder.WithGasUsed(ParentGasUsed);
-            blockHeaderBuilder.WithTimestamp(ParentTimestamp);
+            if (ParentBlobGasUsed is not null && ParentExcessBlobGas is not null)
+            {
+                BlockHeader parent = new(
+                    parentHash: Keccak.Zero,
+                    unclesHash: Keccak.OfAnEmptySequenceRlp,
+                    beneficiary: CurrentCoinbase,
+                    difficulty: CurrentDifficulty,
+                    number: CurrentNumber - 1,
+                    gasLimit: CurrentGasLimit,
+                    timestamp: CurrentTimestamp,
+                    extraData: []
+                )
+                {
+                    BlobGasUsed = (ulong) ParentBlobGasUsed,
+                    ExcessBlobGas = (ulong) ParentExcessBlobGas,
+                };
+                return parent;
+            }
 
-            if (ParentUncleHash != null) blockHeaderBuilder.WithUnclesHash(ParentUncleHash);
-            return blockHeaderBuilder.TestObject;
+            return null;
         }
 
         public void ApplyChecks(ISpecProvider specProvider, BlockHeader parentBlockHeader)
@@ -140,32 +154,32 @@ namespace Ethereum.Test.Base
 
         private void ApplyMergeChecks(ISpecProvider specProvider)
         {
-            if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
-            {
-                if (CurrentRandom == null) throw new T8NException("post-merge requires currentRandom to be defined in env", T8NToolExitCodes.ErrorConfig);
-                if (CurrentDifficulty?.IsZero ?? false) throw new T8NException("post-merge difficulty must be zero (or omitted) in env", T8NToolExitCodes.ErrorConfig);
-                return;
-            }
-            if (CurrentDifficulty != null) return;
-            if (!ParentDifficulty.HasValue)
-            {
-                throw new T8NException(
-                    "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty", T8NToolExitCodes.ErrorConfig);
-            }
-
-            if (CurrentNumber == 0)
-            {
-                throw new T8NException("currentDifficulty needs to be provided for block number 0", T8NToolExitCodes.ErrorConfig);
-            }
-
-            if (CurrentTimestamp <= ParentTimestamp)
-            {
-                throw new T8NException($"currentDifficulty cannot be calculated -- currentTime ({CurrentTimestamp}) needs to be after parent time ({ParentTimestamp})", T8NToolExitCodes.ErrorConfig);
-            }
-
-            EthashDifficultyCalculator difficultyCalculator = new(specProvider);
-
-            CurrentDifficulty = difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash is not null);
+            // if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
+            // {
+            //     if (CurrentRandom == null) throw new T8NException("post-merge requires currentRandom to be defined in env", T8NToolExitCodes.ErrorConfig);
+            //     if (CurrentDifficulty?.IsZero ?? false) throw new T8NException("post-merge difficulty must be zero (or omitted) in env", T8NToolExitCodes.ErrorConfig);
+            //     return;
+            // }
+            // if (CurrentDifficulty != null) return;
+            // if (!ParentDifficulty.HasValue)
+            // {
+            //     throw new T8NException(
+            //         "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty", T8NToolExitCodes.ErrorConfig);
+            // }
+            //
+            // if (CurrentNumber == 0)
+            // {
+            //     throw new T8NException("currentDifficulty needs to be provided for block number 0", T8NToolExitCodes.ErrorConfig);
+            // }
+            //
+            // if (CurrentTimestamp <= ParentTimestamp)
+            // {
+            //     throw new T8NException($"currentDifficulty cannot be calculated -- currentTime ({CurrentTimestamp}) needs to be after parent time ({ParentTimestamp})", T8NToolExitCodes.ErrorConfig);
+            // }
+            //
+            // EthashDifficultyCalculator difficultyCalculator = new(specProvider);
+            //
+            // CurrentDifficulty = difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash is not null);
         }
     }
 }

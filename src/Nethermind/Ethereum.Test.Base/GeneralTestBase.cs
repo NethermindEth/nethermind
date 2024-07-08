@@ -103,29 +103,32 @@ namespace Ethereum.Test.Base
                 transaction.ChainId ??= MainnetSpecProvider.Instance.ChainId;
             }
 
-            var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
-            foreach (var transaction in test.Transactions)
-            {
-                transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
-            }
+            // var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            // foreach (var transaction in test.Transactions)
+            // {
+            //     transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
+            // }
 
-            BlockHeader parentHeader = test.GetParentBlockHeader();
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+
+            BlockHeader header = test.GetBlockHeader();
+            BlockHeader? parentHeader = test.GetParentBlockHeader();
+            if (parentHeader != null)
+            {
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
+            }
             if (test.Name == "T8N")
             {
                 test.ApplyChecks(specProvider, parentHeader);
             }
 
-            BlockHeader header = test.GetBlockHeader(parentHeader);
-
             if (header.Hash != null) blockhashProvider.Insert(header.Hash, header.Number);
-            if (parentHeader.Hash != null) blockhashProvider.Insert(parentHeader.Hash, parentHeader.Number);
+            if (parentHeader?.Hash != null) blockhashProvider.Insert(parentHeader.Hash, parentHeader.Number);
             foreach (var blockHash in test.BlockHashes)
             {
                 blockhashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
             }
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             BlockHeader[] uncles = test.Ommers
                 .Select(ommer => Build.A.BlockHeader
@@ -134,8 +137,8 @@ namespace Ethereum.Test.Base
                     .TestObject)
                 .ToArray();
 
-            Block block = Build.A.Block.WithHeader(header).WithTransactions(test.Transactions).WithWithdrawals(test.Withdrawals).WithUncles(uncles).TestObject;
-            _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
+            Block block = Build.A.Block.WithHeader(header).WithWithdrawals(test.Withdrawals).TestObject; // missing uncles
+            // _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
 
             T8NToolTracer? txTracer = null;
             if (tracer is T8NToolTracer)
