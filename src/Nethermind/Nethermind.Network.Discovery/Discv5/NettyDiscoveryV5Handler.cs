@@ -21,7 +21,6 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
 {
     private readonly ILogger<NettyDiscoveryV5Handler> _logger;
     private readonly Channel<UdpReceiveResult> _inboundQueue;
-    private readonly IByteBufferAllocator _bufferAllocator = PooledByteBufferAllocator.Default;
 
     private IChannel? _nettyChannel;
 
@@ -43,9 +42,7 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
     {
         if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized.");
 
-        IByteBuffer buffer = _bufferAllocator.Buffer(data.Length, data.Length);
-        buffer.WriteBytes(data);
-        var packet = new DatagramPacket(buffer, destination);
+        var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), destination);
 
         try
         {
