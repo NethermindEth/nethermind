@@ -43,8 +43,6 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
     {
         if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized.");
 
-        UdpConnection.ValidatePacketSize(data);
-
         IByteBuffer buffer = _bufferAllocator.Buffer(data.Length, data.Length);
         buffer.WriteBytes(data);
         var packet = new DatagramPacket(buffer, destination);
