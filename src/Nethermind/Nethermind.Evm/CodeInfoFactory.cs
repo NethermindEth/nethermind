@@ -9,20 +9,18 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public static class CodeInfoFactory
 {
-    public static bool CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, out ICodeInfo codeinfo, EvmObjectFormat.ValidationStrategy validationRules = EvmObjectFormat.ValidationStrategy.ExractHeader)
+    public static ICodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, EvmObjectFormat.ValidationStrategy validationRules = EvmObjectFormat.ValidationStrategy.ExractHeader)
     {
-        codeinfo = new CodeInfo(code);
+        CodeInfo codeInfo = new CodeInfo(code);
         if (spec.IsEofEnabled && code.Span.StartsWith(EvmObjectFormat.MAGIC))
         {
             if (EvmObjectFormat.IsValidEof(code.Span, validationRules, out EofHeader? header))
             {
-                codeinfo = new EofCodeInfo(codeinfo, header.Value);
-                return true;
+                return new EofCodeInfo(codeInfo, header.Value);
             }
-            return false;
         }
-        (codeinfo as CodeInfo).AnalyseInBackgroundIfRequired();
-        return true;
+        codeInfo.AnalyseInBackgroundIfRequired();
+        return codeInfo;
     }
 
     public static bool CreateInitCodeInfo(Memory<byte> data, IReleaseSpec spec, out ICodeInfo codeinfo, out Memory<byte> extraCalldata)
@@ -39,6 +37,7 @@ public static class CodeInfoFactory
             }
             return false;
         }
+        (codeinfo as CodeInfo).AnalyseInBackgroundIfRequired();
         return true;
     }
 }

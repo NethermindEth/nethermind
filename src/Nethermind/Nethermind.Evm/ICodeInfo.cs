@@ -17,7 +17,7 @@ public interface ICodeInfo
     ReadOnlyMemory<byte> TypeSection => Memory<byte>.Empty;
     ReadOnlyMemory<byte> CodeSection => MachineCode;
     ReadOnlyMemory<byte> DataSection => Memory<byte>.Empty;
-    ReadOnlyMemory<byte> ContainerSection(int _) => Memory<byte>.Empty;
+    ReadOnlyMemory<byte> ContainerSection => Memory<byte>.Empty;
     SectionHeader CodeSectionOffset(int idx);
     SectionHeader? ContainerSectionOffset(int idx);
     (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index) => (0, 0, 1024);

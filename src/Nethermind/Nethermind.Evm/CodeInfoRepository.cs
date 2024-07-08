@@ -126,7 +126,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            CodeInfoFactory.CreateCodeInfo(code, vmSpec, out cachedCodeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -148,7 +148,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (!_codeCache.TryGet(codeHash, out ICodeInfo? codeInfo))
         {
-            CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, out codeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
+            codeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
 
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
@@ -160,7 +160,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        CodeInfoFactory.CreateCodeInfo(code, spec, out ICodeInfo codeInfo, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);

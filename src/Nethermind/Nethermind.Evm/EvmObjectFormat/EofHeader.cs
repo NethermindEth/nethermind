@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Drawing;
 using System.Linq;
 using Nethermind.Core.Extensions;
@@ -23,6 +24,8 @@ public struct SectionHeader(int start, ushort size)
     public readonly int Start => start;
     public readonly int Size => size;
     public readonly int EndOffset => Start + Size;
+
+    public static implicit operator Range(SectionHeader section) => new(section.Start, section.EndOffset);
 }
 
 public struct CompoundSectionHeader(int start, int[] subSectionsSizes)
@@ -55,4 +58,7 @@ public struct CompoundSectionHeader(int start, int[] subSectionsSizes)
     }
 
     public SectionHeader this[int i] => new SectionHeader(SubSectionsSizesAcc[i], (ushort)SubSectionsSizes[i]);
+
+    public static implicit operator Range(CompoundSectionHeader section) => new(section.Start, section.EndOffset);
 }
+

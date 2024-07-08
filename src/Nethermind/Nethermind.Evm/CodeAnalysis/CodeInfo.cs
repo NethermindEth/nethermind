@@ -7,6 +7,7 @@ using System.Threading;
 using System.Runtime.CompilerServices;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -59,13 +60,9 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public SectionHeader CodeSectionOffset(int idx)
-        {
-            throw new NotImplementedException();
-        }
+            => throw new UnreachableException();
 
         public SectionHeader? ContainerSectionOffset(int idx)
-        {
-            throw new NotImplementedException();
-        }
+            => throw new UnreachableException();
     }
 }

@@ -20,17 +20,8 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection { get; }
     public ReadOnlyMemory<byte> DataSection { get; }
+    public ReadOnlyMemory<byte> ContainerSection { get; }
 
-    public ReadOnlyMemory<byte> ContainerSection(int index)
-    {
-        var offset = ContainerSectionOffset(index);
-        if (offset is null)
-            return Memory<byte>.Empty;
-        else
-        {
-            return MachineCode.Slice(Header.ContainerSections.Value.Start + offset.Value.Start, offset.Value.Size);
-        }
-    }
     public SectionHeader CodeSectionOffset(int sectionId) => Header.CodeSections[sectionId];
     public SectionHeader? ContainerSectionOffset(int containerId) =>
         Header.ContainerSections is null
@@ -55,5 +46,6 @@ public class EofCodeInfo : ICodeInfo
         TypeSection = MachineCode.Slice(Header.TypeSection.Start, Header.TypeSection.Size);
         CodeSection = MachineCode.Slice(Header.CodeSections.Start, Header.CodeSections.Size);
         DataSection = MachineCode.Slice(Header.DataSection.Start);
+        ContainerSection = Header.ContainerSections is null ? Memory<byte>.Empty : MachineCode.Slice(Header.ContainerSections.Value.Start, Header.ContainerSections.Value.Size);
     }
 }
