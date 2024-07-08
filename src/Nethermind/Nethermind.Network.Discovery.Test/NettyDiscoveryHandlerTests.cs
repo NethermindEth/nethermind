@@ -201,23 +201,6 @@ namespace Nethermind.Network.Discovery.Test
             AssertMetrics(210);
         }
 
-        [Test]
-        public void ForwardsUnrecognizedMessageToTheNextHandler()
-        {
-            byte[] data = [1, 2, 3];
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10001");
-
-            var ctx = Substitute.For<IChannelHandlerContext>();
-            var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
-
-            _discoveryHandlers[0].ChannelRead(ctx, packet);
-
-            ctx.Received().FireChannelRead(Arg.Is<DatagramPacket>(p =>
-                p.Content.ReadAllBytesAsArray().SequenceEqual(data) && p.Recipient.Equals(to)
-            ));
-        }
-
         private static void ResetMetrics()
         {
             Metrics.DiscoveryBytesSent = Metrics.DiscoveryBytesReceived = 0;

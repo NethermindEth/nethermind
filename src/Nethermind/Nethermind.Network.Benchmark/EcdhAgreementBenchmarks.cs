@@ -1,18 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-extern alias custom;
+extern alias BouncyCastle;
 using System;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using custom::Org.BouncyCastle.Crypto;
-using custom::Org.BouncyCastle.Crypto.Agreement;
-using custom::Org.BouncyCastle.Crypto.Parameters;
-using custom::Org.BouncyCastle.Math;
-using custom::Org.BouncyCastle.Utilities;
+using BouncyCastle::Org.BouncyCastle.Crypto;
+using BouncyCastle::Org.BouncyCastle.Crypto.Agreement;
+using BouncyCastle::Org.BouncyCastle.Crypto.Parameters;
+using BouncyCastle::Org.BouncyCastle.Math;
+using BouncyCastle::Org.BouncyCastle.Utilities;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Network.Benchmarks

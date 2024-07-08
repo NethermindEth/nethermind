@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net.NetworkInformation;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
@@ -79,9 +80,7 @@ public class DiscoveryApp : IDiscoveryApp
     {
         try
         {
-            if (_logger.IsDebug)
-                _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
-            ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+            Initialize();
         }
         catch (Exception e)
         {
@@ -108,13 +107,35 @@ public class DiscoveryApp : IDiscoveryApp
             });
         }
 
-        await StopUdpChannelAsync();
+        Cleanup();
         if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
     }
 
     public void AddNodeToDiscovery(Node node)
     {
         _discoveryManager.GetNodeLifecycleManager(node);
+    }
+
+    private void Initialize()
+    {
+        if (_logger.IsDebug)
+            _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+        ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+
+        NetworkChange.NetworkAvailabilityChanged += ResetUnreachableStatus;
+    }
+
+    private void ResetUnreachableStatus(object? sender, NetworkAvailabilityEventArgs e)
+    {
+        if (!e.IsAvailable)
+        {
+            return;
+        }
+
+        foreach (INodeLifecycleManager unreachable in _discoveryManager.GetNodeLifecycleManagers().Where(x => x.State == NodeLifecycleState.Unreachable))
+        {
+            unreachable.ResetUnreachableStatus();
+        }
     }
 
     public void InitializeChannel(IDatagramChannel channel)
@@ -261,7 +282,7 @@ public class DiscoveryApp : IDiscoveryApp
         _storageCommitTask = RunDiscoveryPersistenceCommit();
     }
 
-    private Task StopUdpChannelAsync()
+    private void Cleanup()
     {
         try
         {
@@ -269,13 +290,13 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 _discoveryHandler.OnChannelActivated -= OnChannelActivated;
             }
+
+            NetworkChange.NetworkAvailabilityChanged -= ResetUnreachableStatus;
         }
         catch (Exception e)
         {
-            _logger.Error("Error during udp channel stop process", e);
+            _logger.Error("Error during discovery cleanup", e);
         }
-
-        return Task.CompletedTask;
     }
 
     private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
@@ -459,11 +480,6 @@ public class DiscoveryApp : IDiscoveryApp
     private void OnNodeDiscovered(object? sender, NodeEventArgs e)
     {
         NodeAdded?.Invoke(this, e);
-    }
-
-    public List<Node> LoadInitialList()
-    {
-        return new List<Node>();
     }
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
