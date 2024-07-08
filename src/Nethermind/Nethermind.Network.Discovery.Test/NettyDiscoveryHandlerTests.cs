@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
@@ -16,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -169,6 +172,50 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
 
             AssertMetrics(210);
+        }
+
+        [Test]
+        [TestCase("010203")]
+        public async Task ForwardsUnrecognizedMessageToNextHandler(string msgHex)
+        {
+            ResetMetrics();
+
+            NeighborsMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new List<Node>().ToArray())
+            {
+                FarAddress = _address2
+            };
+
+            await _discoveryHandlers[0].SendMsg(msg);
+            await SleepWhileWaiting();
+            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
+
+            NeighborsMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new List<Node>().ToArray())
+            {
+                FarAddress = _address,
+            };
+
+            await _discoveryHandlers[1].SendMsg(msg2);
+            await SleepWhileWaiting();
+            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
+
+            AssertMetrics(210);
+        }
+
+        [Test]
+        public void ForwardsUnrecognizedMessageToTheNextHandler()
+        {
+            byte[] data = [1, 2, 3];
+            var from = IPEndPoint.Parse("127.0.0.1:10000");
+            var to = IPEndPoint.Parse("127.0.0.1:10001");
+
+            var ctx = Substitute.For<IChannelHandlerContext>();
+            var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
+
+            _discoveryHandlers[0].ChannelRead(ctx, packet);
+
+            ctx.Received().FireChannelRead(Arg.Is<DatagramPacket>(p =>
+                p.Content.ReadAllBytesAsArray().SequenceEqual(data) && p.Recipient.Equals(to)
+            ));
         }
 
         private static void ResetMetrics()
