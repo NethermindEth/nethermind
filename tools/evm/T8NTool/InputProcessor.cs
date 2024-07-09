@@ -1,4 +1,5 @@
 using Ethereum.Test.Base;
+using Ethereum.Test.Base.T8NUtils;
 using Evm.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -39,7 +40,7 @@ public class InputProcessor
         }
         else
         {
-            throw new NotSupportedException("Transactions file support only rlp, json formats");
+            throw new T8NException("Transactions file support only rlp, json formats", ExitCodes.ErrorConfig);
         }
 
         IReleaseSpec spec;

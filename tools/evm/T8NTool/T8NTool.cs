@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ethereum.Test.Base;
+using Ethereum.Test.Base.T8NUtils;
 using Evm.JsonTypes;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Serialization.Json;

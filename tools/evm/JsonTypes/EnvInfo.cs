@@ -1,4 +1,5 @@
 using Ethereum.Test.Base;
+using Ethereum.Test.Base.T8NUtils;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
