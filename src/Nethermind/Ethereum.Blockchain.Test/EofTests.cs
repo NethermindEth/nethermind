@@ -14,11 +14,11 @@ public class EOFTests : GeneralStateTestBase
 {
     // Uncomment when EOF tests are merged
 
-    //[TestCaseSource(nameof(LoadTests))]
-    //public void Test(GeneralStateTest test)
-    //{
-    //    Assert.True(RunTest(test).Pass);
-    //}
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.True(RunTest(test).Pass);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
