@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -16,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Taiko;
 
@@ -55,6 +58,11 @@ public class TaikoPostMergeBlockProducer(
         return new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
     }
 
+    protected override Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
+    {
+        block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
+        return base.SealBlock(block, parent, token);
+    }
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
         TaikoPayloadAttributes attrs = (payloadAttributes as TaikoPayloadAttributes)
