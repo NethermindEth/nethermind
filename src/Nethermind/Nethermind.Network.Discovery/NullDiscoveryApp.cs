@@ -25,11 +25,6 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
     }
 
-    public List<Node> LoadInitialList()
-    {
-        return new List<Node>();
-    }
-
     public event EventHandler<NodeEventArgs>? NodeAdded
     {
         add { }
