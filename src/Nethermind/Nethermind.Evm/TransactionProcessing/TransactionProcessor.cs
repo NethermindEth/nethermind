@@ -435,8 +435,7 @@ namespace Nethermind.Evm.TransactionProcessing
             else
             {
                 codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
-                if (codeInfo is CodeInfo eofv0CodeInfo)
-                    eofv0CodeInfo.AnalyseInBackgroundIfRequired();
+                codeInfo.AnalyseInBackgroundIfRequired();
             }
 
             env = new ExecutionEnvironment

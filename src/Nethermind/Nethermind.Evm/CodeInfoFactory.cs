@@ -37,7 +37,7 @@ public static class CodeInfoFactory
             }
             return false;
         }
-        (codeinfo as CodeInfo).AnalyseInBackgroundIfRequired();
+        codeinfo.AnalyseInBackgroundIfRequired();
         return true;
     }
 }

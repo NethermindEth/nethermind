@@ -2538,8 +2538,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ICodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
-        if (codeInfo is CodeInfo eof0CodeInfo)
-            eof0CodeInfo.AnalyseInBackgroundIfRequired();
+        codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)
         {
@@ -3108,6 +3107,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.WarmUp(contractAddress);
         }
 
+        _state.IncrementNonce(env.ExecutingAccount);
+
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
@@ -3120,10 +3121,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
-        if (codeinfo is CodeInfo classicalCode)
-        {
-            classicalCode.AnalyseInBackgroundIfRequired();
-        }
+        codeinfo.AnalyseInBackgroundIfRequired();
 
         Snapshot snapshot = _state.TakeSnapshot();
 
@@ -3144,8 +3142,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-
-        _state.IncrementNonce(env.ExecutingAccount);
 
         ExecutionEnvironment callEnv = new
         (
