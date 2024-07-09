@@ -55,13 +55,13 @@ public class ShutterMessageHandler(
     {
         if (decryptionKeys.InstanceID != _instanceId)
         {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: instanceID {decryptionKeys.InstanceID} did not match expected value {_instanceId}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: instanceID {decryptionKeys.InstanceID} did not match expected value {_instanceId}.");
             return false;
         }
 
         if (decryptionKeys.Eon != eonInfo.Eon)
         {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {eonInfo.Eon}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: eon {decryptionKeys.Eon} did not match expected value {eonInfo.Eon}.");
             return false;
         }
 
@@ -76,13 +76,13 @@ public class ShutterMessageHandler(
             }
             catch (Bls.Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("Invalid decryption keys received on P2P network.", e);
+                if (_logger.IsDebug) _logger.Error("Invalid Shutter decryption keys received.", e);
                 return false;
             }
 
             if (!ShutterCrypto.CheckDecryptionKey(dk, eonInfo.Key, identity))
             {
-                if (_logger.IsDebug) _logger.Debug("Invalid decryption keys received on P2P network: decryption key did not match eon key.");
+                if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: decryption key did not match eon key.");
                 return false;
             }
         }
@@ -91,19 +91,19 @@ public class ShutterMessageHandler(
 
         if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
         {
-            if (_logger.IsDebug) _logger.Debug("Invalid decryption keys received on P2P network: incorrect number of signer indices.");
+            if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: incorrect number of signer indices.");
             return false;
         }
 
         if (decryptionKeys.Gnosis.Signatures.Count != signerIndicesCount)
         {
-            if (_logger.IsDebug) _logger.Debug("Invalid decryption keys received on P2P network: incorrect number of signatures.");
+            if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: incorrect number of signatures.");
             return false;
         }
 
         if (signerIndicesCount != (int)eonInfo.Threshold)
         {
-            if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signer indices did not match threshold.");
             return false;
         }
 
@@ -115,7 +115,7 @@ public class ShutterMessageHandler(
 
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(_instanceId, eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid decryption keys received on P2P network: bad signature.");
+                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: bad signature.");
                 return false;
             }
         }
