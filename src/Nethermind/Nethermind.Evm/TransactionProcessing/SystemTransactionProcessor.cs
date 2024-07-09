@@ -40,6 +40,9 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode) { }
 
+    protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts, in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice) =>
+        base.Refund(tx, header, spec, opts | ExecutionOptions.NoValidation, in substate, in unspentGas, in gasPrice);
+
     protected override void ExecuteEvmCall(
         Transaction tx,
         BlockHeader header,
