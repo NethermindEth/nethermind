@@ -482,10 +482,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Snapshot snapshot = WorldState.TakeSnapshot();
 
-            // Fixes eth_estimateGas.
-            // If sender is SystemUser subtracting value will cause InsufficientBalanceException
-            if (validate)
-                WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
+            PayValue(tx, spec, opts);
 
             try
             {
@@ -582,8 +579,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.Restore(snapshot);
             }
 
-            if (validate)
+            if (!opts.HasFlag(ExecutionOptions.NoValidation))
                 header.GasUsed += spentGas;
+        }
+
+        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
+        {
+            WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
