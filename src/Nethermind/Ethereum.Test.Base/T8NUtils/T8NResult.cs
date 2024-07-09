@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -37,7 +38,8 @@ public class T8NResult
     public static T8NResult ConstructT8NResult(WorldState stateProvider,
         Block block,
         GeneralStateTest test,
-        T8NToolTracer tracer,
+        StorageTxTracer storageTracer,
+        BlockReceiptsTracer blockReceiptsTracer,
         ISpecProvider specProvider,
         BlockHeader header,
         TransactionExecutionReport txReport)
@@ -55,7 +57,7 @@ public class T8NResult
             .ToArray();
         var bloom = new Bloom(logEntries);
 
-        var gasUsed = tracer.TxReceipts.IsNullOrEmpty() ? 0 : (ulong)tracer.LastReceipt.GasUsedTotal;
+        var gasUsed = blockReceiptsTracer.TxReceipts.IsNullOrEmpty() ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
 
         ulong? blobGasUsed = test.Fork.IsEip4844Enabled
             ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray())
@@ -77,15 +79,15 @@ public class T8NResult
         t8NResult.BlobGasUsed = blobGasUsed;
 
         var accounts = test.Pre.Keys.ToDictionary(address => address,
-            address => GetAccountState(address, stateProvider, tracer.storages));
+            address => GetAccountState(address, stateProvider, storageTracer.Storages));
         foreach (var ommer in test.Ommers)
         {
-            accounts.Add(ommer.Address, GetAccountState(ommer.Address, stateProvider, tracer.storages));
+            accounts.Add(ommer.Address, GetAccountState(ommer.Address, stateProvider, storageTracer.Storages));
         }
 
         if (header.Beneficiary != null)
         {
-            accounts.Add(header.Beneficiary, GetAccountState(header.Beneficiary, stateProvider, tracer.storages));
+            accounts.Add(header.Beneficiary, GetAccountState(header.Beneficiary, stateProvider, storageTracer.Storages));
         }
 
         t8NResult.Accounts = accounts.Where(account => !account.Value.IsEmptyAccount()).ToDictionary();

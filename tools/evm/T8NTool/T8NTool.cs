@@ -89,7 +89,7 @@ public class T8NTool : GeneralStateTestBase
     {
         var generalStateTest = InputProcessor.ConvertToGeneralStateTest(inputAlloc, inputEnv, inputTxs, stateFork, stateReward);
 
-        var res = RunTest(generalStateTest, new T8NToolTracer());
+        var res = RunTest(generalStateTest);
 
         PostState postState = new PostState();
         postState.StateRoot = res.StateRoot;
