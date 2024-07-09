@@ -3,7 +3,6 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
@@ -47,48 +46,6 @@ namespace Evm.JsonTypes
             }
 
             return new Hash256(CurrentRandom);
-        }
-
-        public BlockHeader GetBlockHeader()
-        {
-            BlockHeaderBuilder blockHeaderBuilder = new();
-            if (CurrentDifficulty.HasValue) blockHeaderBuilder.WithDifficulty(CurrentDifficulty.Value);
-            blockHeaderBuilder.WithNumber(CurrentNumber);
-            blockHeaderBuilder.WithGasLimit(CurrentGasLimit);
-            blockHeaderBuilder.WithBeneficiary(CurrentCoinbase ?? throw new Exception("CurrentCoinbase is missing"));
-            blockHeaderBuilder.WithExcessBlobGas(CurrentExcessBlobGas);
-            blockHeaderBuilder.WithParentBeaconBlockRoot(ParentBeaconBlockRoot);
-            if (CurrentBaseFee.HasValue) blockHeaderBuilder.WithBaseFee(CurrentBaseFee.Value);
-            blockHeaderBuilder.WithTimestamp(CurrentTimestamp);
-            if (CurrentRandom != null)
-            {
-                if (CurrentRandom.Length < Hash256.Size)
-                {
-                    var currentRandomWithLeadingZeros = new byte[Hash256.Size];
-                    Array.Copy(CurrentRandom, 0, currentRandomWithLeadingZeros, Hash256.Size - CurrentRandom.Length, CurrentRandom.Length);
-                    CurrentRandom = currentRandomWithLeadingZeros;
-                }
-
-                blockHeaderBuilder.WithMixHash(new Hash256(CurrentRandom));
-            }
-
-            return blockHeaderBuilder.TestObject;
-        }
-
-        public BlockHeader GetParentBlockHeader()
-        {
-            BlockHeaderBuilder blockHeaderBuilder = new();
-            if (ParentDifficulty.HasValue) blockHeaderBuilder.WithDifficulty(ParentDifficulty.Value);
-            blockHeaderBuilder.WithNumber(CurrentNumber - 1);
-            blockHeaderBuilder.WithGasLimit(ParentGasLimit);
-            blockHeaderBuilder.WithExcessBlobGas(ParentExcessBlobGas);
-            if (ParentBaseFee.HasValue) blockHeaderBuilder.WithBaseFee(ParentBaseFee.Value);
-            blockHeaderBuilder.WithBlobGasUsed(ParentBlobGasUsed);
-            blockHeaderBuilder.WithGasUsed(ParentGasUsed);
-            blockHeaderBuilder.WithTimestamp(ParentTimestamp);
-
-            if (ParentUncleHash != null) blockHeaderBuilder.WithUnclesHash(ParentUncleHash);
-            return blockHeaderBuilder.TestObject;
         }
 
         public void ApplyChecks(ISpecProvider specProvider, IReleaseSpec spec)

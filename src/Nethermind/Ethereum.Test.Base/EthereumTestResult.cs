@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Ethereum.Test.Base.T8NUtils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
@@ -41,21 +42,7 @@ namespace Ethereum.Test.Base
 
         public Hash256 StateRoot { get; set; } = Keccak.EmptyTreeHash;
 
-        public Hash256? TxRoot { get; set; }
-        public Hash256? ReceiptsRoot { get; set; }
-        public Hash256? WithdrawalsRoot { get; set; }
-        public Hash256? LogsHash { get; set; }
-        public Bloom? LogsBloom { get; set; }
-        public TxReceipt[]? Receipts { get; set; }
-        public RejectedTx[]? Rejected { get; set; }
-        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public UInt256? CurrentDifficulty { get; set; }
-        public UInt256? GasUsed { get; set; }
-        public UInt256? CurrentBaseFee { get; set; }
-        public UInt256? CurrentExcessBlobGas { get; set; }
-        public UInt256? BlobGasUsed { get; set; }
-        public Dictionary<Address, AccountState> Accounts { get; set; }
-        public byte[] TransactionsRlp { get; set; }
+        public T8NResult T8NResult { get; set; }
     }
 }
 

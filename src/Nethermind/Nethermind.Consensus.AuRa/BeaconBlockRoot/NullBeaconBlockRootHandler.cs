@@ -4,12 +4,13 @@
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.BeaconBlockRoot;
 internal class NullBeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state)
+    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state, ITxTracer txTracer)
     {
     }
 
