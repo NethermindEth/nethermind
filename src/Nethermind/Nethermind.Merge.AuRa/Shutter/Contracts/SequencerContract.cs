@@ -20,7 +20,7 @@ public class SequencerContract : Contract
     private readonly ILogFinder _logFinder;
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
     private const long LogScanChunkSize = 16;
-    private const int LogScanCutoffChunks = 16;
+    private const int LogScanCutoffChunks = 128;
     private readonly AddressFilter _addressFilter;
     private readonly TopicsFilter _topicsFilter;
     private readonly ILogger _logger;

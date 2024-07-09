@@ -19,7 +19,6 @@ using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
