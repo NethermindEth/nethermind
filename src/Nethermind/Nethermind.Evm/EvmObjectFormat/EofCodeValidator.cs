@@ -237,16 +237,16 @@ public static class EvmObjectFormat
             int pos = VERSION_OFFSET + 1;
 
             bool continueParsing = true;
-            while(continueParsing && pos < container.Length)
+            while (continueParsing && pos < container.Length)
             {
                 Separator separator = (Separator)container[pos++];
 
-                switch(separator)
+                switch (separator)
                 {
                     case Separator.KIND_TYPE:
-                        if(container.Length < pos + TWO_BYTE_LENGTH)
+                        if (container.Length < pos + TWO_BYTE_LENGTH)
                         {
-                            if(Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
                             return false;
                         }
 
@@ -260,7 +260,7 @@ public static class EvmObjectFormat
                         pos += TWO_BYTE_LENGTH;
                         break;
                     case Separator.KIND_CODE:
-                        if(sectionSizes.TypeSectionSize is null)
+                        if (sectionSizes.TypeSectionSize is null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
                             return false;
@@ -280,7 +280,7 @@ public static class EvmObjectFormat
                             return false;
                         }
 
-                        if(container.Length < pos + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * numberOfCodeSections)
+                        if (container.Length < pos + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * numberOfCodeSections)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
                             return false;
@@ -305,7 +305,7 @@ public static class EvmObjectFormat
                         pos += TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * numberOfCodeSections;
                         break;
                     case Separator.KIND_CONTAINER:
-                        if(sectionSizes.CodeSectionSize is null)
+                        if (sectionSizes.CodeSectionSize is null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
                             return false;
