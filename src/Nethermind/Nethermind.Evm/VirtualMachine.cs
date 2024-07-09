@@ -1868,8 +1868,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
                             goto OutOfGas;
 
-                        byte imm = codeSection[programCounter];
-                        if (!stack.Swap(imm + 2)) goto StackUnderflow;
+                        int n = 1 + codeSection[programCounter];
+                        if (!stack.Swap(n + 1)) goto StackUnderflow;
 
                         programCounter += 1;
                         break;
@@ -1885,7 +1885,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         int n = 1 + (int)(codeSection[programCounter] >> 0x04);
                         int m = 1 + (int)(codeSection[programCounter] & 0x0f);
 
-                        stack.Exchange(n, m);
+                        stack.Exchange(n + 1, m + n + 1);
 
                         programCounter += 1;
                         break;
@@ -2969,6 +2969,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.WarmUp(contractAddress);
         }
 
+        _state.IncrementNonce(env.ExecutingAccount);
+
         if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState?.Memory.Size ?? 0);
         // todo: === below is a new call - refactor / move
 
@@ -2992,7 +2994,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        _state.IncrementNonce(env.ExecutingAccount);
 
         ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initcontainer.ToArray(), spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
 

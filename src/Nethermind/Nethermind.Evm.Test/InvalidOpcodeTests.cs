@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
@@ -197,13 +198,24 @@ namespace Nethermind.Evm.Test
                         .Op((byte)i)
                         .Done;
 
+                // hexString to array
+
                 if (InstructionExtensions.IsValid(opcode, IsEofContext: true) && !InstructionExtensions.IsValid(opcode, IsEofContext: false))
                 {
+                    // will be tested in EOFCREATE container validations
+                    if (opcode is Instruction.RETURNCONTRACT) continue;
+
                     var opcodeMetadata = InstructionExtensions.StackRequirements(opcode);
                     opcodeMetadata.InputCount ??= 1;
                     opcodeMetadata.OutputCount ??= (opcode is Instruction.DUPN ? (ushort)2 : (ushort)1);
 
                     bool isFunCall = opcode is Instruction.CALLF;
+
+                    bool isCreateCall = opcode is Instruction.EOFCREATE;
+                    byte[] runtimeContainer = Nethermind.Core.Extensions.Bytes.FromHexString("EF00010100040200010001040000000080000000");
+                    byte[] initcodeContainer = Nethermind.Core.Extensions.Bytes.FromHexString("EF00010100040200010004030001001404000000008000025F5FEE00")
+                        .Concat(runtimeContainer)
+                        .ToArray();
 
                     byte[] stackHeighExpected = BitConverter.GetBytes(Math.Max(opcodeMetadata.InputCount.Value, opcodeMetadata.OutputCount.Value));
 
@@ -246,6 +258,7 @@ namespace Nethermind.Evm.Test
 
 
                     byte[] codeSectionSize = BitConverter.GetBytes((ushort)(codesection.Count));
+                    byte[] containerSectionSize = BitConverter.GetBytes((ushort)(initcodeContainer.Length));
                     code = [
                         // start header
                         0xef,
@@ -260,11 +273,7 @@ namespace Nethermind.Evm.Test
                         codeSectionSize[1],
                         codeSectionSize[0],
                         .. (isFunCall ? [0x00, 0x01] : Array.Empty<byte>()),
-                        0x03,
-                        0x00,
-                        0x01,
-                        0x00,
-                        0x02,
+                        .. (isCreateCall ? [0x03, 0x00, 0x01, containerSectionSize[1], containerSectionSize[0]] : Array.Empty<byte>()),
                         0x04,
                         0x00,
                         0x20,
@@ -286,8 +295,7 @@ namespace Nethermind.Evm.Test
                         // end codesection 1
                         // end codesection
                         // start container section
-                        (byte)Instruction.RETURNCONTRACT,
-                        0x00,
+                        .. (isCreateCall ? initcodeContainer : Array.Empty<byte>()),
                         // end container section
                         // start data section
                         .. Enumerable.Range(0, 32).Select(b => (byte)b).ToArray()

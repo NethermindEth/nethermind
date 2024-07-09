@@ -1040,18 +1040,18 @@ public static class EvmObjectFormat
                             }
                             break;
                         case Instruction.DUPN:
-                            byte imm = code[posPostInstruction];
-                            inputs = (ushort)(imm + 1);
+                            int imm_n = 1 + code[posPostInstruction];
+                            inputs = (ushort)(imm_n);
                             outputs = (ushort)(inputs + 1);
                             break;
                         case Instruction.SWAPN:
-                            imm = code[posPostInstruction];
-                            outputs = inputs = (ushort)(2 + imm);
+                            imm_n = 1 + code[posPostInstruction];
+                            outputs = inputs = (ushort)(1 + imm_n);
                             break;
                         case Instruction.EXCHANGE:
-                            byte imm_n = (byte)(code[posPostInstruction] >> 4);
-                            byte imm_m = (byte)(code[posPostInstruction] & 0x0F);
-                            outputs = inputs = (ushort)(imm_n + imm_m + 3);
+                            imm_n = 1 + (byte)(code[posPostInstruction] >> 4);
+                            int imm_m = 1 + (byte)(code[posPostInstruction] & 0x0F);
+                            outputs = inputs = (ushort)(imm_n + imm_m + 1);
                             break;
                     }
 

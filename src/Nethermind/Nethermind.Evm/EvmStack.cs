@@ -453,20 +453,21 @@ public ref struct EvmStack<TTracing>
 
     public readonly bool Exchange(int n, int m)
     {
-        if (!EnsureDepth(n + m + 1)) return false;
+        int maxDepth = Math.Max(n, m);
+        if (!EnsureDepth(maxDepth)) return false;
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-        ref byte bottom = ref Unsafe.Add(ref bytes, (Head - n - m - 1) * WordSize);
-        ref byte top = ref Unsafe.Add(ref bytes, (Head - n - 2) * WordSize);
+        ref byte first = ref Unsafe.Add(ref bytes, (Head - n) * WordSize);
+        ref byte second = ref Unsafe.Add(ref bytes, (Head - m) * WordSize);
 
-        Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
+        Word buffer = Unsafe.ReadUnaligned<Word>(ref first);
+        Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
+        Unsafe.WriteUnaligned(ref second, buffer);
 
         if (typeof(TTracing) == typeof(IsTracing))
         {
-            Trace(n + m + 1);
+            Trace(maxDepth);
         }
 
         return true;
