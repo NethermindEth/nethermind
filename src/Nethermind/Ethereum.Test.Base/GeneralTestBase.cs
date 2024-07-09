@@ -38,9 +38,9 @@ namespace Ethereum.Test.Base
     {
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
+        private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
         private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
         private readonly BeaconBlockRootHandler _beaconBlockRootHandler = new();
-        private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
 
         [SetUp]
         public void Setup()
@@ -61,7 +61,7 @@ namespace Ethereum.Test.Base
             return RunTest(test, NullTxTracer.Instance);
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer tracer)
+        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
@@ -135,12 +135,12 @@ namespace Ethereum.Test.Base
 
             if (test.IsT8NTest)
             {
-                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, tracer);
+                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, txTracer);
             }
 
             CalculateReward(test.StateReward, block, stateProvider, spec);
 
-            T8NToolTracer? t8NToolTracer = tracer as T8NToolTracer;
+            T8NToolTracer? t8NToolTracer = txTracer as T8NToolTracer;
 
             t8NToolTracer?.StartNewBlockTrace(block);
             int txIndex = 0;
@@ -152,7 +152,7 @@ namespace Ethereum.Test.Base
                 if (isValid)
                 {
                     t8NToolTracer?.StartNewTxTrace(tx);
-                    TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), tracer);
+                    TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), txTracer);
 
                     if (t8NToolTracer == null) continue;
                     t8NToolTracer.EndTxTrace();

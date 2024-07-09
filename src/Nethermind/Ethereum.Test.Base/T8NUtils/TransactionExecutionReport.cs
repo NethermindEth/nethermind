@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Ethereum.Test.Base.T8NUtils;

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
@@ -32,42 +32,43 @@ public class T8NResult
     public Dictionary<Address, AccountState> Accounts { get; set; }
     public byte[] TransactionsRlp { get; set; }
 
+    private static readonly ReceiptMessageDecoder _receiptMessageDecoder = new();
+
     public static T8NResult ConstructT8NResult(WorldState stateProvider,
         Block block,
         GeneralStateTest test,
         T8NToolTracer tracer,
         ISpecProvider specProvider,
         BlockHeader header,
-        TransactionExecutionReport transactionExecutionReport)
+        TransactionExecutionReport txReport)
     {
         T8NResult t8NResult = new();
-        Hash256 txRoot = TxTrie.CalculateRoot(transactionExecutionReport.SuccessfulTransactions.ToArray());
+
         IReceiptSpec receiptSpec = specProvider.GetSpec(header);
+
+        Hash256 txRoot = TxTrie.CalculateRoot(txReport.SuccessfulTransactions.ToArray());
         Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec,
-            transactionExecutionReport.SuccessfulTransactionReceipts.ToArray(),
-            new ReceiptMessageDecoder());
-        var logEntries = transactionExecutionReport.SuccessfulTransactionReceipts
+            txReport.SuccessfulTransactionReceipts.ToArray(), _receiptMessageDecoder);
+
+        var logEntries = txReport.SuccessfulTransactionReceipts
             .SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>())
             .ToArray();
         var bloom = new Bloom(logEntries);
-        ulong gasUsed = 0;
-        if (!tracer.TxReceipts.IsNullOrEmpty())
-        {
-            gasUsed = (ulong)tracer.LastReceipt.GasUsedTotal;
-        }
+
+        var gasUsed = tracer.TxReceipts.IsNullOrEmpty() ? 0 : (ulong)tracer.LastReceipt.GasUsedTotal;
 
         ulong? blobGasUsed = test.Fork.IsEip4844Enabled
-            ? BlobGasCalculator.CalculateBlobGas(transactionExecutionReport.ValidTransactions.ToArray())
+            ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray())
             : null;
 
         t8NResult.TxRoot = txRoot;
         t8NResult.ReceiptsRoot = receiptsRoot;
         t8NResult.LogsBloom = bloom;
         t8NResult.LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes);
-        t8NResult.Receipts = transactionExecutionReport.SuccessfulTransactionReceipts.ToArray();
-        t8NResult.Rejected = transactionExecutionReport.RejectedTransactionReceipts.IsNullOrEmpty()
+        t8NResult.Receipts = txReport.SuccessfulTransactionReceipts.ToArray();
+        t8NResult.Rejected = txReport.RejectedTransactionReceipts.IsNullOrEmpty()
             ? null
-            : transactionExecutionReport.RejectedTransactionReceipts.ToArray();
+            : txReport.RejectedTransactionReceipts.ToArray();
         t8NResult.CurrentDifficulty = test.CurrentDifficulty;
         t8NResult.GasUsed = new UInt256(gasUsed);
         t8NResult.CurrentBaseFee = test.CurrentBaseFee;
@@ -77,7 +78,7 @@ public class T8NResult
 
         var accounts = test.Pre.Keys.ToDictionary(address => address,
             address => GetAccountState(address, stateProvider, tracer.storages));
-        foreach (Ommer ommer in test.Ommers)
+        foreach (var ommer in test.Ommers)
         {
             accounts.Add(ommer.Address, GetAccountState(ommer.Address, stateProvider, tracer.storages));
         }
@@ -88,8 +89,7 @@ public class T8NResult
         }
 
         t8NResult.Accounts = accounts.Where(account => !account.Value.IsEmptyAccount()).ToDictionary();
-        t8NResult.TransactionsRlp =
-            Rlp.Encode(transactionExecutionReport.SuccessfulTransactions.ToArray()).Bytes;
+        t8NResult.TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes;
 
         return t8NResult;
     }
