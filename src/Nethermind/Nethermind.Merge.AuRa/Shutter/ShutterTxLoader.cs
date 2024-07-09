@@ -86,12 +86,25 @@ public class ShutterTxLoader(
 
     internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
     {
-        int len = sequencedTransactions.Count;
+        int txCount = sequencedTransactions.Count;
+        int keyCount = decryptionKeys.Count;
+
+        if (keyCount == 0)
+        {
+            if (_logger.IsError) _logger.Error("Zero Shutter decryption keys received, expected placeholder key.");
+            return [];
+        }
+
+        if (txCount != keyCount - 1)
+        {
+            if (_logger.IsError) _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount - 1} keys (excluding placeholder).");
+            return [];
+        }
 
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
         sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
 
-        using ArrayPoolList<int> sortedKeyIndexes = new(len, len);
+        using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 1;
         foreach (SequencedTransaction index in sortedIndexes)
         {
