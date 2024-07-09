@@ -140,32 +140,30 @@ namespace Ethereum.Test.Base
 
             CalculateReward(test.StateReward, block, stateProvider, spec);
 
-            T8NToolTracer? txTracer = null;
-            if (tracer is T8NToolTracer)
-            {
-                txTracer = (T8NToolTracer)tracer;
-            }
-            txTracer?.StartNewBlockTrace(block);
+            T8NToolTracer? t8NToolTracer = tracer as T8NToolTracer;
+
+            t8NToolTracer?.StartNewBlockTrace(block);
             int txIndex = 0;
             TransactionExecutionReport transactionExecutionReport = new();
 
             foreach (var tx in test.Transactions)
             {
-                bool isValid = _txValidator.IsWellFormed(tx, spec) && IsValidBlock(block, specProvider);
+                bool isValid = _txValidator.IsWellFormed(tx, spec, out string error) && IsValidBlock(block, specProvider);
                 if (isValid)
                 {
-                    txTracer?.StartNewTxTrace(tx);
+                    t8NToolTracer?.StartNewTxTrace(tx);
                     TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), tracer);
-                    txTracer?.EndTxTrace();
-                    if (txTracer == null) continue;
+
+                    if (t8NToolTracer == null) continue;
+                    t8NToolTracer.EndTxTrace();
                     transactionExecutionReport.ValidTransactions.Add(tx);
                     if (transactionResult.Success)
                     {
                         transactionExecutionReport.SuccessfulTransactions.Add(tx);
-                        txTracer.LastReceipt.PostTransactionState = null;
-                        txTracer.LastReceipt.BlockHash = null;
-                        txTracer.LastReceipt.BlockNumber = 0;
-                        transactionExecutionReport.SuccessfulTransactionReceipts.Add(txTracer.LastReceipt);
+                        t8NToolTracer.LastReceipt.PostTransactionState = null;
+                        t8NToolTracer.LastReceipt.BlockHash = null;
+                        t8NToolTracer.LastReceipt.BlockNumber = 0;
+                        transactionExecutionReport.SuccessfulTransactionReceipts.Add(t8NToolTracer.LastReceipt);
                     }
                     else if (transactionResult.Error != null)
                     {
@@ -175,8 +173,11 @@ namespace Ethereum.Test.Base
                     stateProvider.RecalculateStateRoot();
                     txIndex++;
                 }
+                else if (error != null)
+                {
+                    transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(error)));
+                }
             }
-
 
             stopwatch.Stop();
 
@@ -200,7 +201,7 @@ namespace Ethereum.Test.Base
 
             if (test.IsT8NTest)
             {
-                testResult.T8NResult = T8NResult.ConstructT8NResult(stateProvider, block, test, txTracer, specProvider, header, transactionExecutionReport);
+                testResult.T8NResult = T8NResult.ConstructT8NResult(stateProvider, block, test, t8NToolTracer, specProvider, header, transactionExecutionReport);
             }
 
             return testResult;

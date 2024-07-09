@@ -15,7 +15,7 @@ public class InputProcessor
     private static readonly EthereumJsonSerializer EthereumJsonSerializer = new();
     private static readonly TxDecoder TxDecoder = new();
 
-    public static GeneralStateTest Convert(string inputAlloc,
+    public static GeneralStateTest ConvertToGeneralStateTest(string inputAlloc,
         string inputEnv,
         string inputTxs,
         string stateFork,
@@ -60,7 +60,7 @@ public class InputProcessor
         envInfo.ApplyChecks(specProvider, spec);
 
         GeneralStateTest generalStateTest = new();
-        generalStateTest.Name = "T8N";
+        generalStateTest.IsT8NTest = true;
         generalStateTest.Fork = spec;
         generalStateTest.Pre = allocJson;
         generalStateTest.Transactions = transactions;
