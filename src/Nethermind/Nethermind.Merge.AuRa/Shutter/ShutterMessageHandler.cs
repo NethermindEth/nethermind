@@ -9,6 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Google.Protobuf;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -62,6 +63,12 @@ public class ShutterMessageHandler(
         if (decryptionKeys.Eon != eonInfo.Eon)
         {
             if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: eon {decryptionKeys.Eon} did not match expected value {eonInfo.Eon}.");
+            return false;
+        }
+
+        if (decryptionKeys.Keys.IsNullOrEmpty())
+        {
+            if (_logger.IsDebug) _logger.Error("Invalid Shutter decryption keys received: expected placeholder key.");
             return false;
         }
 

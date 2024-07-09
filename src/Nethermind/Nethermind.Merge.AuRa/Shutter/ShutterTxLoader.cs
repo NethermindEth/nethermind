@@ -89,12 +89,6 @@ public class ShutterTxLoader(
         int txCount = sequencedTransactions.Count;
         int keyCount = decryptionKeys.Count;
 
-        if (keyCount == 0)
-        {
-            if (_logger.IsError) _logger.Error("Zero Shutter decryption keys received, expected placeholder key.");
-            return [];
-        }
-
         if (txCount != keyCount - 1)
         {
             if (_logger.IsError) _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount - 1} keys (excluding placeholder).");
