@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
@@ -18,10 +17,10 @@ public class WithdrawalTrie : PatriciaTrie<Withdrawal>
 
     /// <inheritdoc/>
     /// <param name="withdrawals">The withdrawals to build the trie of.</param>
-    public WithdrawalTrie(IEnumerable<Withdrawal> withdrawals, bool canBuildProof = false)
+    public WithdrawalTrie(Withdrawal[] withdrawals, bool canBuildProof = false)
         : base(withdrawals, canBuildProof) => ArgumentNullException.ThrowIfNull(withdrawals);
 
-    protected override void Initialize(IEnumerable<Withdrawal> withdrawals)
+    protected override void Initialize(Withdrawal[] withdrawals)
     {
         var key = 0;
 

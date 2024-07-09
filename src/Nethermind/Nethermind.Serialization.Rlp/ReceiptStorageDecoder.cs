@@ -10,16 +10,20 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
+    [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         private readonly bool _supportTxHash;
         private const byte MarkTxHashByte = 255;
 
-        public static readonly ReceiptStorageDecoder Instance = new();
-
         public ReceiptStorageDecoder(bool supportTxHash = true)
         {
             _supportTxHash = supportTxHash;
+        }
+
+        // Used by Rlp decoders discovery
+        public ReceiptStorageDecoder() : this(true)
+        {
         }
 
         public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -226,9 +230,10 @@ namespace Nethermind.Serialization.Rlp
 
                 rlpStream.StartSequence(logsLength);
 
-                for (int i = 0; i < item.Logs.Length; i++)
+                LogEntry[] logs = item.Logs;
+                for (int i = 0; i < logs.Length; i++)
                 {
-                    rlpStream.Encode(item.Logs[i]);
+                    rlpStream.Encode(logs[i]);
                 }
 
                 if (_supportTxHash)
@@ -246,9 +251,10 @@ namespace Nethermind.Serialization.Rlp
 
                 rlpStream.StartSequence(logsLength);
 
-                for (int i = 0; i < item.Logs.Length; i++)
+                LogEntry[] logs = item.Logs;
+                for (int i = 0; i < logs.Length; i++)
                 {
-                    rlpStream.Encode(item.Logs[i]);
+                    rlpStream.Encode(logs[i]);
                 }
 
                 rlpStream.Encode(item.Error);
@@ -346,7 +352,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             decoderContext.ReadSequenceLength();
-            Span<byte> firstItem = decoderContext.DecodeByteArraySpan();
+            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
             if (firstItem.Length == 1)
             {
                 item.StatusCode = firstItem[0];

@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void Encode<T>(this IRlpStreamDecoder<T> decoder, RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 stream.Encode(Rlp.OfEmptySequence);
             }
@@ -145,7 +145,7 @@ namespace Nethermind.Serialization.Rlp
             for (int index = 0; index < items.Length; index++)
             {
                 T t = items[index];
-                if (t == null)
+                if (t is null)
                 {
                     stream.Encode(Rlp.OfEmptySequence);
                 }
@@ -159,7 +159,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int GetContentLength<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 return Rlp.OfEmptySequence.Length;
             }
@@ -175,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int GetLength<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 return Rlp.OfEmptySequence.Length;
             }

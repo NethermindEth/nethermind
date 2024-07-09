@@ -186,7 +186,7 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     (long blockNum, Hash256 blockHash) = item;
                     Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
-                    bool usingEmptyBlock = block == null;
+                    bool usingEmptyBlock = block is null;
                     if (usingEmptyBlock)
                     {
                         block = GetMissingBlock(blockNum, blockHash);
@@ -370,12 +370,12 @@ namespace Nethermind.Init.Steps.Migrations
             }
 
             byte[]? receiptData = _receiptsBlockDb.Get(blockHash.Bytes);
-            if (receiptData == null)
+            if (receiptData is null)
             {
                 receiptData = _receiptsBlockDb.Get(Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.Bytes));
             }
 
-            if (receiptData == null)
+            if (receiptData is null)
             {
                 return true;
             }

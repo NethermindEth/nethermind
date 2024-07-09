@@ -43,6 +43,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Specs;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 
@@ -118,11 +119,11 @@ namespace Nethermind.Runner.Test.Ethereum
                 SyncProgressResolver = Substitute.For<ISyncProgressResolver>(),
                 BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                WitnessRepository = Substitute.For<IWitnessRepository>(),
                 BadBlocksStore = Substitute.For<IBlockStore>()
             };
 
             api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }
     }

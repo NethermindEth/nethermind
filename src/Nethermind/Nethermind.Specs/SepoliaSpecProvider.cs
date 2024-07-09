@@ -10,15 +10,17 @@ namespace Nethermind.Specs;
 public class SepoliaSpecProvider : ISpecProvider
 {
     public const ulong BeaconChainGenesisTimestamp = 0x62b07d60;
-    public const ulong ShanghaiBlockTimestamp = 0x63fd7d60;
+    public const ulong ShanghaiTimestamp = 0x63fd7d60;
+    public const ulong CancunTimestamp = 0x65B97D60;
 
     private SepoliaSpecProvider() { }
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
         forkActivation switch
         {
-            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => London.Instance,
-            _ => Shanghai.Instance
+            { Timestamp: null } or { Timestamp: < ShanghaiTimestamp } => London.Instance,
+            { Timestamp: < CancunTimestamp } => Shanghai.Instance,
+            _ => Cancun.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -39,7 +41,8 @@ public class SepoliaSpecProvider : ISpecProvider
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)1735371,
-        (1735371, 1677557088)
+        (1735371, ShanghaiTimestamp),
+        (1735371, CancunTimestamp),
     };
 
     public static SepoliaSpecProvider Instance { get; } = new();

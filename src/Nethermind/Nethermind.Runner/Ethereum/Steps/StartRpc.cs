@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during jsonRpc runner start", x.Exception);
                 }, cancellationToken);
 
-                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, jsonRpcService, _api.ConfigProvider,
+                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, _api.ConfigProvider,
                     _api.LogManager, _api.JsonRpcLocalStats!, jsonSerializer, _api.FileSystem);
                 jsonIpcRunner.Start(cancellationToken);
 

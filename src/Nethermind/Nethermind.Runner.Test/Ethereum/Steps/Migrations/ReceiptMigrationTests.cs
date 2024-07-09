@@ -107,13 +107,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             {
                 int blockNum = (commandStartBlockNumber ?? chainLength) - 1 - 1;
                 int txCount = blockNum * 2;
-                txDb.KeyWasWritten((item => item.Item2 == null), txCount);
+                txDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
                 outMemoryReceiptStorage.Count.Should().Be(txCount);
             }
             else
             {
-                txDb.KeyWasWritten((item => item.Item2 == null), 0);
+                txDb.KeyWasWritten((item => item.Item2 is null), 0);
             }
         }
 
@@ -130,9 +130,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 
-            public TxReceipt[] Get(Block block) => _inStorage.Get(block);
+            public TxReceipt[] Get(Block block, bool recover = true) => _inStorage.Get(block, recover);
 
-            public TxReceipt[] Get(Hash256 blockHash) => _inStorage.Get(blockHash);
+            public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => _inStorage.Get(blockHash, recover);
 
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
             public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);

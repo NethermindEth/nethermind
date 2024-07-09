@@ -23,6 +23,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
      */
     public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
     {
+        public static readonly ParityTraceActionConverter Instance = new();
+
         public override ParityTraceAction Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
@@ -79,6 +81,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     value.Value = JsonSerializer.Deserialize<UInt256>(ref reader, options);
                 }
                 else if (reader.ValueTextEquals("input"u8))
+                {
+                    reader.Read();
+                    value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                }
+                else if (reader.ValueTextEquals("init"u8))
                 {
                     reader.Read();
                     value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
@@ -162,10 +169,18 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             writer.WritePropertyName("gas"u8);
             JsonSerializer.Serialize(writer, value.Gas, options);
 
-            writer.WritePropertyName("input"u8);
-            JsonSerializer.Serialize(writer, value.Input, options);
-            writer.WritePropertyName("to"u8);
-            JsonSerializer.Serialize(writer, value.To, options);
+            if (value.CallType == "create")
+            {
+                writer.WritePropertyName("init"u8);
+                JsonSerializer.Serialize(writer, value.Input, options);
+            }
+            else
+            {
+                writer.WritePropertyName("input"u8);
+                JsonSerializer.Serialize(writer, value.Input, options);
+                writer.WritePropertyName("to"u8);
+                JsonSerializer.Serialize(writer, value.To, options);
+            }
 
             writer.WritePropertyName("value"u8);
             JsonSerializer.Serialize(writer, value.Value, options);

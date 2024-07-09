@@ -21,7 +21,7 @@ public class MallocTrimmerTests
         MallocHelper helper = Substitute.For<MallocHelper>();
 
         ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-        new MallocTrimmer(syncModeSelector, TimeSpan.FromMilliseconds(1), NullLogManager.Instance, helper);
+        var trimmer = new MallocTrimmer(syncModeSelector, TimeSpan.FromMilliseconds(1), NullLogManager.Instance, helper);
 
         syncModeSelector.Changed += Raise.EventWith(null,
             new SyncModeChangedEventArgs(SyncMode.FastSync, mode));
@@ -39,5 +39,7 @@ public class MallocTrimmerTests
         {
             helper.DidNotReceive().MallocTrim(Arg.Any<uint>());
         }
+
+        GC.KeepAlive(trimmer);
     }
 }

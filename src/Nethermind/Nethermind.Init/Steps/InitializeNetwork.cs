@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -35,9 +36,9 @@ using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 using System.Linq;
@@ -101,8 +102,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
-
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
@@ -143,6 +142,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
+                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
@@ -177,13 +177,10 @@ public class InitializeNetwork : IStep
             _api.SyncPeerPool,
             _api.SyncModeSelector,
             _api.Config<ISyncConfig>(),
-            _api.WitnessRepository,
             _api.GossipPolicy,
             _api.SpecProvider!,
-            _api.LogManager,
-            cht);
+            _api.LogManager);
 
-        _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
@@ -202,23 +199,13 @@ public class InitializeNetwork : IStep
             }
         });
 
-        bool stateSyncFinished = _api.Synchronizer.SyncProgressResolver.FindBestFullState() != 0;
-
-        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
+        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
         {
-            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
-
-        if (_syncConfig.SnapSync)
-        {
-            // TODO: Should we keep snap capability even after finishing sync?
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            SnapCapabilitySwitcher snapCapabilitySwitcher =
+                new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
+
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
@@ -356,6 +343,7 @@ public class InitializeNetwork : IStep
 
         if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
         _api.DiscoveryApp.Start();
+        _api.DiscoveryV5App?.Start();
         if (_logger.IsDebug) _logger.Debug("Discovery process started.");
         return Task.CompletedTask;
     }
@@ -396,6 +384,18 @@ public class InitializeNetwork : IStep
 
         SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
         NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
+
+        if (discoveryConfig.Discv5Enabled)
+        {
+            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
+                "EnrDiscoveryDB",
+                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
+                _api.LogManager);
+
+            _api.DiscoveryApp = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
+            _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+            return;
+        }
 
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
         IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
@@ -584,9 +584,18 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
+
+        ISnapServer? snapServer = null;
+        if (_syncConfig.SnapServingEnabled == true)
+        {
+            // TODO: Add a proper config for the state persistence depth.
+            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
+        }
+
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
+            _api.BackgroundTaskScheduler,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,
@@ -598,12 +607,13 @@ public class InitializeNetwork : IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
+            snapServer,
             _api.LogManager,
             _api.TxGossipPolicy);
 
-        if (_syncConfig.WitnessProtocolEnabled)
+        if (_syncConfig.SnapServingEnabled == true)
         {
-            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         }
 
         _api.ProtocolValidator = protocolValidator;
@@ -621,7 +631,9 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
         }
 
-        CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        CompositeNodeSource nodeSources = _api.DiscoveryV5App is null
+          ? new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp)
+          : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp, _api.DiscoveryV5App);
         _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,

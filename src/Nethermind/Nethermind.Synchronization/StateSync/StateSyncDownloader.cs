@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -36,7 +37,7 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-            Task<byte[][]> task = null;
+            Task<IOwnedReadOnlyList<byte[]>> task = null;
             HashList? hashList = null;
             // Use GETNODEDATA if possible. Firstly via dedicated NODEDATA protocol
             if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
@@ -115,14 +116,17 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            request.AccountAndStoragePaths = new PathGroup[accountTreePaths.Count + itemsGroupedByAccount.Count];
+            ArrayPoolList<PathGroup> accountAndStoragePath = new ArrayPoolList<PathGroup>(
+                accountTreePaths.Count + itemsGroupedByAccount.Count,
+                accountTreePaths.Count + itemsGroupedByAccount.Count);
+            request.AccountAndStoragePaths = accountAndStoragePath;
 
             int requestedNodeIndex = 0;
             int accountPathIndex = 0;
             for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
             {
                 (byte[] path, StateSyncItem syncItem) accountPath = accountTreePaths[accountPathIndex];
-                request.AccountAndStoragePaths[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(accountPath.path) } };
+                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(accountPath.path) } };
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
                 batch.RequestedNodes[requestedNodeIndex] = accountPath.syncItem;
@@ -146,7 +150,7 @@ namespace Nethermind.Synchronization.StateSync
                     requestedNodeIndex++;
                 }
 
-                request.AccountAndStoragePaths[accountPathIndex] = new PathGroup() { Group = group };
+                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = group };
 
                 accountPathIndex++;
             }

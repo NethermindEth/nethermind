@@ -26,29 +26,32 @@ public class HealingTrieStoreTests
     public void get_works()
     {
         TestMemDb db = new();
-        db[TestItem.KeccakA.Bytes] = new byte[] { 1, 2 };
-        HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
-        healingTrieStore.LoadRlp(TestItem.KeccakA, ReadFlags.None);
+        NodeStorage storage = new NodeStorage(db);
+        storage.Set(null, TreePath.Empty, TestItem.KeccakA, new byte[] { 1, 2 });
+        HealingTrieStore healingTrieStore = new(storage, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
+        healingTrieStore.LoadRlp(null, TreePath.Empty, TestItem.KeccakA);
     }
 
     [Test]
     public void recovery_works([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
         byte[] rlp = { 1, 2 };
-        Hash256 key = TestItem.KeccakA;
+        Hash256 hash = TestItem.KeccakA;
+        byte[] key = NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, hash);
+
         TestMemDb db = new();
-        HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
+        HealingTrieStore healingTrieStore = new(new NodeStorage(db), Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
         ITrieNodeRecovery<IReadOnlyList<Hash256>> recovery = Substitute.For<ITrieNodeRecovery<IReadOnlyList<Hash256>>>();
         recovery.CanRecover.Returns(isMainThread);
-        recovery.Recover(key, Arg.Is<IReadOnlyList<Hash256>>(l => l.SequenceEqual(new[] { key })))
+        recovery.Recover(hash, Arg.Is<IReadOnlyList<Hash256>>(l => l.SequenceEqual(new[] { hash })))
             .Returns(successfullyRecovered ? Task.FromResult<byte[]?>(rlp) : Task.FromResult<byte[]?>(null));
 
         healingTrieStore.InitializeNetwork(recovery);
-        Action action = () => healingTrieStore.LoadRlp(key, ReadFlags.None);
+        Action action = () => healingTrieStore.LoadRlp(null, TreePath.Empty, hash, ReadFlags.None);
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();
-            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, key.Bytes) && Bytes.AreEqual(kvp.Item2, rlp));
+            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, key) && Bytes.AreEqual(kvp.Item2, rlp));
         }
         else
         {

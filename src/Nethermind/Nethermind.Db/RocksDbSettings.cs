@@ -16,9 +16,6 @@ namespace Nethermind.Db
         public string DbName { get; private set; }
         public string DbPath { get; private set; }
 
-        public Action? UpdateReadMetrics { get; init; }
-        public Action? UpdateWriteMetrics { get; init; }
-
         public ulong? WriteBufferSize { get; init; }
         public uint? WriteBufferNumber { get; init; }
         public ulong? BlockCacheSize { get; init; }

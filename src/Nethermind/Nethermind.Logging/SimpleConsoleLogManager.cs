@@ -15,22 +15,22 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger(Type type)
         {
-            return SimpleConsoleLogger.Instance;
+            return new(SimpleConsoleLogger.Instance);
         }
 
         public ILogger GetClassLogger<T>()
         {
-            return SimpleConsoleLogger.Instance;
+            return new(SimpleConsoleLogger.Instance);
         }
 
         public ILogger GetClassLogger()
         {
-            return SimpleConsoleLogger.Instance;
+            return new(SimpleConsoleLogger.Instance);
         }
 
         public ILogger GetLogger(string loggerName)
         {
-            return SimpleConsoleLogger.Instance;
+            return new(SimpleConsoleLogger.Instance);
         }
     }
 }

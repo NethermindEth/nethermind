@@ -4,10 +4,11 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -109,5 +110,5 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
-    ResultWrapper<IEnumerable<Block>> debug_getBadBlocks();
+    ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 }

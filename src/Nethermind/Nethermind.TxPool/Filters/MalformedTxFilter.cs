@@ -23,10 +23,10 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
-            if (!_txValidator.IsWellFormed(tx, spec))
+            if (!_txValidator.IsWellFormed(tx, spec, out _))
             {
                 Metrics.PendingTransactionsMalformed++;
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.

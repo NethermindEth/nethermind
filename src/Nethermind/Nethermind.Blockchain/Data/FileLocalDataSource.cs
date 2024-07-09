@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain.Data
             }
             else if (!Equals(_data, DefaultValue))
             {
-                lastChange = DateTime.Now;
+                lastChange = DateTime.UtcNow;
                 _data = DefaultValue;
             }
 

@@ -48,7 +48,7 @@ public partial class EngineModuleTests
                 };
             });
 
-        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
+        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
         TimeSpan timePerSlot = TimeSpan.FromSeconds(10);
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
@@ -151,7 +151,7 @@ public partial class EngineModuleTests
 
         DefaultHttpClient defaultHttpClient = new(mockHttp.ToHttpClient(), serializer, chain.LogManager, 1, 100);
         BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
-        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5000), boostRelay, chain.StateReader);
+        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5000), boostRelay, chain.StateReader);
         TimeSpan timePerSlot = TimeSpan.FromSeconds(1000);
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
@@ -194,11 +194,11 @@ public partial class EngineModuleTests
             boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
                 .Returns(c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
 
-            improvementContextFactory = new BoostBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
+            improvementContextFactory = new BoostBlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
         }
         else
         {
-            improvementContextFactory = new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5));
+            improvementContextFactory = new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5));
         }
 
         TimeSpan timePerSlot = TimeSpan.FromSeconds(10);

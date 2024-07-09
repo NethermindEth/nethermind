@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             ScheduleAction(async () =>
             {
-                JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
+                using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace)
                     _logger.Trace(

@@ -147,7 +147,7 @@ public abstract class MerkleTree : IMerkleList
         _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
 
         byte[]? countBytes = _keyValueStore[_countKey];
-        Count = countBytes == null ? 0 : BinaryPrimitives.ReadUInt32LittleEndian(countBytes);
+        Count = countBytes is null ? 0 : BinaryPrimitives.ReadUInt32LittleEndian(countBytes);
     }
 
     private void StoreCountInTheDb()
@@ -165,7 +165,7 @@ public abstract class MerkleTree : IMerkleList
     private Bytes32 LoadValue(in Index index)
     {
         byte[]? nodeHashBytes = _keyValueStore[index.NodeIndex];
-        if (nodeHashBytes == null)
+        if (nodeHashBytes is null)
         {
             return ZeroHashesInternal[LeafRow - index.Row];
         }

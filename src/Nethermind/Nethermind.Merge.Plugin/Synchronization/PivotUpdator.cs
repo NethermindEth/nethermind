@@ -54,7 +54,7 @@ public class PivotUpdator
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
@@ -76,6 +76,10 @@ public class PivotUpdator
                 long updatedPivotBlockNumber = pivotStream.DecodeLong();
                 Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
+                if (updatedPivotBlockHash.IsZero)
+                {
+                    return false;
+                }
                 UpdateConfigValues(updatedPivotBlockHash, updatedPivotBlockNumber);
 
                 if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");

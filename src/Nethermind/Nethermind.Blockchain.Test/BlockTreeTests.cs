@@ -9,10 +9,10 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -21,7 +21,6 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
@@ -445,8 +444,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 0, false);
-            Assert.That(headers.Length, Is.EqualTo(2));
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 0, false);
+            Assert.That(headers.Count, Is.EqualTo(2));
             Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
         }
@@ -462,8 +461,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 1, false);
-            Assert.That(headers.Length, Is.EqualTo(2));
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 1, false);
+            Assert.That(headers.Count, Is.EqualTo(2));
             Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.That(headers[1].Hash, Is.EqualTo(block2.Hash));
         }
@@ -483,8 +482,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block3);
             AddToMain(blockTree, block4);
 
-            BlockHeader[] headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
-            Assert.That(headers.Length, Is.EqualTo(2));
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
+            Assert.That(headers.Count, Is.EqualTo(2));
             Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
             Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
         }
@@ -500,8 +499,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] headers = blockTree.FindHeaders(block2.Hash, 2, 1, true);
-            Assert.That(headers.Length, Is.EqualTo(2));
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block2.Hash, 2, 1, true);
+            Assert.That(headers.Count, Is.EqualTo(2));
             Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
             Assert.That(headers[1].Hash, Is.EqualTo(block0.Hash));
         }
@@ -517,8 +516,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 1, true);
-            Assert.That(headers.Length, Is.EqualTo(2));
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 1, true);
+            Assert.That(headers.Count, Is.EqualTo(2));
             Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.Null(headers[1]);
         }
@@ -534,8 +533,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
-            Assert.That(headers.Length, Is.EqualTo(100));
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
+            Assert.That(headers.Count, Is.EqualTo(100));
             Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.Null(headers[3]);
 
@@ -553,8 +552,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
-            Assert.That(headers.Length, Is.EqualTo(100));
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
+            Assert.That(headers.Count, Is.EqualTo(100));
             Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.Null(headers[3]);
 
@@ -573,8 +572,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             int length = 256;
-            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
-            Assert.That(blocks.Length, Is.EqualTo(length));
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
+            Assert.That(blocks.Count, Is.EqualTo(length));
             Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
             Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
             Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
@@ -592,8 +591,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             int length = 2;
-            BlockHeader[] blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
-            Assert.That(blocks.Length, Is.EqualTo(length));
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
+            Assert.That(blocks.Count, Is.EqualTo(length));
             Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block1.Hash));
             Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
         }
@@ -610,8 +609,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             int length = 3;
-            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
-            Assert.That(blocks.Length, Is.EqualTo(length));
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
+            Assert.That(blocks.Count, Is.EqualTo(length));
             Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
             Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
             Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
@@ -628,8 +627,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
-            Assert.That(blocks.Length, Is.EqualTo(3));
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
+            Assert.That(blocks.Count, Is.EqualTo(3));
 
             Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block2.Hash));
             Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block0.Hash));
@@ -647,8 +646,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
-            Assert.That(blocks.Length, Is.EqualTo(0));
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
+            Assert.That(blocks.Count, Is.EqualTo(0));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -662,8 +661,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] blocks = blockTree.FindHeaders(block2.Hash, 1, 0, false);
-            Assert.That(blocks.Length, Is.EqualTo(1));
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block2.Hash, 1, 0, false);
+            Assert.That(blocks.Count, Is.EqualTo(1));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -677,8 +676,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
-            Assert.That(blocks.Length, Is.EqualTo(2), "length");
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
+            Assert.That(blocks.Count, Is.EqualTo(2), "length");
             Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
             Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
         }
@@ -694,8 +693,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 4, 0, false);
-            Assert.That(blocks.Length, Is.EqualTo(4));
+            using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, 4, 0, false);
+            Assert.That(blocks.Count, Is.EqualTo(4));
             Assert.IsNull(blocks[3]);
         }
 
@@ -1792,6 +1791,24 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithDifficulty(0).WithParent(genesisWithZeroDifficulty).TestObject;
             blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject).Should().Be(AddBlockResult.Added);
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void BlockAddedToMain_should_have_updated_Head()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            AddToMain(blockTree, block0);
+            blockTree.SuggestBlock(block0);
+            blockTree.UpdateMainChain(new[] { block0 }, true);
+
+            long blockAddedToMainHeadNumber = 0;
+            blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainHeadNumber = blockTree.Head!.Header.Number; };
+
+            AddToMain(blockTree, block1);
+
+            Assert.That(blockAddedToMainHeadNumber, Is.EqualTo(blockTree.Head!.Number));
         }
 
         public static IEnumerable<TestCaseData> InvalidBlockTestCases

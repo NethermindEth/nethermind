@@ -104,13 +104,13 @@ namespace Nethermind.JsonRpc
 
         private const string ReportHeader = "method                                  | " +
                                             "successes | " +
-                                            " avg time (µs) | " +
-                                            " max time (µs) | " +
+                                            "  avg (ms) | " +
+                                            "  max (ms) | " +
                                             "   errors | " +
-                                            " avg time (µs) | " +
-                                            " max time (µs) |" +
-                                            " avg size |" +
-                                            " total size |";
+                                            "  avg (ms) | " +
+                                            "  max (ms) |" +
+                                            " avg size B |" +
+                                            " total (kB) |";
 
         private static readonly string _divider = new('-', ReportHeader.Length);
 
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc
                 return;
             }
 
-            lock (_logger)
+            lock (_logger.UnderlyingLogger)
             {
                 if (thisTime - _lastReport <= _reportingInterval)
                 {
@@ -180,12 +180,12 @@ namespace Nethermind.JsonRpc
         private static string PrepareReportLine(in string key, MethodStats methodStats) =>
             $"{key,-40}| " +
             $"{methodStats.Successes.ToString(),9} | " +
-            $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture),14} | " +
-            $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture),14} | " +
+            $"{((double)methodStats.AvgTimeOfSuccesses / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
+            $"{((double)methodStats.MaxTimeOfSuccess / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
             $"{methodStats.Errors.ToString(),9} | " +
-            $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture),14} | " +
-            $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture),14} | " +
-            $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture),8} | " +
-            $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture),10} | ";
+            $"{((double)methodStats.AvgTimeOfErrors / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
+            $"{((double)methodStats.MaxTimeOfError / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
+            $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture),10} | " +
+            $"{((double)methodStats.TotalSize / 1024.0).ToString("0.00", CultureInfo.InvariantCulture),10} | ";
     }
 }

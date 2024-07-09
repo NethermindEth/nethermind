@@ -6,27 +6,32 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        private readonly int? _maxDepth;
         private readonly JsonSerializerOptions _jsonOptions;
+
+        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int? maxDepth = null)
+        {
+            _maxDepth = maxDepth;
+            _jsonOptions = maxDepth.HasValue
+                ? CreateOptions(indented: false, maxDepth: maxDepth.Value, converters: converters)
+                : CreateOptions(indented: false, converters: converters);
+        }
 
         public EthereumJsonSerializer(int? maxDepth = null)
         {
-            if (maxDepth.HasValue)
-            {
-                _jsonOptions = CreateOptions(indented: false, maxDepth.Value);
-            }
-            else
-            {
-                _jsonOptions = JsonOptions;
-            }
+            _maxDepth = maxDepth;
+            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
         }
 
         public T Deserialize<T>(Stream stream)
@@ -49,7 +54,7 @@ namespace Nethermind.Serialization.Json
             return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        private static JsonSerializerOptions CreateOptions(bool indented, int maxDepth = 64)
+        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
         {
             var options = new JsonSerializerOptions
             {
@@ -67,6 +72,8 @@ namespace Nethermind.Serialization.Json
                     new ULongConverter(),
                     new IntConverter(),
                     new ByteArrayConverter(),
+                    new ByteReadOnlyMemoryConverter(),
+                    new NullableByteReadOnlyMemoryConverter(),
                     new NullableLongConverter(),
                     new NullableULongConverter(),
                     new NullableUInt256Converter(),
@@ -83,10 +90,8 @@ namespace Nethermind.Serialization.Json
                 }
             };
 
-            foreach (var converter in _additionalConverters)
-            {
-                options.Converters.Add(converter);
-            }
+            options.Converters.AddRange(_additionalConverters);
+            options.Converters.AddRange(converters ?? Array.Empty<JsonConverter>());
 
             return options;
         }
@@ -115,12 +120,19 @@ namespace Nethermind.Serialization.Json
         public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
             var countingWriter = GetPipeWriter(stream, leaveOpen);
-            using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
+            using var writer = new Utf8JsonWriter(countingWriter, CreateWriterOptions(indented));
             JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
             countingWriter.Complete();
 
             long outputCount = countingWriter.WrittenCount;
             return outputCount;
+        }
+
+        private JsonWriterOptions CreateWriterOptions(bool indented)
+        {
+            JsonWriterOptions writerOptions = new JsonWriterOptions { SkipValidation = true, Indented = indented };
+            writerOptions.MaxDepth = _maxDepth ?? writerOptions.MaxDepth;
+            return writerOptions;
         }
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
@@ -135,7 +147,7 @@ namespace Nethermind.Serialization.Json
 
         public void Serialize<T>(IBufferWriter<byte> writer, T value, bool indented = false)
         {
-            using var jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
+            using var jsonWriter = new Utf8JsonWriter(writer, CreateWriterOptions(indented));
             JsonSerializer.Serialize(jsonWriter, value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 

@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_recoveryContextConfigured) return;
 
             _recoveryContext = _recoveryContextFactory?.Invoke();
-            if (_recoveryContext != null)
+            if (_recoveryContext is not null)
             {
                 // Need to replay the context.
                 _decoderContext.Position = _startingPosition;
@@ -123,6 +123,6 @@ namespace Nethermind.Blockchain.Receipts
             return _receiptRefDecoder.DecodeTopics(valueDecoderContext);
         }
 
-        public readonly bool CanDecodeBloom => _receiptRefDecoder == null || _receiptRefDecoder.CanDecodeBloom;
+        public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }
 }

@@ -48,7 +48,7 @@ public class EnrDiscoveryTests
 
         NodeRecordSigner singer = new(new Ecdsa(), TestItem.PrivateKeyA);
         EnrRecordParser parser = new(singer);
-        EnrTreeCrawler crawler = new(Substitute.For<ILogger>());
+        EnrTreeCrawler crawler = new(new(Substitute.For<InterfaceLogger>()));
         int verified = 0;
         await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net"))
         {

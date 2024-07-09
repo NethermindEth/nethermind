@@ -175,28 +175,29 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
-            headBlockHash = Keccak.Zero.ToString(),
-            safeBlockHash = Keccak.Zero.ToString(),
-            finalizedBlockHash = Keccak.Zero.ToString()
+            headBlockHash = chain.BlockTree.HeadHash.ToString(),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(),
         };
-        var payloadAttrs = new
+        var payloadAttributes = new
         {
             timestamp = "0x0",
             prevRandao = Keccak.Zero.ToString(),
             suggestedFeeRecipient = Address.Zero.ToString(),
             withdrawals = Enumerable.Empty<Withdrawal>()
         };
-        string[] @params = new[]
-        {
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
-        };
+        string[] @params =
+        [
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttributes)
+        ];
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV1", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
         errorResponse!.Error!.Message.Should().Be("PayloadAttributesV1 expected");
     }
 
@@ -204,8 +205,9 @@ public partial class EngineModuleTests
     public virtual async Task forkchoiceUpdatedV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals,
-        string BlockHash
+        Withdrawal[]? Withdrawals,
+        string BlockHash,
+        int ErrorCode
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
@@ -218,22 +220,23 @@ public partial class EngineModuleTests
         };
         var payloadAttrs = new
         {
-            timestamp = Timestamper.UnixTime.Seconds.ToHexString(true),
+            timestamp = chain.BlockTree.Head!.Timestamp + 1,
             prevRandao = Keccak.Zero.ToString(),
             suggestedFeeRecipient = TestItem.AddressA.ToString(),
             withdrawals = input.Withdrawals
         };
-        string[] @params = new[]
-        {
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
-        };
+        string[] @params =
+        [
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttrs)
+        ];
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
     }
 
@@ -323,7 +326,7 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
     public virtual async Task
         getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
-            IList<Withdrawal> withdrawals)
+            Withdrawal[] withdrawals)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -350,7 +353,7 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
     public virtual async Task
         getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(
-            IList<Withdrawal> withdrawals)
+            Withdrawal[] withdrawals)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -424,7 +427,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
-    public virtual async Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
+    public virtual async Task getPayloadBodiesByRangeV1_should_return_canonical(Withdrawal[] withdrawals)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -553,7 +556,7 @@ public partial class EngineModuleTests
             StateRoot = Keccak.Zero,
             Timestamp = 0,
             Transactions = Array.Empty<byte[]>(),
-            Withdrawals = Enumerable.Empty<Withdrawal>()
+            Withdrawals = Array.Empty<Withdrawal>()
         };
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV1",
@@ -570,8 +573,9 @@ public partial class EngineModuleTests
     public virtual async Task newPayloadV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals,
-        string BlockHash
+        Withdrawal[]? Withdrawals,
+        string BlockHash,
+        int ErrorCode
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
@@ -606,27 +610,30 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
     }
 
     protected static IEnumerable<(
-        IReleaseSpec spec,
+        IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals,
-        string blockHash
+        Withdrawal[]? Withdrawals,
+        string BlockHash,
+        int ErrorCode
         )> GetWithdrawalValidationValues()
     {
         yield return (
             Shanghai.Instance,
             "{0}V2 expected",
             null,
-            "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+            "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576",
+            ErrorCodes.InvalidParams);
         yield return (
             London.Instance,
             "{0}V1 expected",
-            Enumerable.Empty<Withdrawal>(),
-            "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98");
+            Array.Empty<Withdrawal>(),
+            "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98",
+            ErrorCodes.InvalidParams);
     }
 
     [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]
@@ -743,11 +750,11 @@ public partial class EngineModuleTests
         };
 
         attrs.ToString().Should().Be(
-            $"PayloadAttributes {{Timestamp: {attrs.Timestamp}, PrevRandao: {attrs.PrevRandao}, SuggestedFeeRecipient: {attrs.SuggestedFeeRecipient}, Withdrawals count: {attrs.Withdrawals.Count}}}");
+            $"PayloadAttributes {{Timestamp: {attrs.Timestamp}, PrevRandao: {attrs.PrevRandao}, SuggestedFeeRecipient: {attrs.SuggestedFeeRecipient}, Withdrawals count: {attrs.Withdrawals.Length}}}");
     }
 
     [TestCaseSource(nameof(PayloadIdTestCases))]
-    public void Should_compute_payload_id_with_withdrawals((IList<Withdrawal>? Withdrawals, string PayloadId) input)
+    public void Should_compute_payload_id_with_withdrawals((Withdrawal[]? Withdrawals, string PayloadId) input)
     {
         var blockHeader = Build.A.BlockHeader.TestObject;
         var payloadAttributes = new PayloadAttributes
@@ -820,7 +827,7 @@ public partial class EngineModuleTests
         ulong timestamp,
         Hash256 random,
         Address feeRecipient,
-        IList<Withdrawal>? withdrawals,
+        Withdrawal[]? withdrawals,
         bool waitForBlockImprovement = true)
     {
         using SemaphoreSlim blockImprovementLock = new SemaphoreSlim(0);
@@ -856,7 +863,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         bool waitForBlockImprovement,
-        IList<Withdrawal>? withdrawals)
+        Withdrawal[]? withdrawals)
     {
         Hash256 head = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -871,7 +878,7 @@ public partial class EngineModuleTests
     }
 
     private async Task<ExecutionPayload> SendNewBlockV2(IEngineRpcModule rpc, MergeTestBlockchain chain,
-        IList<Withdrawal>? withdrawals)
+        Withdrawal[]? withdrawals)
     {
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
@@ -919,7 +926,7 @@ public partial class EngineModuleTests
     }
 
     protected static IEnumerable<(
-        IList<Withdrawal>? Withdrawals,
+        Withdrawal[]? Withdrawals,
         string payloadId
         )> PayloadIdTestCases()
     {

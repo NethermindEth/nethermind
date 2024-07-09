@@ -23,7 +23,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Transaction a = Build.A.Transaction.TestObject;
                 Transaction b = Build.A.Transaction.TestObject;
                 Block block = Build.A.Block.WithTransactions(a, b).TestObject;
-                NewBlockMessage newBlockMessage = new();
+                using NewBlockMessage newBlockMessage = new();
                 newBlockMessage.Block = block;
 
                 NewBlockMessageSerializer serializer = new();
@@ -48,7 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Transaction a = Build.A.Transaction.TestObject;
                 Transaction b = Build.A.Transaction.TestObject;
                 Block block = Build.A.Block.WithTransactions(a, b).TestObject;
-                NewBlockMessage newBlockMessage = new();
+                using NewBlockMessage newBlockMessage = new();
                 newBlockMessage.Block = block;
 
                 NewBlockMessageSerializer serializer = new();

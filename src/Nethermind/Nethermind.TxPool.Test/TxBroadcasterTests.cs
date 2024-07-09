@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -360,8 +361,8 @@ public class TxBroadcasterTests
         // tx should be immediately broadcasted only if MaxFeePerGas is equal at least 70% of current base fee
         peer.Received(shouldBroadcast ? 1 : 0).SendNewTransaction(Arg.Any<Transaction>());
 
-        // tx should always be added to persistent collection, without any fee restrictions
-        _broadcaster.GetSnapshot().Length.Should().Be(1);
+        // tx should only be added to persistent collection, if it is above the fee restriction
+        _broadcaster.GetSnapshot().Length.Should().Be(shouldBroadcast ? 1 : 0);
     }
 
     [Test]
@@ -513,6 +514,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -540,6 +542,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -552,6 +555,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -592,6 +596,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -645,6 +650,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),

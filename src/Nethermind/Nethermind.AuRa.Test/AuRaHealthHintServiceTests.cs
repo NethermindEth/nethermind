@@ -21,7 +21,7 @@ namespace Nethermind.AuRa.Test
             [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
             BlockProcessorIntervalHint test)
         {
-            ManualTimestamper manualTimestamper = new(DateTime.Now);
+            ManualTimestamper manualTimestamper = new(DateTime.UtcNow);
             AuRaStepCalculator stepCalculator = new(new Dictionary<long, long>() { { 0, test.StepDuration } }, manualTimestamper, LimboLogs.Instance);
             IValidatorStore validatorStore = Substitute.For<IValidatorStore>();
             validatorStore.GetValidators().Returns(new Address[test.ValidatorsCount]);

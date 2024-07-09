@@ -10,10 +10,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -80,7 +82,7 @@ public partial class EthRpcModuleTests
 
     [TestCase(false, 2)]
     [TestCase(true, 2)]
-    [TestCase(true, AccessTxTracer.MaxStorageAccessToOptimize + 5)]
+    [TestCase(true, 17)]
     public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
     {
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -94,19 +96,17 @@ public partial class EthRpcModuleTests
         string serializedCreateAccessList = await test.TestEthRpc("eth_createAccessList",
             test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
 
-        if (optimize && loads <= AccessTxTracer.MaxStorageAccessToOptimize)
-        {
-            accessList = GetTestAccessList(loads, false).AccessList;
-        }
-
-        transaction.AccessList = accessList;
+        transaction.AccessList = test.JsonSerializer.Deserialize<AccessListItemForRpc[]>(JToken.Parse(serializedCreateAccessList).SelectToken("result.accessList")!.ToString());
         string serializedEstimateGas =
             await test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
 
         var gasUsedEstimateGas = JToken.Parse(serializedEstimateGas).Value<string>("result");
         var gasUsedCreateAccessList =
             JToken.Parse(serializedCreateAccessList).SelectToken("result.gasUsed")?.Value<string>();
-        gasUsedCreateAccessList.Should().Be(gasUsedEstimateGas);
+
+        var gasUsedAccessList = (long)Bytes.FromHexString(gasUsedCreateAccessList!).ToUInt256();
+        var gasUsedEstimate = (long)Bytes.FromHexString(gasUsedEstimateGas!).ToUInt256();
+        Assert.That(gasUsedEstimate, Is.EqualTo(gasUsedAccessList).Within(1.5).Percent);
     }
 
     [TestCase(true, 0xeee7, 0xf71b)]
@@ -114,7 +114,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList,
         long gasPriceWithAccessList)
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, senderAccessList);

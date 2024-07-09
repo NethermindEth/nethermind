@@ -15,7 +15,7 @@ public static class SpanSecP256k1
         byte[] messageHashArray;
         if (messageHash.Length == 32)
         {
-            if (_signMessageHash == null) _signMessageHash = new byte[32];
+            if (_signMessageHash is null) _signMessageHash = new byte[32];
             messageHash.CopyTo(_signMessageHash);
             messageHashArray = _signMessageHash;
         }
@@ -28,7 +28,7 @@ public static class SpanSecP256k1
         byte[] privateKeyArray;
         if (privateKey.Length == 32)
         {
-            if (_signPrivateKey == null) _signPrivateKey = new byte[32];
+            if (_signPrivateKey is null) _signPrivateKey = new byte[32];
             privateKey.CopyTo(_signPrivateKey);
             privateKeyArray = _signPrivateKey;
         }
@@ -48,7 +48,7 @@ public static class SpanSecP256k1
         byte[] messageHashArray;
         if (messageHash.Length == 32)
         {
-            if (_recoverMessageHash == null) _recoverMessageHash = new byte[32];
+            if (_recoverMessageHash is null) _recoverMessageHash = new byte[32];
             messageHash.CopyTo(_recoverMessageHash);
             messageHashArray = _recoverMessageHash;
         }

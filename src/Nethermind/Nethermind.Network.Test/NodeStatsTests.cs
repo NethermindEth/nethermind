@@ -114,7 +114,7 @@ namespace Nethermind.Network.Test
         public void DisconnectReputation(DisconnectType? disconnectType, DisconnectReason reason, long reputation)
         {
             _nodeStats = new NodeStatsLight(_node);
-            if (disconnectType != null)
+            if (disconnectType is not null)
             {
                 _nodeStats.AddNodeStatsDisconnectEvent(disconnectType.Value, reason);
             }

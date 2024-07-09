@@ -35,7 +35,7 @@ namespace Nethermind.Network
             return protocol switch
             {
                 Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
-                Protocol.Eth or Protocol.Les => ValidateEthProtocol(session, eventArgs),
+                Protocol.Eth => ValidateEthProtocol(session, eventArgs),
                 _ => true,
             };
         }
@@ -61,7 +61,7 @@ namespace Nethermind.Network
                     _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
             }
 
-            if (syncPeerArgs.ForkId == null)
+            if (syncPeerArgs.ForkId is null)
             {
                 return Disconnect(session, DisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
             }

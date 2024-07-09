@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Contract.P2P;
@@ -18,10 +19,9 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_do_roundtrip()
         {
-            HelloMessage helloMessage = new();
+            using HelloMessage helloMessage = new();
             helloMessage.P2PVersion = 1;
-            helloMessage.Capabilities = new List<Capability>();
-            helloMessage.Capabilities.Add(new Capability(Protocol.Eth, 1));
+            helloMessage.Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 1) };
             helloMessage.ClientId = "Nethermind/alpha";
             helloMessage.ListenPort = 8002;
             helloMessage.NodeId = NetTestVectors.StaticKeyA.PublicKey;
@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test.P2P
 
             Assert.True(Bytes.AreEqual(serialized, expectedBytes), "bytes");
 
-            HelloMessage deserialized = serializer.Deserialize(serialized);
+            using HelloMessage deserialized = serializer.Deserialize(serialized);
 
             Assert.That(deserialized.P2PVersion, Is.EqualTo(helloMessage.P2PVersion));
             Assert.That(deserialized.ClientId, Is.EqualTo(helloMessage.ClientId));
@@ -48,7 +48,7 @@ namespace Nethermind.Network.Test.P2P
         {
             byte[] helloMessageRaw = Bytes.FromHexString("f87902a5457468657265756d282b2b292f76302e372e392f52656c656173652f4c696e75782f672b2bccc58365746827c583736868018203e0b8401fbf1e41f08078918c9f7b6734594ee56d7f538614f602c71194db0a1af5a77f9b86eb14669fe7a8a46a2dd1b7d070b94e463f4ecd5b337c8b4d31bbf8dd5646");
             HelloMessageSerializer serializer = new();
-            HelloMessage helloMessage = serializer.Deserialize(helloMessageRaw);
+            using HelloMessage helloMessage = serializer.Deserialize(helloMessageRaw);
             Assert.That(helloMessage.ClientId, Is.EqualTo("Ethereum(++)/v0.7.9/Release/Linux/g++"), $"{nameof(HelloMessage.ClientId)}");
             Assert.That(helloMessage.ListenPort, Is.EqualTo(992), $"{nameof(HelloMessage.ListenPort)}");
             Assert.That(helloMessage.P2PVersion, Is.EqualTo(2), $"{nameof(HelloMessage.P2PVersion)}");
@@ -64,7 +64,7 @@ namespace Nethermind.Network.Test.P2P
                                   "fda1cff674c90c9a197539fe3dfb53086ace64f83ed7c6eabec741f7f381cc803e52ab2cd55d5569" +
                                   "bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877c883666f6f836261720304");
             HelloMessageSerializer serializer = new();
-            HelloMessage helloMessage = serializer.Deserialize(helloMessageRaw);
+            using HelloMessage helloMessage = serializer.Deserialize(helloMessageRaw);
             Assert.That(helloMessage.ClientId, Is.EqualTo("kneth/v0.91/plan9"), $"{nameof(HelloMessage.ClientId)}");
             Assert.That(helloMessage.ListenPort, Is.EqualTo(9999), $"{nameof(HelloMessage.ListenPort)}");
             Assert.That(helloMessage.P2PVersion, Is.EqualTo(55), $"{nameof(HelloMessage.P2PVersion)}");
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Test.P2P
                 "bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877c883666f6f836261720304");
 
             HelloMessageSerializer serializer = new();
-            HelloMessage helloMessage = serializer.Deserialize(bytes);
+            using HelloMessage helloMessage = serializer.Deserialize(bytes);
             Assert.That(helloMessage.P2PVersion, Is.EqualTo(55));
         }
     }

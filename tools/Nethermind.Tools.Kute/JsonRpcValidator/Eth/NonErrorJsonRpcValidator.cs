@@ -14,6 +14,11 @@ public class NonErrorJsonRpcValidator : IJsonRpcValidator
             return false;
         }
 
+        if (request is JsonRpc.BatchJsonRpc)
+        {
+            return true;
+        }
+
         return !response.RootElement.TryGetProperty("error", out _);
     }
 }

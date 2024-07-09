@@ -56,7 +56,7 @@ public static class Program
         .ToList();
 
         string jsonString = JsonSerializer.Serialize(jsonGroups, new JsonSerializerOptions { WriteIndented = true });
-        
+
         File.WriteAllText("matrix.json", jsonString);
     }
 
@@ -71,7 +71,7 @@ public static class Program
         string? currentDir = Environment.CurrentDirectory;
         do
         {
-            if (currentDir == null)
+            if (currentDir is null)
             {
                 return "";
             }
@@ -80,7 +80,7 @@ public static class Program
                 .EnumerateDirectories(currentDir, searchPattern, SearchOption.TopDirectoryOnly)
                 .SingleOrDefault();
 
-            if (dir != null)
+            if (dir is not null)
             {
                 return dir;
             }

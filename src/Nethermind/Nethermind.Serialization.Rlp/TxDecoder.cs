@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FastEnumUtility;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,7 +10,7 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : TxDecoder<Transaction>
+    public sealed class TxDecoder : TxDecoder<Transaction>
     {
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
@@ -115,22 +114,28 @@ namespace Nethermind.Serialization.Rlp
                         break;
                 }
 
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
                     rlpStream.Check(positionAfterNetworkWrapper);
                 }
 
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+                {
+                    transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                }
             }
-            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                transaction.SetPreHashNoLock(transactionSequence);
-            }
-            else
-            {
-                // Just calculate the Hash as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
+                if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+                {
+                    // Delay hash generation, as may be filtered as having too low gas etc
+                    transaction.SetPreHashNoLock(transactionSequence);
+                }
+                else
+                {
+                    // Just calculate the Hash as txn too large
+                    transaction.Hash = Keccak.Compute(transactionSequence);
+                }
             }
 
             return transaction;
@@ -165,7 +170,7 @@ namespace Nethermind.Serialization.Rlp
             return transactionSequence;
         }
 
-        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
+        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, ReadOnlySpan<byte> transactionSequence)
         {
             KeccakHash hash = KeccakHash.Create();
             Span<byte> txType = stackalloc byte[1];
@@ -405,7 +410,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Type = TxType.Legacy;
 
             int txSequenceStart = decoderContext.Position;
-            Span<byte> transactionSequence = decoderContext.PeekNextItem();
+            ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
@@ -480,33 +485,39 @@ namespace Nethermind.Serialization.Rlp
                         break;
                 }
 
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
                     decoderContext.Check(networkWrapperCheck);
                 }
 
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
-            }
-            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
-            {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                if (decoderContext.ShouldSliceMemory)
+                if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
                 {
-                    // Do not copy the memory in this case.
-                    int currentPosition = decoderContext.Position;
-                    decoderContext.Position = txSequenceStart;
-                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
-                    decoderContext.Position = currentPosition;
+                    transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                }
+            }
+            else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+            {
+                if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+                {
+                    // Delay hash generation, as may be filtered as having too low gas etc
+                    if (decoderContext.ShouldSliceMemory)
+                    {
+                        // Do not copy the memory in this case.
+                        int currentPosition = decoderContext.Position;
+                        decoderContext.Position = txSequenceStart;
+                        transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
+                        decoderContext.Position = currentPosition;
+                    }
+                    else
+                    {
+                        transaction.SetPreHashNoLock(transactionSequence);
+                    }
                 }
                 else
                 {
-                    transaction.SetPreHashNoLock(transactionSequence);
+                    // Just calculate the Hash immediately as txn too large
+                    transaction.Hash = Keccak.Compute(transactionSequence);
                 }
-            }
-            else
-            {
-                // Just calculate the Hash immediately as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
 
@@ -544,12 +555,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
             bool isSignatureOk = true;
             string signatureError = null;
-            if (rBytes == null || sBytes == null)
-            {
-                isSignatureOk = false;
-                signatureError = "VRS null when decoding Transaction";
-            }
-            else if (rBytes.Length == 0 || sBytes.Length == 0)
+            if (rBytes.Length == 0 || sBytes.Length == 0)
             {
                 isSignatureOk = false;
                 signatureError = "VRS is 0 length when decoding Transaction";
@@ -836,7 +842,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                bool signatureIsNull = item.Signature == null;
+                bool signatureIsNull = item.Signature is null;
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());

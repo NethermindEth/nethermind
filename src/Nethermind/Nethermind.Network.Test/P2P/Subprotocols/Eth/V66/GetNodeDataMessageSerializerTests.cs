@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using NUnit.Framework;
 
@@ -16,7 +17,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             Hash256[] keys = { new("0x00000000000000000000000000000000000000000000000000000000deadc0de"), new("0x00000000000000000000000000000000000000000000000000000000feedbeef") };
 
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage(keys);
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage(keys.ToPooledList());
 
             GetNodeDataMessage message = new(1111, ethMessage);
 

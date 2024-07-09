@@ -56,7 +56,7 @@ public class CompactStack<T>
         _nodePool = nodePool ?? new DefaultObjectPool<Node>(new ObjectPoolPolicy(64), 1);
     }
 
-    public bool IsEmpty => _head == null;
+    public bool IsEmpty => _head is null;
 
     public void Push(T item)
     {
@@ -75,7 +75,7 @@ public class CompactStack<T>
 
     public bool TryPop(out T? item)
     {
-        if (_head == null)
+        if (_head is null)
         {
             item = default;
             return false;
@@ -88,7 +88,7 @@ public class CompactStack<T>
         {
             Node? oldHead = _head;
             _head = oldHead._tail;
-            if (oldHead != null)
+            if (oldHead is not null)
             {
                 _nodePool.Return(oldHead);
             }

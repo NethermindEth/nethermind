@@ -439,7 +439,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 _blockTree.FindBestSuggestedHeader().Returns(farHead);
             }
 
-            if (headNumber != null)
+            if (headNumber is not null)
             {
                 BlockHeader farHead = Build.A.BlockHeader
                     .WithNumber(headNumber.Value)

@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Clique
         {
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)

@@ -12,7 +12,7 @@ public class HoleskySpecProvider : ISpecProvider
 {
     public const ulong GenesisTimestamp = 0x65156994;
     public const ulong ShanghaiTimestamp = 0x6516eac0;
-    // public const ulong CancunTimestamp = 0x77359400;
+    public const ulong CancunTimestamp = 0x65C36AC0;
 
     private HoleskySpecProvider() { }
 
@@ -21,8 +21,8 @@ public class HoleskySpecProvider : ISpecProvider
         return forkActivation.Timestamp switch
         {
             null or < ShanghaiTimestamp => GenesisSpec,
-            // < CancunTimestamp => Shanghai.Instance,
-            _ => Shanghai.Instance
+            < CancunTimestamp => Shanghai.Instance,
+            _ => Cancun.Instance
         };
     }
 
@@ -44,7 +44,7 @@ public class HoleskySpecProvider : ISpecProvider
     public ForkActivation[] TransitionActivations { get; } =
     {
         (1, ShanghaiTimestamp),
-        // (2, CancunTimestamp)
+        (2, CancunTimestamp)
     };
 
     public static readonly HoleskySpecProvider Instance = new();

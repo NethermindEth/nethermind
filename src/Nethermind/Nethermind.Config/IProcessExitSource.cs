@@ -14,6 +14,8 @@ public interface IProcessExitToken
 public interface IProcessExitSource
 {
     public void Exit(int exitCode);
+
+    public CancellationToken Token { get; }
 }
 
 public class ProcessExitSource : IProcessExitSource, IProcessExitToken

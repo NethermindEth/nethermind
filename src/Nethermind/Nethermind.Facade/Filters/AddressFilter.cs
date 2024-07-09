@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class AddressFilter
     {
-        public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<Address>());
+        public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<AddressAsKey>());
 
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
@@ -19,13 +19,13 @@ namespace Nethermind.Blockchain.Filters
             Address = address;
         }
 
-        public AddressFilter(HashSet<Address> addresses)
+        public AddressFilter(HashSet<AddressAsKey> addresses)
         {
             Addresses = addresses;
         }
 
         public Address? Address { get; }
-        public HashSet<Address>? Addresses { get; }
+        public HashSet<AddressAsKey>? Addresses { get; }
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
         private Bloom.BloomExtract AddressBloomExtract => _addressBloomExtract ??= Bloom.GetExtract(Address);
 
@@ -102,6 +102,6 @@ namespace Nethermind.Blockchain.Filters
             return bloom.Matches(AddressBloomExtract);
         }
 
-        private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(Bloom.GetExtract).ToArray();
+        private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(a => Bloom.GetExtract(a)).ToArray();
     }
 }

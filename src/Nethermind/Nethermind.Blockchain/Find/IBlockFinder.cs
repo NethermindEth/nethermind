@@ -43,8 +43,9 @@ namespace Nethermind.Blockchain.Find
         /// Checks if the block is currently in the canonical chain
         /// </summary>
         /// <param name="blockHash">Hash of the block to check</param>
+        /// <param name="throwOnMissingHash">If should throw <exception cref="InvalidOperationException" /> when hash is not found</param>
         /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
-        bool IsMainChain(Hash256 blockHash);
+        bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true);
 
         public Block? FindBlock(Hash256 blockHash, long? blockNumber = null) => FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
 
@@ -102,8 +103,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash!,
-                    blockParameter.RequireCanonical
+                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
+                    ? FindLatestBlock()
+                    : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")

@@ -15,13 +15,13 @@ namespace Nethermind.Logging
     /// Instead we use LimboLogs that returns a logger that always causes the log message to be created and so we can
     /// detect somethingThatIsNull.ToString() throwing an error.
     /// </summary>
-    public class LimboTraceLogger : ILogger
+    public class LimboTraceLogger : InterfaceLogger
     {
         private static LimboTraceLogger _instance;
 
-        public static LimboTraceLogger Instance
+        public static ILogger Instance
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboTraceLogger()); }
+            get { return new(LazyInitializer.EnsureInitialized(ref _instance, () => new LimboTraceLogger())); }
         }
 
         public void Info(string text)

@@ -27,12 +27,12 @@ namespace Nethermind.Mev
         private readonly IWorldState _stateProvider;
 
         public MevBlockProductionTransactionsExecutor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
             ILogManager logManager) :
             this(
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
+                readOnlyTxProcessingEnv.WorldState,
                 specProvider,
                 logManager)
         {

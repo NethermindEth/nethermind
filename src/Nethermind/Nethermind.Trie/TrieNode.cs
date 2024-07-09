@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -21,7 +21,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
-    public partial class TrieNode
+    public sealed partial class TrieNode
     {
 #if DEBUG
         private static int _idCounter;
@@ -34,9 +34,10 @@ namespace Nethermind.Trie
         private static readonly object _nullNode = new();
         private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
-        private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
-        private RlpStream? _rlpStream;
+        private static Action<TrieNode, Hash256?, TreePath> _markPersisted => (tn, _, _) => tn.IsPersisted = true;
+        private RlpFactory? _rlp;
         private object?[]? _data;
+        private int _isDirty;
 
         /// <summary>
         /// Ethereum Patricia Trie specification allows for branch values,
@@ -50,17 +51,39 @@ namespace Nethermind.Trie
         /// <summary>
         /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
         /// </summary>
-        public bool IsSealed => !IsDirty;
+        public bool IsSealed => _isDirty == 0;
 
         public bool IsPersisted { get; set; }
 
         public Hash256? Keccak { get; internal set; }
 
-        public CappedArray<byte> FullRlp { get; internal set; }
+        public bool HasRlp => _rlp is not null;
+
+        public ref readonly CappedArray<byte> FullRlp
+        {
+            get
+            {
+                RlpFactory rlp = _rlp;
+                return ref rlp is not null ? ref rlp.Data : ref CappedArray<byte>.Null;
+            }
+        }
+
+        public ValueRlpStream RlpStream
+        {
+            get
+            {
+                RlpFactory rlp = _rlp;
+                if (rlp is null)
+                {
+                    return default;
+                }
+                return rlp.GetRlpStream();
+            }
+        }
 
         public NodeType NodeType { get; private set; }
 
-        public bool IsDirty { get; private set; }
+        public bool IsDirty => _isDirty == 1;
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
@@ -73,12 +96,17 @@ namespace Nethermind.Trie
             get => _data?[0] as byte[];
             internal set
             {
+                EnsureInitialized();
                 if (IsSealed)
                 {
+                    if ((_data[0] as byte[]).AsSpan().SequenceEqual(value))
+                    {
+                        // No change, parallel read
+                        return;
+                    }
                     ThrowAlreadySealed();
                 }
 
-                InitData();
                 _data![0] = value;
                 Keccak = null;
 
@@ -90,100 +118,113 @@ namespace Nethermind.Trie
                 }
             }
         }
+        public ref readonly CappedArray<byte> ValueRef
+        {
+            get
+            {
+                EnsureInitialized();
+                if (IsLeaf)
+                {
+                    object? data = _data![1];
+                    if (data is null)
+                    {
+                        return ref CappedArray<byte>.Null;
+                    }
+
+                    return ref Unsafe.Unbox<CappedArray<byte>>(data);
+                }
+
+                if (!AllowBranchValues)
+                {
+                    // branches that we use for state will never have value set as all the keys are equal length
+                    return ref CappedArray<byte>.Empty;
+                }
+
+                ref object? obj = ref _data![BranchesCount];
+                if (obj is null)
+                {
+                    RlpFactory rlp = _rlp;
+                    if (rlp is null)
+                    {
+                        obj = CappedArray<byte>.EmptyBoxed;
+                        return ref CappedArray<byte>.Empty;
+                    }
+                    else
+                    {
+                        ValueRlpStream rlpStream = rlp.GetRlpStream();
+                        SeekChild(ref rlpStream, BranchesCount);
+                        byte[]? bArr = rlpStream.DecodeByteArray();
+                        obj = new CappedArray<byte>(bArr);
+                        return ref Unsafe.Unbox<CappedArray<byte>>(obj);
+                    }
+                }
+
+                return ref Unsafe.Unbox<CappedArray<byte>>(obj);
+            }
+        }
 
         /// <summary>
         /// Highly optimized
         /// </summary>
         public CappedArray<byte> Value
         {
-            get
+            get => ValueRef;
+            set => SetValue(in value);
+        }
+
+        private void SetValue(in CappedArray<byte> value, bool overrideSealed = false)
+        {
+            EnsureInitialized();
+            var index = IsLeaf ? 1 : BranchesCount;
+            ref var data = ref index >= _data.Length ? ref Unsafe.NullRef<object>() : ref _data[index];
+            if (!overrideSealed && IsSealed)
             {
-                InitData();
-                object? obj;
-
-                if (IsLeaf)
+                if (data is null)
                 {
-                    obj = _data![1];
-
-                    if (obj is null)
+                    if (!Unsafe.IsNullRef(ref data) && value.IsNull)
                     {
-                        return CappedArray<byte>.Null;
+                        // No change, parallel read
+                        return;
                     }
-
-                    if (obj is byte[] asBytes)
-                    {
-                        return new CappedArray<byte>(asBytes);
-                    }
-
-                    return (CappedArray<byte>)obj;
-                }
-
-                if (!AllowBranchValues)
-                {
-                    // branches that we use for state will never have value set as all the keys are equal length
-                    return CappedArray<byte>.Empty;
-                }
-
-                obj = _data![BranchesCount];
-                if (obj is null)
-                {
-                    if (_rlpStream is null)
-                    {
-                        _data[BranchesCount] = Array.Empty<byte>();
-                        return CappedArray<byte>.Empty;
-                    }
-                    else
-                    {
-                        SeekChild(BranchesCount);
-                        byte[]? bArr = _rlpStream!.DecodeByteArray();
-                        _data![BranchesCount] = bArr;
-                        return new CappedArray<byte>(bArr);
-                    }
-                }
-
-                if (obj is byte[] asBytes2)
-                {
-                    return new CappedArray<byte>(asBytes2);
-                }
-                return (CappedArray<byte>)obj;
-            }
-
-            set
-            {
-                if (IsSealed)
-                {
                     ThrowAlreadySealed();
                 }
-
-                InitData();
-                if (IsBranch && !AllowBranchValues)
+                ref readonly var cappedArray = ref Unsafe.Unbox<CappedArray<byte>>(data);
+                if ((cappedArray.IsNull && value.IsNull) || (!cappedArray.IsNull && !value.IsNull && cappedArray.AsSpan().SequenceEqual(value)))
                 {
-                    // in Ethereum all paths are of equal length, hence branches will never have values
-                    // so we decided to save 1/17th of the array size in memory
-                    throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
-                }
-
-                if (value.IsNull)
-                {
-                    _data![IsLeaf ? 1 : BranchesCount] = null;
+                    // No change, parallel read
                     return;
                 }
 
-                if (value.IsUncapped)
-                {
-                    // Store array directly if possible to reduce memory
-                    _data![IsLeaf ? 1 : BranchesCount] = value.UnderlyingArray;
-                    return;
-                }
+                ThrowAlreadySealed();
+            }
 
-                _data![IsLeaf ? 1 : BranchesCount] = value;
+            if (IsBranch && !AllowBranchValues)
+            {
+                // in Ethereum all paths are of equal length, hence branches will never have values
+                // so we decided to save 1/17th of the array size in memory
+                ThrowNoValueOnBranches();
+            }
 
-                [DoesNotReturn]
-                [StackTraceHidden]
-                void ThrowAlreadySealed()
-                {
-                    throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
-                }
+            if (value.IsNull)
+            {
+                data = CappedArray<byte>.NullBoxed;
+                return;
+            }
+
+            data = value;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowAlreadySealed()
+            {
+                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNoValueOnBranches()
+            {
+                throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
             }
         }
 
@@ -217,7 +258,7 @@ namespace Nethermind.Trie
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;
-            IsDirty = true;
+            _isDirty = 1;
         }
 
         public TrieNode(NodeType nodeType, Hash256 keccak)
@@ -233,10 +274,9 @@ namespace Nethermind.Trie
         public TrieNode(NodeType nodeType, in CappedArray<byte> rlp, bool isDirty = false)
         {
             NodeType = nodeType;
-            FullRlp = rlp;
-            IsDirty = isDirty;
+            _isDirty = isDirty ? 1 : 0;
 
-            _rlpStream = rlp.AsRlpStream();
+            _rlp = rlp.AsRlpFactory();
         }
 
         public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false) : this(nodeType, new CappedArray<byte>(rlp), isDirty)
@@ -274,12 +314,11 @@ namespace Nethermind.Trie
         /// </summary>
         public void Seal()
         {
-            if (IsSealed)
+
+            if (Interlocked.Exchange(ref _isDirty, 0) == 0)
             {
                 ThrowAlreadySealed();
             }
-
-            IsDirty = false;
 
             [DoesNotReturn]
             [StackTraceHidden]
@@ -289,51 +328,55 @@ namespace Nethermind.Trie
             }
         }
 
-        /// <summary>
-        /// Highly optimized
-        /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
+        public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
         {
+            if (NodeType != NodeType.Unknown) return;
+
             try
             {
-                if (NodeType == NodeType.Unknown)
-                {
-                    if (FullRlp.IsNull)
-                    {
-                        if (Keccak is null)
-                        {
-                            ThrowMissingKeccak();
-                        }
-
-                        FullRlp = tree.LoadRlp(Keccak, readFlags);
-                        IsPersisted = true;
-
-                        if (FullRlp.IsNull)
-                        {
-                            ThrowNullRlp();
-                        }
-                    }
-                }
-                else
-                {
-                    return;
-                }
-
-                _rlpStream = FullRlp.AsRlpStream();
-                if (_rlpStream is null)
-                {
-                    ThrowInvalidStateException();
-                    return;
-                }
-
-                if (!DecodeRlp(bufferPool, out int numberOfItems))
-                {
-                    ThrowUnexpectedNumberOfItems(numberOfItems);
-                }
+                ResolveUnknownNode(tree, path, readFlags, bufferPool);
             }
             catch (RlpException rlpException)
             {
                 ThrowDecodingError(rlpException);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowDecodingError(RlpException rlpException)
+            {
+                throw new TrieNodeException($"Error when decoding node {Keccak}", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
+            }
+        }
+
+        /// <summary>
+        /// Highly optimized
+        /// </summary>
+        internal void ResolveUnknownNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
+        {
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
+            {
+                Hash256 keccak = Keccak;
+                if (keccak is null)
+                {
+                    ThrowMissingKeccak();
+                }
+
+                CappedArray<byte> fullRlp = tree.LoadRlp(path, keccak, readFlags);
+
+                if (fullRlp.IsNull)
+                {
+                    ThrowNullRlp();
+                }
+
+                _rlp = rlp = fullRlp.AsRlpFactory();
+                IsPersisted = true;
+            }
+
+            if (!DecodeRlp(rlp.GetRlpStream(), bufferPool, out int numberOfItems))
+            {
+                ThrowUnexpectedNumberOfItems(numberOfItems);
             }
 
             [DoesNotReturn]
@@ -352,49 +395,39 @@ namespace Nethermind.Trie
 
             [DoesNotReturn]
             [StackTraceHidden]
-            void ThrowInvalidStateException()
-            {
-                throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
             void ThrowUnexpectedNumberOfItems(int numberOfItems)
             {
                 throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException)
-            {
-                throw new TrieNodeException($"Error when decoding node {Keccak}", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
             }
         }
 
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public bool TryResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
+        public bool TryResolveNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
         {
             try
             {
+                RlpFactory rplStream = _rlp;
                 if (NodeType == NodeType.Unknown)
                 {
-                    if (FullRlp.IsNull)
+                    if (rplStream is null)
                     {
-                        if (Keccak is null)
+                        Hash256 keccak = Keccak;
+                        if (keccak is null)
                         {
                             return false;
                         }
 
-                        FullRlp = tree.TryLoadRlp(Keccak, readFlags);
+                        var fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
+
+                        if (fullRlp is null)
+                        {
+                            return false;
+                        }
+
+                        _rlp = rplStream = fullRlp.AsRlpFactory();
                         IsPersisted = true;
-
-                        if (FullRlp.IsNull)
-                        {
-                            return false;
-                        }
                     }
                 }
                 else
@@ -402,75 +435,63 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                _rlpStream = FullRlp.AsRlpStream();
-                if (_rlpStream is null)
-                {
-                    ThrowInvalidStateException();
-                }
-
-                return DecodeRlp(bufferPool, out _);
+                return DecodeRlp(rplStream.GetRlpStream(), bufferPool, out _);
             }
             catch (RlpException)
             {
                 return false;
             }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            void ThrowInvalidStateException()
-            {
-                throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
-            }
         }
 
-        private bool DecodeRlp(ICappedArrayPool bufferPool, out int itemsCount)
+        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
-            _rlpStream.ReadSequenceLength();
+
+            rlpStream.ReadSequenceLength();
 
             // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-            int numberOfItems = itemsCount = _rlpStream.PeekNumberOfItemsRemaining(null, 3);
+            int numberOfItems = itemsCount = rlpStream.PeekNumberOfItemsRemaining(null, 3);
 
-            if (numberOfItems > 2)
-            {
-                NodeType = NodeType.Branch;
-            }
-            else if (numberOfItems == 2)
-            {
-                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-
-                // a hack to set internally and still verify attempts from the outside
-                // after the code is ready we should just add proper access control for methods from the outside and inside
-                bool isDirtyActual = IsDirty;
-                IsDirty = true;
-
-                if (isLeaf)
-                {
-                    NodeType = NodeType.Leaf;
-                    Key = key;
-
-                    ReadOnlySpan<byte> valueSpan = _rlpStream.DecodeByteArraySpan();
-                    CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
-                    valueSpan.CopyTo(buffer.AsSpan());
-                    Value = buffer;
-                }
-                else
-                {
-                    NodeType = NodeType.Extension;
-                    Key = key;
-                }
-
-                IsDirty = isDirtyActual;
-            }
-            else
+            NodeType nodeType;
+            if (numberOfItems < 2)
             {
                 return false;
             }
+            else if (numberOfItems > 2)
+            {
+                nodeType = NodeType.Branch;
+            }
+            else
+            {
+                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                object[] data = [key, null];
+                if (isLeaf)
+                {
+                    nodeType = NodeType.Leaf;
 
+                    ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
+                    CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
+                    valueSpan.CopyTo(buffer.AsSpan());
+                    data[1] = buffer.IsNull ? CappedArray<byte>.NullBoxed : buffer;
+                    // Overwriting both key and value so just replace the array.
+                    Volatile.Write(ref _data, data);
+                }
+                else
+                {
+                    nodeType = NodeType.Extension;
+
+                    object[] prev = Interlocked.CompareExchange(ref _data, data, null);
+                    // If already set, update the previous array.
+                    if (prev is not null) prev[0] = key;
+                }
+            }
+
+            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+            NodeType = nodeType;
             return true;
         }
 
-        public void ResolveKey(ITrieNodeResolver tree, bool isRoot, ICappedArrayPool? bufferPool = null)
+        public void ResolveKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             if (Keccak is not null)
             {
@@ -479,74 +500,54 @@ namespace Nethermind.Trie
                 return;
             }
 
-            Keccak = GenerateKey(tree, isRoot, bufferPool);
+            Keccak = GenerateKey(tree, ref path, isRoot, bufferPool, canBeParallel);
         }
 
-        public Hash256? GenerateKey(ITrieNodeResolver tree, bool isRoot, ICappedArrayPool? bufferPool = null)
+        public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
-            Hash256? keccak = Keccak;
-            if (keccak is not null)
+            RlpFactory rlp = _rlp;
+            if (rlp is null || IsDirty)
             {
-                return keccak;
-            }
+                ref readonly CappedArray<byte> oldRlp = ref rlp is not null ? ref rlp.Data : ref CappedArray<byte>.Empty;
+                CappedArray<byte> fullRlp = NodeType == NodeType.Branch ?
+                    TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool, canBeParallel: isRoot && canBeParallel) :
+                    RlpEncode(tree, ref path, bufferPool);
 
-            if (FullRlp.IsNull || IsDirty)
-            {
-                CappedArray<byte> oldRlp = FullRlp;
-                FullRlp = RlpEncode(tree, bufferPool);
-                if (oldRlp.IsNotNullOrEmpty)
+                if (fullRlp.IsNotNullOrEmpty)
                 {
                     bufferPool.SafeReturnBuffer(oldRlp);
                 }
-                _rlpStream = FullRlp.AsRlpStream();
+                _rlp = rlp = fullRlp.AsRlpFactory();
             }
 
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
-            if (FullRlp.Length >= 32 || isRoot)
+            if (rlp.Data.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Nethermind.Core.Crypto.Keccak.Compute(FullRlp.AsSpan());
+                return Nethermind.Core.Crypto.Keccak.Compute(rlp.Data.AsSpan());
             }
 
             return null;
         }
 
-        public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Hash256? storageRootHash)
+        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
-            storageRootHash = null;
-
-            if (IsLeaf)
+            return NodeType switch
             {
-                try
-                {
-                    storageRootHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRootHash is not null && storageRootHash != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
-                    {
-                        return true;
-                    }
-                }
-                catch
-                {
-                    return false;
-                }
+                NodeType.Branch => TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool, canBeParallel: false),
+                NodeType.Extension => TrieNodeDecoder.EncodeExtension(this, tree, ref path, bufferPool),
+                NodeType.Leaf => TrieNodeDecoder.EncodeLeaf(this, bufferPool),
+                _ => ThrowUnhandledNodeType(this)
+            };
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static CappedArray<byte> ThrowUnhandledNodeType(TrieNode item)
+            {
+                throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
             }
-
-            return false;
-        }
-
-        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ICappedArrayPool? bufferPool = null)
-        {
-            CappedArray<byte> rlp = TrieNodeDecoder.Encode(tree, this, bufferPool);
-            // just included here to improve the class reading
-            // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
-            // if (rlp.Bytes.Length < 32)
-            // {
-            //     throw new InvalidDataException("Unexpected less than 32");
-            // }
-
-            return rlp;
         }
 
         public object GetData(int index)
@@ -561,27 +562,31 @@ namespace Nethermind.Trie
 
         public Hash256? GetChildHash(int i)
         {
-            if (_rlpStream is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
             {
                 return null;
             }
 
-            SeekChild(i);
-            (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
-            return length == 32 ? _rlpStream.DecodeKeccak() : null;
+            ValueRlpStream rlpStream = rlp.GetRlpStream();
+            SeekChild(ref rlpStream, i);
+            (int _, int length) = rlpStream.PeekPrefixAndContentLength();
+            return length == 32 ? rlpStream.DecodeKeccak() : null;
         }
 
         public bool GetChildHashAsValueKeccak(int i, out ValueHash256 keccak)
         {
             Unsafe.SkipInit(out keccak);
-            if (_rlpStream is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
             {
                 return false;
             }
 
-            SeekChild(i);
-            (_, int length) = _rlpStream!.PeekPrefixAndContentLength();
-            if (length == 32 && _rlpStream.DecodeValueKeccak(out keccak))
+            ValueRlpStream rlpStream = rlp.GetRlpStream();
+            SeekChild(ref rlpStream, i);
+            (_, int length) = rlpStream.PeekPrefixAndContentLength();
+            if (length == 32 && rlpStream.DecodeValueKeccak(out keccak))
             {
                 return true;
             }
@@ -596,10 +601,12 @@ namespace Nethermind.Trie
                 ThrowNotABranch();
             }
 
-            if (_rlpStream is not null && _data?[i] is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is not null && _data?[i] is null)
             {
-                SeekChild(i);
-                return _rlpStream!.PeekNextRlpLength() == 1;
+                ValueRlpStream rlpStream = rlp.GetRlpStream();
+                SeekChild(ref rlpStream, i);
+                return rlpStream.PeekNextRlpLength() == 1;
             }
 
             return _data?[i] is null || ReferenceEquals(_data[i], _nullNode);
@@ -643,13 +650,44 @@ namespace Nethermind.Trie
             set => SetChild(i, value);
         }
 
-        public TrieNode? GetChild(ITrieNodeResolver tree, int childIndex)
+        public TreePath GetChildPath(in TreePath currentPath, int childIndex)
+        {
+            TreePath copy = currentPath;
+            AppendChildPath(ref copy, childIndex);
+            return copy;
+        }
+
+        public int AppendChildPath(ref TreePath currentPath, int childIndex)
+        {
+            int previousLength = currentPath.Length;
+            if (IsExtension)
+            {
+                currentPath.AppendMut(Key);
+            }
+            else
+            {
+                currentPath.AppendMut(childIndex);
+            }
+
+            return previousLength;
+        }
+
+        public TrieNode? GetChild(ITrieNodeResolver tree, ref TreePath path, int childIndex)
+        {
+            int originalLength = path.Length;
+            AppendChildPath(ref path, childIndex);
+            TrieNode? childNode = GetChildWithChildPath(tree, ref path, childIndex);
+            path.TruncateMut(originalLength);
+            return childNode;
+        }
+
+        public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex)
         {
             /* extensions store value before the child while branches store children before the value
              * so just to treat them in the same way we update index on extensions
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
-            object childOrRef = ResolveChild(tree, childIndex);
+            object childOrRef = ResolveChildWithChildPath(tree, ref childPath, childIndex);
 
             TrieNode? child;
             if (ReferenceEquals(childOrRef, _nullNode) || childOrRef is null)
@@ -662,7 +700,7 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Hash256 reference)
             {
-                child = tree.FindCachedOrUnknown(reference);
+                child = tree.FindCachedOrUnknown(childPath, reference);
             }
             else
             {
@@ -672,7 +710,10 @@ namespace Nethermind.Trie
             }
 
             // pruning trick so we never store long persisted paths
-            if (child?.IsPersisted == true)
+            // Dont unresolve node of path length <= 4. there should be a relatively small number of these, enough to fit
+            // in RAM, but they are hit quite a lot, and don't have very good data locality.
+            // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
+            if (child?.IsPersisted == true && childPath.Length > 4 && childPath.Length % 2 == 0)
             {
                 UnresolveChild(childIndex);
             }
@@ -696,9 +737,9 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException();
             }
 
-            InitData();
+            EnsureInitialized();
             int index = IsExtension ? i + 1 : i;
-            _data![index] = child;
+            _data[index] = child;
         }
 
         public void SetChild(int i, TrieNode? node)
@@ -708,9 +749,9 @@ namespace Nethermind.Trie
                 ThrowAlreadySealed();
             }
 
-            InitData();
+            EnsureInitialized();
             int index = IsExtension ? i + 1 : i;
-            _data![index] = node ?? _nullNode;
+            _data[index] = node ?? _nullNode;
             Keccak = null;
 
             [DoesNotReturn]
@@ -731,7 +772,7 @@ namespace Nethermind.Trie
                 MemorySizes.RefSize +
                 (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
             long rlpStreamSize =
-                MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
+                MemorySizes.RefSize + (_rlp?.MemorySize ?? 0)
                 - (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
             long dataSize =
                 MemorySizes.RefSize +
@@ -743,34 +784,20 @@ namespace Nethermind.Trie
             int nodeTypeSize = 1;
             /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
 
-            for (int i = 0; i < (_data?.Length ?? 0); i++)
+            object?[] data = _data;
+            if (data is not null)
             {
-                if (_data![i] is null)
+                for (int i = 0; i < data.Length; i++)
                 {
-                    continue;
-                }
-
-                if (_data![i] is Hash256)
-                {
-                    dataSize += Hash256.MemorySize;
-                }
-
-                if (_data![i] is byte[] array)
-                {
-                    dataSize += MemorySizes.ArrayOverhead + array.Length;
-                }
-
-                if (_data![i] is CappedArray<byte> cappedArray)
-                {
-                    dataSize += MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead;
-                }
-
-                if (recursive)
-                {
-                    if (_data![i] is TrieNode node)
+                    var child = data[i];
+                    dataSize += child switch
                     {
-                        dataSize += node.GetMemorySize(true);
-                    }
+                        null => 0,
+                        Hash256 => Hash256.MemorySize,
+                        byte[] array => MemorySizes.ArrayOverhead + array.Length,
+                        CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead,
+                        _ => recursive && child is TrieNode node ? node.GetMemorySize(true) : 0
+                    };
                 }
             }
 
@@ -795,19 +822,20 @@ namespace Nethermind.Trie
         public TrieNode Clone()
         {
             TrieNode trieNode = new(NodeType);
-            if (_data is not null)
+            object?[] data = _data;
+            if (data is not null)
             {
-                trieNode.InitData();
-                for (int i = 0; i < _data.Length; i++)
+                trieNode.EnsureInitialized();
+                for (int i = 0; i < data.Length; i++)
                 {
-                    trieNode._data![i] = _data[i];
+                    trieNode._data[i] = data[i];
                 }
             }
 
-            if (FullRlp.IsNotNull)
+            RlpFactory rlp = _rlp;
+            if (rlp is not null)
             {
-                trieNode.FullRlp = FullRlp;
-                trieNode._rlpStream = FullRlp.AsRlpStream();
+                trieNode._rlp = rlp;
             }
 
             return trieNode;
@@ -847,10 +875,12 @@ namespace Nethermind.Trie
         /// Note that nodes referenced by hash are not called.
         /// </summary>
         public void CallRecursively(
-            Action<TrieNode> action,
+            Action<TrieNode, Hash256?, TreePath> action,
+            Hash256? storageAddress,
+            ref TreePath currentPath,
             ITrieNodeResolver resolver,
             bool skipPersisted,
-            ILogger logger,
+            in ILogger logger,
             bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)
@@ -869,7 +899,9 @@ namespace Nethermind.Trie
                         if (o is TrieNode child)
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                            child.CallRecursively(action, resolver, skipPersisted, logger);
+                            int previousLength = AppendChildPath(ref currentPath, i);
+                            child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger);
+                            currentPath.TruncateMut(previousLength);
                         }
                     }
                 }
@@ -877,14 +909,28 @@ namespace Nethermind.Trie
             else
             {
                 TrieNode? storageRoot = _storageRoot;
-                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, out storageRoot)))
+                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
-                    storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
+                    Hash256 storagePathAddr;
+                    using (currentPath.ScopedAppend(Key))
+                    {
+                        if (currentPath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
+                        storagePathAddr = currentPath.Path.ToCommitment();
+                    }
+
+                    TreePath emptyPath = TreePath.Empty;
+                    storageRoot!.CallRecursively(
+                        action,
+                        storagePathAddr,
+                        ref emptyPath,
+                        resolver.GetStorageTrieNodeResolver(storagePathAddr),
+                        skipPersisted,
+                        logger);
                 }
             }
 
-            action(this);
+            action(this, storageAddress, currentPath);
         }
 
         /// <summary>
@@ -940,7 +986,7 @@ namespace Nethermind.Trie
             // }
         }
 
-        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, out TrieNode? storageRoot)
+        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, ref TreePath currentPath, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
             storageRoot = _storageRoot;
@@ -953,11 +999,19 @@ namespace Nethermind.Trie
                 }
                 else if (Value.Length > 64) // if not a storage leaf
                 {
-                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    Rlp.ValueDecoderContext valueContext = Value.AsSpan().AsRlpValueContext();
+                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueContext);
                     if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
+                        Hash256 storagePath;
+                        using (currentPath.ScopedAppend(Key))
+                        {
+                            storagePath = currentPath.Path.ToCommitment();
+                        }
                         hasStorage = true;
-                        _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
+                        TreePath emptyPath = TreePath.Empty;
+                        _storageRoot = storageRoot = resolver.GetStorageTrieNodeResolver(storagePath)
+                            .FindCachedOrUnknown(in emptyPath, storageRootKey);
                     }
                 }
             }
@@ -965,50 +1019,50 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
+        [MemberNotNull(nameof(_data))]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void InitData()
+        private void EnsureInitialized()
         {
             if (_data is null)
             {
-                Initialize();
+                Initialize(NodeType);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Initialize()
+            void Initialize(NodeType nodeType)
             {
-                switch (NodeType)
+                var data = nodeType switch
                 {
-                    case NodeType.Unknown:
-                        ThrowCannotResolveException();
-                        return;
-                    case NodeType.Branch:
-                        _data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
-                        break;
-                    default:
-                        _data = new object[2];
-                        break;
-                }
-            }
+                    NodeType.Unknown => ThrowCannotResolveException(),
+                    NodeType.Branch => new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount],
+                    _ => new object[2],
+                };
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowCannotResolveException()
-            {
-                throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                // Only initialize the array if not already initialized.
+                Interlocked.CompareExchange(ref _data, data, null);
+                // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+                NodeType = nodeType;
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static object[] ThrowCannotResolveException()
+                {
+                    throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                }
             }
         }
 
-        private void SeekChild(int itemToSetOn)
+        private void SeekChild(ref ValueRlpStream rlpStream, int itemToSetOn)
         {
-            if (_rlpStream is null)
+            if (rlpStream.IsNull)
             {
                 return;
             }
 
-            SeekChild(_rlpStream, itemToSetOn);
+            SeekChildNotNull(ref rlpStream, itemToSetOn);
         }
 
-        private void SeekChild(RlpStream rlpStream, int itemToSetOn)
+        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int itemToSetOn)
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
@@ -1024,22 +1078,23 @@ namespace Nethermind.Trie
             }
         }
 
-        private object? ResolveChild(ITrieNodeResolver tree, int i)
+        private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
         {
             object? childOrRef;
-            if (_rlpStream is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
             {
                 childOrRef = _data?[i];
             }
             else
             {
-                InitData();
+                EnsureInitialized();
                 if (_data![i] is null)
                 {
                     // Allows to load children in parallel
-                    RlpStream rlpStream = new(_rlpStream!.Data!);
-                    SeekChild(rlpStream, i);
-                    int prefix = rlpStream!.ReadByte();
+                    ValueRlpStream rlpStream = rlp.GetRlpStream();
+                    SeekChild(ref rlpStream, i);
+                    int prefix = rlpStream.ReadByte();
 
                     switch (prefix)
                     {
@@ -1053,12 +1108,13 @@ namespace Nethermind.Trie
                             {
                                 rlpStream.Position--;
                                 Hash256 keccak = rlpStream.DecodeKeccak();
-                                TrieNode child = tree.FindCachedOrUnknown(keccak);
+
+                                TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 _data![i] = childOrRef = child;
 
                                 if (IsPersisted && !child.IsPersisted)
                                 {
-                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false, NullLogger.Instance);
                                 }
 
                                 break;
@@ -1080,6 +1136,68 @@ namespace Nethermind.Trie
             }
 
             return childOrRef;
+        }
+
+        /// <summary>
+        /// Fast path for trie visitor which visit ranges. Assume node is persisted and has RLP. Does not check for
+        /// data[i] and does not modify it as it assume its not in the cache most of the time.
+        /// </summary>
+        /// <param name="tree"></param>
+        /// <param name="path"></param>
+        /// <param name="output"></param>
+        private void ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode?[] output)
+        {
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
+            {
+                path.AppendMut(0);
+                for (int i = 0; i < 16; i++)
+                {
+                    path.SetLast(i);
+                    output[i] = GetChildWithChildPath(tree, ref path, i);
+                }
+                path.TruncateOne();
+                return;
+            }
+
+            ValueRlpStream rlpStream = rlp.GetRlpStream();
+            rlpStream.Reset();
+            rlpStream.SkipLength();
+
+            path.AppendMut(0);
+            for (int i = 0; i < 16; i++)
+            {
+                int prefix = rlpStream.PeekByte();
+
+                switch (prefix)
+                {
+                    case 0:
+                    case 128:
+                        {
+                            rlpStream.Position++;
+                            output[i] = null;
+                            break;
+                        }
+                    case 160:
+                        {
+                            path.SetLast(i);
+                            Hash256 keccak = rlpStream.DecodeKeccak();
+                            TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                            output[i] = child;
+
+                            break;
+                        }
+                    default:
+                        {
+                            Span<byte> fullRlp = rlpStream.PeekNextItem();
+                            TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                            rlpStream.SkipItem();
+                            output[i] = child;
+                            break;
+                        }
+                }
+            }
+            path.TruncateOne();
         }
 
         private void UnresolveChild(int i)

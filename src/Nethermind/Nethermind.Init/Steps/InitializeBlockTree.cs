@@ -80,7 +80,7 @@ namespace Nethermind.Init.Steps
 
             IReceiptConfig receiptConfig = _set.Config<IReceiptConfig>();
             ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider, !receiptConfig.CompactReceiptStore);
-            IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
+            IReceiptStorage receiptStorage = _set.ReceiptStorage = receiptConfig.StoreReceipts
                 ? new PersistentReceiptStorage(
                     _get.DbProvider.ReceiptsDb,
                     _get.SpecProvider!,
@@ -104,7 +104,7 @@ namespace Nethermind.Init.Steps
 
             _set.LogFinder = logFinder;
 
-            if (initConfig.ExitOnBlockNumber != null)
+            if (initConfig.ExitOnBlockNumber is not null)
             {
                 new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }

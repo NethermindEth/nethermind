@@ -6,12 +6,13 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using static Nethermind.Serialization.Rlp.Rlp;
 
 #pragma warning disable 618
 
 namespace Nethermind.Serialization.Rlp
 {
-    [Rlp.SkipGlobalRegistration]
+    [Decoder(RlpDecoderKey.Storage)]
     public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
@@ -128,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.SkipLength();
 
-            Span<byte> firstItem = decoderContext.DecodeByteArraySpan();
+            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
             if (firstItem.Length == 1)
             {
                 item.StatusCode = firstItem[0];

@@ -164,7 +164,7 @@ namespace Nethermind.Network.Test.Rlpx
 
                 byte[] outputBytes = output.Content.ReadAllBytesAsArray();
                 HelloMessageSerializer serializer = new();
-                HelloMessage helloMessage = serializer.Deserialize(outputBytes);
+                using HelloMessage helloMessage = serializer.Deserialize(outputBytes);
 
                 Assert.That(helloMessage.ClientId, Is.EqualTo("Nethermind/v1.0.0-rc28dev-c9d5542a/X64-Microsoft Windows 10.0.17134 /Core4.6.27617.05"));
                 Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");

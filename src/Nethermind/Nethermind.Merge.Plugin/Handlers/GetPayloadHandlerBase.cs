@@ -45,7 +45,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<b
         if (!getPayloadResult.ValidateFork(_specProvider))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", ErrorCodes.UnsupportedFork);
+            return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
         }
 
         if (_logger.IsInfo) _logger.Info($"GetPayloadV{_apiVersion} result: {block.Header.ToString(BlockHeader.Format.Full)}.");

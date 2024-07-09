@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -19,42 +20,22 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0f);
+    public static Address Address { get; } = Address.FromNumber(0x0e);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 4500L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 800L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = 8 * BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
-
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
-
-        (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
         bool success = Pairings.BlsG2Add(inputData.Span, output);
-        if (success)
-        {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
-        }
-
-        return result;
+        return success ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }

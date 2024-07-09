@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -69,7 +70,7 @@ namespace Nethermind.State.Proofs
             _proofBits.Add(node.FullRlp.ToArray());
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value)
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);

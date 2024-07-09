@@ -108,7 +108,7 @@ namespace Nethermind.Core
         {
             if (value.IsUncapped && db.PreferWriteByArray)
             {
-                db.Set(key.Bytes, value.ToArray(), writeFlags);
+                db.PutSpan(key.Bytes, value.AsSpan(), writeFlags);
                 return;
             }
 

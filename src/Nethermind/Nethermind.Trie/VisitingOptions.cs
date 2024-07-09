@@ -33,19 +33,18 @@ namespace Nethermind.Trie
         /// <summary>
         /// Specify memory budget to run a batched trie visitor. Significantly reduce read iops as memory budget
         /// increase. Not effective below a certain amount, and above a certain amount it has no measurable difference
-        /// or the size of the db can't fill a queue of that size. For goerli, its 256MB to 6GB. For mainnet, its 1GB to
+        /// or the size of the db can't fill a queue of that size. For mainnet, its 1GB to
         /// 12 GB. Effect may be larger on system with lower RAM due to bigger portion of uncached files, or system
         /// with slower SSD. Set to 0 to disable batched trie visitor.
         /// </summary>
         public long FullScanMemoryBudget { get; set; }
 
-        public static int AdjustMaxDegreeOfParallelism(int rawMaxDegreeOfParallelism)
-        {
-            if (rawMaxDegreeOfParallelism == 0)
-                return Math.Max(Environment.ProcessorCount / 4, 1);
-            if (rawMaxDegreeOfParallelism <= -1)
-                return Environment.ProcessorCount;
-            return rawMaxDegreeOfParallelism;
-        }
+        public static int AdjustMaxDegreeOfParallelism(int rawMaxDegreeOfParallelism) =>
+            rawMaxDegreeOfParallelism switch
+            {
+                0 => Math.Max(Environment.ProcessorCount / 4, 1),
+                <= -1 => Environment.ProcessorCount,
+                _ => rawMaxDegreeOfParallelism
+            };
     }
 }

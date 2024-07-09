@@ -2,14 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
+using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Store
 {
+
+    [MemoryDiagnoser]
     public class PatriciaTreeBenchmarks
     {
         private static readonly Account _empty = Build.An.Account.WithBalance(0).TestObject;
@@ -19,6 +28,26 @@ namespace Nethermind.Benchmarks.Store
         private static readonly Account _account3 = Build.An.Account.WithBalance(4).TestObject;
 
         private StateTree _tree;
+
+        private Hash256 _rootHash;
+
+        // Just the backing KV. Used for benchmarking that include deserialization overhead.
+        private MemDb _backingMemory;
+
+        // Full uncommitted tree with in memory node. Node should be fully deserialized.
+        private StateTree _uncommittedFullTree;
+
+        private StateTree _fullTree;
+
+        private TrieStore _memoryTrieStore;
+
+        // All entries
+        private const int _entryCount = 1024 * 4;
+        private (Hash256, Account)[] _entries;
+        private (Hash256, Account)[] _entriesShuffled;
+
+        private const int _largerEntryCount = 1024 * 10 * 10;
+        private (bool, Hash256, Account)[] _largerEntriesAccess;
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
@@ -198,10 +227,83 @@ namespace Nethermind.Benchmarks.Store
         public void Setup()
         {
             _tree = new StateTree();
+
+            _entries = new (Hash256, Account)[_entryCount];
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _entries[i] = (Keccak.Compute(i.ToBigEndianByteArray()), new Account((UInt256)i));
+            }
+
+            _entriesShuffled = new (Hash256, Account)[_entryCount];
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _entriesShuffled[i] = _entries[i];
+            }
+            new Random(0).Shuffle(_entriesShuffled);
+
+            _backingMemory = new MemDb();
+            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Set(_entries[i].Item1, _entries[i].Item2);
+            }
+            tempTree.Commit(0);
+            _rootHash = tempTree.RootHash;
+
+            _fullTree = new StateTree();
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _fullTree.Set(_entries[i].Item1, _entries[i].Item2);
+            }
+            _fullTree.Commit(0);
+
+            _uncommittedFullTree = new StateTree();
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _uncommittedFullTree.Set(_entries[i].Item1, _entries[i].Item2);
+            }
+
+            _memoryTrieStore = new TrieStore(_backingMemory, Prune.WhenCacheReaches(1.GB()), No.Persistence, NullLogManager.Instance);
+
+            // Preparing access for large entries
+            List<Hash256> currentItems = new();
+
+            _largerEntriesAccess = new (bool, Hash256, Account)[_largerEntryCount];
+            Random rand = new Random(0);
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                if (rand.NextDouble() < 0.4 && currentItems.Count != 0)
+                {
+                    // Its an existing read
+                    _largerEntriesAccess[i] = (
+                        false,
+                        currentItems[(int)(rand.NextInt64() % currentItems.Count)],
+                        Account.TotallyEmpty);
+                }
+                else if (rand.NextDouble() < 0.6 && currentItems.Count != 0)
+                {
+                    // Its an existing write
+                    _largerEntriesAccess[i] = (
+                        false,
+                        currentItems[(int)(rand.NextInt64() % currentItems.Count)],
+                        new Account((UInt256)rand.NextInt64()));
+                }
+                else
+                {
+                    // Its a new write
+                    Hash256 newAccount = Keccak.Compute(i.ToBigEndianByteArray());
+                    currentItems.Add(newAccount);
+                    _largerEntriesAccess[i] = (
+                        false,
+                        newAccount,
+                        new Account((UInt256)rand.NextInt64()));
+                }
+            }
+
         }
 
         [Benchmark]
-        public void Improved()
+        public void Scenarios()
         {
             for (int i = 0; i < 19; i++)
             {
@@ -210,11 +312,103 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
-        public void Current()
+        public void InsertAndHash()
         {
-            for (int i = 0; i < 19; i++)
+            StateTree tempTree = new StateTree();
+            for (int i = 0; i < _entryCount; i++)
             {
-                _scenarios[i].Action(_tree);
+                tempTree.Set(_entries[i].Item1, _entries[i].Item2);
+            }
+            tempTree.UpdateRootHash();
+        }
+
+        [Benchmark]
+        public void InsertAndCommit()
+        {
+            StateTree tempTree = new StateTree(new TrieStore(new MemDb(), NullLogManager.Instance), NullLogManager.Instance);
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Set(_entries[i].Item1, _entries[i].Item2);
+            }
+            tempTree.Commit(0);
+        }
+
+        [Benchmark]
+        public void InsertAndCommitRepeatedlyTimes()
+        {
+            StateTree tempTree = new StateTree(
+                new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2),
+                NullLogManager.Instance), NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                if (i % 2000 == 0)
+                {
+                    tempTree.Commit(i / 2000);
+                }
+
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+        }
+
+        [Benchmark]
+        public void ReadWithFullTree()
+        {
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _fullTree.Get(_entriesShuffled[i].Item1);
+            }
+        }
+
+        [Benchmark]
+        public void ReadWithUncommittedFullTree()
+        {
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _uncommittedFullTree.Get(_entriesShuffled[i].Item1);
+            }
+        }
+
+        [Benchmark]
+        public void ReadWithMemoryTrieStore()
+        {
+            StateTree tempTree = new StateTree(_memoryTrieStore, NullLogManager.Instance);
+            tempTree.RootHash = _rootHash;
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Get(_entries[i].Item1);
+            }
+        }
+
+        [Benchmark]
+        public void ReadWithMemoryTrieStoreReadOnly()
+        {
+            StateTree tempTree = new StateTree(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
+            tempTree.RootHash = _rootHash;
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Get(_entries[i].Item1);
+            }
+        }
+
+        [Benchmark]
+        public void ReadAndDeserialize()
+        {
+            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
+            tempTree.RootHash = _rootHash;
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Get(_entriesShuffled[i].Item1);
             }
         }
     }

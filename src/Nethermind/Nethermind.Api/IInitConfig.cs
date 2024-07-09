@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Trie;
 
 namespace Nethermind.Api;
 
@@ -74,7 +75,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
     long? MemoryHint { get; set; }
 
-    [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored to disk.", DefaultValue = "100")]
+    [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
@@ -83,8 +84,14 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Disable setting malloc options. Set to true if using different memory allocator or manually setting malloc opts.", DefaultValue = "false", HiddenFromDocs = true)]
     bool DisableMallocOpts { get; set; }
 
+    [ConfigItem(Description = "[TECHNICAL] Key scheme for state db. Only effect new db.", DefaultValue = "Current", HiddenFromDocs = true)]
+    INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
+
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
+    int BackgroundTaskConcurrency { get; set; }
 }
 
 public enum DiagnosticMode

@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Tracing;
 
 public interface ITxTracer : IWorldStateTracer, IDisposable
 {
+    bool IsCancelable => false;
+    bool IsCancelled => false;
     /// <summary>
     /// Defines whether MarkAsSuccess or MarkAsFailed will be called
     /// </summary>
@@ -125,6 +127,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </remarks>
     bool IsTracingFees { get; }
 
+    /// <summary>
+    /// Traces operation logs
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="ReportLog"/>
+    /// </remarks>
+    bool IsTracingLogs { get; }
+
     bool IsTracing => IsTracingReceipt
                       || IsTracingActions
                       || IsTracingOpLevelStorage
@@ -135,7 +146,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingStack
                       || IsTracingBlockHash
                       || IsTracingAccess
-                      || IsTracingFees;
+                      || IsTracingFees
+                      || IsTracingLogs;
 
     /// <summary>
     /// Transaction completed successfully
@@ -162,13 +174,12 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>
     ///
     /// </summary>
-    /// <param name="depth"></param>
-    /// <param name="gas"></param>
-    /// <param name="opcode"></param>
     /// <param name="pc"></param>
-    /// <param name="isPostMerge"></param>
+    /// <param name="opcode"></param>
+    /// <param name="gas"></param>
+    /// <param name="env"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false);
+    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env);
 
     /// <summary>
     ///
@@ -183,6 +194,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gas"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportOperationRemainingGas(long gas);
+
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="log"></param>
+    /// <remarks>Depends on <see cref="IsTracingLogs"/></remarks>
+    void ReportLog(LogEntry log);
 
     /// <summary>
     ///
@@ -293,7 +312,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="newValue"></param>
     /// <param name="currentValue"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, byte[] currentValue) { }
+    void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
 
     /// <summary>
     ///
@@ -311,7 +330,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="storageIndex"></param>
     /// <param name="value"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, byte[] value) { }
+    void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 
     /// <summary>
     ///
@@ -349,7 +368,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasLeft"></param>
     /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionRevert(long gasLeft, byte[] output) => ReportActionError(EvmExceptionType.Revert);
+    void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output);
 
     /// <summary>
     ///
@@ -379,7 +398,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="byteCode"></param>
     /// <remarks>Depends on <see cref="IsTracingCode"/></remarks>
-    void ReportByteCode(byte[] byteCode);
+    void ReportByteCode(ReadOnlyMemory<byte> byteCode);
 
     /// <summary>
     /// Special case for VM trace in Parity but we consider removing support for it

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
@@ -29,7 +30,7 @@ public static class KzgPolynomialCommitments
 
     public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
 
-    public static Task InitializeAsync(ILogger? logger = null, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
+    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
     {
         if (_ckzgSetup != IntPtr.Zero) return;
 
@@ -37,7 +38,7 @@ public static class KzgPolynomialCommitments
             Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
                          string.Empty, "kzg_trusted_setup.txt");
 
-        if (logger?.IsInfo == true)
+        if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
         _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
 
@@ -90,15 +91,35 @@ public static class KzgPolynomialCommitments
 
     public static bool AreProofsValid(byte[][] blobs, byte[][] commitments, byte[][] proofs)
     {
-        byte[] flatBlobs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerBlob];
-        byte[] flatCommitments = new byte[blobs.Length * Ckzg.Ckzg.BytesPerCommitment];
-        byte[] flatProofs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerProof];
+        if (blobs.Length is 1 && commitments.Length is 1 && proofs.Length is 1)
+        {
+            try
+            {
+                return Ckzg.Ckzg.VerifyBlobKzgProof(blobs[0], commitments[0], proofs[0], _ckzgSetup);
+            }
+            catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+            {
+                return false;
+            }
+        }
+
+        int length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
+        byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
+        Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
+
+        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
+        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
+        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
+
+        length = blobs.Length * Ckzg.Ckzg.BytesPerProof;
+        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
+        Span<byte> flatProofs = new(flatProofsArray, 0, length);
 
         for (int i = 0; i < blobs.Length; i++)
         {
-            Array.Copy(blobs[i], 0, flatBlobs, i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob);
-            Array.Copy(commitments[i], 0, flatCommitments, i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment);
-            Array.Copy(proofs[i], 0, flatProofs, i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof);
+            blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
+            commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
+            proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
         }
 
         try
@@ -110,10 +131,16 @@ public static class KzgPolynomialCommitments
         {
             return false;
         }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(flatBlobsArray);
+            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
+            ArrayPool<byte>.Shared.Return(flatProofsArray);
+        }
     }
 
     /// <summary>
-    /// Method to genereate correct data for tests only, not safe
+    /// Method to generate correct data for tests only, not safe
     /// </summary>
     public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
     {

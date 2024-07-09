@@ -51,7 +51,7 @@ namespace Nethermind.Core.Collections
         }
 
         public SpanDictionary(IDictionary<TKey[], TValue> dictionary, ISpanEqualityComparer<TKey> comparer) :
-            this(dictionary != null ? dictionary.Count : 0, comparer)
+            this(dictionary is not null ? dictionary.Count : 0, comparer)
         {
             ArgumentNullException.ThrowIfNull(dictionary);
             AddRange(dictionary);
@@ -207,8 +207,8 @@ namespace Nethermind.Core.Collections
             int count = _count;
             if (count > 0)
             {
-                Debug.Assert(_buckets != null, "_buckets should be non-null");
-                Debug.Assert(_entries != null, "_entries should be non-null");
+                Debug.Assert(_buckets is not null, "_buckets should be non-null");
+                Debug.Assert(_entries is not null, "_entries should be non-null");
 
                 Array.Clear(_buckets);
 
@@ -228,11 +228,11 @@ namespace Nethermind.Core.Collections
         public bool ContainsValue(TValue value)
         {
             Entry[]? entries = _entries;
-            if (value == null)
+            if (value is null)
             {
                 for (int i = 0; i < _count; i++)
                 {
-                    if (entries![i].next >= -1 && entries[i].value == null)
+                    if (entries![i].next >= -1 && entries[i].value is null)
                     {
                         return true;
                     }
@@ -303,9 +303,9 @@ namespace Nethermind.Core.Collections
 
             info.AddValue(VersionName, _version);
             info.AddValue(ComparerName, Comparer, typeof(ISpanEqualityComparer<TKey>));
-            info.AddValue(HashSizeName, _buckets == null ? 0 : _buckets.Length); // This is the length of the bucket array
+            info.AddValue(HashSizeName, _buckets is null ? 0 : _buckets.Length); // This is the length of the bucket array
 
-            if (_buckets != null)
+            if (_buckets is not null)
             {
                 var array = new KeyValuePair<TKey[], TValue>[Count];
                 CopyTo(array, 0);
@@ -316,9 +316,9 @@ namespace Nethermind.Core.Collections
         internal ref TValue FindValue(ReadOnlySpan<TKey> key)
         {
             ref Entry entry = ref Unsafe.NullRef<Entry>();
-            if (_buckets != null)
+            if (_buckets is not null)
             {
-                Debug.Assert(_entries != null, "expected entries to be != null");
+                Debug.Assert(_entries is not null, "expected entries to be not null");
                 ISpanEqualityComparer<TKey> comparer = _comparer;
                 uint hashCode = (uint)comparer.GetHashCode(key);
                 int i = GetBucket(hashCode);
@@ -383,14 +383,14 @@ namespace Nethermind.Core.Collections
             // NOTE: this method is mirrored in CollectionsMarshal.GetValueRefOrAddDefault below.
             // If you make any changes here, make sure to keep that version in sync as well.
 
-            if (_buckets == null)
+            if (_buckets is null)
             {
                 Initialize(0);
             }
-            Debug.Assert(_buckets != null);
+            Debug.Assert(_buckets is not null);
 
             Entry[]? entries = _entries;
-            Debug.Assert(entries != null, "expected entries to be non-null");
+            Debug.Assert(entries is not null, "expected entries to be non-null");
 
             ISpanEqualityComparer<TKey> comparer = _comparer;
             uint hashCode = (uint)(comparer.GetHashCode(key));
@@ -482,14 +482,14 @@ namespace Nethermind.Core.Collections
 
                 ArgumentNullException.ThrowIfNull(key);
 
-                if (dictionary._buckets == null)
+                if (dictionary._buckets is null)
                 {
                     dictionary.Initialize(0);
                 }
-                Debug.Assert(dictionary._buckets != null);
+                Debug.Assert(dictionary._buckets is not null);
 
                 Entry[]? entries = dictionary._entries;
-                Debug.Assert(entries != null, "expected entries to be non-null");
+                Debug.Assert(entries is not null, "expected entries to be non-null");
 
                 ISpanEqualityComparer<TKey>? comparer = dictionary._comparer;
                 uint hashCode = (uint)(comparer?.GetHashCode(key) ?? key.GetHashCode());
@@ -498,7 +498,7 @@ namespace Nethermind.Core.Collections
                 ref int bucket = ref dictionary.GetBucket(hashCode);
                 int i = bucket - 1; // Value in _buckets is 1-based
 
-                if (comparer == null)
+                if (comparer is null)
                 {
                     if (typeof(TKey[]).IsValueType)
                     {
@@ -633,7 +633,7 @@ namespace Nethermind.Core.Collections
         {
             HashHelpers.SerializationInfoTable.TryGetValue(this, out SerializationInfo? siInfo);
 
-            if (siInfo == null)
+            if (siInfo is null)
             {
                 // We can return immediately if this function is called twice.
                 // Note we remove the serialization info from the table at the end of this method.
@@ -681,7 +681,7 @@ namespace Nethermind.Core.Collections
         {
             // Value types never rehash
             Debug.Assert(!forceNewHashCodes || !typeof(TKey[]).IsValueType);
-            Debug.Assert(_entries != null, "_entries should be non-null");
+            Debug.Assert(_entries is not null, "_entries should be non-null");
             Debug.Assert(newSize >= _entries.Length);
 
             Entry[] entries = new Entry[newSize];
@@ -718,9 +718,9 @@ namespace Nethermind.Core.Collections
             // statement to copy the value for entry being removed into the output parameter.
             // Code has been intentionally duplicated for performance reasons.
 
-            if (_buckets != null)
+            if (_buckets is not null)
             {
-                Debug.Assert(_entries != null, "entries should be non-null");
+                Debug.Assert(_entries is not null, "entries should be non-null");
                 uint collisionCount = 0;
                 uint hashCode = (uint)(_comparer.GetHashCode(key));
                 ref int bucket = ref GetBucket(hashCode);
@@ -783,9 +783,9 @@ namespace Nethermind.Core.Collections
 
             ArgumentNullException.ThrowIfNull(key);
 
-            if (_buckets != null)
+            if (_buckets is not null)
             {
-                Debug.Assert(_entries != null, "entries should be non-null");
+                Debug.Assert(_entries is not null, "entries should be non-null");
                 uint collisionCount = 0;
                 uint hashCode = (uint)(_comparer?.GetHashCode(key) ?? key.GetHashCode());
                 ref int bucket = ref GetBucket(hashCode);
@@ -945,7 +945,7 @@ namespace Nethermind.Core.Collections
         {
             ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
-            int currentCapacity = _entries == null ? 0 : _entries.Length;
+            int currentCapacity = _entries is null ? 0 : _entries.Length;
             if (currentCapacity >= capacity)
             {
                 return currentCapacity;
@@ -953,7 +953,7 @@ namespace Nethermind.Core.Collections
 
             _version++;
 
-            if (_buckets == null)
+            if (_buckets is null)
             {
                 return Initialize(capacity);
             }

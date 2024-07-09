@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
 
             if (address is IEnumerable<string> e)
             {
-                return new AddressFilter(e.Select(a => new Address(a)).ToHashSet());
+                return new AddressFilter(e.Select(a => new AddressAsKey(new Address(a))).ToHashSet());
             }
 
             throw new InvalidDataException("Invalid address filter format");
