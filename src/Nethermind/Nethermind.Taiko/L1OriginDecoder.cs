@@ -6,11 +6,6 @@ namespace Nethermind.Taiko;
 
 public class L1OriginDecoder : IRlpObjectDecoder<L1Origin>, IRlpStreamDecoder<L1Origin>
 {
-    static L1OriginDecoder()
-    {
-        Rlp.RegisterDecoder(new(typeof(L1Origin)), new L1OriginDecoder());
-    }
-
     public L1Origin Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         rlpStream.SkipLength();

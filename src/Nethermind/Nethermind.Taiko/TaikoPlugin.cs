@@ -15,9 +15,6 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc;
 using Nethermind.HealthChecks;
 using Nethermind.Db;
-using Google.Protobuf.WellKnownTypes;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
-using System.Xml.Linq;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Merge.Plugin.Handlers;
@@ -34,8 +31,8 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Merge.Plugin.GC;
-using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
 
@@ -93,6 +90,14 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.PoSSwitcher));
 
         return Task.CompletedTask;
+    }
+
+    public void InitRlpDecoders(INethermindApi api)
+    {
+        if (ShouldRunSteps(api))
+        {
+            Rlp.RegisterDecoder(typeof(L1Origin), new L1OriginDecoder());
+        }
     }
 
     public async Task InitRpcModules()
