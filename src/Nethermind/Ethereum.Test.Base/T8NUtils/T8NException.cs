@@ -1,7 +1,7 @@
 using System;
 using Nethermind.Core.Exceptions;
 
-namespace Ethereum.Test.Base;
+namespace Ethereum.Test.Base.T8NUtils;
 
 public class T8NException : Exception, IExceptionWithExitCode
 {

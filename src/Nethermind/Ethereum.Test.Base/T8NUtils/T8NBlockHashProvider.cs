@@ -3,7 +3,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
-namespace Ethereum.Test.Base;
+namespace Ethereum.Test.Base.T8NUtils;
 
 public class T8NBlockHashProvider : IBlockhashProvider
 {

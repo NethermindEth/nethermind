@@ -1,4 +1,4 @@
-namespace Ethereum.Test.Base;
+namespace Ethereum.Test.Base.T8NUtils;
 
 // mapping Nethermind core error messages to geth errors
 public class GethErrorMappings
