@@ -30,58 +30,40 @@ using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-public partial class BlockProcessor : IBlockProcessor
+public partial class BlockProcessor(
+    ISpecProvider? specProvider,
+    IBlockValidator? blockValidator,
+    IRewardCalculator? rewardCalculator,
+    IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
+    IWorldState? stateProvider,
+    IReceiptStorage? receiptStorage,
+    IBlockhashStore? blockHashStore,
+    IBeaconBlockRootHandler? beaconBlockRootHandler,
+    ILogManager? logManager,
+    IWithdrawalProcessor? withdrawalProcessor = null,
+    IReceiptsRootCalculator? receiptsRootCalculator = null,
+    IBlockCachePreWarmer? preWarmer = null)
+    : IBlockProcessor
 {
-    private readonly ILogger _logger;
-    private readonly ISpecProvider _specProvider;
-    protected readonly IWorldState _stateProvider;
-    private readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptsRootCalculator _receiptsRootCalculator;
-    private readonly IWithdrawalProcessor _withdrawalProcessor;
-    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
-    private readonly IBlockValidator _blockValidator;
-    private readonly IRewardCalculator _rewardCalculator;
-    private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-    private readonly IBlockhashStore _blockhashStore;
-    private readonly IBlockCachePreWarmer? _preWarmer;
+    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly IWorldState _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+    private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+    private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+    private readonly IWithdrawalProcessor _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
+    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
+    private readonly IBlockValidator _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+    private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
+    private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+    private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private const int MaxUncommittedBlocks = 64;
+    private readonly Func<Task, Task> _clearCaches = _ => preWarmer.ClearCachesInBackground();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
-    protected BlockReceiptsTracer ReceiptsTracer { get; set; }
-    private readonly Func<Task, Task> _clearCaches;
-
-    public BlockProcessor(
-        ISpecProvider? specProvider,
-        IBlockValidator? blockValidator,
-        IRewardCalculator? rewardCalculator,
-        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
-        IReceiptStorage? receiptStorage,
-        IBlockhashStore? blockHashStore,
-        IBeaconBlockRootHandler? beaconBlockRootHandler,
-        ILogManager? logManager,
-        IWithdrawalProcessor? withdrawalProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
-    {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-        _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-        _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
-        _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
-        _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-        _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
-        _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
-        _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
-        _preWarmer = preWarmer;
-        ReceiptsTracer = new BlockReceiptsTracer();
-        _clearCaches = _ => _preWarmer.ClearCachesInBackground();
-    }
+    protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -123,7 +105,7 @@ public partial class BlockProcessor : IBlockProcessor
                 using CancellationTokenSource cancellationTokenSource = new();
                 Task? preWarmTask = suggestedBlock.Transactions.Length < 3
                     ? null
-                    : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
+                    : preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 // Block is processed, we can cancel the prewarm task
                 if (preWarmTask is not null)
@@ -174,7 +156,7 @@ public partial class BlockProcessor : IBlockProcessor
         }
         finally
         {
-            _preWarmer?.ClearCaches();
+            preWarmer?.ClearCaches();
         }
     }
 
