@@ -1,14 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.Intrinsics.X86;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
-using Cortex.SimpleSerialize;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;

@@ -95,7 +95,7 @@ internal class E2Store : IDisposable
         headerBuffer.Add(0);
         headerBuffer.Add(0);
 
-        Memory<byte> headerMemory = headerBuffer.AsMemory(0, HeaderSize);
+        ReadOnlyMemory<byte> headerMemory = headerBuffer.AsReadOnlyMemory(0, HeaderSize);
         await _stream.WriteAsync(headerMemory, cancellation);
         if (length > 0)
         {

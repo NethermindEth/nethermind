@@ -109,7 +109,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             {
                 return false;
             }
-            Hash256 receiptRoot = new ReceiptTrie(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts).RootHash;
+            Hash256 receiptRoot = new ReceiptTrie<TxReceipt>(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder).RootHash;
             if (err.Block.Header.ReceiptsRoot != receiptRoot)
             {
                 return false;

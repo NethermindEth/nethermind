@@ -27,7 +27,7 @@ public class Era1ModuleTests
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
         using MemoryStream stream = new();
-        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
@@ -52,7 +52,7 @@ public class Era1ModuleTests
         await builder.Add(block1, new[] { receipt1 });
         await builder.Finalize();
 
-        EraReader reader = await EraReader.Create(stream);
+        using EraReader reader = await EraReader.Create(stream);
 
         IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = reader.GetAsyncEnumerator();
         await enumerator.MoveNextAsync();
@@ -94,7 +94,7 @@ public class Era1ModuleTests
 
             var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
 
-            var builder = EraWriter.Create(destination, specProvider);
+            using var builder = EraWriter.Create(destination, specProvider);
 
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
             {
@@ -189,10 +189,9 @@ public class Era1ModuleTests
         int numOfBlocks = 12;
         int numOfTx = 2;
         UInt256 nonce = 0;
-        var blocks = new List<Block>
-        {
-            genesis
-        };
+
+        List<Block> blocks = [genesis];
+
         for (int i = 0; i < numOfBlocks; i++)
         {
             Transaction[] transactions = new Transaction[numOfTx];
@@ -214,7 +213,7 @@ public class Era1ModuleTests
 
         testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
-        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         foreach (var block in blocks)
         {
@@ -235,7 +234,7 @@ public class Era1ModuleTests
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
-        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
         TxReceipt[] genesisReceipts = testBlockchain.ReceiptStorage.Get(genesis);
@@ -292,7 +291,7 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
-        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 
@@ -333,7 +332,7 @@ public class Era1ModuleTests
 
         await builder.Finalize();
 
-        EraReader iterator = await EraReader.Create(stream);
+        using EraReader iterator = await EraReader.Create(stream);
 
         await using var enu = iterator.GetAsyncEnumerator();
         for (int i = 0; i < numOfBlocks; i++)
@@ -377,7 +376,7 @@ public class Era1ModuleTests
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>()).Returns(true);
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out _).Returns(true);
         EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
         await exporter.Export("test", 0, ChainLength - 1);
 

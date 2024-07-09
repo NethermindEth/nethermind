@@ -9,12 +9,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.State.Proofs;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Era1;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Synchronization;
 public class EraImporter : IEraImporter
@@ -27,7 +28,7 @@ public class EraImporter : IEraImporter
     private readonly ISpecProvider _specProvider;
     private readonly int _epochSize;
     private readonly string _networkName;
-
+    private readonly ReceiptMessageDecoder _receiptDecoder;
     public event EventHandler<ImportProgressChangedArgs> ImportProgressChanged;
 
     public EraImporter(
@@ -44,6 +45,7 @@ public class EraImporter : IEraImporter
         _blockValidator = blockValidator;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _receiptDecoder = new();
         this._epochSize = epochSize;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
@@ -104,10 +106,10 @@ public class EraImporter : IEraImporter
                     {
                         throw new EraImportException($"Unexpected block without a body found in '{eraStore.GetReaderPath(i)}'. Archive might be corrupted.");
                     }
-
-                    if (!_blockValidator.ValidateSuggestedBlock(b))
+                    string msg;
+                    if (!_blockValidator.ValidateSuggestedBlock(b, out msg))
                     {
-                        throw new EraImportException($"Era1 archive '{eraStore.GetReaderPath(i)}' contains an invalid block {b.ToString(Block.Format.Short)}.");
+                        throw new EraImportException($"Era1 archive '{eraStore.GetReaderPath(i)}' contains an invalid block {b.ToString(Block.Format.Short)}: {msg}");
                     }
                 }
 
@@ -156,7 +158,7 @@ public class EraImporter : IEraImporter
 
     private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
     {
-        Hash256 receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
+        Hash256 receiptsRoot = new ReceiptTrie<TxReceipt>(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder).RootHash;
 
         if (receiptsRoot != block.ReceiptsRoot)
         {
