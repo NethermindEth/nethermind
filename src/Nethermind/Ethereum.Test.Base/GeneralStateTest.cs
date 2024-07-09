@@ -19,6 +19,7 @@ namespace Ethereum.Test.Base
 {
     public class GeneralStateTest : IEthereumTest
     {
+        public bool IsT8NTest { get; set; } = false;
         public string? Category { get; set; }
         public string? Name { get; set; }
         public IReleaseSpec? Fork { get; set; }
@@ -74,7 +75,7 @@ namespace Ethereum.Test.Base
                 []);
             header.StateRoot = PostHash;
             header.Hash = header.CalculateHash();
-            header.IsPostMerge = IsPostMerge();
+            header.IsPostMerge = Fork is Paris;
             header.MixHash = CurrentRandom;
             header.WithdrawalsRoot = CurrentWithdrawalsRoot;
             header.ParentBeaconBlockRoot = CurrentBeaconRoot;
@@ -100,8 +101,8 @@ namespace Ethereum.Test.Base
                     extraData: []
                 )
                 {
-                    BlobGasUsed = (ulong) ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong) ParentExcessBlobGas,
+                    BlobGasUsed = (ulong)ParentBlobGasUsed,
+                    ExcessBlobGas = (ulong)ParentExcessBlobGas,
                 };
                 if (ParentBaseFee.HasValue) parent.BaseFeePerGas = ParentBaseFee.Value;
                 parent.GasUsed = ParentGasUsed;
@@ -110,13 +111,6 @@ namespace Ethereum.Test.Base
             }
 
             return null;
-        }
-
-        public bool IsPostMerge()
-        {
-            return Fork == Paris.Instance
-                   || Fork == Shanghai.Instance
-                   || Fork == Cancun.Instance;
         }
     }
 }

@@ -54,7 +54,7 @@ namespace Ethereum.Test.Base
         public UInt256? CurrentBaseFee { get; set; }
         public UInt256? CurrentExcessBlobGas { get; set; }
         public UInt256? BlobGasUsed { get; set; }
-        public Dictionary<Address, NativePrestateTracerAccount> Accounts { get; set; }
+        public Dictionary<Address, AccountState> Accounts { get; set; }
         public byte[] TransactionsRlp { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-﻿using Ethereum.Test.Base;
+using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -26,10 +26,13 @@ public class InputProcessor
 
         Transaction[] transactions;
         var txFileContent = File.ReadAllText(inputTxs);
-        if (inputTxs.EndsWith(".json")) {
+        if (inputTxs.EndsWith(".json"))
+        {
             var txInfoList = EthereumJsonSerializer.Deserialize<TransactionInfo[]>(txFileContent);
             transactions = txInfoList.Select(txInfo => txInfo.ConvertToTx()).ToArray();
-        } else if (inputTxs.EndsWith(".rlp")) {
+        }
+        else if (inputTxs.EndsWith(".rlp"))
+        {
             string rlpRaw = txFileContent.Replace("\"", "").Replace("\n", "");
             RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
             transactions = TxDecoder.DecodeArray(rlp);
@@ -38,7 +41,7 @@ public class InputProcessor
         {
             throw new NotSupportedException("Transactions file support only rlp, json formats");
         }
-        
+
         IReleaseSpec spec;
         try
         {
@@ -48,12 +51,16 @@ public class InputProcessor
         {
             throw new T8NException(e, ExitCodes.ErrorConfig);
         }
-        
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, spec));
 
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, spec));
+        if (spec is Paris)
+        {
+            specProvider.UpdateMergeTransitionInfo(envInfo.CurrentNumber, 0);
+        }
         envInfo.ApplyChecks(specProvider, spec);
 
         GeneralStateTest generalStateTest = new();
+        generalStateTest.Name = "T8N";
         generalStateTest.Fork = spec;
         generalStateTest.Pre = allocJson;
         generalStateTest.Transactions = transactions;
@@ -79,6 +86,7 @@ public class InputProcessor
         generalStateTest.ParentBlobGasUsed = envInfo.ParentBlobGasUsed;
         generalStateTest.Ommers = envInfo.Ommers;
         generalStateTest.StateReward = stateReward;
+        generalStateTest.BlockHashes = envInfo.BlockHashes;
 
         return generalStateTest;
     }

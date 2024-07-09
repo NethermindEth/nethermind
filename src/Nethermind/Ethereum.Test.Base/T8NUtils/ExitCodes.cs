@@ -1,4 +1,4 @@
-﻿namespace Ethereum.Test.Base;
+namespace Ethereum.Test.Base;
 
 public class ExitCodes
 {

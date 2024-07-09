@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Nethermind.Core.Exceptions;
 
 namespace Ethereum.Test.Base;

@@ -1,4 +1,4 @@
-﻿using Ethereum.Test.Base;
+using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Crypto;

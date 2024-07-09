@@ -14,7 +14,7 @@ public class T8NToolTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWr
     private readonly BlockReceiptsTracer _receiptTracer = new();
     public TxReceipt LastReceipt => _receiptTracer.LastReceipt;
     public IReadOnlyList<TxReceipt> TxReceipts => _receiptTracer.TxReceipts;
-    public Dictionary<Address, Dictionary<UInt256, UInt256>> storages = new();
+    public Dictionary<Address, Dictionary<UInt256, byte[]>> storages = new();
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
     {
@@ -146,7 +146,7 @@ public class T8NToolTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWr
             storages[address] = [];
         }
 
-        storages[address][storageIndex] = new UInt256(newValue, true);
+        storages[address][storageIndex] = newValue.ToArray();
     }
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)

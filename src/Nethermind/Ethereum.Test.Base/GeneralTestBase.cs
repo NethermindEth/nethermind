@@ -32,7 +32,6 @@ using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
@@ -82,15 +81,13 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            if (test.IsPostMerge())
-            {
-                specProvider.UpdateMergeTransitionInfo(test.CurrentNumber, 0);
-            }
-
             BlockHeader header = test.GetBlockHeader();
             BlockHeader? parentHeader = test.GetParentBlockHeader();
 
-            header.BaseFeePerGas = CalculateBaseFeePerGas(test, parentHeader);
+            if (test.Fork.IsEip1559Enabled)
+            {
+                test.CurrentBaseFee = header.BaseFeePerGas = CalculateBaseFeePerGas(test, parentHeader);
+            }
 
             var blockhashProvider = GetBlockHashProvider(test, header, parentHeader);
 
@@ -144,9 +141,9 @@ namespace Ethereum.Test.Base
             var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
             withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-            if (test.Name == "T8N")
+            if (test.IsT8NTest)
             {
-                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider);
+                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, tracer);
             }
 
             CalculateReward(test.StateReward, block, stateProvider, spec);
@@ -213,7 +210,7 @@ namespace Ethereum.Test.Base
             testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
-            if (test.Name == "T8N")
+            if (test.IsT8NTest)
             {
                 Hash256 txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
                 IReceiptSpec receiptSpec = specProvider.GetSpec(header);
@@ -239,17 +236,17 @@ namespace Ethereum.Test.Base
                 testResult.BlobGasUsed = blobGasUsed;
 
                 var accounts = test.Pre.Keys.ToDictionary(address => address,
-                    address => ConvertAccountToNativePrestateTracerAccount(address, stateProvider, txTracer.storages));
+                    address => ConvertAccountToAccountState(address, stateProvider, txTracer.storages));
                 foreach (Ommer ommer in test.Ommers)
                 {
-                    accounts.Add(ommer.Address, ConvertAccountToNativePrestateTracerAccount(ommer.Address, stateProvider, txTracer.storages));
+                    accounts.Add(ommer.Address, ConvertAccountToAccountState(ommer.Address, stateProvider, txTracer.storages));
                 }
                 if (header.Beneficiary != null)
                 {
-                    accounts.Add(header.Beneficiary, ConvertAccountToNativePrestateTracerAccount(header.Beneficiary, stateProvider, txTracer.storages));
+                    accounts.Add(header.Beneficiary, ConvertAccountToAccountState(header.Beneficiary, stateProvider, txTracer.storages));
                 }
 
-                testResult.Accounts = accounts;
+                testResult.Accounts = accounts.Where(account => !account.Value.IsEmptyAccount()).ToDictionary();
                 testResult.TransactionsRlp = Rlp.Encode(successfulTxs.ToArray()).Bytes;
             }
 
@@ -276,19 +273,22 @@ namespace Ethereum.Test.Base
 
         private UInt256 CalculateBaseFeePerGas(GeneralStateTest test, BlockHeader? parentHeader)
         {
-            if (!test.Fork.IsEip1559Enabled) return UInt256.Zero;
-
             if (test.CurrentBaseFee.HasValue) return test.CurrentBaseFee.Value;
             if (test.Name == "T8N") return BaseFeeCalculator.Calculate(parentHeader, test.Fork);
 
             return _defaultBaseFeeForStateTest;
         }
 
-        private NativePrestateTracerAccount ConvertAccountToNativePrestateTracerAccount(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, UInt256>> storages)
+        private AccountState ConvertAccountToAccountState(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, byte[]>> storages)
         {
             var account = stateProvider.GetAccount(address);
             var code = stateProvider.GetCode(address);
-            var accountState = new NativePrestateTracerAccount(account.Balance, account.Nonce, code);
+            var accountState = new AccountState
+            {
+                Nonce = account.Nonce,
+                Balance = account.Balance,
+                Code = code.Length == 0 ? null : code
+            };
 
             if (storages.TryGetValue(address, out var storage))
             {
@@ -362,6 +362,7 @@ namespace Ethereum.Test.Base
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
             List<string> differences = [];
+            if (test.IsT8NTest) return differences;
             if (test.PostHash != stateProvider.StateRoot)
             {
                 differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
