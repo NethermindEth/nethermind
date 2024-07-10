@@ -2309,7 +2309,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
-                            if(((int)b + dataSection.Length) != (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
+                            if (((int)b + dataSection.Length) != (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
                             {
                                 goto AccessViolation;
                             }
@@ -2670,7 +2670,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
-        
+
 
         // Instruction is undefined in legacy code and only available in EOF
         if (!spec.IsEofEnabled ||
