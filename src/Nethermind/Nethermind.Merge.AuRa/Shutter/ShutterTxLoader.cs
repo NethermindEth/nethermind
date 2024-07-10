@@ -86,12 +86,19 @@ public class ShutterTxLoader(
     internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
     {
         int txCount = sequencedTransactions.Count;
-        int keyCount = decryptionKeys.Count;
+        int keyCount = decryptionKeys.Count - 1;
 
-        if (txCount != keyCount - 1)
+        if (txCount < keyCount)
         {
-            if (_logger.IsError) _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount - 1} keys (excluding placeholder).");
+            if (_logger.IsError) _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
             return [];
+        }
+
+        if (txCount > keyCount)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not decrypt all Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
+            sequencedTransactions = sequencedTransactions[..keyCount];
+            txCount = keyCount;
         }
 
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
@@ -162,7 +169,7 @@ public class ShutterTxLoader(
 
     private List<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber);
+        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).OrderBy(x => x.TxIndex);
         if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
         List<SequencedTransaction> txs = [];

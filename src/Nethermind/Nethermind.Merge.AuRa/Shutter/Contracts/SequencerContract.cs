@@ -35,6 +35,7 @@ public class SequencerContract : Contract
         _logger = logManager.GetClassLogger();
     }
 
+    // returned events not guaranteed to be sorted
     public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
     {
         BlockParameter end = new(headBlockNumber);
