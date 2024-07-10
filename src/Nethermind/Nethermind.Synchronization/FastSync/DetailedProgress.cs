@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.FastSync
         internal void DisplayProgressReport(int pendingRequestsCount, BranchProgress branchProgress, ILogger logger)
         {
             TimeSpan sinceLastReport = DateTime.UtcNow - LastReportTime.small;
-            if (sinceLastReport > TimeSpan.FromSeconds(1))
+            if (sinceLastReport > TimeSpan.FromSeconds(10))
             {
                 // decimal savedNodesPerSecond = 1000m * (SavedNodesCount - LastSavedNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
                 decimal savedKBytesPerSecond = 1000m * ((DataSize - _lastDataSize) / 1000m) / (decimal)sinceLastReport.TotalMilliseconds;
@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.FastSync
                         logger.Info(stateSyncReport);
                     }
                 }
-                if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(10))
+                if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(100))
                 {
                     long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;
                     if (logger.IsDebug) logger.Debug($"OK {(decimal)OkCount / TotalRequestsCount:p2} | Emptish: {(decimal)EmptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal)BadQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal)InvalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal)NotAssignedCount / TotalRequestsCount:p2}");
