@@ -183,7 +183,6 @@ namespace Ethereum.Test.Base
                         transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(transactionResult.Error, tx.SenderAddress.ToString(true), tx.Nonce, stateProvider.GetNonce(tx.SenderAddress))));
                         stateProvider.Reset();
                     }
-                    stateProvider.RecalculateStateRoot();
                     txIndex++;
                 }
                 else if (error != null)

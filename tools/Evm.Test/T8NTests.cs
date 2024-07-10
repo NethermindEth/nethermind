@@ -273,8 +273,6 @@ public class T8NTests
         {
             var outputString = _ethereumJsonSerializer.Serialize(output, true);
             var fileContent = File.ReadAllText(expectedOutputFile);
-            var expectedOutput = _ethereumJsonSerializer.Deserialize<T8NOutput>(fileContent);
-            Assert.That(AreEqual(expectedOutput.Alloc, output.Alloc));
             Assert.That(AreEqual(fileContent, outputString));
         }
     }
