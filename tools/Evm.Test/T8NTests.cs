@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
+using Evm.JsonTypes;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
 
@@ -264,7 +264,6 @@ public class T8NTests
             false,
             false,
             false,
-            false,
             false
         );
 
@@ -274,6 +273,8 @@ public class T8NTests
         {
             var outputString = _ethereumJsonSerializer.Serialize(output, true);
             var fileContent = File.ReadAllText(expectedOutputFile);
+            var expectedOutput = _ethereumJsonSerializer.Deserialize<T8NOutput>(fileContent);
+            Assert.That(AreEqual(expectedOutput.Alloc, output.Alloc));
             Assert.That(AreEqual(fileContent, outputString));
         }
     }

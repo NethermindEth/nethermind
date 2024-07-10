@@ -134,11 +134,6 @@ namespace Ethereum.Test.Base
             var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
             withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-            if (test.IsT8NTest)
-            {
-                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, txTracer);
-            }
-
             CalculateReward(test.StateReward, block, stateProvider, spec);
 
             GethTraceOptions gethTraceOptions = new GethTraceOptions
@@ -148,13 +143,15 @@ namespace Ethereum.Test.Base
             };
 
             BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
+            StorageTxTracer storageTxTracer = new();
             if (test.IsT8NTest)
             {
                 GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, gethTraceOptions, new FileSystem());
-                StorageTxTracer storageTxTracer = new();
                 CompositeBlockTracer compositeBlockTracer = new();
                 compositeBlockTracer.AddRange(storageTxTracer, gethLikeBlockFileTracer);
                 blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+                
+                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, storageTxTracer);
             }
             blockReceiptsTracer.StartNewBlockTrace(block);
 
