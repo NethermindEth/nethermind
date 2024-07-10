@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -35,8 +38,19 @@ public class SequencerContract : Contract
         _logger = logManager.GetClassLogger();
     }
 
-    // returned events not guaranteed to be sorted
     public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
+    {
+        IEnumerable<IEnumerable<ISequencerContract.TransactionSubmitted>> eventBlocks = GetEventBlocks(eon, txPointer, headBlockNumber).Reverse();
+        foreach (IEnumerable<ISequencerContract.TransactionSubmitted> block in eventBlocks)
+        {
+            foreach (ISequencerContract.TransactionSubmitted tx in block)
+            {
+                yield return tx;
+            }
+        }
+    }
+
+    private IEnumerable<IEnumerable<ISequencerContract.TransactionSubmitted>> GetEventBlocks(ulong eon, ulong txPointer, long headBlockNumber)
     {
         BlockParameter end = new(headBlockNumber);
 
@@ -57,34 +71,33 @@ public class SequencerContract : Contract
                 yield break;
             }
 
-            bool shouldBreak = false;
-            int count = 0;
-            foreach (FilterLog log in logs)
+            end = new BlockParameter(startBlockNumber - 1);
+
+            if (logs.IsNullOrEmpty())
             {
-                ISequencerContract.TransactionSubmitted tx = ParseTransactionSubmitted(log);
-
-                // if transaction in chunk is before txPointer then don't search further
-                if (tx.Eon < eon || tx.TxIndex <= txPointer)
-                {
-                    shouldBreak = true;
-                }
-
-                if (tx.Eon == eon && tx.TxIndex >= txPointer)
-                {
-                    yield return tx;
-                }
-
-                count++;
+                continue;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Got {count} Shutter logs from blocks {start.BlockNumber!.Value} - {end.BlockNumber!.Value}");
+            IEnumerable<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer);
+            yield return events;
 
-            if (shouldBreak)
+            ISequencerContract.TransactionSubmitted tx = events.First();
+            if (tx.Eon < eon || tx.TxIndex <= txPointer)
             {
                 yield break;
             }
-
-            end = new BlockParameter(startBlockNumber - 1);
+        }
+    }
+    
+    private IEnumerable<ISequencerContract.TransactionSubmitted> eventsFromLogs(IEnumerable<FilterLog> logs, ulong eon, ulong txPointer)
+    {
+        foreach (FilterLog log in logs)
+        {
+            ISequencerContract.TransactionSubmitted tx = ParseTransactionSubmitted(log);
+            if (tx.Eon == eon && tx.TxIndex >= txPointer)
+            {
+                yield return tx;
+            }
         }
     }
 
