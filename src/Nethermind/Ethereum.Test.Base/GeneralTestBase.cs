@@ -147,13 +147,15 @@ namespace Ethereum.Test.Base
                 DisableStack = false
             };
 
-            GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, gethTraceOptions, new FileSystem());
-            StorageTxTracer storageTxTracer = new();
-            CompositeBlockTracer compositeBlockTracer = new();
-            compositeBlockTracer.AddRange(storageTxTracer, gethLikeBlockFileTracer);
-
             BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
-            blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+            if (test.IsT8NTest)
+            {
+                GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, gethTraceOptions, new FileSystem());
+                StorageTxTracer storageTxTracer = new();
+                CompositeBlockTracer compositeBlockTracer = new();
+                compositeBlockTracer.AddRange(storageTxTracer, gethLikeBlockFileTracer);
+                blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+            }
             blockReceiptsTracer.StartNewBlockTrace(block);
 
             int txIndex = 0;
