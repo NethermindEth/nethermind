@@ -168,6 +168,7 @@ namespace Ethereum.Test.Base
                         .Execute(tx, new BlockExecutionContext(header), test.IsT8NTest ? blockReceiptsTracer : txTracer);
                     blockReceiptsTracer.EndTxTrace();
 
+                    if (!test.IsT8NTest) continue;
                     transactionExecutionReport.ValidTransactions.Add(tx);
                     if (transactionResult.Success)
                     {
