@@ -12,7 +12,6 @@ namespace Evm
     public class TraceOptions
     {
         public bool Memory { get; set; }
-        public bool NoMemory { get; set; }
         public bool NoReturnData { get; set; }
         public bool NoStack { get; set; }
         public bool ReturnData { get; set; }
@@ -38,11 +37,10 @@ namespace Evm
             var outputBaseDirOpt = new Option<string>("--output.basedir", description: "Output base directory");
             var outputBodyOpt = new Option<string>("--output.body", description: "Output body");
             var outputResultOpt = new Option<string>("--output.result", description: "Output result");
-            var stateChainIdOpt = new Option<int>("--state.chainId", description: "State chain id", getDefaultValue: () => 1);
+            var stateChainIdOpt = new Option<ulong>("--state.chainId", description: "State chain id", getDefaultValue: () => 1);
             var stateForkOpt = new Option<string>("--state.fork", description: "State fork", getDefaultValue: () => "GrayGlacier");
             var stateRewardOpt = new Option<string>("--state.reward", description: "State reward");
             var traceMemoryOpt = new Option<bool>("--trace.memory", description: "Trace memory", getDefaultValue: () => false);
-            var traceNoMemoryOpt = new Option<bool>("--trace.noMemory", description: "Trace no memory", getDefaultValue: () => true);
             var traceNoReturnDataOpt = new Option<bool>("--trace.noReturnData", description: "Trace no return data", getDefaultValue: () => true);
             var traceNoStackOpt = new Option<bool>("--trace.noStack", description: "Trace no stack", getDefaultValue: () => false);
             var traceReturnDataOpt = new Option<bool>("--trace.returnData", description: "Trace return data", getDefaultValue: () => false);
@@ -60,7 +58,6 @@ namespace Evm
                 stateForkOpt,
                 stateRewardOpt,
                 traceMemoryOpt,
-                traceNoMemoryOpt,
                 traceNoReturnDataOpt,
                 traceNoStackOpt,
                 traceReturnDataOpt,
@@ -79,7 +76,6 @@ namespace Evm
                     var traceOpts = new TraceOptions()
                     {
                         Memory = context.ParseResult.GetValueForOption(traceMemoryOpt),
-                        NoMemory = context.ParseResult.GetValueForOption(traceNoMemoryOpt),
                         NoReturnData = context.ParseResult.GetValueForOption(traceNoReturnDataOpt),
                         NoStack = context.ParseResult.GetValueForOption(traceNoStackOpt),
                         ReturnData = context.ParseResult.GetValueForOption(traceReturnDataOpt),
@@ -99,7 +95,6 @@ namespace Evm
                             context.ParseResult.GetValueForOption(stateForkOpt),
                             context.ParseResult.GetValueForOption(stateRewardOpt),
                             traceOpts.Memory,
-                            traceOpts.NoMemory,
                             traceOpts.NoReturnData,
                             traceOpts.NoStack,
                             traceOpts.ReturnData

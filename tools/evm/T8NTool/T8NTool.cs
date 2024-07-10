@@ -2,6 +2,7 @@ using System.Text.Json;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.T8NUtils;
 using Evm.JsonTypes;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Serialization.Json;
 
@@ -26,11 +27,10 @@ public class T8NTool : GeneralStateTestBase
         string? outputAlloc,
         string? outputBody,
         string? outputResult,
-        int stateChainId,
+        ulong stateChainId,
         string stateFork,
         string? stateReward,
         bool traceMemory,
-        bool traceNoMemory,
         bool traceNoReturnData,
         bool traceNoStack,
         bool traceReturnData)
@@ -38,7 +38,12 @@ public class T8NTool : GeneralStateTestBase
         T8NOutput t8NOutput = new();
         try
         {
-            var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward);
+            GethTraceOptions gethTraceOptions = new GethTraceOptions
+            {
+                EnableMemory = traceMemory,
+                DisableStack = traceNoStack
+            };
+            var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId, gethTraceOptions);
 
             if (outputAlloc == "stdout") t8NOutput.Alloc = t8NExecutionResult.Alloc;
             else if (outputAlloc != null) WriteToFile(outputAlloc, outputBasedir, t8NExecutionResult.Alloc);
@@ -85,9 +90,11 @@ public class T8NTool : GeneralStateTestBase
         string inputEnv,
         string inputTxs,
         string stateFork,
-        string? stateReward)
+        string? stateReward,
+        ulong stateChainId,
+        GethTraceOptions gethTraceOptions)
     {
-        var generalStateTest = InputProcessor.ConvertToGeneralStateTest(inputAlloc, inputEnv, inputTxs, stateFork, stateReward);
+        var generalStateTest = InputProcessor.ConvertToGeneralStateTest(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId, gethTraceOptions);
 
         var res = RunTest(generalStateTest);
 

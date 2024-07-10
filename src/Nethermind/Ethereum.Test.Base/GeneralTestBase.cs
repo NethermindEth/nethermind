@@ -115,7 +115,7 @@ namespace Ethereum.Test.Base
             var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
             foreach (var transaction in test.Transactions)
             {
-                transaction.ChainId ??= MainnetSpecProvider.Instance.ChainId;
+                transaction.ChainId ??= test.StateChainId;
                 transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
             }
 
@@ -141,14 +141,21 @@ namespace Ethereum.Test.Base
 
             CalculateReward(test.StateReward, block, stateProvider, spec);
 
-            GethTraceOptions gethTraceOptions = new GethTraceOptions();
-            GethLikeBlockFileTracer gethLikeTxMemoryTracer = new(block, new GethTraceOptions(), new FileSystem());
+            GethTraceOptions gethTraceOptions = new GethTraceOptions
+            {
+                EnableMemory = true,
+                DisableStack = false
+            };
 
-            BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
+            GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, gethTraceOptions, new FileSystem());
             StorageTxTracer storageTxTracer = new();
-            blockReceiptsTracer.StartNewBlockTrace(block);
-            CompositeTxTracer compositeTxTracer = new(blockReceiptsTracer, storageTxTracer, txTracer);
+            CompositeBlockTracer compositeBlockTracer = new();
+            compositeBlockTracer.AddRange(storageTxTracer, gethLikeBlockFileTracer);
             
+            BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
+            blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+            blockReceiptsTracer.StartNewBlockTrace(block);
+
             int txIndex = 0;
             TransactionExecutionReport transactionExecutionReport = new();
 
@@ -158,7 +165,8 @@ namespace Ethereum.Test.Base
                 if (isValid)
                 {
                     blockReceiptsTracer.StartNewTxTrace(tx);
-                    TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), compositeTxTracer);
+                    TransactionResult transactionResult = transactionProcessor
+                        .Execute(tx, new BlockExecutionContext(header), blockReceiptsTracer);
                     blockReceiptsTracer.EndTxTrace();
 
                     transactionExecutionReport.ValidTransactions.Add(tx);
@@ -183,6 +191,7 @@ namespace Ethereum.Test.Base
                     transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(error)));
                 }
             }
+            blockReceiptsTracer.EndBlockTrace();
 
             stopwatch.Stop();
 

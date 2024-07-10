@@ -12,7 +12,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
 namespace Ethereum.Test.Base
@@ -55,7 +57,8 @@ namespace Ethereum.Test.Base
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
         public Ommer[] Ommers { get; set; } = [];
         public string? StateReward { get; set; }
-
+        public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
+        public GethTraceOptions GethTraceOptions { get; set; } = GethTraceOptions.Default;
 
         public override string ToString()
         {

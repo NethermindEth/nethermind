@@ -4,6 +4,7 @@ using Evm.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -20,7 +21,9 @@ public class InputProcessor
         string inputEnv,
         string inputTxs,
         string stateFork,
-        string? stateReward)
+        string? stateReward,
+        ulong stateChainId,
+        GethTraceOptions gethTraceOptions)
     {
         Dictionary<Address, AccountState> allocJson = EthereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = EthereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
@@ -88,6 +91,8 @@ public class InputProcessor
         generalStateTest.Ommers = envInfo.Ommers;
         generalStateTest.StateReward = stateReward;
         generalStateTest.BlockHashes = envInfo.BlockHashes;
+        generalStateTest.StateChainId = stateChainId;
+        generalStateTest.GethTraceOptions = gethTraceOptions;
 
         return generalStateTest;
     }
