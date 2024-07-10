@@ -58,11 +58,6 @@ public class TaikoPostMergeBlockProducer(
         return new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
     }
 
-    protected override Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
-    {
-        block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
-        return base.SealBlock(block, parent, token);
-    }
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
         TaikoPayloadAttributes attrs = (payloadAttributes as TaikoPayloadAttributes)

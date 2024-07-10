@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Json;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -98,8 +99,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!HeaderValidator.ValidateHash(block!.Header))
         {
-            if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
-            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
+            if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}. Payload's hash: {block.CalculateHash()}, txroot: {block.TxRoot}, wroot: {block.WithdrawalsRoot}");
+            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}.");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
