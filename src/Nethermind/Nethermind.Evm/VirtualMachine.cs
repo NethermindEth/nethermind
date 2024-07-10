@@ -1432,7 +1432,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             if (spec.IsEofEnabled && EvmObjectFormat.IsEof(externalCode.Span, out _))
                             {
-                                slice = EOF.EvmObjectFormat.MAGIC.SliceWithZeroPadding(0, 2);
+                                slice = EOF.EvmObjectFormat.MAGIC.SliceWithZeroPadding(b, (int)result);
                             }
                             else
                             {
