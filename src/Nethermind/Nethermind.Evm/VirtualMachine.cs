@@ -352,7 +352,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (previousState.ExecutionType.IsAnyCreateLegacy())
                         {
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Bytes.Length, spec);
-                            bool invalidCode = !CodeDepositHandler.CodeIsValid(spec, callResult.Output.Bytes, callResult.FromVersion);
+                            bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(callResult.Output.Bytes.Span);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 ReadOnlyMemory<byte> code = callResult.Output.Bytes;
@@ -415,14 +415,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                     : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
                                 + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
 
-                            ushort dataSize = (ushort)(eofCodeInfo.Header.DataSection.Size + auxExtraData.Length);
+                            ushort dataSize = (ushort)(eofCodeInfo.DataSection.Length + auxExtraData.Length);
                             bytecodeResult[dataSubheaderSectionStart] = (byte)(bytecodeResult.Length >> 8);
                             bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(bytecodeResult.Length & 0xFF);
 
                             bytecodeResultArray = bytecodeResult.ToArray();
 
                             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-                            bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize) || dataSize != eofCodeInfo.Header.DataSection.Size;
+                            bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray?.Length ?? 0, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
@@ -2224,7 +2224,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             goto StackOverflow;
                         }
 
-                        if (vmState.ReturnStackHead + 1 == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
+                        if (vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
                             goto InvalidSubroutineEntry;
 
                         vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
@@ -2308,6 +2308,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (b > UInt256.Zero)
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
+
+                            if(((int)b + dataSection.Length) != (env.CodeInfo as EofCodeInfo).Header.DataSection.Size)
+                            {
+                                goto AccessViolation;
+                            }
 
                             auxData = vmState.Memory.Load(a, b);
                         }
@@ -2665,13 +2670,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
+        
+
         // Instruction is undefined in legacy code and only available in EOF
         if (!spec.IsEofEnabled ||
             env.CodeInfo.Version == 0 ||
             (instruction == Instruction.EXTDELEGATECALL && !spec.DelegateCallEnabled) ||
             (instruction == Instruction.EXTSTATICCALL && !spec.StaticCallEnabled))
             return EvmExceptionType.BadInstruction;
-
 
         // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
         stack.PopWord256(out Span<byte> targetBytes);
@@ -2692,12 +2698,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 break;
         }
 
-        UInt256 transferValue = instruction == Instruction.EXTDELEGATECALL ? UInt256.Zero : callValue;
         // 3. If value is non-zero:
         //  a: Halt with exceptional failure if the current frame is in static-mode.
-        if (vmState.IsStatic && !transferValue.IsZero) return EvmExceptionType.StaticCallViolation;
+        if (vmState.IsStatic && !callValue.IsZero) return EvmExceptionType.StaticCallViolation;
         //  b. Charge CALL_VALUE_COST gas.
-        if (!UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!callValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         // 4. If target_address has any of the high 12 bytes set to a non-zero value
         // (i.e. it does not contain a 20-byte address)
@@ -2717,7 +2722,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, targetAddress, spec)) return EvmExceptionType.OutOfGas;
 
         if ((!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(targetAddress))
-            || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(targetAddress)))
+            || (spec.ClearEmptyAccountWhenTouched && callValue != 0 && _state.IsDeadAccount(targetAddress)))
         {
             // 7. If target_address is not in the state and the call configuration would result in account creation,
             //    charge ACCOUNT_CREATION_COST (25000) gas. (The only such case in this EIP is if value is non-zero.)
@@ -2732,7 +2737,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         //  b: Balance of the current account is less than value.
         //  c: Current call stack depth equals 1024.
         if (callGas < GasCostOf.CallStipend ||
-            (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue) ||
+            (!callValue.IsZero && _state.GetBalance(env.ExecutingAccount) < callValue) ||
             env.CallDepth >= MaxCallDepth)
         {
             returnData = CallResult.BoxedEmpty;
@@ -2758,7 +2763,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             _logger.Trace($"caller {caller}");
             _logger.Trace($"target {targetAddress}");
             _logger.Trace($"value {callValue}");
-            _logger.Trace($"transfer value {transferValue}");
         }
 
         ICodeInfo targetCodeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, targetAddress, spec);
@@ -2783,7 +2787,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
         Snapshot snapshot = _state.TakeSnapshot();
-        if (!transferValue.IsZero) _state.SubtractFromBalance(caller, transferValue, spec);
+        if (!callValue.IsZero) _state.SubtractFromBalance(caller, callValue, spec);
 
         ExecutionEnvironment callEnv = new
         (
@@ -2792,7 +2796,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             caller: caller,
             codeSource: targetAddress,
             executingAccount: targetAddress,
-            transferValue: transferValue,
+            transferValue: callValue,
             value: callValue,
             inputData: callData,
             codeInfo: _codeInfoRepository.GetCachedCodeInfo(_state, targetAddress, spec)
@@ -2960,6 +2964,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             stack.PushZero();
             return (EvmExceptionType.None, null);
         }
+        _state.IncrementNonce(env.ExecutingAccount);
 
         // 11 - calculate new_address as keccak256(0xff || sender || salt || keccak256(initcontainer))[12:]
         Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initcontainer);
@@ -2969,7 +2974,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.WarmUp(contractAddress);
         }
 
-        _state.IncrementNonce(env.ExecutingAccount);
 
         if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState?.Memory.Size ?? 0);
         // todo: === below is a new call - refactor / move
@@ -3108,8 +3112,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.WarmUp(contractAddress);
         }
 
-        _state.IncrementNonce(env.ExecutingAccount);
-
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
@@ -3120,6 +3122,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             UpdateGasUp(callGas, ref gasAvailable);
             return (EvmExceptionType.None, null);
         }
+
+        _state.IncrementNonce(env.ExecutingAccount);
 
         CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
         codeinfo.AnalyseInBackgroundIfRequired();
