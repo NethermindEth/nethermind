@@ -531,7 +531,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
                     if (tx.IsContractCreation)
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Length);
                         if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             ThrowOutOfGasException();

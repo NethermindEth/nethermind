@@ -278,7 +278,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 {
                     if (typeof(TTracingActions) == typeof(IsTracing))
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Bytes.Length, spec);
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
                         if (callResult.IsException)
                         {
@@ -351,8 +351,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         previousCallOutput = ZeroPaddedSpan.Empty;
                         if (previousState.ExecutionType.IsAnyCreateLegacy())
                         {
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Bytes.Length, spec);
-                            bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(callResult.Output.Bytes.Span);
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+                            bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes.Span);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 ReadOnlyMemory<byte> code = callResult.Output.Bytes;
@@ -423,7 +423,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
                             bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray?.Length ?? 0, spec);
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 // 4 - set state[new_address].code to the updated deploy container
