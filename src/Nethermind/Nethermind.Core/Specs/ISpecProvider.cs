@@ -35,9 +35,9 @@ namespace Nethermind.Core.Specs
         /// </summary>
         ulong TimestampFork { get; }
 
-        ulong? TimestampBeaconGenesis { get => null; }
+        virtual ulong? TimestampBeaconGenesis { get => null; }
 
-        TimeSpan? SlotLength { get => null; }
+        virtual TimeSpan? SlotLength { get => null; }
 
         UInt256? TerminalTotalDifficulty { get; }
 
