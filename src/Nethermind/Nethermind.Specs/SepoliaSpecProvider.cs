@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -36,6 +37,8 @@ public class SepoliaSpecProvider : ISpecProvider
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
     public ulong TimestampFork => ISpecProvider.TimestampForkNever;
+    public ulong? TimestampBeaconGenesis => BeaconChainGenesisTimestamp;
+    public TimeSpan? SlotLength => TimeSpan.FromSeconds(12);
     public UInt256? TerminalTotalDifficulty { get; private set; } = 17000000000000000;
     public IReleaseSpec GenesisSpec => London.Instance;
     public ForkActivation[] TransitionActivations { get; } =

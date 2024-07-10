@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -48,6 +49,8 @@ public class GoerliSpecProvider : ISpecProvider
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
+    public ulong? TimestampBeaconGenesis => BeaconChainGenesisTimestamp;
+    public TimeSpan? SlotLength => TimeSpan.FromSeconds(12);
     public UInt256? TerminalTotalDifficulty { get; private set; } = 10790000;
     public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
     public ForkActivation[] TransitionActivations { get; } =

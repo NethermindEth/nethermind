@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -65,6 +66,8 @@ public class MainnetSpecProvider : ISpecProvider
     public long? DaoBlockNumber => DaoBlockNumberConst;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
     public ulong TimestampFork { get; } = ShanghaiBlockTimestamp;
+    public ulong? TimestampBeaconGenesis => BeaconChainGenesisTimestamp;
+    public TimeSpan? SlotLength => TimeSpan.FromSeconds(12);
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("58750000000000000000000");
     public IReleaseSpec GenesisSpec => Frontier.Instance;
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);

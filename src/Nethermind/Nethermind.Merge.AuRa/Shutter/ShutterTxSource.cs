@@ -15,7 +15,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
-using Nethermind.Specs;
 using Nethermind.Blockchain;
 
 namespace Nethermind.Merge.AuRa.Shutter;
@@ -68,8 +67,6 @@ public class ShutterTxSource(
         }
         else
         {
-            // if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {nextSlot} with {shutterTransactions.Value.Transactions.Length} transactions.");
-            // if (shutterTransactions.Value.Slot == nextSlot)
             if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {slot} with {shutterTransactions.Value.Transactions.Length} transactions.");
             if (shutterTransactions.Value.Slot == slot)
             {
@@ -92,14 +89,14 @@ public class ShutterTxSource(
 
     private ulong GetBuildingSlot()
     {
-        // assume Gnosis or Chiado chain
-        ulong genesisTimestamp = specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
-        ulong timeSinceGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (genesisTimestamp * 1000);
-        ulong currentSlot = timeSinceGenesis / 5000;
-        ushort slotOffset = (ushort)(timeSinceGenesis % 5000);
+        ulong genesisTimestamp = specProvider.TimestampBeaconGenesis!.Value * 1000;
+        ulong timeSinceGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - genesisTimestamp;
+        ushort slotLength = (ushort)specProvider.SlotLength!.Value.Milliseconds;
+        ulong currentSlot = timeSinceGenesis / slotLength;
+        ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
         // if in first third then building for this slot, otherwise next
-        return (slotOffset < 1667) ? currentSlot : currentSlot + 1;
+        return (slotOffset <= (slotLength / 3)) ? currentSlot : currentSlot + 1;
     }
 
     private bool IsRegistered(BlockHeader parent)
