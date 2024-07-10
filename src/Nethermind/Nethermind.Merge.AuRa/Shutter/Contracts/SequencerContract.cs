@@ -67,30 +67,29 @@ public class SequencerContract : Contract
             }
             catch (ResourceNotFoundException e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Cannot fetch Shutter transactions from logs: {e}");
+                if (_logger.IsDebug) _logger.Warn($"Cannot fetch Shutter transactions from logs: {e}");
                 yield break;
+            }
+
+            IEnumerable<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer, start.BlockNumber!.Value, end.BlockNumber!.Value);
+            yield return events;
+
+            if (!events.IsNullOrEmpty())
+            {
+                ISequencerContract.TransactionSubmitted tx = events.First();
+                if (tx.Eon < eon || tx.TxIndex <= txPointer)
+                {
+                    yield break;
+                }
             }
 
             end = new BlockParameter(startBlockNumber - 1);
-
-            if (logs.IsNullOrEmpty())
-            {
-                continue;
-            }
-
-            IEnumerable<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer);
-            yield return events;
-
-            ISequencerContract.TransactionSubmitted tx = events.First();
-            if (tx.Eon < eon || tx.TxIndex <= txPointer)
-            {
-                yield break;
-            }
         }
     }
     
-    private IEnumerable<ISequencerContract.TransactionSubmitted> eventsFromLogs(IEnumerable<FilterLog> logs, ulong eon, ulong txPointer)
+    private IEnumerable<ISequencerContract.TransactionSubmitted> eventsFromLogs(IEnumerable<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock)
     {
+        int count = 0;
         foreach (FilterLog log in logs)
         {
             ISequencerContract.TransactionSubmitted tx = ParseTransactionSubmitted(log);
@@ -98,7 +97,10 @@ public class SequencerContract : Contract
             {
                 yield return tx;
             }
+            count++;
         }
+
+        if (_logger.IsDebug) _logger.Debug($"Got {count} Shutter logs from blocks {startBlock} - {endBlock}");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
