@@ -40,6 +40,7 @@ public class ValidatorRegistryContract(
         return update;
     }
 
+
     public bool IsRegistered(BlockHeader blockHeader, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered)
     {
         Dictionary<ulong, ulong?> nonces = [];

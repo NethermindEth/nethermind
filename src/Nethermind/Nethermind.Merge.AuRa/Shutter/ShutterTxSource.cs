@@ -6,37 +6,27 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Abi;
 using Nethermind.Crypto;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Producers;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
-using Nethermind.Consensus.Processing;
-using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Blockchain;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterTxSource(
     ILogFinder logFinder,
-    ReadOnlyTxProcessingEnvFactory envFactory,
-    IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
     ISpecProvider specProvider,
     IEthereumEcdsa ethereumEcdsa,
     IReadOnlyBlockTree readOnlyBlockTree,
-    Dictionary<ulong, byte[]> validatorsInfo,
     ILogManager logManager)
     : ITxSource
 {
     private ShutterTransactions? _shutterTransactions;
-    private bool _validatorsRegistered;
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ShutterTxLoader _txLoader = new(logFinder, shutterConfig, specProvider, ethereumEcdsa, readOnlyBlockTree, logManager);
-    private readonly Address _validatorRegistryContractAddress = new(shutterConfig.ValidatorRegistryContractAddress!);
-    private readonly ulong _validatorRegistryMessageVersion = shutterConfig.ValidatorRegistryMessageVersion;
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -44,17 +34,6 @@ public class ShutterTxSource(
         {
             if (_logger.IsDebug) _logger.Debug($"Not building Shutter block since running in non-validator mode.");
             return [];
-        }
-
-        // assume validator will stay registered
-        if (!_validatorsRegistered)
-        {
-            if (!IsRegistered(parent))
-            {
-                return [];
-            }
-
-            _validatorsRegistered = true;
         }
 
         ulong slot = GetBuildingSlot();
@@ -100,17 +79,4 @@ public class ShutterTxSource(
         return (slotOffset <= (slotLength / 3)) ? currentSlot : currentSlot + 1;
     }
 
-    private bool IsRegistered(BlockHeader parent)
-    {
-        IReadOnlyTxProcessingScope scope = envFactory.Create().Build(parent.StateRoot!);
-        ITransactionProcessor processor = scope.TransactionProcessor;
-
-        ValidatorRegistryContract validatorRegistryContract = new(processor, abiEncoder, _validatorRegistryContractAddress, _logger, specProvider.ChainId, _validatorRegistryMessageVersion);
-        if (!validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
-        {
-            if (_logger.IsError) _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
-            return false;
-        }
-        return true;
-    }
 }
