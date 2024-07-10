@@ -9,14 +9,6 @@ using Nethermind.Specs.Forks;
 
 namespace Evm
 {
-    public class TraceOptions
-    {
-        public bool Memory { get; set; }
-        public bool NoReturnData { get; set; }
-        public bool NoStack { get; set; }
-        public bool ReturnData { get; set; }
-    }
-
     public static class Program
     {
         public static async Task Main(string[] args)
@@ -41,7 +33,7 @@ namespace Evm
             var stateForkOpt = new Option<string>("--state.fork", description: "State fork", getDefaultValue: () => "GrayGlacier");
             var stateRewardOpt = new Option<string>("--state.reward", description: "State reward");
             var traceMemoryOpt = new Option<bool>("--trace.memory", description: "Trace memory", getDefaultValue: () => false);
-            var traceNoReturnDataOpt = new Option<bool>("--trace.noReturnData", description: "Trace no return data", getDefaultValue: () => true);
+            var traceOpt = new Option<bool>("--trace", description: "Configures the use of the JSON opcode tracer. This tracer emits traces to files as trace-<txIndex>-<txHash>.jsonl", getDefaultValue: () => false);
             var traceNoStackOpt = new Option<bool>("--trace.noStack", description: "Trace no stack", getDefaultValue: () => false);
             var traceReturnDataOpt = new Option<bool>("--trace.returnData", description: "Trace return data", getDefaultValue: () => false);
 
@@ -57,8 +49,8 @@ namespace Evm
                 stateChainIdOpt,
                 stateForkOpt,
                 stateRewardOpt,
+                traceOpt,
                 traceMemoryOpt,
-                traceNoReturnDataOpt,
                 traceNoStackOpt,
                 traceReturnDataOpt,
             };
@@ -73,10 +65,10 @@ namespace Evm
                 {
                     // Note: https://learn.microsoft.com/en-us/dotnet/standard/commandline/model-binding#parameter-binding-more-than-16-options-and-arguments
                     // t8n accepts less options (15) than 16 but command extension methods supports max 8 anyway
-                    var traceOpts = new TraceOptions()
+                    var traceOpts = new TraceOptions
                     {
+                        IsEnabled = context.ParseResult.GetValueForOption(traceOpt),
                         Memory = context.ParseResult.GetValueForOption(traceMemoryOpt),
-                        NoReturnData = context.ParseResult.GetValueForOption(traceNoReturnDataOpt),
                         NoStack = context.ParseResult.GetValueForOption(traceNoStackOpt),
                         ReturnData = context.ParseResult.GetValueForOption(traceReturnDataOpt),
                     };
@@ -94,10 +86,7 @@ namespace Evm
                             context.ParseResult.GetValueForOption(stateChainIdOpt),
                             context.ParseResult.GetValueForOption(stateForkOpt),
                             context.ParseResult.GetValueForOption(stateRewardOpt),
-                            traceOpts.Memory,
-                            traceOpts.NoReturnData,
-                            traceOpts.NoStack,
-                            traceOpts.ReturnData
+                            traceOpts
                         );
                         Environment.ExitCode = output.ExitCode;
                     });

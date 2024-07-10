@@ -136,19 +136,17 @@ namespace Ethereum.Test.Base
 
             CalculateReward(test.StateReward, block, stateProvider, spec);
 
-            GethTraceOptions gethTraceOptions = new GethTraceOptions
-            {
-                EnableMemory = true,
-                DisableStack = false
-            };
-
             BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
             StorageTxTracer storageTxTracer = new();
             if (test.IsT8NTest)
             {
-                GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, gethTraceOptions, new FileSystem());
                 CompositeBlockTracer compositeBlockTracer = new();
-                compositeBlockTracer.AddRange(storageTxTracer, gethLikeBlockFileTracer);
+                compositeBlockTracer.Add(storageTxTracer);
+                if (test.IsTraceEnabled)
+                {
+                    GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, test.GethTraceOptions, new FileSystem());
+                    compositeBlockTracer.Add(gethLikeBlockFileTracer);
+                }
                 blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
 
                 _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, storageTxTracer);

@@ -23,8 +23,13 @@ public class InputProcessor
         string stateFork,
         string? stateReward,
         ulong stateChainId,
-        GethTraceOptions gethTraceOptions)
+        TraceOptions traceOptions)
     {
+        GethTraceOptions gethTraceOptions = new GethTraceOptions
+        {
+            EnableMemory = traceOptions.Memory,
+            DisableStack = traceOptions.NoStack
+        };
         Dictionary<Address, AccountState> allocJson = EthereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = EthereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
 
