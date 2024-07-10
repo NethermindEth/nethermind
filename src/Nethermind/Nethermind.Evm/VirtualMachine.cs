@@ -37,6 +37,7 @@ public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT;
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(EvmObjectFormat.MAGIC);
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
     internal static readonly UInt256 BigInt32 = 32;
@@ -2083,7 +2084,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             Span<byte> account = _state.GetCode(address);
                             if (spec.IsEofEnabled && EvmObjectFormat.IsEof(account, out _))
                             {
-                                stack.PushBytes(SHA256.HashData(EvmObjectFormat.MAGIC));
+                                stack.PushBytes(EofHash256);
                             }
                             else
                             {

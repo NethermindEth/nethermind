@@ -163,6 +163,12 @@ namespace Ethereum.Test.Base
             testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
+            if (differences.Count > 0)
+            {
+                TestContext.WriteLine();
+                TestContext.WriteLine("Differences from expected");
+                TestContext.WriteLine();
+            }
             foreach (string difference in differences)
             {
                 TestContext.WriteLine(difference);
