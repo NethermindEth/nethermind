@@ -165,7 +165,7 @@ namespace Ethereum.Test.Base
                 {
                     blockReceiptsTracer.StartNewTxTrace(tx);
                     TransactionResult transactionResult = transactionProcessor
-                        .Execute(tx, new BlockExecutionContext(header), blockReceiptsTracer);
+                        .Execute(tx, new BlockExecutionContext(header), test.IsT8NTest ? blockReceiptsTracer : txTracer);
                     blockReceiptsTracer.EndTxTrace();
 
                     transactionExecutionReport.ValidTransactions.Add(tx);
