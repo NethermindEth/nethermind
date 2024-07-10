@@ -151,7 +151,7 @@ namespace Ethereum.Test.Base
             StorageTxTracer storageTxTracer = new();
             CompositeBlockTracer compositeBlockTracer = new();
             compositeBlockTracer.AddRange(storageTxTracer, gethLikeBlockFileTracer);
-            
+
             BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
             blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
             blockReceiptsTracer.StartNewBlockTrace(block);
