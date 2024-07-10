@@ -501,7 +501,6 @@ namespace Nethermind.State
 
             public TValue? this[TKey key]
             {
-                get => _dictionary[key];
                 set => _dictionary[key] = value;
             }
         }
