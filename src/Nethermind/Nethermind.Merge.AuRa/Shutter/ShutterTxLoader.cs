@@ -43,7 +43,7 @@ public class ShutterTxLoader(
     {
         Block? head = readOnlyBlockTree.Head;
 
-        List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0);
+        List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
@@ -167,12 +167,11 @@ public class ShutterTxLoader(
         return null;
     }
 
-    private List<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
+    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
         IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).OrderBy(x => x.TxIndex);
         if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
-        List<SequencedTransaction> txs = [];
         UInt256 totalGas = 0;
         int index = 0;
 
@@ -181,7 +180,7 @@ public class ShutterTxLoader(
             if (totalGas + e.GasLimit > _encryptedGasLimit)
             {
                 if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
-                break;
+                yield break;
             }
 
             byte[] identityPreimage = new byte[52];
@@ -197,11 +196,10 @@ public class ShutterTxLoader(
                 Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
                 IdentityPreimage = identityPreimage
             };
-            txs.Add(sequencedTransaction);
-            totalGas += e.GasLimit;
-        }
 
-        return txs;
+            totalGas += e.GasLimit;
+            yield return sequencedTransaction;
+        }
     }
 
     internal struct SequencedTransaction
