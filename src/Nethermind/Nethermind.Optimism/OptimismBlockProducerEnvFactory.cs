@@ -20,35 +20,45 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class OptimismBlockProducerEnvFactory(
-    IWorldStateManager worldStateManager,
-    IBlockTree blockTree,
-    ISpecProvider specProvider,
-    IBlockValidator blockValidator,
-    IRewardCalculatorSource rewardCalculatorSource,
-    IReceiptStorage receiptStorage,
-    IBlockPreprocessorStep blockPreprocessorStep,
-    ITxPool txPool,
-    ITransactionComparerProvider transactionComparerProvider,
-    IBlocksConfig blocksConfig,
-    OptimismSpecHelper specHelper,
-    OPL1CostHelper l1CostHelper,
-    ILogManager logManager) : BlockProducerEnvFactory(
-        worldStateManager,
-        blockTree,
-        specProvider,
-        blockValidator,
-        rewardCalculatorSource,
-        receiptStorage,
-        blockPreprocessorStep,
-        txPool,
-        transactionComparerProvider,
-        blocksConfig,
-        logManager)
+public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 {
+    private readonly OptimismSpecHelper _specHelper;
+    private readonly OPL1CostHelper _l1CostHelper;
+
+    public OptimismBlockProducerEnvFactory(
+        IWorldStateManager worldStateManager,
+        IBlockTree blockTree,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculatorSource rewardCalculatorSource,
+        IReceiptStorage receiptStorage,
+        IBlockPreprocessorStep blockPreprocessorStep,
+        ITxPool txPool,
+        ITransactionComparerProvider transactionComparerProvider,
+        IBlocksConfig blocksConfig,
+        OptimismSpecHelper specHelper,
+        OPL1CostHelper l1CostHelper,
+        ILogManager logManager) : base(
+            worldStateManager,
+            blockTree,
+            specProvider,
+            blockValidator,
+            rewardCalculatorSource,
+            receiptStorage,
+            blockPreprocessorStep,
+            txPool,
+            transactionComparerProvider,
+            blocksConfig,
+            logManager)
+    {
+        _specHelper = specHelper;
+        _l1CostHelper = l1CostHelper;
+        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
+    }
+
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
         ReadOnlyBlockTree readOnlyBlockTree) =>
-        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, l1CostHelper, specHelper);
+        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, _l1CostHelper, _specHelper);
 
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
         ReadOnlyTxProcessingEnv processingEnv,
@@ -76,10 +86,10 @@ public class OptimismBlockProducerEnvFactory(
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
-            new BlockhashStore(_blockTree, specProvider, readOnlyTxProcessingEnv.WorldState),
+            new BlockhashStore(specProvider, readOnlyTxProcessingEnv.WorldState),
             logManager,
-            specHelper,
-            new Create2DeployerContractRewriter(specHelper, _specProvider, _blockTree),
+            _specHelper,
+            new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
             new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }
 }
