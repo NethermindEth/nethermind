@@ -67,13 +67,14 @@ public class ShutterTxSource(
         }
         else
         {
-            if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {slot} with {shutterTransactions.Value.Transactions.Length} transactions.");
+            int txCount = shutterTransactions.Value.Transactions.Length;
             if (shutterTransactions.Value.Slot == slot)
             {
+                if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {slot} with {txCount} transactions.");
                 return shutterTransactions.Value.Transactions;
             }
 
-            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {slot}, cannot include Shutter transactions.");
+            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {slot}, cannot include {txCount} Shutter transactions.");
             if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {shutterTransactions.Value.Slot}");
         }
 
