@@ -150,7 +150,7 @@ namespace Ethereum.Test.Base
                 CompositeBlockTracer compositeBlockTracer = new();
                 compositeBlockTracer.AddRange(storageTxTracer, gethLikeBlockFileTracer);
                 blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
-                
+
                 _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, storageTxTracer);
             }
             blockReceiptsTracer.StartNewBlockTrace(block);
