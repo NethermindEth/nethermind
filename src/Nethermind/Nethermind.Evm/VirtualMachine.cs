@@ -2671,8 +2671,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
-
-
         // Instruction is undefined in legacy code and only available in EOF
         if (!spec.IsEofEnabled ||
             env.CodeInfo.Version == 0 ||
@@ -2717,7 +2715,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address targetAddress = new Address(targetBytes[12..].ToArray());
 
         // 5. Perform (and charge for) memory expansion using [input_offset, input_size].
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
         // 1. Charge WARM_STORAGE_READ_COST (100) gas.
         // 6. If target_address is not in the warm_account_list, charge COLD_ACCOUNT_ACCESS - WARM_STORAGE_READ_COST (2500) gas.
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, targetAddress, spec)) return EvmExceptionType.OutOfGas;
@@ -2814,7 +2812,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             snapshot,
             (long)0,
             (long)0,
-            instruction == Instruction.STATICCALL || vmState.IsStatic,
+            isStatic: instruction == Instruction.EXTSTATICCALL || vmState.IsStatic,
             vmState,
             isContinuation: false,
             isCreateOnPreExistingAccount: false);
