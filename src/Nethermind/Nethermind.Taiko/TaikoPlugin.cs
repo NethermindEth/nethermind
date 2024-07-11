@@ -43,7 +43,8 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     public string Description => "Taiko support for Nethermind";
 
     private TaikoNethermindApi? _api;
-    private ILogger _logger;
+    private static ILogger _logger;
+    public static ILogger Logger => _logger;
 
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;

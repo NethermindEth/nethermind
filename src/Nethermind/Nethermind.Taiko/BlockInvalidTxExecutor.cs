@@ -29,6 +29,8 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         block.Transactions[0].IsAnchorTx = true;
 
         BlockExecutionContext blkCtx = new(block.Header);
+        TaikoPlugin.Logger.Warn($"#! Execution of {block.Transactions.Length} in block {block.Hash}({block.Number})");
+
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
@@ -40,19 +42,25 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             }
             try
             {
-                if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
-                    // if the transaction was invalid, we ignore it and continue
+                var res = _txProcessor.Execute(tx, in blkCtx, receiptsTracer);
+                if (!res)
+                // if the transaction was invalid, we ignore it and continue
+                {
+                    TaikoPlugin.Logger.Warn($"#! Unable to execute, {res}");
                     continue;
+                }
             }
-            catch
+            catch(Exception e)
             {
                 // sometimes invalid transactions can throw exceptions because
                 // they are detected later in the processing pipeline
+                TaikoPlugin.Logger.Warn($"#! Exception on execute, {e.Message} {e.StackTrace}");
                 continue;
             }
             // only end the trace if the transaction was successful
             // so that we don't increment the receipt index for failed transactions
             receiptsTracer.EndTxTrace();
+            TaikoPlugin.Logger.Warn($"#! Executed, {tx.Hash}");
             TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, receiptsTracer.LastReceipt));
         }
 
