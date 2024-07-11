@@ -47,6 +47,8 @@ namespace Nethermind.Blockchain
         private readonly IDb _metadataDb;
         private readonly IBlockStore _badBlockStore;
 
+        private readonly PotentialCensorshipCache _potentialCensorshipCache;
+
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
@@ -131,6 +133,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _potentialCensorshipCache = PotentialCensorshipCache.Instance();
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
@@ -628,6 +631,32 @@ namespace Nethermind.Blockchain
             return result;
         }
 
+        public BlockHeader? FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant,
+            long maxSearchDepth)
+        {
+            if (firstDescendant.Number > secondDescendant.Number)
+            {
+                firstDescendant = GetAncestorAtNumber(firstDescendant, secondDescendant.Number);
+            }
+            else if (secondDescendant.Number > firstDescendant.Number)
+            {
+                secondDescendant = GetAncestorAtNumber(secondDescendant, firstDescendant.Number);
+            }
+
+            long currentSearchDepth = 0;
+            while (
+                firstDescendant is not null
+                && secondDescendant is not null
+                && firstDescendant.Hash != secondDescendant.Hash)
+            {
+                if (currentSearchDepth++ >= maxSearchDepth) return null;
+                firstDescendant = this.FindParentHeader(firstDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                secondDescendant = this.FindParentHeader(secondDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+
+            return firstDescendant;
+        }
+
         private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
         {
             BlockHeader? result = header;
@@ -801,17 +830,22 @@ namespace Nethermind.Blockchain
             return childHash;
         }
 
-        public bool IsMainChain(BlockHeader blockHeader) =>
-            LoadLevel(blockHeader.Number)?.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
+        public bool IsMainChain(BlockHeader blockHeader)
+        {
+            ChainLevelInfo? chainLevelInfo = LoadLevel(blockHeader.Number);
+            bool isMain = chainLevelInfo is not null && chainLevelInfo.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
+            return isMain;
+        }
 
-        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true)
+        public bool IsMainChain(Hash256 blockHash)
         {
             BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return header is not null
-                ? IsMainChain(header)
-                : throwOnMissingHash
-                    ? throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}")
-                    : false;
+            if (header is null)
+            {
+                throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
+            }
+
+            return IsMainChain(header);
         }
 
         public BlockHeader? FindBestSuggestedHeader() => BestSuggestedHeader;
@@ -848,6 +882,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
+                    _potentialCensorshipCache.Cache(ref block);
                     _headerStore.Cache(block.Header);
                 }
 
@@ -922,6 +957,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
+                    _potentialCensorshipCache.Cache(ref block);
                     _headerStore.Cache(block.Header);
                 }
 
@@ -1248,7 +1284,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
+            return number == 0L || Head is null || number >= Head.Number - HeaderStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)
@@ -1356,6 +1392,7 @@ namespace Nethermind.Blockchain
             if (block is not null && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
+                _potentialCensorshipCache.Cache(ref block);
                 _headerStore.Cache(block.Header);
             }
 

@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Blockchain.Blocks;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -18,7 +19,13 @@ public class GetPayloadV3Result : GetPayloadV2Result
 
     public override ExecutionPayloadV3 ExecutionPayload { get; }
 
-    public bool ShouldOverrideBuilder { get; }
+    public bool ShouldOverrideBuilder
+    {
+        get
+        {
+            return PotentialCensorshipCache.Instance().CensorshipDetected();
+        }
+    }
 
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
