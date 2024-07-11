@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO.Pipes;
-using System.Linq;
-using System.Linq.Expressions;
-using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Db
