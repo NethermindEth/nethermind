@@ -1,10 +1,12 @@
 using System;
+using System.Linq;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Json;
 using Nethermind.State;
 
 namespace Nethermind.Taiko;
@@ -64,6 +66,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, receiptsTracer.LastReceipt));
         }
 
+        TaikoPlugin.Logger.Warn($"#! Executed, {new EthereumJsonSerializer().Serialize(receiptsTracer.TxReceipts.ToArray())}");
         _worldState.Commit(spec, receiptsTracer);
         return [.. receiptsTracer.TxReceipts];
     }
