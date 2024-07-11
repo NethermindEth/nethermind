@@ -12,6 +12,8 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Nethermind.Blockchain;
+using System.Security;
+using Nethermind.Specs;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -27,6 +29,8 @@ public class ShutterTxSource(
     private ShutterTransactions? _shutterTransactions;
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ShutterTxLoader _txLoader = new(logFinder, shutterConfig, specProvider, ethereumEcdsa, readOnlyBlockTree, logManager);
+    private readonly ulong genesisTimestamp = 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
+    private const ushort slotLength = 5000;
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -69,9 +73,7 @@ public class ShutterTxSource(
 
     private ulong GetBuildingSlot()
     {
-        ulong genesisTimestamp = specProvider.TimestampBeaconGenesis!.Value * 1000;
         ulong timeSinceGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - genesisTimestamp;
-        ushort slotLength = (ushort)specProvider.SlotLength!.Value.Milliseconds;
         ulong currentSlot = timeSinceGenesis / slotLength;
         ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
