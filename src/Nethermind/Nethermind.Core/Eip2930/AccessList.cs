@@ -4,29 +4,39 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
+
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Eip2930;
 
 public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEnumerable StorageKeys)>
 {
-    private readonly List<object> _items;
+    private readonly List<(Address address, int count)> _addresses;
+    private readonly List<UInt256> _keys;
 
-    private AccessList(List<object> items)
+    private AccessList(List<(Address address, int count)> addresses, List<UInt256> keys)
     {
-        _items = items;
+        _addresses = addresses;
+        _keys = keys;
     }
 
-    public static AccessList Empty() => new(new List<object>());
+    public static AccessList Empty { get; } = new(new List<(Address, int)>(), new List<UInt256>());
+
+    public bool IsEmpty => _addresses.Count == 0;
 
     public class Builder
     {
-        private readonly List<object> _items = new();
+        private readonly List<(Address address, int count)> _addresses = new();
+        private readonly List<UInt256> _keys = new();
+
         private Address? _currentAddress;
 
         public Builder AddAddress(Address address)
         {
-            _items.Add(address);
+            _addresses.Add((address, 0));
             _currentAddress = address;
 
             return this;
@@ -36,41 +46,68 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         {
             if (_currentAddress is null)
             {
-                throw new InvalidOperationException("No address known when adding index to the access list");
+                ThrowNoAddress();
             }
-            _items.Add(index);
+
+            CollectionsMarshal.AsSpan(_addresses)[^1].count++;
+            _keys.Add(index);
 
             return this;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNoAddress()
+            {
+                throw new InvalidOperationException("No address known when adding index to the access list");
+            }
         }
 
         public AccessList Build()
         {
-            return new AccessList(_items);
+            return new AccessList(_addresses, _keys);
         }
     }
 
-    public Enumerator GetEnumerator() => new(_items);
+    public Enumerator GetEnumerator() => new(this);
     IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)> IEnumerable<(Address Address, StorageKeysEnumerable StorageKeys)>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public struct Enumerator : IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)>, IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>
     {
-        private readonly List<object> _items;
+        private readonly AccessList _accessList;
         private int _index = -1;
+        private int _keysIndex = 0;
 
-        public Enumerator(List<object> items)
+        public Enumerator(AccessList accessList)
         {
-            _items = items;
+            _accessList = accessList;
         }
 
         public bool MoveNext()
         {
-            while (++_index < _items.Count && _items[_index] is not Address) { }
-            return _index < _items.Count;
+            _index++;
+            if (_index > 0)
+            {
+                _keysIndex += CollectionsMarshal.AsSpan(_accessList._addresses)[_index - 1].count;
+            }
+
+            return _index < _accessList._addresses.Count;
         }
 
-        public void Reset() => _index = -1;
-        public readonly (Address Address, StorageKeysEnumerable StorageKeys) Current => ((Address)_items[_index], new StorageKeysEnumerable(_items, _index));
+        public void Reset()
+        {
+            _index = -1;
+            _keysIndex = 0;
+        }
+
+        public readonly (Address Address, StorageKeysEnumerable StorageKeys) Current
+        {
+            get
+            {
+                ref readonly var addressCount = ref CollectionsMarshal.AsSpan(_accessList._addresses)[_index];
+                return (addressCount.address, new StorageKeysEnumerable(_accessList, _keysIndex, addressCount.count));
+            }
+        }
 
         readonly (Address Address, IEnumerable<UInt256> StorageKeys) IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>.Current => Current;
 
@@ -80,35 +117,39 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
 
     public readonly struct StorageKeysEnumerable : IEnumerable<UInt256>
     {
-        private readonly List<object> _items;
+        private readonly AccessList _accessList;
         private readonly int _index;
+        private readonly int _count;
 
-        public StorageKeysEnumerable(List<object> items, int index)
+        public StorageKeysEnumerable(AccessList accessList, int index, int count)
         {
-            _items = items;
+            _accessList = accessList;
             _index = index;
+            _count = count;
         }
 
-        StorageKeysEnumerator GetEnumerator() => new(_items, _index);
+        StorageKeysEnumerator GetEnumerator() => new(_accessList, _index, _count);
         IEnumerator<UInt256> IEnumerable<UInt256>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     public struct StorageKeysEnumerator : IEnumerator<UInt256>
     {
-        private readonly List<object> _items;
+        private readonly AccessList _accessList;
         private readonly int _startingIndex;
-        private int _index;
+        private readonly int _count;
+        private int _index = -1;
 
-        public StorageKeysEnumerator(List<object> items, int index)
+        public StorageKeysEnumerator(AccessList accessList, int index, int count)
         {
-            _items = items;
-            _startingIndex = _index = index;
+            _accessList = accessList;
+            _startingIndex = index;
+            _count = count;
         }
 
-        public bool MoveNext() => ++_index < _items.Count && _items[_index] is UInt256;
-        public void Reset() => _index = _startingIndex;
-        public readonly UInt256 Current => (UInt256)_items[_index];
+        public bool MoveNext() => ++_index < _count;
+        public void Reset() => _index = -1;
+        public readonly UInt256 Current => _accessList._keys[_startingIndex + _index];
 
         readonly object IEnumerator.Current => Current;
         public readonly void Dispose() { }

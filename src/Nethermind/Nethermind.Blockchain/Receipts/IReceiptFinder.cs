@@ -9,8 +9,8 @@ namespace Nethermind.Blockchain.Receipts
     public interface IReceiptFinder
     {
         Hash256? FindBlockHash(Hash256 txHash);
-        TxReceipt[] Get(Block block);
-        TxReceipt[] Get(Hash256 blockHash);
+        TxReceipt[] Get(Block block, bool recover = true);
+        TxReceipt[] Get(Hash256 blockHash, bool recover = true);
         bool CanGetReceiptsByHash(long blockNumber);
         bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator);
     }

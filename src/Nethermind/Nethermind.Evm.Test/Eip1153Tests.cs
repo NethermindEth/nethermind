@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System.Diagnostics;
@@ -14,7 +15,7 @@ namespace Nethermind.Evm.Test
     /// </summary>
     internal class Eip1153Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
         /// <summary>

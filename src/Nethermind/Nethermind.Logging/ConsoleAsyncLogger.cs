@@ -10,7 +10,7 @@ namespace Nethermind.Logging
     /// <summary>
     /// Use this class in tests only (for quick setup so there is no need to introduce NLog or other dependencies)
     /// </summary>
-    public class ConsoleAsyncLogger : ILogger
+    public class ConsoleAsyncLogger : InterfaceLogger
     {
         private readonly LogLevel _logLevel;
         private readonly string _prefix;

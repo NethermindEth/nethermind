@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc;
 
 /// <summary>Exposes an enumerator that provides asynchronous iteration over values of a specified type.</summary>
 /// <typeparam name="T">The type of values to enumerate.</typeparam>
-public interface IJsonRpcBatchResult : IAsyncEnumerable<JsonRpcResult.Entry>
+public interface IJsonRpcBatchResult : IAsyncEnumerable<JsonRpcResult.Entry>, IDisposable
 {
     /// <summary>Returns an enumerator that iterates asynchronously through the collection.</summary>
     /// <param name="cancellationToken">A <see cref="CancellationToken"/> that may be used to cancel the asynchronous iteration.</param>

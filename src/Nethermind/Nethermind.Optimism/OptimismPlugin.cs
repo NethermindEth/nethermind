@@ -18,12 +18,15 @@ using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 
@@ -34,7 +37,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public string Description => "Optimism support for Nethermind";
 
     private OptimismNethermindApi? _api;
-    private ILogger _logger = null!;
+    private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     private IBlocksConfig _blocksConfig = null!;
@@ -53,17 +56,16 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
-    public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null,
-        ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
     {
-        if (blockProductionTrigger is not null || additionalTxSource is not null)
+        if (additionalTxSource is not null)
             throw new ArgumentException(
-                "Optimism does not support custom block production trigger or additional tx source");
+                "Optimism does not support additional tx source");
 
         ArgumentNullException.ThrowIfNull(_api);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
 
-        return Task.FromResult(_api.BlockProducer);
+        return _api.BlockProducer;
     }
 
     #endregion
@@ -71,6 +73,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
         ILogManager logManager, ChainSpec chainSpec) =>
         new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+
+    public void InitRlpDecoders(INethermindApi api)
+    {
+        if (ShouldRunSteps(api))
+        {
+            Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
+        }
+    }
 
     public Task Init(INethermindApi api)
     {
@@ -108,8 +118,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         return Task.CompletedTask;
     }
 
-    public Task InitNetworkProtocol() => Task.CompletedTask;
-
     public Task InitSynchronization()
     {
         if (_api is null || !ShouldRunSteps(_api))
@@ -131,7 +139,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
 
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
@@ -149,6 +157,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _api.Synchronizer = new MergeSynchronizer(
             _api.DbProvider,
+            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
             _api.SpecProvider!,
             _api.BlockTree!,
             _api.ReceiptStorage!,
@@ -167,6 +176,16 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.StateReader!,
             _api.LogManager
         );
+
+        _ = new PivotUpdator(
+            _api.BlockTree,
+            _api.Synchronizer.SyncModeSelector,
+            _api.SyncPeerPool,
+            _syncConfig,
+            _blockCacheService,
+            _beaconSync,
+            _api.DbProvider.MetadataDb,
+            _api.LogManager);
 
         return Task.CompletedTask;
     }
@@ -198,7 +217,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         await Task.Delay(5000);
 
         BlockImprovementContextFactory improvementContextFactory = new(
-            _api.ManualBlockProductionTrigger,
+            _api.BlockProducer,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
@@ -218,7 +237,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                initConfig,
                 _syncConfig,
                 _api.PoSSwitcher,
                 _beaconSync,
@@ -228,7 +246,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _invalidChainTracker,
                 _beaconSync,
                 _api.LogManager,
-                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout)),
+                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+                _api.Config<IReceiptConfig>().StoreReceipts),
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 _blockFinalizationManager,
@@ -241,6 +260,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _beaconPivot,
                 _peerRefresher,
                 _api.SpecProvider,
+                _api.SyncPeerPool!,
                 _api.LogManager,
                 _api.Config<IBlocksConfig>().SecondsPerSlot,
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
@@ -260,6 +280,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
+    }
+
+    public IBlockProducerRunner CreateBlockProducerRunner()
+    {
+        return new StandardBlockProducerRunner(
+            DefaultBlockProductionTrigger,
+            _api!.BlockTree!,
+            _api.BlockProducer!);
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

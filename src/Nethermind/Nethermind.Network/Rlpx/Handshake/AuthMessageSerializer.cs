@@ -37,7 +37,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public void Serialize(IByteBuffer byteBuffer, AuthMessage msg)
         {
-            byteBuffer.EnsureWritable(Length, true);
+            byteBuffer.EnsureWritable(Length);
             byteBuffer.WriteBytes(msg.Signature.Bytes);
             byteBuffer.WriteByte(msg.Signature.RecoveryId);
             byteBuffer.WriteBytes(msg.EphemeralPublicHash.Bytes);

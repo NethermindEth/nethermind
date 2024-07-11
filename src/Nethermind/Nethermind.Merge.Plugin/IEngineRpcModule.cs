@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -15,4 +16,11 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<IEnumerable<string>> engine_exchangeCapabilities(IEnumerable<string> methods);
+
+    [JsonRpcMethod(
+        Description = "Returns the client version specification.",
+        IsSharable = true,
+        IsImplemented = true)]
+
+    ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1);
 }

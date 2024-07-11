@@ -7,7 +7,7 @@ namespace Nethermind.Serialization.Json;
 
 public static class ForcedNumberConversion
 {
-    public static readonly AsyncLocal<NumberConversion?> ForcedConversion = new(null);
+    public static readonly AsyncLocal<NumberConversion?> ForcedConversion = new();
 
     public static NumberConversion GetFinalConversion() => ForcedConversion.Value ?? NumberConversion.Hex;
 }

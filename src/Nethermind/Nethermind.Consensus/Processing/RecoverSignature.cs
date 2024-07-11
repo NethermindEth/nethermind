@@ -65,11 +65,11 @@ namespace Nethermind.Consensus.Processing
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"An error occured while getting pending a transaction from TxPool, Transaction: {blockTransaction}", e);
+                    if (_logger.IsError) _logger.Error($"An error occurred while getting a pending transaction from TxPool, Transaction: {blockTransaction}", e);
                 }
 
                 Address sender = transaction?.SenderAddress;
-                if (sender != null)
+                if (sender is not null)
                 {
                     blockTransaction.SenderAddress = sender;
 

@@ -4,6 +4,7 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using NUnit.Framework;
@@ -15,7 +16,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
 {
     private static void Test(TxType[] types, int[] sizes, Hash256[] hashes, string expected = null)
     {
-        NewPooledTransactionHashesMessage68 message = new(types.Select(t => (byte)t).ToList(), sizes, hashes);
+        using NewPooledTransactionHashesMessage68 message = new(types.Select(t => (byte)t).ToPooledList(types.Length), sizes.ToPooledList(), hashes.ToPooledList());
         NewPooledTransactionHashesMessageSerializer serializer = new();
 
         SerializerTester.TestZero(serializer, message, expected);

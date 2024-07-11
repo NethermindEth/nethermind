@@ -46,7 +46,7 @@ public struct ReceiptRecoveryBlock
 
     public Transaction GetNextTransaction()
     {
-        if (_transactions != null)
+        if (_transactions is not null)
         {
             return _transactions[_currentTransactionIndex++];
         }

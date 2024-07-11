@@ -18,7 +18,8 @@ namespace Nethermind.Serialization.Json;
 
 public interface ICountingBufferWriter : IBufferWriter<byte>
 {
-    public long WrittenCount { get; }
+    long WrittenCount { get; }
+    ValueTask CompleteAsync(Exception? exception = null);
 }
 
 public sealed class CountingPipeWriter : ICountingBufferWriter
@@ -42,6 +43,12 @@ public sealed class CountingPipeWriter : ICountingBufferWriter
     public Memory<byte> GetMemory(int sizeHint = 0) => _writer.GetMemory(sizeHint);
 
     public Span<byte> GetSpan(int sizeHint = 0) => _writer.GetSpan(sizeHint);
+
+    public ValueTask CompleteAsync(Exception? exception = null)
+    {
+        return _writer.CompleteAsync();
+    }
+
 }
 
 public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
@@ -84,11 +91,6 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         {
             ThrowHelper.ThrowArgumentNullException_WritingStream();
         }
-        if (options is null)
-        {
-            ThrowHelper.ThrowArgumentNullException_Options();
-        }
-
         InnerStream = writingStream;
         _minimumBufferSize = options?.MinimumBufferSize ?? 4096;
         _pool = options?.Pool == MemoryPool<byte>.Shared ? null : options?.Pool;
@@ -160,7 +162,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
     private void AllocateMemory(int sizeHint)
     {
-        if (_head == null)
+        if (_head is null)
         {
             // We need to allocate memory to write since nobody has written before
             BufferSegment newSegment = AllocateSegment(sizeHint);
@@ -171,7 +173,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         }
         else
         {
-            Debug.Assert(_tail != null);
+            Debug.Assert(_tail is not null);
             int bytesLeftInBuffer = _tailMemory.Length;
 
             if (bytesLeftInBuffer == 0 || bytesLeftInBuffer < sizeHint)
@@ -263,7 +265,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         try
         {
-            FlushInternal(writeToStream: exception == null);
+            FlushInternal(writeToStream: exception is null);
         }
         finally
         {
@@ -287,7 +289,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         try
         {
-            await FlushAsyncInternal(writeToStream: exception == null, data: Memory<byte>.Empty).ConfigureAwait(false);
+            await FlushAsyncInternal(writeToStream: exception is null, data: Memory<byte>.Empty).ConfigureAwait(false);
         }
         finally
         {
@@ -341,7 +343,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         if (_tailBytesBuffered > 0)
         {
-            Debug.Assert(_tail != null);
+            Debug.Assert(_tail is not null);
 
             // Update any buffered data
             _tail.End += _tailBytesBuffered;
@@ -354,7 +356,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
             try
             {
                 BufferSegment? segment = _head;
-                while (segment != null)
+                while (segment is not null)
                 {
                     BufferSegment returnSegment = segment;
                     segment = segment.NextSegment;
@@ -418,7 +420,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         // and flush the result.
         if (_tailBytesBuffered > 0)
         {
-            Debug.Assert(_tail != null);
+            Debug.Assert(_tail is not null);
 
             // Update any buffered data
             _tail.End += _tailBytesBuffered;
@@ -426,7 +428,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         }
 
         BufferSegment? segment = _head;
-        while (segment != null)
+        while (segment is not null)
         {
             BufferSegment returnSegment = segment;
             segment = segment.NextSegment;

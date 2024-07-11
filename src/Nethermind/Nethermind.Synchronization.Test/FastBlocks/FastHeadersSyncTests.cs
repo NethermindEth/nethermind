@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -11,6 +12,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -59,7 +61,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 syncConfig: new SyncConfig
                 {
                     FastSync = true,
-                    FastBlocks = true,
                     PivotNumber = "1000",
                     PivotHash = Keccak.Zero.ToString(),
                     PivotTotalDifficulty = "1000"
@@ -93,7 +94,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 syncConfig: new SyncConfig
                 {
                     FastSync = true,
-                    FastBlocks = true,
                     PivotNumber = "1000",
                     PivotHash = pivot.Hash!.Bytes.ToHexString(),
                     PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!
@@ -110,14 +110,14 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
                 batch.ResponseSourcePeer = peerInfo;
             }
 
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
-            HeadersSyncBatch batch3 = (await feed.PrepareRequest())!;
-            HeadersSyncBatch batch4 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch3 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch4 = (await feed.PrepareRequest())!;
 
             FulfillBatch(batch1);
             FulfillBatch(batch2);
@@ -148,13 +148,12 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             syncReport.HeadersInQueue.Returns(new MeasuredProgress());
 
             BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
-            ResettableHeaderSyncFeed feed = new(
+            using ResettableHeaderSyncFeed feed = new(
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
                 {
                     FastSync = true,
-                    FastBlocks = true,
                     PivotNumber = "500",
                     PivotHash = pivot.Hash!.Bytes.ToHexString(),
                     PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()!
@@ -168,17 +167,17 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
             }
 
-            await feed.PrepareRequest();
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch? r = await feed.PrepareRequest();
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
             FulfillBatch(batch1);
 
             feed.Reset();
 
             await feed.PrepareRequest();
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
             FulfillBatch(batch2);
 
             feed.HandleResponse(batch2);
@@ -196,13 +195,12 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             syncReport.HeadersInQueue.Returns(new MeasuredProgress());
 
             BlockHeader pivot = remoteBlockTree.FindHeader(2000, BlockTreeLookupOptions.None)!;
-            HeadersSyncFeed feed = new(
+            using HeadersSyncFeed feed = new(
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
                 {
                     FastSync = true,
-                    FastBlocks = true,
                     PivotNumber = pivot.Number.ToString(),
                     PivotHash = pivot.Hash!.ToString(),
                     PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
@@ -216,15 +214,15 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
             }
 
             // First batch need to be handled first before handle dependencies can do anything
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
             FulfillBatch(batch1);
             feed.HandleResponse(batch1);
 
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
             FulfillBatch(batch2);
 
             int maxHeaderBatchToProcess = 4;
@@ -246,11 +244,12 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             feed.HandleResponse(batch2);
 
             // HandleDependantBatch would start from first batch in batches, stopped at second last, not processing the last one
-            HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
             blockTree.LowestInsertedHeader!.Number.Should().Be(batches[^2].StartNumber);
 
             // New batch would be at end of batch 5 (batch 6).
             newBatch.EndNumber.Should().Be(batches[^1].StartNumber - 1);
+            batches.DisposeItems();
         }
 
         [Test]
@@ -273,7 +272,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 syncConfig: new SyncConfig
                 {
                     FastSync = true,
-                    FastBlocks = true,
                     PivotNumber = "500",
                     PivotHash = pivot.Hash!.Bytes.ToHexString(),
                     PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()!
@@ -290,10 +288,10 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
             }
 
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
             FulfillBatch(batch1);
 
             // Initiate a process batch which should hang in the middle
@@ -309,7 +307,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             await resetTask;
 
             // A new batch is creating, starting at hang block
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
 
             FulfillBatch(batch2);
             feed.HandleResponse(batch2);
@@ -328,7 +326,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 syncConfig: new SyncConfig
                 {
                     FastSync = true,
-                    FastBlocks = true,
                     PivotNumber = "1000",
                     PivotHash = Keccak.Zero.ToString(),
                     PivotTotalDifficulty = "1000"
@@ -341,7 +338,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 await feed.PrepareRequest();
             }
 
-            HeadersSyncBatch? result = await feed.PrepareRequest();
+            using HeadersSyncBatch? result = await feed.PrepareRequest();
             result.Should().BeNull();
         }
 
@@ -354,10 +351,10 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             MeasuredProgress measuredProgress = new();
             report.FastBlocksHeaders.Returns(measuredProgress);
-            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
             await feed.PrepareRequest();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
-            HeadersSyncBatch? result = await feed.PrepareRequest();
+            using HeadersSyncBatch? result = await feed.PrepareRequest();
 
             result.Should().BeNull();
             feed.CurrentState.Should().Be(SyncFeedState.Finished);
@@ -377,12 +374,92 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
-            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
             feed.InitializeFeed();
-            HeadersSyncBatch? result = await feed.PrepareRequest();
+            using HeadersSyncBatch? result = await feed.PrepareRequest();
 
             result.Should().NotBeNull();
             result!.EndNumber.Should().Be(499);
+        }
+
+        //Missing headers in the start is not allowed
+        [TestCase(0, 1, 1, true, false)]
+        [TestCase(0, 1, 1, false, true)]
+        //Missing headers in the start is not allowed
+        [TestCase(0, 2, 1, true, false)]
+        [TestCase(0, 2, 1, false, true)]
+        //Missing headers in the start is not allowed
+        [TestCase(0, 2, 191, true, false)]
+        [TestCase(0, 2, 191, false, true)]
+        //Gaps are not allowed
+        [TestCase(1, 1, 1, true, false)]
+        [TestCase(1, 1, 1, true, true)]
+        [TestCase(187, 5, 1, false, false)]
+        [TestCase(187, 5, 1, false, true)]
+        [TestCase(191, 1, 1, false, false)]
+        [TestCase(191, 1, 1, false, true)]
+        [TestCase(190, 1, 1, true, false)]
+        [TestCase(190, 1, 1, true, true)]
+        [TestCase(80, 1, 1, true, false)]
+        [TestCase(80, 1, 1, true, true)]
+        //All empty reponse
+        [TestCase(0, 192, 1, false, false)]
+        //All null reponse
+        [TestCase(0, 192, 1, false, true)]
+        public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
+        {
+            var peerChain = Build.A.BlockTree().OfChainLength(1000).TestObject;
+            var syncConfig = new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" };
+
+            IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
+            const int lowestInserted = 999;
+            localBlockTree.Insert(peerChain.Head!, BlockTreeInsertBlockOptions.SaveHeader);
+
+            ISyncReport report = Substitute.For<ISyncReport>();
+            report.HeadersInQueue.Returns(new MeasuredProgress());
+            report.FastBlocksHeaders.Returns(new MeasuredProgress());
+
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
+            feed.InitializeFeed();
+            using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
+            using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
+            dependentBatch!.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+            void FillBatch(HeadersSyncBatch batch, long start, bool applyNulls)
+            {
+                int c = count;
+                List<BlockHeader?> list = Enumerable.Range((int)start, batch.RequestSize)
+                    .Select(i => peerChain.FindBlock(i, BlockTreeLookupOptions.None)!.Header)
+                    .ToList<BlockHeader?>();
+                if (applyNulls)
+                    for (int i = nullIndex; 0 < c; i += increment)
+                    {
+                        list[i] = null;
+                        c--;
+                    }
+                if (!useNulls)
+                    list = list.Where(h => h is not null).ToList();
+                batch.Response = list.ToPooledList();
+            }
+
+            FillBatch(firstBatch!, lowestInserted - firstBatch!.RequestSize, false);
+            FillBatch(dependentBatch, lowestInserted - dependentBatch.RequestSize * 2, true);
+            long targetHeaderInDependentBatch = dependentBatch.StartNumber;
+
+            feed.HandleResponse(dependentBatch);
+            feed.HandleResponse(firstBatch);
+
+            using HeadersSyncBatch? thirdbatch = await feed.PrepareRequest();
+            FillBatch(thirdbatch!, thirdbatch!.StartNumber, false);
+            feed.HandleResponse(thirdbatch);
+            using HeadersSyncBatch? fourthbatch = await feed.PrepareRequest();
+            FillBatch(fourthbatch!, fourthbatch!.StartNumber, false);
+            feed.HandleResponse(fourthbatch);
+            using HeadersSyncBatch? fifthbatch = await feed.PrepareRequest();
+
+            Assert.That(localBlockTree.LowestInsertedHeader!.Number, Is.LessThanOrEqualTo(targetHeaderInDependentBatch));
+            syncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -400,7 +477,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 new SyncConfig
                 {
                     FastSync = true,
-                    FastBlocks = true,
                     PivotNumber = "1000",
                     PivotHash = Keccak.Zero.ToString(),
                     PivotTotalDifficulty = "1000"
@@ -411,7 +487,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             while (true)
             {
                 HeadersSyncBatch? batch = await feed.PrepareRequest();
-                if (batch == null) break;
+                if (batch is null) break;
                 batches.Add(batch);
             }
             int totalBatchCount = batches.Count;
@@ -428,7 +504,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 for (int i = 0; i < 100000; i++)
                 {
                     HeadersSyncBatch? batch = await feed.PrepareRequest();
-                    if (batch == null)
+                    if (batch is null)
                     {
                         await Task.Delay(1);
                         continue;
@@ -443,7 +519,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             BlockHeader randomBlockHeader = Build.A.BlockHeader.WithNumber(999999).TestObject;
             await foreach (HeadersSyncBatch headersSyncBatch in batchToProcess.Reader.ReadAllAsync())
             {
-                headersSyncBatch.Response = new[] { randomBlockHeader };
+                headersSyncBatch.Response = new ArrayPoolList<BlockHeader?>(1) { randomBlockHeader };
                 feed.HandleResponse(headersSyncBatch);
             }
 
@@ -451,8 +527,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             while (true)
             {
-                HeadersSyncBatch? batch = await feed.PrepareRequest();
-                if (batch == null) break;
+                using HeadersSyncBatch? batch = await feed.PrepareRequest();
+                if (batch is null) break;
                 batches.Add(batch);
             }
 
@@ -466,7 +542,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,

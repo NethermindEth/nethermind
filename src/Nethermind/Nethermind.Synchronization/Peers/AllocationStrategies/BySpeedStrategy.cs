@@ -11,6 +11,8 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
     public class BySpeedStrategy : IPeerAllocationStrategy
     {
+        public static BySpeedStrategy FastestHeader = new BySpeedStrategy(TransferSpeedType.Headers, true);
+
         private readonly TransferSpeedType _speedType;
         private readonly bool _priority;
         private readonly decimal _minDiffPercentageForSpeedSwitch;

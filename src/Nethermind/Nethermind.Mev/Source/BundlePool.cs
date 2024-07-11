@@ -240,7 +240,7 @@ namespace Nethermind.Mev.Source
                 BundleTransaction tx = bundle.Transactions[i];
                 if (!tx.CanRevert)
                 {
-                    if (!_txValidator.IsWellFormed(tx, spec))
+                    if (!_txValidator.IsWellFormed(tx, spec, out _))
                     {
                         return false;
                     }

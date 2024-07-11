@@ -10,6 +10,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -79,14 +80,14 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<BlockHeader>());
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<BlockHeader>());
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
             }
 
             public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
@@ -118,14 +119,14 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<TxReceipt[]?>());
+                return Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(ArrayPoolList<TxReceipt[]?>.Empty());
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<byte[]>());
+                return Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty());
             }
 
             private int? _headerResponseTime;
@@ -777,6 +778,28 @@ namespace Nethermind.Synchronization.Test
             Assert.That(ctx.Pool.ReplaceableAllocations.Count(), Is.EqualTo(0), "allocations");
             Assert.That(_pendingRequests, Is.EqualTo(0), "pending requests");
             Assert.GreaterOrEqual(failures, 0, "pending requests");
+        }
+
+        [Test]
+        public async Task When_no_peer_will_cancel_on_cancellation_token()
+        {
+            await using Context ctx = new();
+            using CancellationTokenSource cts = new CancellationTokenSource();
+            cts.CancelAfter(100);
+
+            bool wasCancelled = false;
+            try
+            {
+                await ctx.Pool.AllocateAndRun(
+                    (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
+                    BySpeedStrategy.FastestHeader, AllocationContexts.Headers, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                wasCancelled = true;
+            }
+
+            wasCancelled.Should().BeTrue();
         }
 
         private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)

@@ -2,26 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public class EvmPooledMemory : IEvmMemory
+public struct EvmPooledMemory : IEvmMemory
 {
     public const int WordSize = 32;
 
-    private static readonly LargerArrayPool Pool = LargerArrayPool.Shared;
-
-    private int _lastZeroedSize;
+    private ulong _lastZeroedSize;
 
     private byte[]? _memory;
     public ulong Length { get; private set; }
@@ -175,12 +171,29 @@ public class EvmPooledMemory : IEvmMemory
             return new byte[(long)length];
         }
 
-        if (_memory is null || location + length > _memory.Length)
+        if (_memory is null)
         {
             return default;
         }
 
+        UInt256 largeSize = location + length;
+        if (largeSize > _memory.Length)
+        {
+            return default;
+        }
+
+        ClearForTracing((ulong)largeSize);
         return _memory.AsMemory((int)location, (int)length);
+    }
+
+    private void ClearForTracing(ulong size)
+    {
+        if (_memory is not null && size > _lastZeroedSize)
+        {
+            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
+            Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
+            _lastZeroedSize += (uint)lengthToClear;
+        }
     }
 
     public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
@@ -216,14 +229,20 @@ public class EvmPooledMemory : IEvmMemory
         return 0L;
     }
 
-    public TraceMemory GetTrace() => new(Size, _memory ??= Array.Empty<byte>());
+    public TraceMemory GetTrace()
+    {
+        ulong size = Size;
+        ClearForTracing(size);
+        return new(size, _memory);
+    }
 
     public void Dispose()
     {
-        if (_memory is not null)
+        byte[] memory = _memory;
+        if (memory is not null)
         {
-            Pool.Return(_memory);
             _memory = null;
+            ArrayPool<byte>.Shared.Return(memory);
         }
     }
 
@@ -269,23 +288,31 @@ public class EvmPooledMemory : IEvmMemory
         {
             if (_memory is null)
             {
-                _memory = Pool.Rent((int)Size);
+                _memory = ArrayPool<byte>.Shared.Rent((int)Size);
                 Array.Clear(_memory, 0, (int)Size);
             }
-            else if (Size > (ulong)_memory.LongLength)
+            else
             {
-                byte[] beforeResize = _memory;
-                _memory = Pool.Rent((int)Size);
-                Array.Copy(beforeResize, 0, _memory, 0, _lastZeroedSize);
-                Array.Clear(_memory, _lastZeroedSize, (int)Size - _lastZeroedSize);
-                Pool.Return(beforeResize);
-            }
-            else if (Size > (ulong)_lastZeroedSize)
-            {
-                Array.Clear(_memory, _lastZeroedSize, (int)Size - _lastZeroedSize);
+                int lastZeroedSize = (int)_lastZeroedSize;
+                if (Size > (ulong)_memory.LongLength)
+                {
+                    byte[] beforeResize = _memory;
+                    _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                    Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
+                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                    ArrayPool<byte>.Shared.Return(beforeResize);
+                }
+                else if (Size > _lastZeroedSize)
+                {
+                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                }
+                else
+                {
+                    return;
+                }
             }
 
-            _lastZeroedSize = (int)Size;
+            _lastZeroedSize = Size;
         }
     }
 

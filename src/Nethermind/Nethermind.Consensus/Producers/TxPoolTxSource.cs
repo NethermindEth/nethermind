@@ -51,8 +51,8 @@ namespace Nethermind.Consensus.Producers
             long blockNumber = parent.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(parent);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-            IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IDictionary<Address, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
+            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
+            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
@@ -206,16 +206,16 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address, Transaction[]> pendingTransactions, IComparer<Transaction> comparer) =>
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer) =>
             Order(pendingTransactions, comparer);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<Address, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
+        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {
             IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
-                .Select<KeyValuePair<Address, Transaction[]>, IEnumerable<Transaction>>(g => g.Value)
+                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(g => g.Value)
                 .Select(g => g.GetEnumerator())
                 .ToArray();
 

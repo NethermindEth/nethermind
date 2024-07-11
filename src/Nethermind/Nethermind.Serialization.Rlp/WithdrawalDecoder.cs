@@ -70,7 +70,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
 
         Encode(stream, item, rlpBehaviors);
 
-        return new(stream.Data);
+        return new(stream.Data.ToArray());
     }
 
     private static int GetContentLength(Withdrawal item) =>

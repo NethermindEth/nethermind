@@ -17,7 +17,7 @@ namespace Nethermind.Network.Test.P2P
             PingMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
             Assert.That(serialized[0], Is.EqualTo(0xc0));
-            PingMessage deserialized = serializer.Deserialize(serialized);
+            using PingMessage deserialized = serializer.Deserialize(serialized);
             Assert.NotNull(deserialized);
         }
     }

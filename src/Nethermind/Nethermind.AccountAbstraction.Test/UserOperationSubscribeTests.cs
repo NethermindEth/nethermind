@@ -75,7 +75,8 @@ namespace Nethermind.AccountAbstraction.Test
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig,
+                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), _logManager),
                 _specProvider,
                 _jsonSerializer);
 

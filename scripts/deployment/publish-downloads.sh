@@ -10,8 +10,7 @@ echo "Publishing packages to Downloads page"
 
 cd $GITHUB_WORKSPACE/$PACKAGE_DIR
 
-for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64"
-do
+for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64"; do
   file_name=$(basename *$rid*)
 
   echo "Signing $file_name"

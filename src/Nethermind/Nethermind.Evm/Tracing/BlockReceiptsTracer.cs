@@ -12,6 +12,7 @@ namespace Nethermind.Evm.Tracing;
 
 public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
+    private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
@@ -27,8 +28,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
     public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
-
-    private IBlockTracer _otherTracer = NullBlockTracer.Instance;
+    public bool IsTracingLogs => _currentTxTracer.IsTracingLogs;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
@@ -95,8 +95,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         return txReceipt;
     }
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) =>
-        _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+        _currentTxTracer.StartOperation(pc, opcode, gas, env);
 
     public void ReportOperationError(EvmExceptionType error) =>
         _currentTxTracer.ReportOperationError(error);
@@ -105,6 +105,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportOperationRemainingGas(long gas) =>
         _currentTxTracer.ReportOperationRemainingGas(gas);
 
+    public void ReportLog(LogEntry log) =>
+        _currentTxTracer.ReportLog(log);
 
     public void SetOperationMemorySize(ulong newSize) =>
         _currentTxTracer.SetOperationMemorySize(newSize);
@@ -151,13 +153,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
 
-    public void ReportActionRevert(long gasLeft, byte[] output) =>
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) =>
         _currentTxTracer.ReportActionRevert(gasLeft, output);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
-    public void ReportByteCode(byte[] byteCode) =>
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
         _currentTxTracer.ReportByteCode(byteCode);
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
@@ -193,7 +195,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     }
 
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
-    private int _currentIndex;
+    protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
     protected Transaction? CurrentTx;
     public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;

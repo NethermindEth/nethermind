@@ -23,14 +23,14 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     {
         _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
         _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _finalizationManager.BlocksFinalized += OnBlocksFinalized;
     }
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock)
+        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock && CleaningTask.IsCompleted)
         {
             CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
         }
@@ -54,6 +54,10 @@ public class ProcessedTransactionsDbCleaner : IDisposable
             }
 
             if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
+
+            _processedTxsDb.Compact();
+
+            if (_logger.IsDebug) _logger.Debug($"Blob transactions database columns have been compacted");
 
             _lastFinalizedBlock = newlyFinalizedBlockNumber;
         }

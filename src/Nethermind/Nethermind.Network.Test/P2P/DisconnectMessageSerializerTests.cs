@@ -16,11 +16,11 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_do_roundtrip()
         {
-            DisconnectMessage msg = new(EthDisconnectReason.AlreadyConnected);
+            using DisconnectMessage msg = new(EthDisconnectReason.AlreadyConnected);
             DisconnectMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
             Assert.That(serialized.ToHexString(true), Is.EqualTo("0xc105"), "bytes");
-            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+            using DisconnectMessage deserialized = serializer.Deserialize(serialized);
             Assert.That(deserialized.Reason, Is.EqualTo(msg.Reason), "reason");
         }
 
@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.P2P
         {
             DisconnectMessageSerializer serializer = new();
             byte[] serialized = new byte[] { 16 };
-            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+            using DisconnectMessage deserialized = serializer.Deserialize(serialized);
             Assert.That((EthDisconnectReason)deserialized.Reason, Is.EqualTo(EthDisconnectReason.Other), "reason");
         }
 
@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.P2P
         {
             DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
             byte[] serialized = Bytes.FromHexString(hex);
-            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+            using DisconnectMessage deserialized = serializer.Deserialize(serialized);
             deserialized.Reason.Should().Be((int)expectedReason);
         }
     }

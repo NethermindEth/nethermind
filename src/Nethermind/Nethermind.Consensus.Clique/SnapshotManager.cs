@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Clique
         public Address GetBlockSealer(BlockHeader header)
         {
             if (header.Author is not null) return header.Author;
-            if (header.Number == UInt256.Zero) return Address.Zero;
+            if (header.Number == 0) return Address.Zero;
             if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
 
             int extraSeal = 65;
@@ -75,14 +75,19 @@ namespace Nethermind.Consensus.Clique
 
         public static Hash256 CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
-            int extraSeal = 65;
-            int shortExtraLength = blockHeader.ExtraData.Length - extraSeal;
             byte[] fullExtraData = blockHeader.ExtraData;
-            byte[] shortExtraData = blockHeader.ExtraData.Slice(0, shortExtraLength);
+            byte[] shortExtraData = SliceExtraSealFromExtraData(blockHeader.ExtraData);
             blockHeader.ExtraData = shortExtraData;
             Hash256 sigHash = blockHeader.CalculateHash();
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
+        }
+
+        public static byte[] SliceExtraSealFromExtraData(byte[] extraData)
+        {
+            if (extraData.Length < Clique.ExtraSealLength)
+                new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
+            return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
         }
 
         private readonly object _snapshotCreationLock = new();
@@ -161,7 +166,7 @@ namespace Nethermind.Consensus.Clique
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.TryGetValue(s.Key, out string value) ? value : s.Key.ToString())))}");
+                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + s.Key))}");
                     }
                 }
 

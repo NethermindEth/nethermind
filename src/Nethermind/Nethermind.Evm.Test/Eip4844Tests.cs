@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip4844Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     [TestCase(0, 0, Description = "Should return 0 when no hashes")]

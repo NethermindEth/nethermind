@@ -4,8 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 
 namespace Nethermind.Evm
 {
@@ -35,6 +37,14 @@ namespace Nethermind.Evm
 
             ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressKeccak);
+        }
+
+        // See https://eips.ethereum.org/EIPS/eip-7610
+        public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
+        {
+            return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).MachineCode.Length != 0 ||
+                   state.GetNonce(contractAddress) != 0 ||
+                   state.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash;
         }
     }
 }

@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using System.Runtime.Intrinsics;
+using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -37,22 +41,17 @@ public static class IntrinsicGasCalculator
     {
         long txDataNonZeroGasCost =
             releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
-        long dataCost = 0;
-        if (transaction.Data is not null)
-        {
-            Span<byte> data = transaction.Data.Value.Span;
-            for (int i = 0; i < transaction.DataLength; i++)
-            {
-                dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
-            }
-        }
+        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
 
-        if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
-        {
-            dataCost += EvmPooledMemory.Div32Ceiling((UInt256)transaction.DataLength) * GasCostOf.InitCodeWord;
-        }
+        int totalZeros = data.CountZeros();
 
-        return dataCost;
+        var baseDataCost = (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
+            ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
+            : 0);
+
+        return baseDataCost +
+            totalZeros * GasCostOf.TxDataZero +
+            (data.Length - totalZeros) * txDataNonZeroGasCost;
     }
 
     private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
@@ -66,6 +65,8 @@ public static class IntrinsicGasCalculator
                 throw new InvalidDataException(
                     $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
             }
+
+            if (accessList.IsEmpty) return accessListCost;
 
             foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
             {

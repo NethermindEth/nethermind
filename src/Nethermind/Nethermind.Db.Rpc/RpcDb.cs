@@ -114,7 +114,7 @@ namespace Nethermind.Db.Rpc
             Set(key, value.ToArray(), writeFlags);
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }
     }

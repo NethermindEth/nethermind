@@ -21,9 +21,6 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IBlockTree _blockTree;
 
-    private Task? _fixTask;
-    private CancellationTokenSource? _cancellationTokenSource;
-
     public TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager)
     {
         _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
@@ -32,28 +29,21 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
         _syncConfig = syncConfig;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        _cancellationTokenSource?.Cancel();
-        await (_fixTask ?? Task.CompletedTask);
-    }
-
-    public void Run()
+    public Task Run(CancellationToken cancellationToken)
     {
         if (_syncConfig.FixTotalDifficulty)
         {
-            _cancellationTokenSource = new CancellationTokenSource();
-            CancellationToken token = _cancellationTokenSource.Token;
-
-            _fixTask = Task.Run(() => RunMigration(_syncConfig.FixTotalDifficultyStartingBlock, _syncConfig.FixTotalDifficultyLastBlock, token), token)
-                .ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsError)
-                        {
-                            _logger.Error($"Failed to finish TotalDifficultyFixMigration {x.Exception!.Message}");
-                        }
-                    });
+            try
+            {
+                RunMigration(_syncConfig.FixTotalDifficultyStartingBlock, _syncConfig.FixTotalDifficultyLastBlock, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                _logger.Error($"Failed to finish TotalDifficultyFixMigration {e.Message}");
+            }
         }
+
+        return Task.CompletedTask;
     }
 
     private void RunMigration(long startingBlock, long? lastBlock, CancellationToken cancellationToken)

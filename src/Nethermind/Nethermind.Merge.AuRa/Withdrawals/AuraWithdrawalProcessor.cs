@@ -56,7 +56,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         }
         catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException)
         {
-            throw new InvalidBlockException(block, ex);
+            throw new InvalidBlockException(block, "failed to execute withdrawals contract", ex);
         }
 
         if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");

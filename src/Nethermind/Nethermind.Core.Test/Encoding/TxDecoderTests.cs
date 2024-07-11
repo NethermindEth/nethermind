@@ -126,7 +126,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
 
-            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data, true);
+            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data.ToArray(), true);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
@@ -143,7 +143,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
 
-            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data, true);
+            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data.ToArray(), true);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
 

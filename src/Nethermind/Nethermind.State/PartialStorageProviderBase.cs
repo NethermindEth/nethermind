@@ -41,9 +41,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public byte[] Get(in StorageCell storageCell)
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(storageCell);
+            return GetCurrentValue(in storageCell);
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
-            PushUpdate(storageCell, newValue);
+            PushUpdate(in storageCell, newValue);
         }
 
         /// <summary>
@@ -145,9 +145,9 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit()
+        public void Commit(bool commitStorageRoots = true)
         {
-            Commit(NullStateTracer.Instance);
+            Commit(NullStateTracer.Instance, commitStorageRoots);
         }
 
         protected readonly struct ChangeTrace
@@ -172,7 +172,7 @@ namespace Nethermind.State
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer)
+        public void Commit(IStorageTracer tracer, bool commitStorageRoots = true)
         {
             if (_currentPosition == Snapshot.EmptyPosition)
             {
@@ -182,6 +182,16 @@ namespace Nethermind.State
             {
                 CommitCore(tracer);
             }
+
+            if (commitStorageRoots)
+            {
+                CommitStorageRoots();
+            }
+        }
+
+        protected virtual void CommitStorageRoots()
+        {
+            // Commit storage roots
         }
 
         /// <summary>
@@ -199,7 +209,7 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset()
+        public virtual void Reset(bool resizeCollections = true)
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
@@ -235,7 +245,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract byte[] GetCurrentValue(in StorageCell storageCell);
+        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value

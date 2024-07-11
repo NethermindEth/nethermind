@@ -15,9 +15,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -536,40 +538,40 @@ namespace Nethermind.Blockchain
             return GetBlockHashOnMainOrBestDifficultyHash(number);
         }
 
-        public BlockHeader[] FindHeaders(Hash256? blockHash, int numberOfBlocks, int skip, bool reverse)
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256? blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             if (numberOfBlocks == 0)
             {
-                return Array.Empty<BlockHeader>();
+                return ArrayPoolList<BlockHeader>.Empty();
             }
 
             if (blockHash is null)
             {
-                return new BlockHeader[numberOfBlocks];
+                return new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
             }
 
             BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (startHeader is null)
             {
-                return new BlockHeader[numberOfBlocks];
+                return new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
             }
 
             if (numberOfBlocks == 1)
             {
-                return new[] { startHeader };
+                return new ArrayPoolList<BlockHeader>(1) { startHeader };
             }
 
             if (skip == 0)
             {
-                static BlockHeader[] FindHeadersReversedFast(BlockTree tree, BlockHeader startHeader, int numberOfBlocks, bool reverse = false)
+                static ArrayPoolList<BlockHeader> FindHeadersReversedFast(BlockTree tree, BlockHeader startHeader, int numberOfBlocks, bool reverse = false)
                 {
                     ArgumentNullException.ThrowIfNull(startHeader);
                     if (numberOfBlocks == 1)
                     {
-                        return new[] { startHeader };
+                        return new ArrayPoolList<BlockHeader>(1) { startHeader };
                     }
 
-                    BlockHeader[] result = new BlockHeader[numberOfBlocks];
+                    ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
 
                     BlockHeader current = startHeader;
                     int responseIndex = reverse ? 0 : numberOfBlocks - 1;
@@ -606,7 +608,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            BlockHeader[] result = new BlockHeader[numberOfBlocks];
+            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
             BlockHeader current = startHeader;
             int directionMultiplier = reverse ? -1 : 1;
             int responseIndex = 0;
@@ -624,32 +626,6 @@ namespace Nethermind.Blockchain
             } while (current is not null && responseIndex < numberOfBlocks);
 
             return result;
-        }
-
-        public BlockHeader? FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant,
-            long maxSearchDepth)
-        {
-            if (firstDescendant.Number > secondDescendant.Number)
-            {
-                firstDescendant = GetAncestorAtNumber(firstDescendant, secondDescendant.Number);
-            }
-            else if (secondDescendant.Number > firstDescendant.Number)
-            {
-                secondDescendant = GetAncestorAtNumber(secondDescendant, firstDescendant.Number);
-            }
-
-            long currentSearchDepth = 0;
-            while (
-                firstDescendant is not null
-                && secondDescendant is not null
-                && firstDescendant.Hash != secondDescendant.Hash)
-            {
-                if (currentSearchDepth++ >= maxSearchDepth) return null;
-                firstDescendant = this.FindParentHeader(firstDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                secondDescendant = this.FindParentHeader(secondDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return firstDescendant;
         }
 
         private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
@@ -825,22 +801,17 @@ namespace Nethermind.Blockchain
             return childHash;
         }
 
-        public bool IsMainChain(BlockHeader blockHeader)
-        {
-            ChainLevelInfo? chainLevelInfo = LoadLevel(blockHeader.Number);
-            bool isMain = chainLevelInfo is not null && chainLevelInfo.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
-            return isMain;
-        }
+        public bool IsMainChain(BlockHeader blockHeader) =>
+            LoadLevel(blockHeader.Number)?.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
 
-        public bool IsMainChain(Hash256 blockHash)
+        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true)
         {
             BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header is null)
-            {
-                throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
-            }
-
-            return IsMainChain(header);
+            return header is not null
+                ? IsMainChain(header)
+                : throwOnMissingHash
+                    ? throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}")
+                    : false;
         }
 
         public BlockHeader? FindBestSuggestedHeader() => BestSuggestedHeader;
@@ -1082,9 +1053,6 @@ namespace Nethermind.Blockchain
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
                 : null;
 
-            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
-            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
-
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
                 if (block.Number == 0)
@@ -1102,6 +1070,10 @@ namespace Nethermind.Blockchain
                     UpdateHeadBlock(block);
                 }
             }
+
+            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
+
+            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
         }
@@ -1276,7 +1248,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number >= Head.Number - HeaderStore.CacheSize;
+            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)
@@ -1290,6 +1262,8 @@ namespace Nethermind.Blockchain
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
 
+        private readonly McsLock _allocatorLock = new();
+
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -1299,9 +1273,33 @@ namespace Nethermind.Blockchain
 
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
-            if (blockNumber != null)
+            if (blockNumber is not null)
             {
-                block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
+                if (OperatingSystem.IsWindows())
+                {
+                    // Although thread-safe, because the blocks are so large it
+                    // causes a lot of contention on the allocator used inside RocksDb
+                    // on Windows; which then impacts block processing heavily. We
+                    // take the lock here instead to reduce contention on the allocator
+                    // in the db; so the contention is in this method rather than
+                    // across the whole database.
+                    // A better solution would be to change the allocator https://github.com/NethermindEth/nethermind/issues/6107
+                    using var handle = _allocatorLock.Acquire();
+
+                    block = _blockStore.Get(
+                        blockNumber.Value,
+                        blockHash,
+                        (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                        shouldCache: false);
+                }
+                else
+                {
+                    block = _blockStore.Get(
+                        blockNumber.Value,
+                        blockHash,
+                        (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                        shouldCache: false);
+                }
             }
 
             if (block is null)

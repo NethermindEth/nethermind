@@ -32,7 +32,7 @@ namespace Nethermind.Crypto
 
         public byte[]? Bytes { get; }
 
-        public override string ToString()
+        public override readonly string ToString()
         {
             return ToString(true);
         }
@@ -112,7 +112,7 @@ namespace Nethermind.Crypto
             return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
-        public override bool Equals(object obj)
+        public override readonly bool Equals(object obj)
         {
             return obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
         }

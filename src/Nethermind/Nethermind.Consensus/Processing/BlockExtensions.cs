@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Processing
 
         public static bool TrySetTransactions(this Block block, Transaction[] transactions)
         {
-            block.Header.TxRoot = new TxTrie(transactions).RootHash;
+            block.Header.TxRoot = TxTrie.CalculateRoot(transactions);
 
             if (block is BlockToProduce blockToProduce)
             {
@@ -39,16 +39,11 @@ namespace Nethermind.Consensus.Processing
             return false;
         }
 
-        public static bool IsByNethermindNode(this Block block)
-        {
-            try
-            {
-                return Encoding.ASCII.GetString(block.ExtraData).Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
+        public static bool IsByNethermindNode(this Block block) => block.Header.IsByNethermindNode();
+
+        public static bool IsByNethermindNode(this BlockHeader block) =>
+            Ascii.IsValid(block.ExtraData)
+            && Encoding.ASCII.GetString(block.ExtraData ?? Array.Empty<byte>())
+                .Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
     }
 }

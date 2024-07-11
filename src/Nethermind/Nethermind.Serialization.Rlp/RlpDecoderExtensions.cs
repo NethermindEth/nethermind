@@ -9,6 +9,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public static class RlpDecoderExtensions
     {
+        private readonly static CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
+
         public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
@@ -104,6 +106,12 @@ namespace Nethermind.Serialization.Rlp
 
         public static CappedArray<byte> EncodeToCappedArray(this int item, ICappedArrayPool? bufferPool = null)
         {
+            CappedArray<byte>[] cache = s_intPreEncodes;
+            if ((uint)item < (uint)cache.Length)
+            {
+                return cache[item];
+            }
+
             CappedArray<byte> buffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(item));
             buffer.AsRlpStream().Encode(item);
             return buffer;
@@ -128,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void Encode<T>(this IRlpStreamDecoder<T> decoder, RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 stream.Encode(Rlp.OfEmptySequence);
             }
@@ -137,7 +145,7 @@ namespace Nethermind.Serialization.Rlp
             for (int index = 0; index < items.Length; index++)
             {
                 T t = items[index];
-                if (t == null)
+                if (t is null)
                 {
                     stream.Encode(Rlp.OfEmptySequence);
                 }
@@ -151,7 +159,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int GetContentLength<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 return Rlp.OfEmptySequence.Length;
             }
@@ -167,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int GetLength<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 return Rlp.OfEmptySequence.Length;
             }
@@ -175,5 +183,21 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(decoder.GetContentLength(items, behaviors));
         }
 
+        private static CappedArray<byte>[] CreatePreEncodes()
+        {
+            const int MaxCache = 1024;
+
+            CappedArray<byte>[] cache = new CappedArray<byte>[MaxCache];
+
+            for (int i = 0; i < cache.Length; i++)
+            {
+                int size = Rlp.LengthOf(i);
+                CappedArray<byte> buffer = new CappedArray<byte>(new byte[size]);
+                buffer.AsRlpStream().Encode(i);
+                cache[i] = buffer;
+            }
+
+            return cache;
+        }
     }
 }

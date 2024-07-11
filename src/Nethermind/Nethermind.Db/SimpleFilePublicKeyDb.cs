@@ -35,7 +35,7 @@ namespace Nethermind.Db
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
@@ -85,12 +85,6 @@ namespace Nethermind.Db
             return _cache.ContainsKey(key);
         }
 
-        public long GetSize() => 0;
-        public long GetCacheSize() => 0;
-        public long GetIndexSize() => 0;
-        public long GetMemtableSize() => 0;
-
-        public IDb Innermost => this;
         public void Flush() { }
         public void Clear()
         {
@@ -161,7 +155,7 @@ namespace Nethermind.Db
             public Backup(string dbPath, ILogger logger)
             {
                 _dbPath = dbPath;
-                _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+                _logger = logger;
 
                 try
                 {

@@ -9,7 +9,7 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
-    public class ResultWrapper<T> : IResultWrapper
+    public class ResultWrapper<T> : IResultWrapper, IDisposable
     {
         object IResultWrapper.Data => Data;
         public T Data { get; init; }
@@ -47,6 +47,22 @@ namespace Nethermind.JsonRpc
                 ? Fail("Missing result.")
                 : rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
 
+        public static ResultWrapper<T> From(IResultWrapper source, T? data = default) => new()
+        {
+            Data = data ?? (T)source.Data,
+            Result = source.Result,
+            ErrorCode = source.ErrorCode,
+            IsTemporary = source.IsTemporary,
+        };
+
         public static implicit operator Task<ResultWrapper<T>>(ResultWrapper<T> resultWrapper) => Task.FromResult(resultWrapper);
+
+        public void Dispose()
+        {
+            if (Data is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
     }
 }

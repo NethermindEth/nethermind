@@ -327,7 +327,7 @@ namespace Nethermind.Core.Collections
                     }
 
                     Node? prev = null;
-                    for (Node? curr = bucket; curr != null; curr = curr._next)
+                    for (Node? curr = bucket; curr is not null; curr = curr._next)
                     {
                         Debug.Assert((prev is null && curr == bucket) || prev!._next == curr);
 
@@ -401,7 +401,7 @@ namespace Nethermind.Core.Collections
 
             ISpanEqualityComparer<TKey> comparer = _comparer;
             int hashcode = comparer.GetHashCode(key);
-            for (Node? n = Volatile.Read(ref tables.GetBucket(hashcode)); n != null; n = n._next)
+            for (Node? n = Volatile.Read(ref tables.GetBucket(hashcode)); n is not null; n = n._next)
             {
                 if (hashcode == n._hashcode && comparer.Equals(n._key, key))
                 {
@@ -422,7 +422,7 @@ namespace Nethermind.Core.Collections
             Tables tables = _tables;
 
             ISpanEqualityComparer<TKey> comparer = _comparer;
-            for (Node? n = Volatile.Read(ref tables.GetBucket(hashcode)); n != null; n = n._next)
+            for (Node? n = Volatile.Read(ref tables.GetBucket(hashcode)); n is not null; n = n._next)
             {
                 if (hashcode == n._hashcode && comparer.Equals(n._key, key))
                 {
@@ -498,7 +498,7 @@ namespace Nethermind.Core.Collections
 
                     // Try to find this key in the bucket
                     Node? prev = null;
-                    for (Node? node = bucket; node != null; node = node._next)
+                    for (Node? node = bucket; node is not null; node = node._next)
                     {
                         Debug.Assert((prev is null && node == bucket) || prev!._next == node);
                         if (hashcode == node._hashcode && comparer.Equals(node._key, key))
@@ -660,7 +660,7 @@ namespace Nethermind.Core.Collections
             Node?[] buckets = _tables._buckets;
             for (int i = 0; i < buckets.Length; i++)
             {
-                for (Node? current = buckets[i]; current != null; current = current._next)
+                for (Node? current = buckets[i]; current is not null; current = current._next)
                 {
                     array[index] = new KeyValuePair<TKey[], TValue>(current._key, current._value);
                     index++; // this should never overflow, CopyToPairs is only called when there's no overflow risk
@@ -675,7 +675,7 @@ namespace Nethermind.Core.Collections
             Node?[] buckets = _tables._buckets;
             for (int i = 0; i < buckets.Length; i++)
             {
-                for (Node? current = buckets[i]; current != null; current = current._next)
+                for (Node? current = buckets[i]; current is not null; current = current._next)
                 {
                     array[index] = new DictionaryEntry(current._key, current._value);
                     index++;  //this should never flow, CopyToEntries is only called when there's no overflow risk
@@ -690,7 +690,7 @@ namespace Nethermind.Core.Collections
             Node?[] buckets = _tables._buckets;
             for (int i = 0; i < buckets.Length; i++)
             {
-                for (Node? current = buckets[i]; current != null; current = current._next)
+                for (Node? current = buckets[i]; current is not null; current = current._next)
                 {
                     array[index] = new KeyValuePair<TKey[], TValue>(current._key, current._value);
                     index++; // this should never overflow, CopyToObjects is only called when there's no overflow risk
@@ -715,7 +715,7 @@ namespace Nethermind.Core.Collections
             // Provides a manually-implemented version of (approximately) this iterator:
             //     Node?[] buckets = _tables._buckets;
             //     for (int i = 0; i < buckets.Length; i++)
-            //         for (Node? current = Volatile.Read(ref buckets[i]); current != null; current = current._next)
+            //         for (Node? current = Volatile.Read(ref buckets[i]); current is not null; current = current._next)
             //             yield return new KeyValuePair<TKey, TValue>(current._key, current._value);
 
             private readonly SpanConcurrentDictionary<TKey, TValue> _dictionary;
@@ -762,7 +762,7 @@ namespace Nethermind.Core.Collections
 
                     case StateOuterloop:
                         SpanConcurrentDictionary<TKey, TValue>.Node?[]? buckets = _buckets;
-                        Debug.Assert(buckets != null);
+                        Debug.Assert(buckets is not null);
 
                         int i = ++_i;
                         if ((uint)i < (uint)buckets.Length)
@@ -777,7 +777,7 @@ namespace Nethermind.Core.Collections
 
                     case StateInnerLoop:
                         Node? node = _node;
-                        if (node != null)
+                        if (node is not null)
                         {
                             Current = new KeyValuePair<TKey[], TValue>(node._key, node._value);
                             _node = node._next;
@@ -829,7 +829,7 @@ namespace Nethermind.Core.Collections
 
                     // Try to find this key in the bucket
                     Node? prev = null;
-                    for (Node? node = bucket; node != null; node = node._next)
+                    for (Node? node = bucket; node is not null; node = node._next)
                     {
                         Debug.Assert((prev is null && node == bucket) || prev!._next == node);
                         if (hashcode == node._hashcode && comparer.Equals(node._key, key))
@@ -1678,14 +1678,14 @@ namespace Nethermind.Core.Collections
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowIfInvalidObjectValue(object? value)
         {
-            if (value != null)
+            if (value is not null)
             {
                 if (value is not TValue)
                 {
                     throw new ArgumentException("The value was of an incorrect type for this dictionary.");
                 }
             }
-            else if (default(TValue) != null)
+            else if (default(TValue) is not null)
             {
                 throw new ArgumentException("The value was of an incorrect type for this dictionary.");
             }
@@ -1905,7 +1905,7 @@ namespace Nethermind.Core.Collections
                 foreach (Node? bucket in tables._buckets)
                 {
                     Node? current = bucket;
-                    while (current != null)
+                    while (current is not null)
                     {
                         Node? next = current._next;
                         ref Node? newBucket = ref newTables.GetBucketAndLock(current._hashcode, out uint newLockNo);
@@ -2014,7 +2014,7 @@ namespace Nethermind.Core.Collections
                 Node?[] buckets = _tables._buckets;
                 for (int i = 0; i < buckets.Length; i++)
                 {
-                    for (Node? current = buckets[i]; current != null; current = current._next)
+                    for (Node? current = buckets[i]; current is not null; current = current._next)
                     {
                         keys.Add(current._key);
                     }
@@ -2048,7 +2048,7 @@ namespace Nethermind.Core.Collections
                 Node?[] buckets = _tables._buckets;
                 for (int i = 0; i < buckets.Length; i++)
                 {
-                    for (Node? current = buckets[i]; current != null; current = current._next)
+                    for (Node? current = buckets[i]; current is not null; current = current._next)
                     {
                         values.Add(current._value);
                     }

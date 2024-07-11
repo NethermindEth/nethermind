@@ -259,7 +259,7 @@ namespace Nethermind.Core.Test
             stream.Encode(randomBytes);
             stream.Encode(randomBytes);
 
-            Memory<byte> memory = stream.Data;
+            Memory<byte> memory = stream.Data.ToArray();
             Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(memory, sliceValue);
 
             for (int i = 0; i < 3; i++)

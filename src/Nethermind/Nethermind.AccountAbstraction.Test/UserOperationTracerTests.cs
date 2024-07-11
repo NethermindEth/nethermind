@@ -11,6 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -144,8 +145,8 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(Instruction.STOP)
                 .Done;
 
-            Hash256 initialCodeHash = TestState.GetCodeHash(externalContractAddress);
-            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
+            ValueHash256 initialCodeHash = TestState.GetCodeHash(externalContractAddress);
+            ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
             if (shouldMatch)
             {
                 TestState.GetCodeHash(externalContractAddress).Should().Be(initialCodeHash);

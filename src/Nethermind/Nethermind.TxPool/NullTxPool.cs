@@ -22,11 +22,11 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
 
-        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender()
-            => new Dictionary<Address, Transaction[]>();
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
+            => new Dictionary<AddressAsKey, Transaction[]>();
 
-        public IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender()
-            => new Dictionary<Address, Transaction[]>();
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
+            => new Dictionary<AddressAsKey, Transaction[]>();
 
         public static IEnumerable<Transaction> GetPendingBlobTransactions() => Array.Empty<Transaction>();
 
@@ -42,7 +42,7 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(Hash256 hash) => false;
 
-        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
+        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             transaction = null;
             return false;

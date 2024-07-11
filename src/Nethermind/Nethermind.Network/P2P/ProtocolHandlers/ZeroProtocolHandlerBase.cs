@@ -5,19 +5,16 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ZeroProtocolHandlerBase : ProtocolHandlerBase, IZeroProtocolHandler
+    public abstract class ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
+        : ProtocolHandlerBase(session, nodeStats, serializer, logManager), IZeroProtocolHandler
     {
-        protected ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
-            : base(session, nodeStats, serializer, logManager)
-        {
-        }
-
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new(message);
@@ -53,7 +50,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token
         )
-            where TRequest : MessageBase
         {
             Task<TResponse> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new();
@@ -76,8 +72,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return await task;
             }
 
+            CleanupTimeoutTask(task);
             StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
             throw new TimeoutException($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
+        }
+
+        private static void CleanupTimeoutTask<TResponse>(Task<TResponse> task)
+        {
+            task.ContinueWith(static t =>
+            {
+                if (t.IsCompletedSuccessfully)
+                {
+                    t.Result.TryDispose();
+                }
+            });
         }
     }
 }

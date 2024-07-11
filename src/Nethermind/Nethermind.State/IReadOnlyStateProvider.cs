@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Trie;
 
 namespace Nethermind.State
@@ -12,17 +11,11 @@ namespace Nethermind.State
     {
         Hash256 StateRoot { get; }
 
-        UInt256 GetNonce(Address address);
+        byte[]? GetCode(Address address);
 
-        UInt256 GetBalance(Address address);
+        byte[]? GetCode(Hash256 codeHash);
 
-        Hash256 GetStorageRoot(Address address);
-
-        byte[] GetCode(Address address);
-
-        byte[] GetCode(Hash256 codeHash);
-
-        Hash256 GetCodeHash(Address address);
+        byte[]? GetCode(ValueHash256 codeHash);
 
         public bool IsContract(Address address);
 
@@ -39,6 +32,7 @@ namespace Nethermind.State
         bool IsDeadAccount(Address address);
 
         bool IsEmptyAccount(Address address);
+
         bool HasStateForRoot(Hash256 stateRoot);
     }
 }

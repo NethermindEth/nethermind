@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -52,6 +53,7 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
+    public bool IsTracingLogs { get; }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -149,14 +151,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
             {
-                innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+                innerTracer.StartOperation(pc, opcode, gas, env);
             }
         }
     }
@@ -181,6 +183,30 @@ public class CompositeTxTracer : ITxTracer
             if (innerTracer.IsTracingInstructions)
             {
                 innerTracer.ReportOperationRemainingGas(gas);
+            }
+        }
+    }
+
+    public void ReportOperationLogs(LogEntry log)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions && innerTracer.IsTracingLogs)
+            {
+                innerTracer.ReportLog(log);
+            }
+        }
+    }
+
+    public void ReportLog(LogEntry log)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
+            {
+                innerTracer.ReportLog(log);
             }
         }
     }
@@ -377,7 +403,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportActionRevert(long gasLeft, byte[] output)
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -413,7 +439,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportByteCode(byte[] byteCode)
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

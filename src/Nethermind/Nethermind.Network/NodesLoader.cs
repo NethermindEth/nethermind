@@ -31,7 +31,7 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));

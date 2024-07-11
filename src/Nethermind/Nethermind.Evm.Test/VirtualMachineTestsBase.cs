@@ -35,6 +35,7 @@ public class VirtualMachineTestsBase
     private IDb _stateDb;
 
     protected VirtualMachine Machine { get; private set; }
+    protected CodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
@@ -66,9 +67,10 @@ public class VirtualMachineTestsBase
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
-        IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
-        Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
-        _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
+        CodeInfoRepository = new CodeInfoRepository();
+        Machine = new VirtualMachine(blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
+        _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
     [TearDown]
@@ -338,7 +340,7 @@ public class VirtualMachineTestsBase
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address));
+        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
         byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
         Assert.That(actualValue, Is.EqualTo(expected), "storage");
     }
@@ -347,7 +349,7 @@ public class VirtualMachineTestsBase
     {
         byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
 
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address));
+        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
         Assert.That(actualValue, Is.EqualTo(bytes), "storage");
     }
 
@@ -362,7 +364,7 @@ public class VirtualMachineTestsBase
         }
         else
         {
-            byte[] actualValue = TestState.Get(storageCell);
+            byte[] actualValue = TestState.Get(storageCell).ToArray();
             Assert.That(actualValue, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
         }
     }

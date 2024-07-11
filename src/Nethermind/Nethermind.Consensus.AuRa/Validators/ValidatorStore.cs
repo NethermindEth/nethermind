@@ -46,14 +46,14 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] GetValidators(in long? blockNumber = null)
         {
-            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber
+            return blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber
                 ? GetLatestValidatorInfo().Validators
                 : FindValidatorInfo(blockNumber.Value).Validators;
         }
 
         public ValidatorInfo GetValidatorsInfo(in long? blockNumber = null)
         {
-            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber
+            return blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber
                 ? GetLatestValidatorInfo()
                 : FindValidatorInfo(blockNumber.Value);
         }

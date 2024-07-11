@@ -38,7 +38,7 @@ namespace Nethermind.Hive
             IFileSystem fileSystem,
             IBlockValidator blockValidator)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
@@ -201,7 +201,7 @@ namespace Nethermind.Hive
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
 
-                if (!_blockValidator.ValidateSuggestedBlock(block))
+                if (!_blockValidator.ValidateSuggestedBlock(block, out _))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
                     return;

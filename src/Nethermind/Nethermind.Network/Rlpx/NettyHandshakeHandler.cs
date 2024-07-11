@@ -111,7 +111,7 @@ namespace Nethermind.Network.Rlpx
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             string clientId = $"unknown {_session?.RemoteHost}";
-            if (_session.RemoteNodeId != null) clientId = _session?.Node?.ToString(Node.Format.Console);
+            if (_session.RemoteNodeId is not null) clientId = _session?.Node?.ToString(Node.Format.Console);
 
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)

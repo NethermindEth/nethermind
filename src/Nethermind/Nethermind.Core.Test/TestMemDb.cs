@@ -33,7 +33,7 @@ public class TestMemDb : MemDb, ITunableDb
     {
         _readKeys.Add((key.ToArray(), flags));
 
-        if (ReadFunc != null) return ReadFunc(key.ToArray());
+        if (ReadFunc is not null) return ReadFunc(key.ToArray());
         return base.Get(key, flags);
     }
 
@@ -56,7 +56,7 @@ public class TestMemDb : MemDb, ITunableDb
     {
         _removedKeys.Add(key.ToArray());
 
-        if (RemoveFunc != null)
+        if (RemoveFunc is not null)
         {
             RemoveFunc.Invoke(key.ToArray());
             return;

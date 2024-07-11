@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -27,24 +28,43 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public StateTree(ITrieStore? store, ILogManager? logManager)
+        public StateTree(IScopedTrieStore? store, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
             TrieType = TrieType.State;
         }
 
+        public StateTree(ITrieStore? store, ILogManager? logManager)
+            : base(store.GetTrieStore(null), logManager)
+        {
+        }
+
         [DebuggerStepThrough]
         public Account? Get(Address address, Hash256? rootHash = null)
         {
-            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+            ReadOnlySpan<byte> bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+        }
+
+        [DebuggerStepThrough]
+        public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
+        {
+            ReadOnlySpan<byte> bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
+            if (bytes.IsEmpty)
+            {
+                account = AccountStruct.TotallyEmpty;
+                return false;
+            }
+
+            return _decoder.TryDecodeStruct(ref valueDecoderContext, out account);
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Hash256 keccak) // for testing
         {
-            byte[]? bytes = Get(keccak.Bytes);
-            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+            ReadOnlySpan<byte> bytes = Get(keccak.Bytes);
+            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
         }
 
         public void Set(Address address, Account? account)

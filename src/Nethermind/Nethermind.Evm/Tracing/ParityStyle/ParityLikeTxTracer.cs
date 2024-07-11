@@ -255,7 +255,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
@@ -468,9 +468,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public override void ReportByteCode(byte[] byteCode)
+        public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         {
-            _currentVmTrace.VmTrace.Code = byteCode;
+            // TODO: use memory pool?
+            _currentVmTrace.VmTrace.Code = byteCode.ToArray();
         }
 
         public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)

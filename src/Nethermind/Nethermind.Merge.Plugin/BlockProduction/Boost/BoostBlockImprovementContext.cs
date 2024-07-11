@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -22,7 +23,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private CancellationTokenSource? _cancellationTokenSource;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
-        IManualBlockProductionTrigger blockProductionTrigger,
+        IBlockProducer blockProducer,
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
@@ -35,25 +36,26 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
+        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
     }
 
     private async Task<Block?> StartImprovingBlock(
-        IManualBlockProductionTrigger blockProductionTrigger,
+        IBlockProducer blockProducer,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         CancellationToken cancellationToken)
     {
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        UInt256 balanceBefore = _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
+        _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
+        UInt256 balanceBefore = account.Balance;
+        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, cancellationToken);
         if (block is not null)
         {
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
-            UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
+            _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out account);
+            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
         return CurrentBestBlock;

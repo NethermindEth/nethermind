@@ -89,7 +89,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// Gets or sets a collection of <see cref="Withdrawal"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
     /// </summary>
-    public IEnumerable<Withdrawal>? Withdrawals { get; set; }
+    public Withdrawal[]? Withdrawals { get; set; }
 
 
     /// <summary>
@@ -145,7 +145,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
                 Author = FeeRecipient,
                 IsPostMerge = true,
                 TotalDifficulty = totalDifficulty,
-                TxRoot = new TxTrie(transactions).RootHash,
+                TxRoot = TxTrie.CalculateRoot(transactions),
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
             };
 

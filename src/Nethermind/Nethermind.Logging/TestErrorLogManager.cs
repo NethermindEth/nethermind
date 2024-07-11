@@ -17,11 +17,11 @@ public class TestErrorLogManager : ILogManager
 
     public ILogger GetClassLogger<T>() => GetClassLogger();
 
-    public ILogger GetClassLogger() => new TestErrorLogger(_errors);
+    public ILogger GetClassLogger() => new(new TestErrorLogger(_errors));
 
     public ILogger GetLogger(string loggerName) => GetClassLogger();
 
-    public class TestErrorLogger : ILogger
+    public class TestErrorLogger : InterfaceLogger
     {
         private readonly ConcurrentQueue<Error> _errors;
 

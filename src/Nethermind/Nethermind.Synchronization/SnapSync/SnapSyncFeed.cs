@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             try
             {
-                (SnapSyncBatch request, bool finished) = _snapProvider.GetNextRequest();
+                bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
 
                 if (request is null)
                 {
@@ -68,35 +68,42 @@ namespace Nethermind.Synchronization.SnapSync
 
             AddRangeResult result = AddRangeResult.OK;
 
-            if (batch.AccountRangeResponse is not null)
+            try
             {
-                result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
-            }
-            else if (batch.StorageRangeResponse is not null)
-            {
-                result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
-            }
-            else if (batch.CodesResponse is not null)
-            {
-                _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
-            }
-            else if (batch.AccountsToRefreshResponse is not null)
-            {
-                _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
-            }
-            else
-            {
-                _snapProvider.RetryRequest(batch);
-
-                if (peer is null)
+                if (batch.AccountRangeResponse is not null)
                 {
-                    return SyncResponseHandlingResult.NotAssigned;
+                    result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
+                }
+                else if (batch.StorageRangeResponse is not null)
+                {
+                    result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
+                }
+                else if (batch.CodesResponse is not null)
+                {
+                    _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
+                }
+                else if (batch.AccountsToRefreshResponse is not null)
+                {
+                    _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
                 }
                 else
                 {
-                    _logger.Trace($"SNAP - timeout {peer}");
-                    return SyncResponseHandlingResult.LesserQuality;
+                    _snapProvider.RetryRequest(batch);
+
+                    if (peer is null)
+                    {
+                        return SyncResponseHandlingResult.NotAssigned;
+                    }
+                    else
+                    {
+                        _logger.Trace($"SNAP - timeout {peer}");
+                        return SyncResponseHandlingResult.LesserQuality;
+                    }
                 }
+            }
+            finally
+            {
+                batch.Dispose();
             }
 
             return AnalyzeResponsePerPeer(result, peer);
@@ -206,6 +213,12 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
             }
+        }
+
+        public override void Finish()
+        {
+            _snapProvider.Dispose();
+            base.Finish();
         }
 
         public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();

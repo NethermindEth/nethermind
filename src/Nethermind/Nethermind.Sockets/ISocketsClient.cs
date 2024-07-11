@@ -14,7 +14,7 @@ namespace Nethermind.Sockets
     {
         string Id { get; }
         string ClientName { get; }
-        Task ReceiveAsync();
+        Task ReceiveLoopAsync();
         Task SendAsync(SocketsMessage message);
     }
 }

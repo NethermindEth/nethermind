@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
@@ -66,7 +67,7 @@ namespace Nethermind.Store.Test
             provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
             provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
 
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[snapshot + 1]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
         }
 
         [Test]
@@ -83,7 +84,7 @@ namespace Nethermind.Store.Test
             provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[1]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
         }
 
         [TestCase(-1)]
@@ -99,7 +100,7 @@ namespace Nethermind.Store.Test
             provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
             provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
 
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
         }
 
         [Test]
@@ -125,12 +126,12 @@ namespace Nethermind.Store.Test
             provider.Commit(Frontier.Instance);
             provider.Restore(Snapshot.Empty);
 
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[7]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[8]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 3)), Is.EqualTo(_values[9]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address2, 1)), Is.EqualTo(_values[10]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address2, 2)), Is.EqualTo(_values[11]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address2, 3)), Is.EqualTo(_values[12]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[7]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[8]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 3)).ToArray(), Is.EqualTo(_values[9]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address2, 1)).ToArray(), Is.EqualTo(_values[10]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address2, 2)).ToArray(), Is.EqualTo(_values[11]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address2, 3)).ToArray(), Is.EqualTo(_values[12]));
         }
 
         [Test]
@@ -199,7 +200,7 @@ namespace Nethermind.Store.Test
             storageProvider.Reset();
             ctx.StateProvider.StateRoot = stateRoot;
 
-            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
+            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
 
             Assert.That(valueAfter, Is.EqualTo(_values[1]));
         }
@@ -218,7 +219,7 @@ namespace Nethermind.Store.Test
             storageProvider.Commit(Frontier.Instance);
             ctx.StateProvider.Commit(Frontier.Instance);
 
-            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
+            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
             Assert.That(valueAfter, Is.EqualTo(_values[(Resettable.StartCapacity + 1) % 2]));
         }
 
@@ -251,7 +252,7 @@ namespace Nethermind.Store.Test
             WorldState provider = BuildStorageProvider(ctx);
 
             provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
         }
 
         /// <summary>
@@ -281,7 +282,7 @@ namespace Nethermind.Store.Test
 
             provider.Restore(snapshots[snapshot + 1]);
 
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[snapshot + 1]));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
         }
 
         /// <summary>
@@ -294,7 +295,7 @@ namespace Nethermind.Store.Test
             WorldState provider = BuildStorageProvider(ctx);
 
             provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
 
             provider.Commit(Frontier.Instance);
             Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
@@ -310,7 +311,7 @@ namespace Nethermind.Store.Test
             WorldState provider = BuildStorageProvider(ctx);
 
             provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
 
             provider.Reset();
             Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
@@ -358,7 +359,7 @@ namespace Nethermind.Store.Test
             snapshots[2].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(0, 1));
             snapshots[3].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(1, 1));
 
-            _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
+            _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray());
         }
 
         /// <summary>
@@ -406,7 +407,26 @@ namespace Nethermind.Store.Test
                 new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 1))
             );
 
-            _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)));
+            _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
+        }
+
+        /// <summary>
+        /// Reset will reset transient state
+        /// </summary>
+        [Test]
+        public void Selfdestruct_clears_cache()
+        {
+            PreBlockCaches preBlockCaches = new PreBlockCaches();
+            Context ctx = new(preBlockCaches);
+            WorldState provider = BuildStorageProvider(ctx);
+            StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
+            StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
+            preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+            provider.Get(accessedStorageCell);
+            provider.Commit(Paris.Instance);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
+            provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
         }
 
         private class Context
@@ -416,9 +436,9 @@ namespace Nethermind.Store.Test
             public readonly Address Address1 = new(Keccak.Compute("1"));
             public readonly Address Address2 = new(Keccak.Compute("2"));
 
-            public Context()
+            public Context(PreBlockCaches preBlockCaches = null)
             {
-                StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+                StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);

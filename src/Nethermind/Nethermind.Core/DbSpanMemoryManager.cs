@@ -25,7 +25,7 @@ public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
 
     protected override void Dispose(bool disposing)
     {
-        if (_ptr != null)
+        if (_ptr is not null)
         {
             _db.DangerousReleaseMemory(GetSpan());
         }
@@ -35,7 +35,7 @@ public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
 
     public override Span<byte> GetSpan()
     {
-        if (_ptr == null && _length > 0)
+        if (_ptr is null && _length > 0)
         {
             ThrowDisposed();
         }
@@ -45,7 +45,7 @@ public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
 
     public override MemoryHandle Pin(int elementIndex = 0)
     {
-        if (_ptr == null && _length > 0)
+        if (_ptr is null && _length > 0)
         {
             ThrowDisposed();
         }

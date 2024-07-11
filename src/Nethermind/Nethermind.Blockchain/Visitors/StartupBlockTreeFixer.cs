@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Visitors
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateReader = stateReader;
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
 
             _batchSize = batchSize;
             long assumedHead = _blockTree.Head?.Number ?? 0;

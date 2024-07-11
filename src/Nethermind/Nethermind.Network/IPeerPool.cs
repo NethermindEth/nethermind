@@ -14,8 +14,8 @@ namespace Nethermind.Network;
 
 public interface IPeerPool
 {
-    ConcurrentDictionary<PublicKey, Peer> Peers { get; }
-    ConcurrentDictionary<PublicKey, Peer> ActivePeers { get; }
+    ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; }
+    ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; }
 
     IEnumerable<Peer> StaticPeers { get; }
     IEnumerable<Peer> NonStaticPeers { get; }

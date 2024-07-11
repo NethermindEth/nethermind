@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -97,31 +97,33 @@ namespace Nethermind.TxPool
         // only for testing reasons
         internal Transaction[] GetSnapshot() => _persistentTxs.GetSnapshot();
 
-        public void Broadcast(Transaction tx, bool isPersistent)
+        public bool Broadcast(Transaction tx, bool isPersistent)
         {
             if (isPersistent)
             {
-                StartBroadcast(tx);
+                return StartBroadcast(tx);
             }
-            else
-            {
-                BroadcastOnce(tx);
-            }
+
+            BroadcastOnce(tx);
+
+            return true;
         }
 
-        private void StartBroadcast(Transaction tx)
+        private bool StartBroadcast(Transaction tx)
         {
             // broadcast local tx only if MaxFeePerGas is not lower than configurable percent of current base fee
             // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
-            if (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
+
+            if (tx is not null
+                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
+                && _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
+                && removed?.Hash != tx.Hash)
             {
                 NotifyPeersAboutLocalTx(tx);
+                return true;
             }
 
-            if (tx.Hash is not null)
-            {
-                _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx);
-            }
+            return false;
         }
 
         private void BroadcastOnce(Transaction tx)
@@ -170,7 +172,7 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            DateTimeOffset now = DateTimeOffset.Now;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
             {
                 if (_logger.IsTrace) _logger.Trace($"Minimum time between persistent tx broadcast not reached.");

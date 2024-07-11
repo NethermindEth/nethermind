@@ -18,7 +18,7 @@ namespace Nethermind.AccountAbstraction.Data
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data!);
+            return new Rlp(rlpStream.Data.ToArray()!);
 
         }
 

@@ -29,7 +29,7 @@ namespace Nethermind.Facade.Proxy
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _retries = retries;
             _retryDelayMilliseconds = retryDelayMilliseconds;
         }

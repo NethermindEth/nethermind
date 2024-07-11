@@ -5,6 +5,7 @@ using App.Metrics;
 using App.Metrics.Counter;
 using App.Metrics.Timer;
 using Nethermind.Tools.Kute.Extensions;
+using System.Collections.Concurrent;
 
 namespace Nethermind.Tools.Kute;
 
@@ -40,7 +41,7 @@ public class Metrics
     {
         Name = "Batches", DurationUnit = TimeUnit.Milliseconds
     };
-    private readonly IDictionary<string, TimerOptions> _processedRequests = new Dictionary<string, TimerOptions>();
+    private readonly ConcurrentDictionary<string, TimerOptions> _processedRequests = new ConcurrentDictionary<string, TimerOptions>();
 
     public Metrics()
     {
@@ -61,13 +62,14 @@ public class Metrics
     public TimerContext TimeBatch() => _metrics.Measure.Timer.Time(_batches);
     public TimerContext TimeMethod(string methodName)
     {
-        if (!_processedRequests.ContainsKey(methodName))
+        var timerOptions = _processedRequests.GetOrAdd(methodName, new TimerOptions
         {
-            _processedRequests[methodName] = new TimerOptions
-            {
-                Name = methodName, MeasurementUnit = Unit.Requests, DurationUnit = TimeUnit.Milliseconds, RateUnit = TimeUnit.Milliseconds
-            };
-        }
-        return _metrics.Measure.Timer.Time(_processedRequests[methodName]);
+            Name = methodName,
+            MeasurementUnit = Unit.Requests,
+            DurationUnit = TimeUnit.Milliseconds,
+            RateUnit = TimeUnit.Milliseconds
+        });
+
+        return _metrics.Measure.Timer.Time(timerOptions);
     }
 }

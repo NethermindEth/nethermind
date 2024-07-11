@@ -6,7 +6,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.JsonRpc.Modules.Witness;
 using Newtonsoft.Json;
 
 namespace Nethermind.DocGen;
@@ -23,8 +22,7 @@ internal static class JsonRpcGenerator
             typeof(IEvmRpcModule).FullName,
             typeof(IRpcModule).FullName,
             typeof(IRpcRpcModule).FullName,
-            typeof(ISubscribeRpcModule).FullName,
-            typeof(IWitnessRpcModule).FullName
+            typeof(ISubscribeRpcModule).FullName
         };
         var types = new[] { "Nethermind.JsonRpc", "Nethermind.Consensus.Clique" }
             .SelectMany(a => Assembly.Load(a).GetTypes())
@@ -262,7 +260,7 @@ internal static class JsonRpcGenerator
         }
         catch (Exception)
         {
-            Console.WriteLine($"Failed copying from '${fileName}'");
+            Console.WriteLine($"Failed copying from {fileName}");
         }
     }
 
@@ -302,9 +300,11 @@ internal static class JsonRpcGenerator
 
     private static Type GetReturnType(Type type)
     {
-        var returnType = type.GetGenericTypeDefinition() == typeof(Task<>)
-            ? type.GetGenericArguments()[0].GetGenericArguments()[0]
-            : type.GetGenericArguments()[0];
+        var returnType = type.IsGenericType
+            ? type.GetGenericTypeDefinition() == typeof(Task<>)
+                ? type.GetGenericArguments()[0].GetGenericArguments()[0]
+                : type.GetGenericArguments()[0]
+            : type;
 
         return Nullable.GetUnderlyingType(returnType) ?? returnType;
     }

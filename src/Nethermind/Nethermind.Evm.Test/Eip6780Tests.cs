@@ -32,8 +32,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip6780Tests : VirtualMachineTestsBase
     {
-
-        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
         private byte[] _selfDestructCode;

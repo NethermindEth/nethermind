@@ -88,18 +88,6 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Can_collect_stats()
-        {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
-            provider.CreateAccount(TestItem.AddressA, 1.Ether());
-            provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree(0);
-
-            var stats = provider.CollectStats(_codeDb, Logger);
-            stats.AccountCount.Should().Be(1);
-        }
-
-        [Test]
         public void Can_accepts_visitors()
         {
             WorldState provider = new(new TrieStore(new MemDb(), Logger), Substitute.For<IDb>(), Logger);
@@ -188,9 +176,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Restore_in_the_middle()
         {
-            byte[] code = new byte[] { 1 };
+            byte[] code = [1];
 
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            IWorldState provider = new WorldState(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);

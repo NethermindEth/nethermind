@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.TxPool;
+using System;
 
 namespace Nethermind.Consensus
 {

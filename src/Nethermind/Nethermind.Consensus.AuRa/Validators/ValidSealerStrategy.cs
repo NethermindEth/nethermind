@@ -9,6 +9,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public class ValidSealerStrategy : IValidSealerStrategy
     {
-        public bool IsValidSealer(IList<Address> validators, Address address, long step) => validators.GetItemRoundRobin(step) == address;
+        public bool IsValidSealer(IList<Address> validators, Address address, long step, out Address expectedAddress) =>
+            (expectedAddress = validators.GetItemRoundRobin(step)) == address;
     }
 }

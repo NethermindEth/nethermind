@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,14 +21,12 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public Task Execute(CancellationToken cancellationToken)
+        public async Task Execute(CancellationToken cancellationToken)
         {
             foreach (IDatabaseMigration migration in CreateMigrations())
             {
-                migration.Run();
+                await migration.Run(cancellationToken);
             }
-
-            return Task.CompletedTask;
         }
 
         private IEnumerable<IDatabaseMigration> CreateMigrations()

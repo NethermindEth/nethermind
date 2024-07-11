@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -108,42 +109,22 @@ namespace Nethermind.Mev.Test
                         new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
                 };
 
-                PostMergeBlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
-                    ITxSource? txSource = null)
+                PostMergeBlockProducer CreatePostMergeBlockProducer(ITxSource? txSource = null)
                 {
                     BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(txSource);
                     return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
-                        LogManager).Create(
-                        blockProducerEnv, blockProductionTrigger, txSource);
+                        LogManager).Create(blockProducerEnv, txSource);
                 }
 
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0,
                     ITxSource? additionalTxSource = null)
                 {
-                    // TODO: this could be simplified a lot of the parent was not retrieved, not sure why do we need the parent here
-                    bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
-                    {
-                        // TODO: why do we need this parent? later we use only the current block number
-                        BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
-                        if (parent is not null)
-                        {
-                            // ToDo resolved conflict parent.Timestamp?
-                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, parent.Timestamp);
-                            return bundles.Count() >= bundleLimit;
-                        }
+                    IBlockProductionCondition condition = bundleLimit == 0
+                        ? AlwaysOkBlockProductionCondition.Instance
+                        : new TestBundleLimitBlockProductionTrigger(BlockTree, BundlePool, bundleLimit);
 
-                        return false;
-                    }
-
-                    IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
-                    IBlockProductionTrigger trigger = manualTrigger;
-                    if (bundleLimit != 0)
-                    {
-                        trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
-                    }
-
-                    IBlockProducer producer = CreatePostMergeBlockProducer(trigger, additionalTxSource);
-                    return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
+                    IBlockProducer producer = CreatePostMergeBlockProducer(additionalTxSource);
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, condition, new BeneficiaryTracer());
                 }
 
                 int megabundleProducerCount = _relayAddresses.Length != 0 ? 1 : 0;
@@ -171,9 +152,15 @@ namespace Nethermind.Mev.Test
                     blockProducers.Add(bundleProducer);
                 }
 
-                MevBlockProducer blockProducer = new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
-                blockProducer.BlockProduced += OnBlockProduced;
+                MevBlockProducer blockProducer = new MevBlockProducer(LogManager, blockProducers.ToArray());
                 return blockProducer;
+            }
+
+            protected override IBlockProducerRunner CreateBlockProducerRunner()
+            {
+                IBlockProducerRunner baseRunner = base.CreateBlockProducerRunner();
+                baseRunner.BlockProduced += OnBlockProduced;
+                return baseRunner;
             }
 
             private void OnBlockProduced(object? sender, BlockEventArgs e)
@@ -200,7 +187,7 @@ namespace Nethermind.Mev.Test
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     ReceiptStorage,
-                    NullWitnessCollector.Instance,
+                    new BlockhashStore(SpecProvider, State),
                     LogManager);
 
                 _tracerFactory = new TracerFactory(
@@ -263,6 +250,29 @@ namespace Nethermind.Mev.Test
                 resultOfBundle.Result.Should().NotBe(Result.Success);
                 resultOfBundle.Data.Should().Be(true);
                 return new MevBundle(blockNumber, txs);
+            }
+        }
+
+        private class TestBundleLimitBlockProductionTrigger(
+            IBlockTree blockTree,
+            IBundlePool bundlePool,
+            int bundleLimit
+        ) : IBlockProductionCondition
+        {
+
+            // TODO: this could be simplified a lot of the parent was not retrieved, not sure why do we need the parent here
+            public bool CanProduce(BlockHeader parentHeader)
+            {
+                // TODO: why do we need this parent? later we use only the current block number
+                BlockHeader? parent = blockTree.GetProducedBlockParent(parentHeader);
+                if (parent is not null)
+                {
+                    // ToDo resolved conflict parent.Timestamp?
+                    IEnumerable<MevBundle> bundles = bundlePool.GetBundles(parent.Number + 1, parent.Timestamp);
+                    return bundles.Count() >= bundleLimit;
+                }
+
+                return false;
             }
         }
     }

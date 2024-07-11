@@ -158,7 +158,7 @@ public class DiscoveryManager : IDiscoveryManager
         if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMsg}");
         try
         {
-            if (_msgSender == null) return;
+            if (_msgSender is null) return;
             await _outgoingMessageRateLimiter.WaitAsync(CancellationToken.None);
             await _msgSender.SendMsg(discoveryMsg);
         }

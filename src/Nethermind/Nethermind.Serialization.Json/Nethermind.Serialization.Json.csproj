@@ -6,7 +6,6 @@
   <ItemGroup>
     <PackageReference Include="System.IO.Pipelines" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <PackageReference Include="Microsoft.ClearScript.V8" />
   </ItemGroup>
 
