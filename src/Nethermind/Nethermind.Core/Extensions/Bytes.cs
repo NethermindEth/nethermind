@@ -365,10 +365,6 @@ namespace Nethermind.Core.Extensions
         {
             return new(bytes, true, true);
         }
-        public static short ReadEthInt16(this Span<byte> bytes)
-        {
-            return ReadEthInt16((ReadOnlySpan<byte>)bytes);
-        }
 
         public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
         {
@@ -383,11 +379,6 @@ namespace Nethermind.Core.Extensions
                 1 => bytes[0],
                 _ => 0
             };
-        }
-
-        public static ushort ReadEthUInt16(this Span<byte> bytes)
-        {
-            return ReadEthUInt16((ReadOnlySpan<byte>)bytes);
         }
 
         public static ushort ReadEthUInt16(this ReadOnlySpan<byte> bytes)
@@ -412,14 +403,12 @@ namespace Nethermind.Core.Extensions
                 bytes = bytes.Slice(bytes.Length - 2, 2);
             }
 
-            if (bytes.Length == 2)
+            return bytes.Length switch
             {
-                return BinaryPrimitives.ReadUInt16LittleEndian(bytes);
-            }
-
-            Span<byte> twoBytes = stackalloc byte[2];
-            bytes.CopyTo(twoBytes[(2 - bytes.Length)..]);
-            return BinaryPrimitives.ReadUInt16LittleEndian(twoBytes);
+                2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
         }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
@@ -442,23 +431,6 @@ namespace Nethermind.Core.Extensions
             Span<byte> fourBytes = stackalloc byte[4];
             bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
-        }
-
-        public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
-        {
-            if (bytes.Length > 4)
-            {
-                bytes = bytes.Slice(bytes.Length - 4, 4);
-            }
-
-            if (bytes.Length == 4)
-            {
-                return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
-            }
-
-            Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
-            return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
         }
 
         public static int ReadEthInt32(this Span<byte> bytes)
