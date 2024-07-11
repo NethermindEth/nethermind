@@ -132,7 +132,6 @@ public class VirtualMachine : IVirtualMachine
             ExceptionType = exceptionType;
         }
 
-
         public EvmState? StateToExecute { get; }
         public (int? ContainerIndex, ReadOnlyMemory<byte> Bytes) Output { get; }
         public EvmExceptionType ExceptionType { get; }
@@ -2477,10 +2476,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
     {
+        Metrics.IncrementCalls();
+
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
-
-        Metrics.IncrementCalls();
 
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
@@ -2667,6 +2666,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
     {
+        Metrics.IncrementCalls();
+
         const int MIN_RETAINED_GAS = 5000;
 
         returnData = null;
@@ -2680,9 +2681,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.BadInstruction;
 
         // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
-        stack.PopWord256(out Span<byte> targetBytes);
-        stack.PopUInt256(out UInt256 dataOffset);
-        stack.PopUInt256(out UInt256 dataLength);
+        if (!stack.PopWord256(out Span<byte> targetBytes)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow;
 
         UInt256 callValue;
         switch (instruction)
@@ -2713,16 +2714,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         Address caller = instruction == Instruction.EXTDELEGATECALL ? env.Caller : env.ExecutingAccount;
-        Address targetAddress = new Address(targetBytes[12..].ToArray());
+        Address codeSource = new Address(targetBytes[12..].ToArray());
+        Address target = instruction == Instruction.EXTCALL || instruction == Instruction.EXTSTATICCALL
+            ? codeSource
+            : env.ExecutingAccount;
 
         // 5. Perform (and charge for) memory expansion using [input_offset, input_size].
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
         // 1. Charge WARM_STORAGE_READ_COST (100) gas.
         // 6. If target_address is not in the warm_account_list, charge COLD_ACCOUNT_ACCESS - WARM_STORAGE_READ_COST (2500) gas.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, targetAddress, spec)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
 
-        if ((!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(targetAddress))
-            || (spec.ClearEmptyAccountWhenTouched && callValue != 0 && _state.IsDeadAccount(targetAddress)))
+        if ((!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(codeSource))
+            || (spec.ClearEmptyAccountWhenTouched && callValue != 0 && _state.IsDeadAccount(codeSource)))
         {
             // 7. If target_address is not in the state and the call configuration would result in account creation,
             //    charge ACCOUNT_CREATION_COST (25000) gas. (The only such case in this EIP is if value is non-zero.)
@@ -2761,11 +2765,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (typeof(TLogger) == typeof(IsTracing))
         {
             _logger.Trace($"caller {caller}");
-            _logger.Trace($"target {targetAddress}");
+            _logger.Trace($"target {codeSource}");
             _logger.Trace($"value {callValue}");
         }
 
-        ICodeInfo targetCodeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, targetAddress, spec);
+        ICodeInfo targetCodeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
         targetCodeInfo.AnalyseInBackgroundIfRequired();
 
         if (instruction is Instruction.EXTDELEGATECALL
@@ -2788,15 +2792,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
         Snapshot snapshot = _state.TakeSnapshot();
-        if (!callValue.IsZero) _state.SubtractFromBalance(caller, callValue, spec);
+        _state.SubtractFromBalance(caller, callValue, spec);
 
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,
             callDepth: env.CallDepth + 1,
             caller: caller,
-            codeSource: targetAddress,
-            executingAccount: targetAddress,
+            codeSource: codeSource,
+            executingAccount: target,
             transferValue: callValue,
             value: callValue,
             inputData: callData,
@@ -2804,7 +2808,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {callGas}");
 
-        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
         returnData = new EvmState(
             callGas,
             callEnv,
