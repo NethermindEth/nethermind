@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -52,6 +53,10 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<b
 
         Metrics.GetPayloadRequests++;
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
+
+        if (_logger.IsWarn) _logger.Warn($"Get payload. Blocks's hash: {block.Hash}, txroot: {block.TxRoot}, wroot: {block.WithdrawalsRoot}, state: {block.StateRoot}");
+        if (_logger.IsWarn) _logger.Warn($"Get payload. Payload's hash: {(getPayloadResult as GetPayloadV2Result)?.ExecutionPayload.BlockHash} wroot: {(getPayloadResult as GetPayloadV2Result)?.ExecutionPayload.Withdrawals}, state: {(getPayloadResult as GetPayloadV2Result)?.ExecutionPayload.Transactions}");
+
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
 
