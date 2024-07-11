@@ -25,6 +25,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -122,8 +123,9 @@ namespace Nethermind.Merge.AuRa
 
                 ShutterEon shutterEon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
                 bool haveCheckedRegistered = false;
-                _eonUpdateHandler = (_, e) => {
-                    int headerAge = (int)(e.Block.Header.Timestamp - (ulong) DateTimeOffset.Now.ToUnixTimeSeconds());
+                _eonUpdateHandler = (_, e) =>
+                {
+                    int headerAge = (int)(e.Block.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds());
                     if (headerAge < _api.SpecProvider!.SlotLength!.Value.Seconds)
                     {
                         if (!haveCheckedRegistered)
@@ -164,11 +166,20 @@ namespace Nethermind.Merge.AuRa
 
         private void CheckRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory, ILogger logger)
         {
+            if (validatorsInfo.IsNullOrEmpty())
+            {
+                return;
+            }
+
             IReadOnlyTxProcessingScope scope = envFactory.Create().Build(parent.StateRoot!);
             ITransactionProcessor processor = scope.TransactionProcessor;
 
             ValidatorRegistryContract validatorRegistryContract = new(processor, _api.AbiEncoder!, new(_shutterConfig!.ValidatorRegistryContractAddress!), logger, _api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryMessageVersion);
-            if (!validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
+            if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
+            {
+                if (logger.IsInfo) logger.Info($"All Shutter validators are registered.");
+            }
+            else
             {
                 if (logger.IsError) logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
             }

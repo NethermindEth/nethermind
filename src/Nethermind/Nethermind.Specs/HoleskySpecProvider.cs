@@ -40,8 +40,6 @@ public class HoleskySpecProvider : ISpecProvider
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; } = (0, GenesisTimestamp);
     public ulong TimestampFork => ShanghaiTimestamp;
-    public ulong? TimestampBeaconGenesis => GenesisTimestamp;
-    public TimeSpan? SlotLength => TimeSpan.FromSeconds(12);
     public UInt256? TerminalTotalDifficulty { get; private set; } = 0;
     public IReleaseSpec GenesisSpec { get; } = London.Instance;
     public ForkActivation[] TransitionActivations { get; } =
