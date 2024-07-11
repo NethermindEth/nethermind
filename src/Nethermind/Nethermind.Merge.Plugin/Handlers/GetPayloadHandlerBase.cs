@@ -56,6 +56,10 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<b
 
         if (_logger.IsWarn) _logger.Warn($"Get payload. Blocks's hash: {block.Hash}, txroot: {block.TxRoot}, wroot: {block.WithdrawalsRoot}, state: {block.StateRoot}");
         if (_logger.IsWarn) _logger.Warn($"Get payload. Payload's hash: {(getPayloadResult as GetPayloadV2Result)?.ExecutionPayload.BlockHash} wroot: {(getPayloadResult as GetPayloadV2Result)?.ExecutionPayload.Withdrawals}, state: {(getPayloadResult as GetPayloadV2Result)?.ExecutionPayload.Transactions}");
+        if ((getPayloadResult as GetPayloadV2Result)?.ExecutionPayload.TryGetBlock(out Block? b) == true)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Get payload. Payload blocks's hash: {b?.Hash} wroot: {b?.WithdrawalsRoot}, txroot: {b?.TxRoot}, state: {b?.StateRoot}");
+        }
 
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
