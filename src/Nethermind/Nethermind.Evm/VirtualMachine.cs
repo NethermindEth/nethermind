@@ -2767,6 +2767,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         ICodeInfo targetCodeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, targetAddress, spec);
+        targetCodeInfo.AnalyseInBackgroundIfRequired();
 
         if (instruction is Instruction.EXTDELEGATECALL
             && targetCodeInfo is not EofCodeInfo)
@@ -2800,7 +2801,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: callValue,
             value: callValue,
             inputData: callData,
-            codeInfo: _codeInfoRepository.GetCachedCodeInfo(_state, targetAddress, spec)
+            codeInfo: targetCodeInfo
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {callGas}");
 
