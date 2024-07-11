@@ -126,7 +126,7 @@ namespace Nethermind.Merge.AuRa
                 _eonUpdateHandler = (_, e) =>
                 {
                     int headerAge = (int)(e.Block.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds());
-                    if (headerAge < _api.SpecProvider!.SlotLength!.Value.Seconds)
+                    if (headerAge < 10)
                     {
                         if (!haveCheckedRegistered)
                         {

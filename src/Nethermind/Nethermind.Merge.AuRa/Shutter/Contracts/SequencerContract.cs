@@ -40,7 +40,8 @@ public class SequencerContract : Contract
 
     public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        IEnumerable<IEnumerable<ISequencerContract.TransactionSubmitted>> eventBlocks = GetEventBlocks(eon, txPointer, headBlockNumber).Reverse();
+        List<IEnumerable<ISequencerContract.TransactionSubmitted>> eventBlocks = GetEventBlocks(eon, txPointer, headBlockNumber).ToList();
+        eventBlocks.Reverse();
         foreach (IEnumerable<ISequencerContract.TransactionSubmitted> block in eventBlocks)
         {
             foreach (ISequencerContract.TransactionSubmitted tx in block)
@@ -60,10 +61,10 @@ public class SequencerContract : Contract
             BlockParameter start = new(startBlockNumber);
             LogFilter logFilter = new(0, start, end, _addressFilter, _topicsFilter);
 
-            IEnumerable<FilterLog> logs;
+            List<FilterLog> logs;
             try
             {
-                logs = _logFinder.FindLogs(logFilter);
+                logs = _logFinder.FindLogs(logFilter).ToList();
             }
             catch (ResourceNotFoundException e)
             {
@@ -86,7 +87,7 @@ public class SequencerContract : Contract
             end = new BlockParameter(startBlockNumber - 1);
         }
     }
-    
+
     private IEnumerable<ISequencerContract.TransactionSubmitted> eventsFromLogs(IEnumerable<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock)
     {
         int count = 0;
