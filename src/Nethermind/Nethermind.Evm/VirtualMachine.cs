@@ -263,7 +263,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             return new TransactionSubstate(callResult.ExceptionType, isTracing);
                         }
 
-                        previousCallResult = StatusCode.FailureBytes;
+                        previousCallResult = currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
                         previousCallOutputDestination = UInt256.Zero;
                         _returnDataBuffer = Array.Empty<byte>();
                         previousCallOutput = ZeroPaddedSpan.Empty;
@@ -464,7 +464,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     else
                     {
                         _returnDataBuffer = callResult.Output.Bytes;
-                        previousCallResult = callResult.PrecompileSuccess.HasValue
+                        previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
+                            callResult.PrecompileSuccess.HasValue
                             ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
                             : StatusCode.SuccessBytes;
                         previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
