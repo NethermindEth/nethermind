@@ -61,6 +61,7 @@ jobs:
             . --push
       - name: Trigger notification action on test repo
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/master') || startsWith(github.ref, 'refs/heads/release/'))
+        continue-on-error: true
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: receive-push-notification.yml
