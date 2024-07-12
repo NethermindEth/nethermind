@@ -1927,7 +1927,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        (exceptionType, returnData) = InstructionEofCreate(vmState, ref codeSection, ref stack, ref gasAvailable, spec, instruction);
+                        (exceptionType, returnData) = InstructionEofCreate(vmState, ref programCounter, ref codeSection, ref stack, ref gasAvailable, spec, instruction);
+
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         if (returnData is null) break;
@@ -2194,7 +2195,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (spec.IsEofEnabled && env.CodeInfo.Version > 0)
                         {
                             if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
-                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
+
+                            stack.PopUInt256(out a);
                             var count = codeSection[programCounter] + 1;
                             var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
                             if (a < count)
@@ -2301,8 +2303,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
 
                         byte sectionIdx = codeSection[programCounter++];
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
                         ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
                         if (b > UInt256.Zero)
                         {
@@ -2335,7 +2337,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
 
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        stack.PopUInt256(out a);
                         ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(a, 32);
                         stack.PushBytes(zpbytes);
                         break;
@@ -2359,13 +2361,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                             goto InvalidInstruction;
 
-                        if (!stack.PopUInt256(out UInt256 memOffset)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out UInt256 offset)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out UInt256 size)) goto StackUnderflow;
+                        stack.PopUInt256(out UInt256 memOffset);
+                        stack.PopUInt256(out UInt256 offset);
+                        stack.PopUInt256(out UInt256 size);
 
                         if (size > UInt256.Zero)
                         {
-                            if (!UpdateGas(GasCostOf.Memory + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable) ||
+                            if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable) ||
                                 !UpdateMemoryCost(vmState, ref gasAvailable, in memOffset, size))
                                 goto OutOfGas;
 
@@ -2907,7 +2909,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private (EvmExceptionType exceptionType, EvmState? callState) InstructionEofCreate<TTracing>(EvmState vmState, ref ReadOnlySpan<byte> codeSection, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+    private (EvmExceptionType exceptionType, EvmState? callState) InstructionEofCreate<TTracing>(EvmState vmState, ref int pc,  ref ReadOnlySpan<byte> codeSection, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -2919,7 +2921,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.OutOfGas, null);
 
         // 2 - read immediate operand initcontainer_index, encoded as 8-bit unsigned value
-        int initcontainerIndex = codeSection[vmState.ProgramCounter++];
+        int initcontainerIndex = codeSection[pc++];
 
         // 3 - pop value, salt, input_offset, input_size from the operand stack
         // no stack checks becaue EOF guarantees no stack undeflows
