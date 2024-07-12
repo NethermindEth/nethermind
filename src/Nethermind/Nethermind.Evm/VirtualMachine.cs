@@ -2909,7 +2909,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private (EvmExceptionType exceptionType, EvmState? callState) InstructionEofCreate<TTracing>(EvmState vmState, ref int pc,  ref ReadOnlySpan<byte> codeSection, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+    private (EvmExceptionType exceptionType, EvmState? callState) InstructionEofCreate<TTracing>(EvmState vmState, ref int pc, ref ReadOnlySpan<byte> codeSection, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
