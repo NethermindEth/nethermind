@@ -44,7 +44,7 @@ public class TaikoPostMergeBlockProducer(
     logManager,
     miningConfig)
 {
-    private readonly TaikoPayloadTxSource _payloadAttrsTxSource = new();
+    private readonly TaikoPayloadTxSource _payloadAttrsTxSource = new(specProvider, logManager);
 
     protected override Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
