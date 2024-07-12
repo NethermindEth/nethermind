@@ -1466,20 +1466,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
+                        if (!stack.PopUInt256(out c)) goto StackUnderflow;
+                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c);
 
 
-                        if (env.CodeInfo.Version == 0 && UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
+                        if (env.CodeInfo.Version == 0 && UInt256.AddOverflow(c, b, out result) || result > _returnDataBuffer.Length)
                         {
                             goto AccessViolation;
                         }
 
-                        if (!result.IsZero)
+                        if (!c.IsZero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, c)) goto OutOfGas;
 
-                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)result);
+                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)c);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
@@ -1827,7 +1827,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.DUPN:
                     {
-                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                             goto InvalidInstruction;
 
                         if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
@@ -1863,7 +1863,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.SWAPN:
                     {
-                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                             goto InvalidInstruction;
 
                         if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
@@ -1877,7 +1877,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.EXCHANGE:
                     {
-                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                             goto InvalidInstruction;
 
                         if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
@@ -1920,14 +1920,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.EOFCREATE:
                     {
-                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                         {
                             goto InvalidInstruction;
                         }
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         (exceptionType, returnData) = InstructionEofCreate(vmState, ref codeSection, ref stack, ref gasAvailable, spec, instruction);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -2211,7 +2210,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.CALLF:
                     {
-                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                         {
                             goto InvalidInstruction;
                         }
@@ -2242,7 +2241,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                 case Instruction.JUMPF:
                     {
-                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                         {
                             goto InvalidInstruction;
                         }
@@ -2262,7 +2261,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.RETF:
                     {
-                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
                         {
                             goto InvalidInstruction;
                         }
@@ -2279,7 +2278,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.EXTDELEGATECALL:
                 case Instruction.EXTSTATICCALL:
                     {
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         exceptionType = InstructionEofCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -2681,9 +2679,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.BadInstruction;
 
         // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
-        if (!stack.PopWord256(out Span<byte> targetBytes)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow;
+        stack.PopWord256(out Span<byte> targetBytes);
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataLength);
 
         UInt256 callValue;
         switch (instruction)
@@ -2715,9 +2713,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         Address caller = instruction == Instruction.EXTDELEGATECALL ? env.Caller : env.ExecutingAccount;
         Address codeSource = new Address(targetBytes[12..].ToArray());
-        Address target = instruction == Instruction.EXTCALL || instruction == Instruction.EXTSTATICCALL
-            ? codeSource
-            : env.ExecutingAccount;
+        Address target = instruction == Instruction.EXTDELEGATECALL
+            ? env.ExecutingAccount
+            : codeSource;
 
         // 5. Perform (and charge for) memory expansion using [input_offset, input_size].
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
@@ -2773,7 +2771,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         targetCodeInfo.AnalyseInBackgroundIfRequired();
 
         if (instruction is Instruction.EXTDELEGATECALL
-            && targetCodeInfo is not EofCodeInfo)
+            && targetCodeInfo.Version == 0)
         {
             // https://github.com/ipsilon/eof/blob/main/spec/eof.md#new-behavior
             // EXTDELEGATECALL to a non-EOF contract (legacy contract, EOA, empty account) is disallowed,
