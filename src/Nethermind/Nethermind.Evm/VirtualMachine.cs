@@ -2707,7 +2707,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         // 4. If target_address has any of the high 12 bytes set to a non-zero value
         // (i.e. it does not contain a 20-byte address)
-        if (!targetBytes[0..11].IsZero())
+        if (!targetBytes[0..12].IsZero())
         {
             //  then halt with an exceptional failure.
             return EvmExceptionType.AddressOutOfRange;
