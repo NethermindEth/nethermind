@@ -1470,7 +1470,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c);
 
 
-                        if (env.CodeInfo.Version == 0 && UInt256.AddOverflow(c, b, out result) || result > _returnDataBuffer.Length)
+                        if (env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out result) || result > _returnDataBuffer.Length))
                         {
                             goto AccessViolation;
                         }
@@ -1749,14 +1749,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        int programCounterInt = programCounter;
-                        if (programCounterInt >= codeSection.Length)
+                        if (programCounter >= codeSection.Length)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            stack.PushByte(codeSection[programCounterInt]);
+                            stack.PushByte(codeSection[programCounter]);
                         }
 
                         programCounter++;
