@@ -291,7 +291,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (payloadAttributes is not null)
         {
-            if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
+            if (newHeadBlock.Timestamp > payloadAttributes.Timestamp)
             {
                 string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
 

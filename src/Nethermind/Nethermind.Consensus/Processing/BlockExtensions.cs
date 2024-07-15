@@ -14,7 +14,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Processing
 {
-    internal static class BlockExtensions
+    public static class BlockExtensions
     {
         public static Block CreateCopy(this Block block, BlockHeader header) =>
             block is BlockToProduce blockToProduce

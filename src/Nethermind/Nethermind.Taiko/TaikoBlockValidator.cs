@@ -52,14 +52,17 @@ public class TaikoBlockValidator(
             return true;
         }
 
-        if (block.Transactions.Length == 0)
+        if (block.TxRoot == Keccak.Zero)
         {
-            errorMessage = "Missing required Anchor Transaction.";
-            return false;
-        }
+            if (block.Transactions.Length is 0)
+            {
+                errorMessage = "Missing required Anchor Transaction.";
+                return false;
+            }
 
-        if (!ValidateAnchorTransaction(block.Transactions[0], block, out errorMessage))
-            return false;
+            if (!ValidateAnchorTransaction(block.Transactions[0], block, out errorMessage))
+                return false;
+        }
 
         // TaikoPlugin initializes the TxValidator with a Always.Valid validator
         return base.ValidateTransactions(block, spec, out errorMessage);

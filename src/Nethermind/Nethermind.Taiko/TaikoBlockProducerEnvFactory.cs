@@ -15,6 +15,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -33,7 +34,8 @@ public class TaikoBlockProducerEnvFactory(
     ITxPool txPool,
     ITransactionComparerProvider transactionComparerProvider,
     IBlocksConfig blocksConfig,
-    ILogManager logManager) : BlockProducerEnvFactory(
+    ILogManager logManager,
+    IEthereumEcdsa ecdsa) : BlockProducerEnvFactory(
         worldStateManager,
         blockTree,
         specProvider,
@@ -46,7 +48,7 @@ public class TaikoBlockProducerEnvFactory(
         blocksConfig,
         logManager)
 {
-    private readonly IBlockTransactionsExecutorFactory _blockInvalidTxExecutorFactory = new BlockInvalidTxExecutorFactory();
+    private readonly IBlockTransactionsExecutorFactory _blockInvalidTxExecutorFactory = new BlockInvalidTxExecutorFactory(ecdsa);
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(
         IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>

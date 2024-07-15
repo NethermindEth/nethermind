@@ -125,21 +125,21 @@ public class TaikoSimplePayloadPreparationService : IPayloadPreparationService
         return header;
     }
 
-    private List<Transaction> BuildTransactions(TaikoPayloadAttributes payloadAttributes)
+    private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
         RlpStream rlpStream = new(payloadAttributes.BlockMetadata!.TxList!);
 
         int transactionsSequenceLength = rlpStream.ReadSequenceLength();
         int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
 
-        List<Transaction> transactions = [];
+        int txCount = rlpStream.PeekNumberOfItemsRemaining(transactionsCheck);
+
+        Transaction[] transactions = new Transaction[txCount];
+        int txIndex = 0;
+
         while (rlpStream.Position < transactionsCheck)
         {
-            Transaction? transaction = _txDecoder.Decode(rlpStream, RlpBehaviors.None);
-            if (transaction is not null)
-            {
-                transactions.Add(transaction);
-            }
+            transactions[txIndex++] = _txDecoder.Decode(rlpStream, RlpBehaviors.None)!;
         }
 
         rlpStream.Check(transactionsCheck);
@@ -150,9 +150,9 @@ public class TaikoSimplePayloadPreparationService : IPayloadPreparationService
     private Block BuildBlock(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
     {
         BlockHeader header = BuildHeader(parentHeader, payloadAttributes);
-        IEnumerable<Transaction> transactions = BuildTransactions(payloadAttributes);
+        Transaction[] transactions = BuildTransactions(payloadAttributes);
 
-        return new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+        return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
     }
 
     public ValueTask<IBlockProductionContext?> GetPayload(string payloadId)

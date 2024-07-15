@@ -125,6 +125,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         // ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
+        ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -154,7 +155,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             new(_api.SpecProvider,
                 _api.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(_api.TransactionProcessor), scope.WorldState),
+                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(_api.TransactionProcessor), scope.WorldState, _api.EthereumEcdsa),
                 scope.WorldState,
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.SpecProvider, scope.WorldState),

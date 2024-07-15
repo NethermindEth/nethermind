@@ -41,7 +41,7 @@ public class TaikoPostMergeBlockProducer(
     logManager,
     miningConfig)
 {
-    private readonly TaikoPayloadTxSource _payloadAttrsTxSource = new();
+    private readonly TaikoPayloadTxSource _payloadAttrsTxSource = new(specProvider, logManager);
 
     protected override Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
@@ -52,7 +52,7 @@ public class TaikoPostMergeBlockProducer(
 
         IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(parent, attrs.BlockMetadata!.GasLimit, attrs);
 
-        return new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+        return new BlockToProduce(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
     }
 
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)

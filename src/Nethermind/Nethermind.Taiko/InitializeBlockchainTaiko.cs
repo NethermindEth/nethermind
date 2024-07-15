@@ -84,12 +84,13 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+        if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
 
         return new BlockProcessor(
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState),
+            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState, _api.EthereumEcdsa),
             _api.WorldState,
             _api.ReceiptStorage,
             new BlockhashStore(_api.SpecProvider, _api.WorldState),

@@ -25,6 +25,7 @@ public class InitializeBlockProducerTaiko(TaikoNethermindApi api) : InitializeBl
         if (_api.TransactionComparerProvider is null) throw new StepDependencyException(nameof(_api.TransactionComparerProvider));
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
         if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
+        if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
 
         _api.BlockProducerEnvFactory = new TaikoBlockProducerEnvFactory(
             _api.WorldStateManager,
@@ -37,7 +38,8 @@ public class InitializeBlockProducerTaiko(TaikoNethermindApi api) : InitializeBl
             _api.TxPool,
             _api.TransactionComparerProvider,
             _api.Config<IBlocksConfig>(),
-            _api.LogManager);
+            _api.LogManager,
+            _api.EthereumEcdsa);
 
         _api.GasLimitCalculator = new TaikoGasLimitCalculator();
         _api.BlockProducer = new FailBlockProducer();
