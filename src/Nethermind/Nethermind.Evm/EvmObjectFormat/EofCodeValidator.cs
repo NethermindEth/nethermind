@@ -622,12 +622,11 @@ public static class EvmObjectFormat
             }
 
             Span<bool> visitedSections = stackalloc bool[header.CodeSections.Count];
-            Span<byte> visitedContainerSections = stackalloc byte[header.ContainerSections is null ? 0 : header.ContainerSections.Value.Count];
+            Span<byte> visitedContainerSections = stackalloc byte[header.ContainerSections is null ? 1 : 1 + header.ContainerSections.Value.Count];
             visitedSections.Clear();
 
             Queue<ushort> validationQueue = new Queue<ushort>();
             validationQueue.Enqueue(0);
-
 
             while (validationQueue.TryDequeue(out ushort sectionIdx))
             {
@@ -648,7 +647,7 @@ public static class EvmObjectFormat
 
             bool HasNoNonReachableSections =
                 visitedSections[..header.CodeSections.Count].Contains(false)
-                || (header.ContainerSections is not null && visitedContainerSections[..header.ContainerSections.Value.Count].Contains((byte)0));
+                || (header.ContainerSections is not null && visitedContainerSections[1..header.ContainerSections.Value.Count].Contains((byte)0));
 
             return !HasNoNonReachableSections;
         }
@@ -715,14 +714,42 @@ public static class EvmObjectFormat
                     Instruction opcode = (Instruction)code[pos];
                     int postInstructionByte = pos + 1;
 
-                    if (strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode) && opcode is Instruction.RETURN or Instruction.STOP)
+                    if (opcode is Instruction.RETURN or Instruction.STOP)
                     {
-                        return false;
+                        if(strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode))
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {opcode} opcode");
+                            return false;
+                        } else
+                        {
+                            if (visitedContainers[0] == (byte)ValidationStrategy.ValidateInitcodeMode)
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
+                                return false;
+                            } else
+                            {
+                                visitedContainers[0] = (byte)ValidationStrategy.ValidateRuntimeMode;
+                            }
+                        }
                     }
 
-                    if (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode) && opcode is Instruction.RETURNCONTRACT)
+                    if (opcode is Instruction.RETURNCONTRACT)
                     {
-                        return false;
+                        if(strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {opcode} opcode");
+                            return false;
+                        } else
+                        {
+                            if (visitedContainers[0] == (byte)ValidationStrategy.ValidateRuntimeMode)
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
+                                return false;
+                            } else
+                            {
+                                visitedContainers[0] = (byte)ValidationStrategy.ValidateInitcodeMode;
+                            }
+                        }
                     }
 
                     if (!opcode.IsValid(IsEofContext: true))
@@ -895,13 +922,13 @@ public static class EvmObjectFormat
                             return false;
                         }
 
-                        if (visitedContainers[runtimeContainerId] != 0 && visitedContainers[runtimeContainerId] != (byte)ValidationStrategy.ValidateRuntimeMode)
+                        if (visitedContainers[runtimeContainerId + 1] != 0 && visitedContainers[runtimeContainerId + 1] != (byte)ValidationStrategy.ValidateRuntimeMode)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s target container can only be a runtime mode bytecode");
                             return false;
                         }
 
-                        visitedContainers[runtimeContainerId] = (byte)ValidationStrategy.ValidateRuntimeMode;
+                        visitedContainers[runtimeContainerId + 1] = (byte)ValidationStrategy.ValidateRuntimeMode;
                         ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSections.Value.Start + header.ContainerSections.Value[runtimeContainerId].Start, header.ContainerSections.Value[runtimeContainerId].Size);
 
                         if (!IsValidEof(subcontainer, ValidationStrategy.ValidateRuntimeMode, out _))
@@ -930,13 +957,13 @@ public static class EvmObjectFormat
                             return false;
                         }
 
-                        if (visitedContainers[initcodeSectionId] != 0 && visitedContainers[initcodeSectionId] != (byte)ValidationStrategy.ValidateInitcodeMode)
+                        if (visitedContainers[initcodeSectionId + 1] != 0 && visitedContainers[initcodeSectionId + 1] != (byte)ValidationStrategy.ValidateInitcodeMode)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s target container can only be a initcode mode bytecode");
                             return false;
                         }
 
-                        visitedContainers[initcodeSectionId] = (byte)ValidationStrategy.ValidateInitcodeMode;
+                        visitedContainers[initcodeSectionId + 1] = (byte)ValidationStrategy.ValidateInitcodeMode;
                         ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSections.Value.Start + header.ContainerSections.Value[initcodeSectionId].Start, header.ContainerSections.Value[initcodeSectionId].Size);
                         if (!IsValidEof(subcontainer, ValidationStrategy.ValidateInitcodeMode | ValidationStrategy.ValidateSubContainers | ValidationStrategy.ValidateFullBody, out _))
                         {

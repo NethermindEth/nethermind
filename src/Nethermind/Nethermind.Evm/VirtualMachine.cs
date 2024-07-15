@@ -396,6 +396,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             int deployContainerIndex = callResult.Output.ContainerIndex.Value;
                             ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
                             ReadOnlySpan<byte> container = eofCodeInfo.ContainerSection.Span[(Range)eofCodeInfo.ContainerSectionOffset(deployContainerIndex).Value];
+                            EOF.EvmObjectFormat.IsValidEof(container, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader, out EOF.EofHeader? initcodeHeader);
                             byte[] bytecodeResultArray = null;
 
                             // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
@@ -409,15 +410,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             int dataSubheaderSectionStart =
                                 EvmObjectFormat.VERSION_OFFSET // magic + version
                                 + EvmObjectFormat.Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
-                                + EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                                + (eofCodeInfo.Header.ContainerSections is null
+                                + EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+                                + (initcodeHeader?.ContainerSections is null
                                     ? 0 // container section :  (0 bytes if no container section is available)
-                                    : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * eofCodeInfo.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                                    : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * initcodeHeader.Value.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
                                 + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
 
                             ushort dataSize = (ushort)(eofCodeInfo.DataSection.Length + auxExtraData.Length);
-                            bytecodeResult[dataSubheaderSectionStart] = (byte)(bytecodeResult.Length >> 8);
-                            bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(bytecodeResult.Length & 0xFF);
+                            bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
+                            bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
 
                             bytecodeResultArray = bytecodeResult.ToArray();
 
@@ -2295,7 +2296,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.RETURNCONTRACT:
                     {
-                        if (!spec.IsEofEnabled && !vmState.ExecutionType.IsAnyCreateEof())
+                        if (!spec.IsEofEnabled || !vmState.ExecutionType.IsAnyCreateEof())
                             goto InvalidInstruction;
 
                         if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
