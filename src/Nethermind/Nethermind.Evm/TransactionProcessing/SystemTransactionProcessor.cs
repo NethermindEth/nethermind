@@ -35,7 +35,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         base.Execute(tx, in blCtx, tracer, !opts.HasFlag(ExecutionOptions.NoValidation)
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.NoValidation
             : opts);
-    
+
 
     protected override IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => new SystemTransactionReleaseSpec(base.GetSpec(tx, header), _isAura);
 
