@@ -19,6 +19,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -96,6 +97,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             : base(mergeConfig, mockedPayloadPreparationService)
         {
             SealEngineType = Core.SealEngineType.AuRa;
+        }
+
+        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        {
+            if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
+            return base.Build(specProvider, initialValues, addBlockOnStart);
         }
 
         protected override IBlockProcessor CreateBlockProcessor()

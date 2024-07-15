@@ -77,9 +77,18 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <param name="forkActivation"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
-        IReleaseSpec GetSpec(ForkActivation forkActivation);
-        IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => GetSpec((blockNumber, timestamp));
-        IReleaseSpec GetSpec(BlockHeader blockHeader) => GetSpec((blockHeader.Number, blockHeader.Timestamp));
+        protected internal IReleaseSpec GetSpec(ForkActivation forkActivation);
+    }
+
+    public static class SpecProviderExtensions
+    {
+        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, ForkActivation forkActivation)
+            => specProvider.SealEngine == SealEngineType.AuRa
+                ? new AuraSpecProvider(specProvider.GetSpec(forkActivation))
+                : specProvider.GetSpec(forkActivation);
+
+        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, long blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
+        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));
 
         /// <summary>
         /// Resolves a spec for all planned forks applied.
@@ -88,6 +97,6 @@ namespace Nethermind.Core.Specs
         /// <remarks> The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
         /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
         /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
-        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
+        public static IReleaseSpec GetFinalSpec(this ISpecProvider specProvider) => specProvider.GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
     }
 }
