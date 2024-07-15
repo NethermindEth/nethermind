@@ -33,6 +33,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Taiko;
 
@@ -328,6 +329,16 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             _api.StateReader!,
             _api.LogManager
         );
+
+        PivotUpdator pivotUpdator = new(
+            _api.BlockTree,
+            _api.Synchronizer.SyncModeSelector,
+            _api.SyncPeerPool,
+            _syncConfig,
+            _blockCacheService,
+            _beaconSync,
+            _api.DbProvider.MetadataDb,
+            _api.LogManager);
 
         return Task.CompletedTask;
     }
