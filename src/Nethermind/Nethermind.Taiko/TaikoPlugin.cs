@@ -125,6 +125,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         // ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
+        ArgumentNullException.ThrowIfNull(_api.WorldState);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
@@ -149,18 +150,18 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
             new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        //IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
         BlockProcessor blockProcessor =
             new(_api.SpecProvider,
                 _api.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(_api.TransactionProcessor), scope.WorldState, _api.EthereumEcdsa),
-                scope.WorldState,
+                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState, _api.EthereumEcdsa),
+                _api.WorldState,
                 _api.ReceiptStorage,
-                new BlockhashStore(_api.SpecProvider, scope.WorldState),
+                new BlockhashStore(_api.SpecProvider, _api.WorldState),
                 _api.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(_api.WorldState, _api.LogManager)));
 
         IBlockchainProcessor blockchainProcessor =
             new BlockchainProcessor(
@@ -172,7 +173,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 BlockchainProcessor.Options.NoReceipts);
 
         OneTimeChainProcessor chainProcessor = new(
-            scope.WorldState,
+            _api.WorldState,
             blockchainProcessor);
 
         // BlockProducerEnv env = ((TaikoBlockProducerEnvFactory)_api.BlockProducerEnvFactory).CreateWithInvalidTxExecutor();
@@ -180,7 +181,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         TaikoSimplePayloadPreparationService payloadPreparationService = new(
             chainProcessor,
             // env.ChainProcessor,
-            scope.WorldState,
+            _api.WorldState,
             // env.ReadOnlyStateProvider,
             l1OriginStore,
             _api.LogManager);
