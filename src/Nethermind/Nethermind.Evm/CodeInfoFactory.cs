@@ -23,9 +23,9 @@ public static class CodeInfoFactory
         return codeInfo;
     }
 
-    public static bool CreateInitCodeInfo(Memory<byte> data, IReleaseSpec spec, out ICodeInfo codeinfo, out Memory<byte> extraCalldata)
+    public static bool CreateInitCodeInfo(Memory<byte> data, IReleaseSpec spec, out ICodeInfo codeInfo, out Memory<byte> extraCalldata)
     {
-        codeinfo = new CodeInfo(data);
+        codeInfo = new CodeInfo(data);
         extraCalldata = default;
         if (spec.IsEofEnabled && data.Span.StartsWith(EvmObjectFormat.MAGIC))
         {
@@ -33,11 +33,12 @@ public static class CodeInfoFactory
             {
                 int containerSize = header.Value.DataSection.EndOffset;
                 extraCalldata = data.Slice(containerSize);
+                codeInfo = new EofCodeInfo(codeInfo, header.Value);
                 return true;
             }
             return false;
         }
-        codeinfo.AnalyseInBackgroundIfRequired();
+        codeInfo.AnalyseInBackgroundIfRequired();
         return true;
     }
 }
