@@ -2311,7 +2311,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
-                            if (((int)b + deploycodeInfo.DataSection.Length) != deploycodeInfo .Header.DataSection.Size)
+                            int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
+                            if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
                             {
                                 goto AccessViolation;
                             }
