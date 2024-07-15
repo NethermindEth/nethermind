@@ -47,7 +47,7 @@ public class BeaconBlockRootHandler(
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error("Error during calling BeaconBlockRoot contract", e);
+                throw new BlockchainException("Error during calling BeaconBlockRoot contract", e);
             }
         }
     }
