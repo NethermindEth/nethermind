@@ -716,17 +716,19 @@ public static class EvmObjectFormat
 
                     if (opcode is Instruction.RETURN or Instruction.STOP)
                     {
-                        if(strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode))
+                        if (strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {opcode} opcode");
                             return false;
-                        } else
+                        }
+                        else
                         {
                             if (visitedContainers[0] == (byte)ValidationStrategy.ValidateInitcodeMode)
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
                                 return false;
-                            } else
+                            }
+                            else
                             {
                                 visitedContainers[0] = (byte)ValidationStrategy.ValidateRuntimeMode;
                             }
@@ -735,17 +737,19 @@ public static class EvmObjectFormat
 
                     if (opcode is Instruction.RETURNCONTRACT)
                     {
-                        if(strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
+                        if (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {opcode} opcode");
                             return false;
-                        } else
+                        }
+                        else
                         {
                             if (visitedContainers[0] == (byte)ValidationStrategy.ValidateRuntimeMode)
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
                                 return false;
-                            } else
+                            }
+                            else
                             {
                                 visitedContainers[0] = (byte)ValidationStrategy.ValidateInitcodeMode;
                             }
