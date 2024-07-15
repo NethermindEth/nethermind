@@ -428,8 +428,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             {
                                 // 4 - set state[new_address].code to the updated deploy container
                                 // push new_address onto the stack (already done before the ifs)
-                                ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-                                _codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
+                                _codeInfoRepository.InsertCode(_state, bytecodeResultArray, callCodeOwner, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
 
                                 if (_txTracer.IsTracingActions)
