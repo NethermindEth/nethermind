@@ -231,11 +231,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
-        {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-        }
+        //if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+        //{
+        //    if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
+        //    return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+        //}
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
