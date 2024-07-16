@@ -39,6 +39,7 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProof>
 
     public VerkleProof Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (rlpStream.Length == 0) return new VerkleProof();
         rlpStream.ReadSequenceLength();
         VerkleProofStruct proofStruct = DecodeVerkleProofStruct(rlpStream);
         Banderwagon[] comsSorted = rlpStream.DecodeArray(DecodeBanderwagon);

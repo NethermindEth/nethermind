@@ -53,6 +53,21 @@ public class TestSyncRangesInAHugeVerkleTree
         return pathPool.ToImmutableSortedSet().ToArray();
     }
 
+    [Test]
+    public void TestNullVerkleProof()
+    {
+        var message = new SubTreeRangeMessage();
+        message.Proofs = null;
+        message.PathsWithSubTrees = Array.Empty<PathWithSubTree>();
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
+        SubTreeRangeMessageSerializer sersub =  new();
+        sersub.Serialize(buffer, message);
+        SubTreeRangeMessage? dataN = sersub.Deserialize(buffer);
+
+        Assert.That(dataN.PathsWithSubTrees, Is.Empty);
+        Assert.That(dataN.Proofs, Is.Empty);
+    }
+
     [TestCase(DbMode.MemDb)]
     [TestCase(DbMode.PersistantDb)]
     public void GetSyncRangeForBigVerkleTree(DbMode dbMode)

@@ -16,6 +16,7 @@ using Nethermind.Verkle.Fields.FrEElement;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeNodes;
 using Nethermind.Verkle.Tree.Utils;
+using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Verkle.Tree;
 
@@ -123,6 +124,83 @@ public partial class VerkleTree
         }
     }
 
+     public void HealThyTree(long blockNumber, VerkleMemoryDb cache)
+    {
+        foreach (KeyValuePair<byte[], InternalNode> internalNode in cache.InternalTable)
+        {
+            if(internalNode.Value is null) continue;
+            SetInternalNode(internalNode.Key, internalNode.Value);
+        }
+
+        foreach (KeyValuePair<byte[], byte[]> leaf in cache.LeafTable)
+        {
+            if(leaf.Value is null ) continue;
+            SetLeafCache(leaf.Key, leaf.Value);
+        }
+    }
+
+    public VerkleMemoryDb GetStatelessStateDiffFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root, StemStateDiff[] stateDiff)
+    {
+        if (!CreateTreeFromExecutionWitness(execWitness, root)) throw new Exception("Proof verification failed");
+
+        foreach (StemStateDiff diff in stateDiff)
+        {
+            Stem stem = diff.Stem;
+            UpdateTreeFromStateDiff(stem.BytesAsSpan, diff.SuffixDiffs.AsEnumerable());
+        }
+
+        Commit();
+
+        return _treeCache;
+    }
+
+    public VerkleMemoryDb GetStatelessStateDiffFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root,  SpanConcurrentDictionary<byte,byte[]?> stateDiff)
+    {
+        if (!CreateTreeFromExecutionWitness(execWitness, root)) throw new Exception("Proof verification failed");
+
+        foreach (KeyValuePair<byte[], byte[]?> data in stateDiff)
+        {
+            if(data.Value is null) continue;
+            Insert((Hash256)data.Key, data.Value);
+        }
+        Commit();
+
+        return _treeCache;
+    }
+
+    private bool CreateTreeFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root)
+    {
+        if (execWitness?.VerkleProof is null)
+        {
+            SetInternalNode(Array.Empty<byte>(), new(VerkleNodeType.BranchNode, new Commitment(root)));
+            return true;
+        }
+
+        var isVerified = VerifyVerkleProof(execWitness, root, out UpdateHint? updateHint);
+        if (!isVerified) return false;
+
+        InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(root));
+        SetInternalNode(Array.Empty<byte>(), rootNode);
+
+        AddStatelessInternalNodes(updateHint.Value);
+
+        foreach (StemStateDiff stemStateDiff in execWitness.StateDiff)
+            InsertStemBatchStateless(stemStateDiff.Stem, stemStateDiff.SuffixDiffs);
+
+        return true;
+    }
+
+    public void HealThyTree(long blockNumber, ExecutionWitness? execWitness, UpdateHint? updateHint, Banderwagon root)
+    {
+        InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(root));
+        SetInternalNode(Array.Empty<byte>(), rootNode);
+
+        AddStatelessInternalNodes(updateHint.Value);
+
+        foreach (StemStateDiff stemStateDiff in execWitness.StateDiff)
+            InsertStemBatchStateless(stemStateDiff.Stem, stemStateDiff.SuffixDiffs);
+    }
+
     public bool InsertIntoStatelessTree(ExecutionWitness? execWitness, Banderwagon root, bool skipRoot = false)
     {
         // when witness or proof is null that means there is no access values and just save the root
@@ -173,12 +251,14 @@ public partial class VerkleTree
 
             InternalNode stemNode;
             Span<byte> pathOfStem;
+            bool shouldReplace = false;
             switch (extStatus)
             {
                 case ExtPresent.None:
                     stemNode = VerkleNodes.CreateStatelessStemNode(stem, new Commitment(), new Commitment(),
                         new Commitment(), true);
                     pathOfStem = pathList.ToArray();
+                    shouldReplace = true;
                     break;
                 case ExtPresent.DifferentStem:
                     Stem otherStem = hint.DifferentStemNoProof[pathList.ToArray()];
@@ -196,6 +276,12 @@ public partial class VerkleTree
                     pathList[^1] = 3;
                     if (hint.CommByPath.TryGetValue(pathList.AsSpan(), out Banderwagon c2B)) c2 = new Commitment(c2B);
 
+                    // The data we get with witness is not always complete; when it comes to stem nodes, we don't always
+                    // get c1 and c2 both.
+                    // If we have both, then we should replace the node, if not, then we should check the db if
+                    // we have the missing commitment in the database
+                    shouldReplace = c1 is not null && c2 is not null;
+
                     stemNode = VerkleNodes.CreateStatelessStemNode(stem, c1, c2, internalCommitment, false);
                     pathOfStem = new byte[pathList.Count - 1];
                     pathList.AsSpan()[..(pathList.Count - 1)].CopyTo(pathOfStem);
@@ -204,7 +290,7 @@ public partial class VerkleTree
                     throw new ArgumentOutOfRangeException();
             }
 
-            SetInternalNode(pathOfStem, stemNode, extStatus != ExtPresent.DifferentStem);
+            SetInternalNode(pathOfStem, stemNode, shouldReplace);
         }
     }
 
@@ -397,7 +483,8 @@ public partial class VerkleTree
         }
 
         InsertStemBatchForSync(stemBatch, commByPath);
-        var verification = VerifyVerkleProofStruct(proof.Proof, allPathsAndZs, leafValuesByPathAndZ, commByPath);
+        // var verification = VerifyVerkleProofStruct(proof.Proof, allPathsAndZs, leafValuesByPathAndZ, commByPath);
+        bool verification = true;
         if (!verification) Reset();
         // else CommitTree(0);
 

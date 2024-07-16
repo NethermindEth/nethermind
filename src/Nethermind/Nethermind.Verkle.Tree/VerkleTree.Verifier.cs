@@ -44,7 +44,7 @@ public partial class VerkleTree
         return stems;
     }
 
-    private static bool VerifyVerkleProof(
+    public static bool VerifyVerkleProof(
         ExecutionWitness execWitness,
         Banderwagon root,
         [NotNullWhen(true)] out UpdateHint? updateHint)
@@ -306,7 +306,7 @@ public partial class VerkleTree
                     // this should definitely be the stem + openingIndex, but the path is just used for sorting
                     // and indexing the values - this is directly never used for verification
                     // so it is a good idea to used values as small as possible without the issues of collision
-                    List<byte> suffixTreePath = new(stem[..depth]) { openingIndex };
+                    List<byte> suffixTreePath = [..stem[..depth], openingIndex];
 
                     allPaths.Add(suffixTreePath.ToArray());
                     var valLowerIndex = (byte)(2 * (suffix % 128));
@@ -362,9 +362,9 @@ public partial class VerkleTree
     private static bool VerifyVerkleProofStruct(VerkleProofStruct proof, SortedSet<(byte[], byte)> allPathsAndZs,
         Dictionary<(byte[], byte), FrE> leafValuesByPathAndZ, SpanDictionary<byte, Banderwagon> commByPath)
     {
-        var comms = new Banderwagon[allPathsAndZs.Count];
+        Span<Banderwagon> commitments = stackalloc Banderwagon[allPathsAndZs.Count];
         var index = 0;
-        foreach ((byte[] path, var z) in allPathsAndZs) comms[index++] = commByPath[path];
+        foreach ((byte[] path, var z) in allPathsAndZs) commitments[index++] = commByPath[path];
 
         SortedDictionary<(byte[], byte), FrE> ysByPathAndZ = new(new ListWithByteComparer());
         foreach ((byte[] path, var z) in allPathsAndZs)
@@ -379,20 +379,23 @@ public partial class VerkleTree
         IEnumerable<byte> zs = allPathsAndZs.Select(elem => elem.Item2);
         SortedDictionary<(byte[], byte), FrE>.ValueCollection ys = ysByPathAndZ.Values;
 
-        List<VerkleVerifierQuery> queries = new(comms.Length);
+        List<VerkleVerifierQuery> queries = new(commitments.Length);
 
-        foreach (((FrE y, var z), Banderwagon comm) in ys.Zip(zs).Zip(comms))
+        int c = 0;
+        foreach ((FrE y, var z) in  ys.Zip(zs))
         {
-            VerkleVerifierQuery query = new(comm, z, y);
+            VerkleVerifierQuery query = new(commitments[c], z, y);
             queries.Add(query);
+            c++;
         }
+
         // Console.WriteLine("Verifier Query");
         // foreach (VerkleVerifierQuery query in queries)
         // {
         //     Console.WriteLine($"{query.NodeCommitPoint.ToBytes().ToHexString()}:{query.ChildIndex}:{query.ChildHash.ToBytes().ToHexString()}");
         // }
 
-        Transcript proverTranscript = new("vt");
+        Transcript proverTranscript = new("vt", Math.Max(12 + 99 * queries.Count, 189));
         MultiProof proofVerifier = new(CRS.Instance, PreComputedWeights.Instance);
 
         return proofVerifier.CheckMultiProof(proverTranscript, queries.ToArray(), proof);

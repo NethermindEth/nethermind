@@ -72,7 +72,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     public void Insert(Hash256 key, in ReadOnlySpan<byte> value)
     {
-        ReadOnlySpan<byte> stem = key.Bytes.Slice(0, 31);
+        ReadOnlySpan<byte> stem = key.Bytes[..31];
         var present = _leafUpdateCache.TryGetValue(stem, out LeafUpdateDelta leafUpdateDelta);
         if (!present) leafUpdateDelta = new LeafUpdateDelta();
         leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(key, value.ToArray()), key.Bytes[31]);
@@ -86,7 +86,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
         Span<byte> key = new byte[32];
         stem.CopyTo(key);
-        foreach ((var index, var value) in leafIndexValueMap)
+        foreach (var (index, value) in leafIndexValueMap)
         {
             key[31] = index;
             leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(new Hash256(key.ToArray()), value), key[31]);
@@ -106,6 +106,23 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
         {
             key[31] = leaf.SuffixByte;
             leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(new Hash256(key.ToArray()), leaf.Leaf), key[31]);
+        }
+
+        _leafUpdateCache[stem.ToArray()] = leafUpdateDelta;
+    }
+
+    public void UpdateTreeFromStateDiff(in ReadOnlySpan<byte> stem, IEnumerable<SuffixStateDiff> leafIndexValueMap)
+    {
+        var present = _leafUpdateCache.TryGetValue(stem, out LeafUpdateDelta leafUpdateDelta);
+        if (!present) leafUpdateDelta = new LeafUpdateDelta();
+
+        Span<byte> key = new byte[32];
+        stem.CopyTo(key);
+        foreach (SuffixStateDiff leaf in leafIndexValueMap)
+        {
+            if(leaf.NewValue is null) continue;
+            key[31] = leaf.Suffix;
+            leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(new Hash256(key.ToArray()), leaf.NewValue), key[31]);
         }
 
         _leafUpdateCache[stem.ToArray()] = leafUpdateDelta;
@@ -157,6 +174,12 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
     private void SetLeafCache(Hash256 key, byte[]? value)
     {
         _treeCache.SetLeaf(key.Bytes, value);
+    }
+
+
+    private void SetLeafCache(in ReadOnlySpan<byte> key, byte[]? value)
+    {
+        _treeCache.SetLeaf(key, value);
     }
 
     private Banderwagon UpdateLeafAndGetDelta(Hash256 key, byte[] value)
@@ -217,16 +240,19 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     private void SetInternalNode(in ReadOnlySpan<byte> nodeKey, InternalNode node, bool replace = true)
     {
-        if (replace || !_treeCache.InternalTable.TryGetValue(nodeKey, out InternalNode? prevNode))
+        InternalNode? prevNode = GetInternalNode(nodeKey);
+        if (replace || prevNode is null)
         {
             _treeCache.SetInternalNode(nodeKey, node);
+            return;
         }
-        else
-        {
-            prevNode!.C1 ??= node.C1;
-            prevNode.C2 ??= node.C2;
-            _treeCache.SetInternalNode(nodeKey, prevNode);
-        }
+
+        prevNode!.C1 ??= node.C1;
+        prevNode.C2 ??= node.C2;
+
+        node.C1 ??= prevNode.C1;
+        node.C2 ??= prevNode.C2;
+        _treeCache.SetInternalNode(nodeKey, prevNode);
     }
 
     public void Reset()

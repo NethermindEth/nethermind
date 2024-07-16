@@ -38,7 +38,11 @@ public partial class VerkleTreeStore<TPersistence>
     public IEnumerable<PathWithSubTree> GetLeafRangeIterator(Stem fromRange, Stem toRange, Hash256 stateRoot,
         long bytes)
     {
+        // TODO: what to actually do in this case? because sending nothing can be treated as nothing ExpiredRootHash
         if (bytes == 0) yield break;
+
+        // if we don't have the state - send zero nodes - ExpiredRootHash
+        if(!HasStateForBlock(stateRoot)) yield break;
 
         var fromRangeBytes = new byte[32];
         var toRangeBytes = new byte[32];
