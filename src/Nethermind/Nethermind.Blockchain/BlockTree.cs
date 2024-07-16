@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _metadataDb;
         private readonly IBlockStore _badBlockStore;
 
-        private readonly PotentialCensorshipCache _potentialCensorshipCache;
+        private readonly CensorshipDetector _censorshipDetector;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _potentialCensorshipCache = PotentialCensorshipCache.Instance();
+            _censorshipDetector = CensorshipDetector.Instance();
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
@@ -851,7 +851,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
-                    _potentialCensorshipCache.Cache(ref block);
+                    _censorshipDetector.Cache(block);
                     _headerStore.Cache(block.Header);
                 }
 
@@ -926,7 +926,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
-                    _potentialCensorshipCache.Cache(ref block);
+                    _censorshipDetector.Cache(block);
                     _headerStore.Cache(block.Header);
                 }
 
@@ -1361,7 +1361,7 @@ namespace Nethermind.Blockchain
             if (block is not null && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
-                _potentialCensorshipCache.Cache(ref block);
+                _censorshipDetector.Cache(block);
                 _headerStore.Cache(block.Header);
             }
 

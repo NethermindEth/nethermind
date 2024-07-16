@@ -61,7 +61,7 @@ public partial class TxGasPriceSortedCollection
 
     public int Count => _cacheMap.Count;
 
-    public bool TryRemove(ref Transaction tx, [NotNullWhen(true)] out TxHashGasPricePair? removed)
+    public bool TryRemove(Transaction tx, [NotNullWhen(true)] out TxHashGasPricePair? removed)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
 
@@ -71,7 +71,7 @@ public partial class TxGasPriceSortedCollection
             return false;
         }
 
-        ValueHash256 hash = tx.CalculateHash();
+        ValueHash256 hash = tx.Hash;
         return TryRemoveNonLocked(hash, false, out removed);
     }
 
@@ -106,7 +106,7 @@ public partial class TxGasPriceSortedCollection
         return TryRemoveNonLocked(hash, false, out _);
     }
 
-    public bool TryRemove(ref Transaction tx) => TryRemove(ref tx, out _);
+    public bool TryRemove(Transaction tx) => TryRemove(tx, out _);
 
     public bool TryInsert(ref Transaction tx, out TxHashGasPricePair? removed)
     {

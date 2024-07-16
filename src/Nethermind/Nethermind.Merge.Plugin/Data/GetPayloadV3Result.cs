@@ -23,7 +23,7 @@ public class GetPayloadV3Result : GetPayloadV2Result
     {
         get
         {
-            return PotentialCensorshipCache.Instance().CensorshipDetected();
+            return CensorshipDetector.Instance().CensorshipDetected();
         }
     }
 
