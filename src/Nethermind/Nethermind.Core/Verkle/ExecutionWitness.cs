@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using FastEnumUtility;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Proofs;
 
@@ -14,12 +16,17 @@ namespace Nethermind.Core.Verkle;
 
 public class ExecutionWitness
 {
+    public Hash256? StateRoot { get; set; }
     public StemStateDiff[] StateDiff { get; }
     public WitnessVerkleProof? VerkleProof { get; }
 
+    // This is a temporary payload value to make sync work - would be removed in the future
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public SpanConcurrentDictionary<byte, byte[]?>? LeafStore { get; set; }
+
     public ExecutionWitness()
     {
-        StateDiff = Array.Empty<StemStateDiff>();
+        StateDiff = [];
         VerkleProof = null;
     }
 
