@@ -28,6 +28,8 @@ public class ShutterMessageHandler(
     {
         ulong loadedTransactionsSlot = txSource.GetLoadedTransactionsSlot();
 
+        if (_logger.IsInfo) _logger.Info($"Checking Shutter decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
+
         if (decryptionKeys.Gnosis.Slot <= loadedTransactionsSlot)
         {
             if (_logger.IsDebug) _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {loadedTransactionsSlot}.");
@@ -40,8 +42,6 @@ public class ShutterMessageHandler(
             if (_logger.IsDebug) _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");
             return;
         }
-
-        if (_logger.IsDebug) _logger.Debug($"Checking Shutter decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
 
         if (CheckDecryptionKeys(decryptionKeys, eonInfo.Value))
         {
