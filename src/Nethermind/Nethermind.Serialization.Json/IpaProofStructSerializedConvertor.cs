@@ -7,20 +7,32 @@ public class IpaProofStructSerializedConverter : System.Text.Json.Serialization.
 {
     public override IpaProofStructSerialized Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        reader.Read();
-        reader.Read();
-        var lData = ByteArrayConverter.Convert(ref reader); // Use ByteArrayConverter for 'l'
-        var l = lData != null ? JsonSerializer.Deserialize<byte[][]>(lData, options) : null;
-        reader.Read();
-        reader.Read();
-        var aData = ByteArrayConverter.Convert(ref reader); // Use ByteArrayConverter for 'a'
-        var a = aData != null ? JsonSerializer.Deserialize<byte[]>(aData, options) : null;
-        reader.Read();
-        reader.Read(); // Skip over the 'r' property name
-        var rData = ByteArrayConverter.Convert(ref reader); // Use ByteArrayConverter for 'r'
-        var r = rData != null ? JsonSerializer.Deserialize<byte[][]>(rData, options) : null;
+        byte[][] cl = Array.Empty<byte[]>();
+        byte[][] cr = Array.Empty<byte[]>();
 
-        return new IpaProofStructSerialized(l, a, r);
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                reader.Read();
+                if (reader.ValueTextEquals("cl"u8))
+                {
+                    reader.Read();
+                    cl = JsonSerializer.Deserialize<byte[][]>(ref reader, options) ??
+                         throw new InvalidOperationException();
+                }
+                else if (reader.ValueTextEquals("cr"u8))
+                {
+                    reader.Read();
+                    cr = JsonSerializer.Deserialize<byte[][]>(ref reader, options) ??
+                         throw new InvalidOperationException();
+                }
+            }
+        }
+        reader.Read();
+        byte[] hex = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+        reader.Read();
+        return new IpaProofStructSerialized(cl, hex, cr);
     }
 
     public override void Write(Utf8JsonWriter writer, IpaProofStructSerialized value, JsonSerializerOptions options)
