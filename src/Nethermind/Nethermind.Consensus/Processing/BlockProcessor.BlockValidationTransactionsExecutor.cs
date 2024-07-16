@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.Processing
 
             public IBlockProcessor.IBlockTransactionsExecutor WithNewStateProvider(IWorldState worldState)
             {
-                return new BlockValidationTransactionsExecutor(_transactionProcessor, worldState);
+                return new BlockValidationTransactionsExecutor(_transactionProcessor.WithNewStateProvider(worldState), worldState);
             }
 
             [DoesNotReturn]
