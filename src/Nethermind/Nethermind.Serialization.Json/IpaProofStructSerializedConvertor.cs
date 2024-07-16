@@ -7,8 +7,8 @@ public class IpaProofStructSerializedConverter : System.Text.Json.Serialization.
 {
     public override IpaProofStructSerialized Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        byte[][] cl = Array.Empty<byte[]>();
-        byte[][] cr = Array.Empty<byte[]>();
+        byte[][] cl = [];
+        byte[][] cr = [];
 
         if (reader.TokenType == JsonTokenType.StartObject)
         {
