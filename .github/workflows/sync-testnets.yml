@@ -25,7 +25,7 @@ jobs:
             agent: sync-agent-80gb
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
-            cl-client: "prysm:prysmaticlabs/prysm-beacon-chain:stable"
+            cl-client: "lodestar:chainsafe/lodestar:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "sepolia"
