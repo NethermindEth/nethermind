@@ -57,28 +57,27 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         CanProcessStatelessBlock = true;
     }
 
-    protected override void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
+    protected override void InitBranch(Hash256 branchStateRoot, bool processStateless, bool incrementReorgMetric = true)
     {
 
     }
 
-    protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
+    protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block, bool processStateless)
     {
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor;
         IWorldState worldState;
-        if (!block.IsGenesis)
+        if (block.IsGenesis)
         {
-            block.Header.MaybeParent!.TryGetTarget(out BlockHeader maybeParent);
-            Banderwagon stateRoot = Banderwagon.FromBytes(maybeParent!.StateRoot!.Bytes.ToArray())!.Value;
+            blockTransactionsExecutor = _blockTransactionsExecutor;
+            worldState = _stateProvider;
+        }
+        else
+        {
+            Banderwagon stateRoot = Banderwagon.FromBytes(block.ExecutionWitness!.StateRoot!.Bytes.ToArray())!.Value;
             _statelessWorldState.Reset();
             _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
             worldState = _statelessWorldState;
             blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider(worldState);
-        }
-        else
-        {
-            blockTransactionsExecutor = _blockTransactionsExecutor;
-            worldState = _stateProvider;
         }
 
         return (blockTransactionsExecutor, worldState);
