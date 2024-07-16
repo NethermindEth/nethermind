@@ -116,6 +116,12 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -123,7 +129,7 @@ jobs:
       - name: Publish
         env:
           GIT_TAG: ${{ github.event.inputs.tag }}
-          GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
@@ -165,6 +171,12 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -189,10 +201,3 @@ jobs:
               --build-arg COMMIT_HASH=$GITHUB_SHA \
               . --push
           done
-      - name: Trigger DAppNode build
-        if: needs.build.outputs.prerelease == 'false'
-        run: |
-          curl -s -X POST https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches \
-            -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" \
-            -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' \
-            -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"

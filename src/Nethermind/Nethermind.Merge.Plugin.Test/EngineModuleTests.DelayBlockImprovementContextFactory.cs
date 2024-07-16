@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -17,19 +18,19 @@ public partial class EngineModuleTests
 {
     private class DelayBlockImprovementContextFactory : IBlockImprovementContextFactory
     {
-        private readonly IManualBlockProductionTrigger _productionTrigger;
+        private readonly IBlockProducer _blockProducer;
         private readonly TimeSpan _timeout;
         private readonly TimeSpan _delay;
 
-        public DelayBlockImprovementContextFactory(IManualBlockProductionTrigger productionTrigger, TimeSpan timeout, TimeSpan delay)
+        public DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay)
         {
-            _productionTrigger = productionTrigger;
+            _blockProducer = blockProducer;
             _timeout = timeout;
             _delay = delay;
         }
 
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime) =>
-            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader, payloadAttributes, _delay, startDateTime);
+            new DelayBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _delay, startDateTime);
     }
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
@@ -37,7 +38,7 @@ public partial class EngineModuleTests
         private CancellationTokenSource? _cancellationTokenSource;
 
         public DelayBlockImprovementContext(Block currentBestBlock,
-            IManualBlockProductionTrigger blockProductionTrigger,
+            IBlockProducer blockProducer,
             TimeSpan timeout,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
@@ -47,17 +48,17 @@ public partial class EngineModuleTests
             _cancellationTokenSource = new CancellationTokenSource(timeout);
             CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
-            ImprovementTask = BuildBlock(blockProductionTrigger, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
+            ImprovementTask = BuildBlock(blockProducer, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
         }
 
         private async Task<Block?> BuildBlock(
-            IManualBlockProductionTrigger blockProductionTrigger,
+            IBlockProducer blockProducer,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
             TimeSpan delay,
             CancellationToken cancellationToken)
         {
-            Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, NullBlockTracer.Instance, payloadAttributes);
+            Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, cancellationToken);
             await Task.Delay(delay, cancellationToken);
             if (block is not null)
             {

@@ -21,6 +21,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly PeerInfo _syncPeer;
         private bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
+        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
 
         public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, IReadOnlyList<BlockHeader?> headers,
             bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
@@ -126,7 +127,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, ReceiptMessageDecoder.Instance);
+            Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
 
             if (receiptsRoot != block.ReceiptsRoot)
             {

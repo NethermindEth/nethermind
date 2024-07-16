@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,10 +20,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Core.Specs;
 using Nethermind.Consensus.BeaconBlockRoot;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -53,17 +50,30 @@ namespace Nethermind.Merge.Plugin.Test
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
             Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
-            Transaction BuildTransaction(uint index, AccountStruct senderAccount) =>
-                Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
+            Transaction BuildTransaction(uint index, AccountStruct senderAccount)
+            {
+                TransactionBuilder<Transaction> builder = Build.A.Transaction
+                    .WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
                     .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
-                    .WithSenderAddress(from.Address)
-                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
+                    .WithSenderAddress(from.Address);
+
+                if (blobCountPerTx != 0)
+                {
+                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx);
+                }
+                else
+                {
+                    builder = builder.WithType(TxType.EIP1559);
+                }
+
+                return builder
                     .WithMaxFeePerGasIfSupports1559(1.GWei())
                     .SignedAndResolved(from).TestObject;
+            }
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
             chain.StateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);
@@ -115,6 +125,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             Snapshot before = chain.State.TakeSnapshot();
             _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
+            var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
+            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);

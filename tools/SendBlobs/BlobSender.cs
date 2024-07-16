@@ -362,7 +362,7 @@ internal class BlobSender
         while (true)
         {
             var blockResult = await nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber.ToString() ?? "latest", false);
-            if (blockResult != null)
+            if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;
 

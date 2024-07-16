@@ -101,36 +101,29 @@ public class NodeTable : INodeTable
 
         public Node Current { get; private set; }
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
-            try
+            while (_count < _bucketSize)
             {
-                while (_count < _bucketSize)
+                if (!_enumeratorSet || !_itemEnumerator.MoveNext())
                 {
-                    if (!_enumeratorSet || !_itemEnumerator.MoveNext())
+                    _itemEnumerator.Dispose();
+                    _bucketIndex++;
+                    if (_bucketIndex >= _buckets.Length)
                     {
-                        _itemEnumerator.Dispose();
-                        _bucketIndex++;
-                        if (_bucketIndex >= _buckets.Length)
-                        {
-                            return false;
-                        }
-
-                        _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
-                        _enumeratorSet = true;
-                        continue;
+                        return false;
                     }
 
-                    Current = _itemEnumerator.Current.Node!;
-                    _count++;
-                    return true;
+                    _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
+                    _enumeratorSet = true;
+                    continue;
                 }
-            }
-            finally
-            {
-                _itemEnumerator.Dispose();
+
+                Current = _itemEnumerator.Current.Node!;
+                _count++;
+                return true;
             }
 
             return false;
@@ -138,13 +131,13 @@ public class NodeTable : INodeTable
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose() { }
+        public readonly void Dispose() => _itemEnumerator.Dispose();
 
-        public ClosestNodesEnumerator GetEnumerator() => this;
+        public readonly ClosestNodesEnumerator GetEnumerator() => this;
 
-        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+        readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
 
-        IEnumerator IEnumerable.GetEnumerator() => this;
+        readonly IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
     public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId)
@@ -171,7 +164,7 @@ public class NodeTable : INodeTable
             {
                 foreach (var item in bucket.BondedItems)
                 {
-                    if (item.Node != null && item.Node.IdHash != idHash)
+                    if (item.Node is not null && item.Node.IdHash != idHash)
                     {
                         _sortedNodes.Add(item.Node);
                     }
@@ -189,9 +182,9 @@ public class NodeTable : INodeTable
 
         public readonly int Count => _sortedNodes.Count;
 
-        public Node Current => _sortedNodes[_currentIndex];
+        public readonly Node Current => _sortedNodes[_currentIndex];
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
@@ -204,15 +197,15 @@ public class NodeTable : INodeTable
         }
 
         void IEnumerator.Reset() => throw new NotSupportedException();
-        public void Dispose()
+        public readonly void Dispose()
         {
             _sortedNodes.Dispose();
         }
 
-        public ClosestNodesFromNodeEnumerator GetEnumerator() => this;
-        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+        public readonly ClosestNodesFromNodeEnumerator GetEnumerator() => this;
+        readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
 
-        IEnumerator IEnumerable.GetEnumerator() => this;
+        readonly IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
     public void Initialize(PublicKey masterNodeKey)
