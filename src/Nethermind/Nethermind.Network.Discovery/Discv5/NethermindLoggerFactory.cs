@@ -7,7 +7,7 @@ using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
 
-internal class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false) : ILoggerFactory
+public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false) : ILoggerFactory
 {
     public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName)
     {
@@ -24,9 +24,9 @@ internal class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLeve
 
         public bool IsEnabled(MsLogLevel logLevel)
         {
-            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
+            if (lowerLogLevel)
             {
-                logLevel = MsLogLevel.Debug;
+                return true;
             }
 
             return logLevel switch
@@ -43,11 +43,6 @@ internal class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLeve
         public void Log<TState>(MsLogLevel logLevel, EventId eventId,
                                 TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
-            {
-                logLevel = MsLogLevel.Debug;
-            }
-
             switch (logLevel)
             {
                 case MsLogLevel.Critical:

@@ -18,6 +18,8 @@ using Nethermind.Core.Extensions;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
+using Microsoft.Extensions.Logging;
+using Nethermind.Network.Discovery;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -53,6 +55,7 @@ public class ShutterP2P(
                 HighestDegree = 6,
                 LazyDegree = 3
             })
+            .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager, true))
             // .AddLogging(builder =>
             //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
             //     .AddSimpleConsole(l =>

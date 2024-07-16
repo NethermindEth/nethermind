@@ -234,7 +234,14 @@ internal static class ShutterCrypto
     public static bool CheckDecryptionKey(G1 decryptionKey, G2 eonPublicKey, G1 identity) =>
         GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
 
-    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages, ReadOnlySpan<byte> signatureBytes, Address keyperAddress)
+    public static bool CheckSlotDecryptionIdentitiesSignature(
+        ulong instanceId,
+        ulong eon,
+        ulong slot,
+        ulong txPointer,
+        List<byte[]> identityPreimages,
+        ReadOnlySpan<byte> signatureBytes,
+        Address keyperAddress)
     {
         Hash256 hash = GenerateHash(instanceId, eon, slot, txPointer, identityPreimages);
         Ecdsa ecdsa = new();
