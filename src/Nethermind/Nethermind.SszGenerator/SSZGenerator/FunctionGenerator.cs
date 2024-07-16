@@ -45,7 +45,8 @@ public class SSZGenerator : IIncrementalGenerator
             if (methodNode is MethodDeclarationSyntax methodDeclaration)
             {
                 var methodName = methodDeclaration.Identifier.Text;
-                var className = ((ClassDeclarationSyntax)methodDeclaration.Parent).Identifier.Text;
+                var classDeclaration = methodDeclaration.Parent as ClassDeclarationSyntax;
+                var className = classDeclaration?.Identifier.Text ?? "default";
                 var namespaceName = GetNamespace(methodDeclaration);
                 var generatedCode = GenerateMethodCode(namespaceName, className, methodName);
                 spc.AddSource($"{className}_{methodName}_method_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
@@ -56,13 +57,19 @@ public class SSZGenerator : IIncrementalGenerator
         {
             if (fieldNode is FieldDeclarationSyntax fieldDeclaration)
             {
-                var fieldName = fieldDeclaration.Declaration.Variables.First().Identifier.Text;
-                var className = ((ClassDeclarationSyntax)fieldDeclaration.Parent).Identifier.Text;
-                var namespaceName = GetNamespace(fieldDeclaration);
-                var generatedCode = GenerateFieldCode(namespaceName, className, fieldName);
-                spc.AddSource($"{className}_{fieldName}_field_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
+                var variable = fieldDeclaration.Declaration.Variables.FirstOrDefault();
+                if (variable != null)
+                {
+                    var fieldName = variable.Identifier.Text;
+                    var classDeclaration = fieldDeclaration.Parent as ClassDeclarationSyntax;
+                    var className = classDeclaration?.Identifier.Text ?? "default";
+                    var namespaceName = GetNamespace(fieldDeclaration);
+                    var generatedCode = GenerateFieldCode(namespaceName, className, fieldName);
+                    spc.AddSource($"{className}_{fieldName}_field_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
+                }
             }
         });
+
     }
 
     private static bool IsClassWithAttribute(SyntaxNode syntaxNode)
@@ -83,7 +90,7 @@ public class SSZGenerator : IIncrementalGenerator
                fieldDeclaration.AttributeLists.Any();
     }
 
-    private static ClassDeclarationSyntax GetClassWithAttribute(GeneratorSyntaxContext context)
+    private static ClassDeclarationSyntax? GetClassWithAttribute(GeneratorSyntaxContext context)
     {
         var classDeclaration = (ClassDeclarationSyntax)context.Node;
         foreach (var attributeList in classDeclaration.AttributeLists)
@@ -101,7 +108,7 @@ public class SSZGenerator : IIncrementalGenerator
         return null;
     }
 
-    private static MethodDeclarationSyntax GetMethodWithAttribute(GeneratorSyntaxContext context)
+    private static MethodDeclarationSyntax? GetMethodWithAttribute(GeneratorSyntaxContext context)
     {
         var methodDeclaration = (MethodDeclarationSyntax)context.Node;
         foreach (var attributeList in methodDeclaration.AttributeLists)
@@ -119,7 +126,7 @@ public class SSZGenerator : IIncrementalGenerator
         return null;
     }
 
-    private static FieldDeclarationSyntax GetFieldWithAttribute(GeneratorSyntaxContext context)
+    private static FieldDeclarationSyntax? GetFieldWithAttribute(GeneratorSyntaxContext context)
     {
         var fieldDeclaration = (FieldDeclarationSyntax)context.Node;
         foreach (var attributeList in fieldDeclaration.AttributeLists)
