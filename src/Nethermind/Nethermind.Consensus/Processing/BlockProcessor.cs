@@ -63,6 +63,8 @@ public partial class BlockProcessor : IBlockProcessor
     /// </summary>
     protected BlockExecutionTracer ExecutionTracer { get; set; }
 
+    public bool CanProcessStatelessBlock { get; protected init; }
+
     public BlockProcessor(
         ISpecProvider? specProvider,
         IBlockValidator? blockValidator,
@@ -74,7 +76,8 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockTree? blockTree,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null)
+        IReceiptsRootCalculator? receiptsRootCalculator = null,
+        bool canProcessStatelessBlocks = false)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -91,6 +94,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         ExecutionTracer = new BlockExecutionTracer(true, true);
+        CanProcessStatelessBlock = canProcessStatelessBlocks;
     }
 
     public event EventHandler<BlockProcessedEventArgs> BlockProcessed;

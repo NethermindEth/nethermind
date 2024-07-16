@@ -54,6 +54,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         NullVerkleTreeStore stateStore = new();
         VerkleStateTree? tree = new(stateStore, logManager);
         _statelessWorldState = new VerkleWorldState(tree, new MemDb(), logManager);
+        CanProcessStatelessBlock = true;
     }
 
     protected override void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)

@@ -11,6 +11,7 @@ namespace Nethermind.Consensus.Processing
 {
     public class NullBlockProcessor : IBlockProcessor
     {
+        public bool CanProcessStatelessBlock { get; } = true;
         private NullBlockProcessor() { }
 
         public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
