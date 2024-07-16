@@ -17,8 +17,8 @@
   },
   {
     "network": "sepolia",
-    "cl": "lodestar",
-    "cl_image": "chainsafe/lodestar:latest",
+    "cl": "prysm",
+    "cl_image": "prysmaticlabs/prysm-beacon-chain:stable",
     "checkpoint-sync-url": "https://beaconstate-sepolia.chainsafe.io",
     "timeout": 180,
     "agent": "g6-standard-6"
