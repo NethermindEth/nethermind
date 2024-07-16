@@ -3,8 +3,7 @@
 
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Threading;
-
+using Nethermind.Core.Threading;
 using Nethermind.Core.Attributes;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
@@ -22,60 +21,27 @@ public class Metrics
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
-    public static long Calls
-    {
-        get
-        {
-            long total = 0;
-            foreach (var value in _calls.Values)
-            {
-                total += value;
-            }
-            return total;
-        }
-    }
-    private static ThreadLocal<long> _calls = new(trackAllValues: true);
+    public static long Calls => _calls.GetTotalValue();
+    private static ZeroContentionCounter _calls = new();
     [Description("Number of calls to other contracts on thread.")]
-    public static long ThreadLocalCalls => _calls.Value;
-    public static void IncrementCalls() => _calls.Value++;
+    public static long ThreadLocalCalls => _calls.ThreadLocalValue;
+    public static void IncrementCalls() => _calls.Increment();
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
-    public static long SloadOpcode
-    {
-        get
-        {
-            long total = 0;
-            foreach (var value in _sLoadOpcode.Values)
-            {
-                total += value;
-            }
-            return total;
-        }
-    }
-    private static ThreadLocal<long> _sLoadOpcode = new(trackAllValues: true);
+    public static long SloadOpcode => _sLoadOpcode.GetTotalValue();
+    private static ZeroContentionCounter _sLoadOpcode = new();
     [Description("Number of SLOAD opcodes executed on thread.")]
-    public static long ThreadLocalSLoadOpcode => _sLoadOpcode.Value;
-    public static void IncrementSLoadOpcode() => _sLoadOpcode.Value++;
+    public static long ThreadLocalSLoadOpcode => _sLoadOpcode.ThreadLocalValue;
+    public static void IncrementSLoadOpcode() => _sLoadOpcode.Increment();
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
-    public static long SstoreOpcode
-    {
-        get
-        {
-            long total = 0;
-            foreach (var value in _sStoreOpcode.Values)
-            {
-                total += value;
-            }
-            return total;
-        }
-    }
-    private static ThreadLocal<long> _sStoreOpcode = new(trackAllValues: true);
+    public static long SstoreOpcode => _sStoreOpcode.GetTotalValue();
+    private static ZeroContentionCounter _sStoreOpcode = new();
     [Description("Number of SSTORE opcodes executed on thread.")]
-    public static long ThreadLocalSStoreOpcode => _sStoreOpcode.Value;
-    public static void IncrementSStoreOpcode() => _sStoreOpcode.Value++;
+    public static long ThreadLocalSStoreOpcode => _sStoreOpcode.ThreadLocalValue;
+    public static void IncrementSStoreOpcode() => _sStoreOpcode.Increment();
 
     [Description("Number of TLOAD opcodes executed.")]
     public static long TloadOpcode { get; set; }
@@ -86,8 +52,8 @@ public class Metrics
     [Description("Number of MCOPY opcodes executed.")]
     public static long MCopyOpcode { get; set; }
 
-    [Description("Number of MODEXP precompiles executed.")]
-    public static long ModExpOpcode { get; set; }
+    [Description("Number of EXP opcodes executed.")]
+    public static long ExpOpcode { get; set; }
 
     [Description("Number of BLOCKHASH opcodes executed.")]
     public static long BlockhashOpcode { get; set; }
@@ -113,64 +79,35 @@ public class Metrics
     [Description("Number of SHA256 precompile calls.")]
     public static long Sha256Precompile { get; set; }
 
+    [Description("Number of Secp256r1 precompile calls.")]
+    public static long Secp256r1Precompile { get; set; }
+
     [Description("Number of Point Evaluation precompile calls.")]
     public static long PointEvaluationPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
-    public static long EmptyCalls
-    {
-        get
-        {
-            long total = 0;
-            foreach (var value in _emptyCalls.Values)
-            {
-                total += value;
-            }
-            return total;
-        }
-    }
-    private static ThreadLocal<long> _emptyCalls = new(trackAllValues: true);
+    public static long EmptyCalls => _emptyCalls.GetTotalValue();
+    private static ZeroContentionCounter _emptyCalls = new();
     [Description("Number of calls made to addresses without code on thread.")]
-    public static long ThreadLocalEmptyCalls => _emptyCalls.Value;
-    public static void IncrementEmptyCalls() => _emptyCalls.Value++;
+    public static long ThreadLocalEmptyCalls => _emptyCalls.ThreadLocalValue;
+    public static void IncrementEmptyCalls() => _emptyCalls.Increment();
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
-    public static long Creates
-    {
-        get
-        {
-            long total = 0;
-            foreach (var value in _creates.Values)
-            {
-                total += value;
-            }
-            return total;
-        }
-    }
-    private static ThreadLocal<long> _creates = new(trackAllValues: true);
+    public static long Creates => _creates.GetTotalValue();
+
+    private static ZeroContentionCounter _creates = new();
     [Description("Number of contract create calls on thread.")]
-    public static long ThreadLocalCreates => _creates.Value;
-    public static void IncrementCreates() => _creates.Value++;
+    public static long ThreadLocalCreates => _creates.ThreadLocalValue;
+    public static void IncrementCreates() => _creates.Increment();
 
     [Description("Number of contracts' code analysed for jump destinations.")]
-    public static long ContractsAnalysed
-    {
-        get
-        {
-            long total = 0;
-            foreach (var value in _contractsAnalysed.Values)
-            {
-                total += value;
-            }
-            return total;
-        }
-    }
-    private static ThreadLocal<long> _contractsAnalysed = new(trackAllValues: true);
+    public static long ContractsAnalysed => _contractsAnalysed.GetTotalValue();
+    private static ZeroContentionCounter _contractsAnalysed = new();
     [Description("Number of contracts' code analysed for jump destinations on thread.")]
-    public static long ThreadLocalContractsAnalysed => _contractsAnalysed.Value;
-    public static void IncrementContractsAnalysed() => _contractsAnalysed.Value++;
+    public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
+    public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
 
     internal static long Transactions { get; set; }
     internal static float AveGasPrice { get; set; }

@@ -30,7 +30,7 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024, "Code Insert Filter");
+        private readonly ClockKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024);
         private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
@@ -43,6 +43,8 @@ namespace Nethermind.State
         private int _currentPosition = Resettable.EmptyPosition;
         internal readonly StateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
+
+        private readonly bool _populatePreBlockCache;
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
@@ -250,7 +252,7 @@ namespace Nethermind.State
             }
         }
 
-        public void IncrementNonce(Address address)
+        public void IncrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
@@ -259,12 +261,12 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
             }
 
-            Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
+            Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
 
-        public void DecrementNonce(Address address)
+        public void DecrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
@@ -273,7 +275,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
             }
 
-            Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
+            Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
@@ -386,8 +388,10 @@ namespace Nethermind.State
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
-            if (AccountExists(address)) return;
-            CreateAccount(address, balance, nonce);
+            if (!AccountExists(address))
+            {
+                CreateAccount(address, balance, nonce);
+            }
         }
 
         public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
@@ -638,12 +642,14 @@ namespace Nethermind.State
         }
 
         public StateProvider(IScopedTrieStore? trieStore,
-            IKeyValueStore? codeDb,
-            ILogManager? logManager,
+            IKeyValueStore codeDb,
+            ILogManager logManager,
             StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null)
+            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
+            bool populatePreBlockCache = true)
         {
             _preBlockCache = preBlockCache;
+            _populatePreBlockCache = populatePreBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _tree = stateTree ?? new StateTree(trieStore, logManager);
@@ -654,9 +660,9 @@ namespace Nethermind.State
             };
         }
 
-        public void WarmUp(Address address)
+        public bool WarmUp(Address address)
         {
-            GetState(address);
+            return GetState(address) is not null;
         }
 
         private Account? GetState(Address address)
@@ -665,19 +671,40 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                long priorReads = Metrics.ThreadLocalStateTreeReads;
-                account = _preBlockCache is not null
-                    ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
-                    : _getStateFromTrie(addressAsKey);
-
-                if (Metrics.ThreadLocalStateTreeReads == priorReads)
-                {
-                    Metrics.IncrementStateTreeCacheHits();
-                }
+                account = !_populatePreBlockCache ?
+                    GetStateReadPreWarmCache(addressAsKey) :
+                    GetStatePopulatePrewarmCache(addressAsKey);
             }
             else
             {
                 Metrics.IncrementStateTreeCacheHits();
+            }
+            return account;
+        }
+
+        private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
+        {
+            long priorReads = Metrics.ThreadLocalStateTreeReads;
+            Account? account = _preBlockCache is not null
+                ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
+                : _getStateFromTrie(addressAsKey);
+
+            if (Metrics.ThreadLocalStateTreeReads == priorReads)
+            {
+                Metrics.IncrementStateTreeCacheHits();
+            }
+            return account;
+        }
+
+        private Account? GetStateReadPreWarmCache(AddressAsKey addressAsKey)
+        {
+            if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
+            {
+                Metrics.IncrementStateTreeCacheHits();
+            }
+            else
+            {
+                account = _getStateFromTrie(addressAsKey);
             }
             return account;
         }

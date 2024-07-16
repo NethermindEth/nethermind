@@ -26,8 +26,7 @@ using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Core;
-using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 
@@ -177,6 +176,16 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.StateReader!,
             _api.LogManager
         );
+
+        _ = new PivotUpdator(
+            _api.BlockTree,
+            _api.Synchronizer.SyncModeSelector,
+            _api.SyncPeerPool,
+            _syncConfig,
+            _blockCacheService,
+            _beaconSync,
+            _api.DbProvider.MetadataDb,
+            _api.LogManager);
 
         return Task.CompletedTask;
     }

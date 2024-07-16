@@ -4,6 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Overseer.Test.Framework;
 using NUnit.Framework;

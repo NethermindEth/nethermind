@@ -139,14 +139,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ulong amount = 0;
             while (enumerator.MoveNext())
             {
-                var responses = enumerator.Current.Value.Response;
-                if (responses is not null)
-                {
-                    foreach (var response in responses)
-                    {
-                        amount += (ulong)MemorySizeEstimator.EstimateSize(response);
-                    }
-                }
+                amount += (ulong)enumerator.Current.Value?.ResponseSizeEstimate;
             }
 
             // Stop gap method to reduce allocations from non-struct enumerator
