@@ -553,15 +553,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     if (tx.IsEofContractCreation)
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
+                        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+                        ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
+                        EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
+
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.MachineCode.Length + auxExtraData.Length);
                         if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             ThrowOutOfGasException();
                         }
 
-                        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
-                        ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
-                        EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
                         byte[] bytecodeResultArray = null;
 
                         // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
