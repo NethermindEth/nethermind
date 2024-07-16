@@ -20,7 +20,7 @@ jobs:
         include:
           - network: "holesky"
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
-            cl-client: "lodestar:chainsafe/lodestar:latest"
+            cl-client: "prysm:prysmaticlabs/prysm-beacon-chain:stable"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "chiado"
@@ -30,7 +30,7 @@ jobs:
             agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
-            cl-client: "lodestar:chainsafe/lodestar:latest"
+            cl-client: "prysm:prysmaticlabs/prysm-beacon-chain:stable"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-160gb
     name: "Run sync of ${{ matrix.network }} testnet"
