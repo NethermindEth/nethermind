@@ -9,6 +9,7 @@ using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -46,7 +47,7 @@ public class TransactionSubstate
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
-    public ReadOnlyMemory<byte> Output { get; }
+    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public IReadOnlyCollection<LogEntry> Logs { get; }
@@ -61,7 +62,7 @@ public class TransactionSubstate
         ShouldRevert = false;
     }
 
-    public TransactionSubstate(ReadOnlyMemory<byte> output,
+    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         long refund,
         IReadOnlyCollection<Address> destroyList,
         IReadOnlyCollection<LogEntry> logs,
@@ -87,10 +88,10 @@ public class TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.Length <= 0)
+        if (Output.Bytes.Length <= 0)
             return;
 
-        ReadOnlySpan<byte> span = Output.Span;
+        ReadOnlySpan<byte> span = Output.Bytes.Span;
         Error = string.Concat(
             RevertedErrorMessagePrefix,
             TryGetErrorMessage(span) ?? EncodeErrorMessage(span)

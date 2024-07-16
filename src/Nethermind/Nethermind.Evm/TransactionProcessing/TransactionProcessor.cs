@@ -175,13 +175,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
+                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.Bytes.ToArray() : Array.Empty<byte>();
                     tracer.MarkAsFailed(env.Value.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
-                    tracer.MarkAsSuccess(env.Value.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
+                    tracer.MarkAsSuccess(env.Value.ExecutingAccount, spentGas, substate.Output.Bytes.ToArray(), logs, stateRoot);
                 }
             }
 
@@ -487,7 +487,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     PrepareAccountForContractDeployment(env.ExecutingAccount, spec);
                 }
 
-                ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
+                ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
@@ -529,25 +529,71 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     // tks: there is similar code fo contract creation from init and from CREATE
                     // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
-                    if (tx.IsContractCreation)
+                    if (tx.IsLegacyContractCreation)
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Length);
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
                         if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
                             ThrowOutOfGasException();
                         }
 
-                        // is the new txType considered a contractCreation if it needs CREATE4 to function as such?
-                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output, 0))
+                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
                         {
                             ThrowInvalidCodeException();
                         }
 
                         if (unspentGas >= codeDepositGasCost)
                         {
-                            var code = substate.Output.ToArray();
+                            var code = substate.Output.Bytes.ToArray();
                             _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
+                            unspentGas -= codeDepositGasCost;
+                        }
+                    }
+
+                    if (tx.IsEofContractCreation)
+                    {
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
+                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+                        {
+                            ThrowOutOfGasException();
+                        }
+
+                        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+                        ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
+                        EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
+                        byte[] bytecodeResultArray = null;
+
+                        // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
+                        Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
+                        // 2 - 1 - 1 - copy old container
+                        deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+                        // 2 - 1 - 2 - copy aux data to dataSection
+                        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
+
+                        // 2 - 2 - update data section size in the header u16
+                        int dataSubheaderSectionStart =
+                            EvmObjectFormat.VERSION_OFFSET // magic + version
+                            + EvmObjectFormat.Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
+                            + EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * deployCodeInfo.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+                            + (deployCodeInfo.Header.ContainerSections is null
+                                ? 0 // container section :  (0 bytes if no container section is available)
+                                : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * deployCodeInfo.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                            + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
+
+                        ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
+                        bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
+                        bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
+
+                        bytecodeResultArray = bytecodeResult.ToArray();
+
+                        // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
+                        bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
+                        if (unspentGas >= codeDepositGasCost && !invalidCode)
+                        {
+                            // 4 - set state[new_address].code to the updated deploy container
+                            // push new_address onto the stack (already done before the ifs)
+                            _codeInfoRepository.InsertCode(WorldState, bytecodeResultArray, env.ExecutingAccount, spec);
                             unspentGas -= codeDepositGasCost;
                         }
                     }
