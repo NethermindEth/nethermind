@@ -34,6 +34,11 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// Fired after a block has been processed.
         /// </summary>
+        event EventHandler<BlockEventArgs> BlockProcessing;
+
+        /// <summary>
+        /// Fired after a block has been processed.
+        /// </summary>
         event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 
         /// <summary>

@@ -69,7 +69,7 @@ namespace Nethermind.TxPool
         private Transaction[]? _blobTransactionSnapshot;
         private long _lastBlockNumber = -1;
         private Hash256? _lastBlockHash;
-        public readonly TxGasPriceSortedCollection _txGasPriceSortedCollection;
+        private readonly TxGasPriceSortedCollection _txGasPriceSortedCollection;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -470,7 +470,6 @@ namespace Nethermind.TxPool
                 : worstTx.GasBottleneck;
 
             bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-            bool _ = _txGasPriceSortedCollection.TryInsert(ref tx);
 
             if (!inserted)
             {
@@ -478,6 +477,11 @@ namespace Nethermind.TxPool
                 // and nonce as already existent tx and is not good enough to replace it
                 Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
                 return AcceptTxResult.ReplacementNotAllowed;
+            }
+
+            if (state.SenderAccount.Nonce == tx.Nonce)
+            {
+                _ = _txGasPriceSortedCollection.TryInsert(tx);
             }
 
             if (tx.Hash == removed?.Hash)

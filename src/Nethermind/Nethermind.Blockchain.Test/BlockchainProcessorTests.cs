@@ -118,6 +118,7 @@ namespace Nethermind.Blockchain.Test
                 }
 
                 public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+                public event EventHandler<BlockEventArgs>? BlockProcessing;
 
                 public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 

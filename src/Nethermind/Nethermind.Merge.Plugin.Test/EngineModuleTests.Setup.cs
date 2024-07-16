@@ -305,6 +305,8 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         remove => _blockProcessorImplementation.BlocksProcessing -= value;
     }
 
+    public event EventHandler<BlockEventArgs>? BlockProcessing;
+
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
     {
         add => _blockProcessorImplementation.BlockProcessed += value;

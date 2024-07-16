@@ -80,6 +80,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
+    public event EventHandler<BlockEventArgs>? BlockProcessing;
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed
@@ -115,6 +116,11 @@ public partial class BlockProcessor : IBlockProcessor
                 if (blocksCount > 64 && i % 8 == 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
+                }
+
+                if (notReadOnly)
+                {
+                    BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
                 using CancellationTokenSource cancellationTokenSource = new();
