@@ -157,7 +157,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             new(_api.SpecProvider,
                 _api.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState, _api.EthereumEcdsa),
+                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState),
                 _api.WorldState,
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.SpecProvider, _api.WorldState),

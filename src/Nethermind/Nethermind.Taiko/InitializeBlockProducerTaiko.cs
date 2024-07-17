@@ -38,8 +38,7 @@ public class InitializeBlockProducerTaiko(TaikoNethermindApi api) : InitializeBl
             _api.TxPool,
             _api.TransactionComparerProvider,
             _api.Config<IBlocksConfig>(),
-            _api.LogManager,
-            _api.EthereumEcdsa);
+            _api.LogManager);
 
         _api.GasLimitCalculator = new TaikoGasLimitCalculator();
         _api.BlockProducer = new FailBlockProducer();

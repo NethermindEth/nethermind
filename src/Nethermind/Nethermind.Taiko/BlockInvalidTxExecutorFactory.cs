@@ -7,10 +7,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Taiko;
 
-public class BlockInvalidTxExecutorFactory(IEthereumEcdsa ecdsa) : IBlockTransactionsExecutorFactory
+public class BlockInvalidTxExecutorFactory : IBlockTransactionsExecutorFactory
 {
     public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
         new BlockInvalidTxExecutor(
             new BuildUpTransactionProcessorAdapter(readOnlyTxProcessingEnv.TransactionProcessor),
-            readOnlyTxProcessingEnv.WorldState, ecdsa);
+            readOnlyTxProcessingEnv.WorldState);
 }

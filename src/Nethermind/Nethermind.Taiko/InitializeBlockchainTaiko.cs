@@ -90,7 +90,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState, _api.EthereumEcdsa),
+            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState),
             _api.WorldState,
             _api.ReceiptStorage,
             new BlockhashStore(_api.SpecProvider, _api.WorldState),

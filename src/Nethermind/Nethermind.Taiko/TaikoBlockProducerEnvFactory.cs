@@ -34,8 +34,7 @@ public class TaikoBlockProducerEnvFactory(
     ITxPool txPool,
     ITransactionComparerProvider transactionComparerProvider,
     IBlocksConfig blocksConfig,
-    ILogManager logManager,
-    IEthereumEcdsa ecdsa) : BlockProducerEnvFactory(
+    ILogManager logManager) : BlockProducerEnvFactory(
         worldStateManager,
         blockTree,
         specProvider,
@@ -48,7 +47,7 @@ public class TaikoBlockProducerEnvFactory(
         blocksConfig,
         logManager)
 {
-    private readonly IBlockTransactionsExecutorFactory _blockInvalidTxExecutorFactory = new BlockInvalidTxExecutorFactory(ecdsa);
+    private readonly IBlockTransactionsExecutorFactory _blockInvalidTxExecutorFactory = new BlockInvalidTxExecutorFactory();
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(
         IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>

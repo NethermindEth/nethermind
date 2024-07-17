@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -11,7 +10,7 @@ using Nethermind.State;
 
 namespace Nethermind.Taiko;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, IEthereumEcdsa ethereumEcdsa) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly IWorldState _worldState = worldState;
     private readonly ITransactionProcessorAdapter _txProcessor = txProcessor;
@@ -44,8 +43,6 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 // Skip blob transactions
                 continue;
             }
-
-            tx.SenderAddress ??= ethereumEcdsa.RecoverAddress(tx);
 
             using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
 
