@@ -98,6 +98,7 @@ public class InputProcessor
         generalStateTest.BlockHashes = envInfo.BlockHashes;
         generalStateTest.StateChainId = stateChainId;
         generalStateTest.GethTraceOptions = gethTraceOptions;
+        generalStateTest.IsStateTest = envInfo.IsStateTest;
 
         return generalStateTest;
     }

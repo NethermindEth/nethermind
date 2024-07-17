@@ -60,6 +60,7 @@ namespace Ethereum.Test.Base
         public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
         public GethTraceOptions GethTraceOptions { get; set; } = GethTraceOptions.Default;
         public bool IsTraceEnabled { get; set; } = false;
+        public bool IsStateTest { get; set; }
 
         public override string ToString()
         {

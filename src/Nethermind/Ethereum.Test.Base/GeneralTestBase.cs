@@ -28,6 +28,7 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Ethereum.Test.Base.T8NUtils;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
@@ -131,11 +132,18 @@ namespace Ethereum.Test.Base
             Block block = Build.A.Block.WithHeader(header).WithTransactions(test.Transactions)
                 .WithWithdrawals(test.Withdrawals).WithUncles(uncles).TestObject;
 
-            var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
-            withdrawalProcessor.ProcessWithdrawals(block, spec);
+            if (!test.IsStateTest)
+            {
+                var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
+                withdrawalProcessor.ProcessWithdrawals(block, spec);
+            }
+            else if (!test.Withdrawals.IsNullOrEmpty())
+            {
+                throw new T8NException("withdrawals are not supported in state tests", ExitCodes.ErrorEVM);
+            }
 
-            CalculateReward(test.StateReward, block, stateProvider, spec);
 
+            CalculateReward(test.StateReward, test.IsStateTest, block, stateProvider, spec);
             BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
             StorageTxTracer storageTxTracer = new();
             if (test.IsT8NTest)
@@ -148,10 +156,13 @@ namespace Ethereum.Test.Base
                     compositeBlockTracer.Add(gethLikeBlockFileTracer);
                 }
                 blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
-
-                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, storageTxTracer);
             }
             blockReceiptsTracer.StartNewBlockTrace(block);
+
+            if (!test.IsStateTest && test.ParentBeaconBlockRoot != null)
+            {
+                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, storageTxTracer);
+            }
 
             int txIndex = 0;
             TransactionExecutionReport transactionExecutionReport = new();
@@ -282,9 +293,9 @@ namespace Ethereum.Test.Base
             return blockValidator.ValidateOrphanedBlock(block, out _);
         }
 
-        private static void CalculateReward(string? stateReward, Block block, WorldState stateProvider, IReleaseSpec spec)
+        private static void CalculateReward(string? stateReward, bool isStateTest, Block block, WorldState stateProvider, IReleaseSpec spec)
         {
-            if (stateReward == null) return;
+            if (stateReward == null || isStateTest) return;
 
             var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
             BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
