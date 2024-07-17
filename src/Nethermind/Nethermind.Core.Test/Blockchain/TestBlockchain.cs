@@ -122,7 +122,7 @@ public class TestBlockchain : IDisposable
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
-        => await Build(false, specProvider, initialValues, addBlockOnStart);
+        => await Build(keepStateEmpty: false, specProvider, initialValues, addBlockOnStart);
 
     protected virtual async Task<TestBlockchain> Build(bool keepStateEmpty, ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
