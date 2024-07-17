@@ -55,7 +55,7 @@ public class ShutterP2P(
                 HighestDegree = 6,
                 LazyDegree = 3
             })
-            .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager, true))
+            //.AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
             // .AddLogging(builder =>
             //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
             //     .AddSimpleConsole(l =>

@@ -60,4 +60,8 @@ public interface IShutterConfig : IConfig
     [ConfigItem(Description = "The maximum amount of gas to use on Shutter transactions.",
         DefaultValue = "10000000")]
     ulong EncryptedGasLimit { get; set; }
+
+    [ConfigItem(Description = "Amount of milliseconds into the slot, where block building should be attempted.",
+        DefaultValue = "1333")]
+    ulong ExtraBuildWindow { get; }
 }

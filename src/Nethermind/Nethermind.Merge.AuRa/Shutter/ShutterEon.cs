@@ -21,11 +21,11 @@ public class ShutterEon(
     IShutterConfig shutterConfig,
     ILogger logger)
 {
-    private Info? _info;
+    private Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
 
-    public Info? GetCurrentEonInfo() => _info;
+    public Info? GetCurrentEonInfo() => _currentInfo;
 
     public void Update(BlockHeader header)
     {
@@ -38,7 +38,7 @@ public class ShutterEon(
             KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress);
             ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
 
-            if (_info is null || _info.Value.Eon != eon)
+            if (_currentInfo is null || _currentInfo.Value.Eon != eon)
             {
                 Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
                 KeyperSetContract keyperSetContract = new(processor, abiEncoder, keyperSetContractAddress);
@@ -53,7 +53,7 @@ public class ShutterEon(
                     Bls.P2 key = new(eonKeyBytes);
 
                     // update atomically
-                    _info = new()
+                    _currentInfo = new()
                     {
                         Eon = eon,
                         Key = key,
@@ -61,7 +61,7 @@ public class ShutterEon(
                         Addresses = addresses
                     };
 
-                    if (logger.IsInfo) logger.Info($"Shutter eon: {_info.Value.Eon} threshold: {_info.Value.Threshold} #keypers: {_info.Value.Addresses.Length}");
+                    if (logger.IsInfo) logger.Info($"Shutter eon: {_currentInfo.Value.Eon} threshold: {_currentInfo.Value.Threshold} #keypers: {_currentInfo.Value.Addresses.Length}");
                 }
                 else
                 {
@@ -77,6 +77,12 @@ public class ShutterEon(
         {
             if (logger.IsError) logger.Error($"Invalid Shutter Eon key ", e);
         }
+    }
+
+    public readonly struct EonInfoSet
+    {
+        public Info Current { get; init; }
+        public Info Last { get; init; }
     }
 
     public readonly struct Info

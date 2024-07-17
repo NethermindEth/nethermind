@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -12,25 +11,31 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Nethermind.Blockchain;
-using System.Security;
 using Nethermind.Specs;
+using Nethermind.Consensus;
+using Nethermind.Core.Crypto;
+using System;
+using Nethermind.Core.Caching;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Config;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterTxSource(
-    ILogFinder logFinder,
+    ShutterTxLoader txLoader,
     IShutterConfig shutterConfig,
     ISpecProvider specProvider,
-    IEthereumEcdsa ethereumEcdsa,
-    IReadOnlyBlockTree readOnlyBlockTree,
+    ISealer auraSealer,
     ILogManager logManager)
     : ITxSource
 {
-    private ShutterTransactions? _shutterTransactions;
+    private LruCache<ulong, ShutterTransactions?> _transactionCache = new (10, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly ShutterTxLoader _txLoader = new(logFinder, shutterConfig, specProvider, ethereumEcdsa, readOnlyBlockTree, logManager);
     private readonly ulong genesisTimestamp = 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
     private const ushort slotLength = 5000;
+    private ulong _highestSlotSeen = 0;
+    private ulong _extraBuildWindowMs = shutterConfig.ExtraBuildWindow
+        == default ? shutterConfig.GetDefaultValue<ulong>(nameof(ShutterConfig.ExtraBuildWindow)) : shutterConfig.ExtraBuildWindow;
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -40,10 +45,10 @@ public class ShutterTxSource(
             return [];
         }
 
-        ulong slot = GetBuildingSlot();
+        ulong buildingSlot = GetBuildingSlot();
 
         // atomic fetch
-        ShutterTransactions? shutterTransactions = _shutterTransactions;
+        ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
         if (shutterTransactions is null)
         {
             if (_logger.IsWarn) _logger.Warn($"Decryption keys have not been received, cannot include Shutter transactions.");
@@ -51,13 +56,15 @@ public class ShutterTxSource(
         else
         {
             int txCount = shutterTransactions.Value.Transactions.Length;
-            if (shutterTransactions.Value.Slot == slot)
+            if (shutterTransactions.Value.Slot == buildingSlot)
             {
-                if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {slot} with {txCount} transactions.");
+                if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {buildingSlot} with {txCount} transactions.");
                 return shutterTransactions.Value.Transactions;
             }
 
-            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {slot}, cannot include {txCount} Shutter transactions.");
+            bool isProposer = auraSealer.CanSeal(parent.Number + 1, parent.Hash ?? Keccak.Zero);
+            if (_logger.IsWarn && isProposer)
+                _logger.Warn($"Is proposer for slot {buildingSlot}, but missing decryption keys. Pending shutter transactions: {txCount}");
             if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {shutterTransactions.Value.Slot}");
         }
 
@@ -66,10 +73,12 @@ public class ShutterTxSource(
 
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        _shutterTransactions = _txLoader.LoadTransactions(eon, txPointer, slot, keys);
+        _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
+        if (_highestSlotSeen < slot)
+            _highestSlotSeen = slot;
     }
 
-    public ulong GetLoadedTransactionsSlot() => _shutterTransactions is null ? 0 : _shutterTransactions.Value.Slot;
+    public ulong MaximumLoadedSlot() => _transactionCache is null ? 0 : _highestSlotSeen;
 
     private ulong GetBuildingSlot()
     {
@@ -77,8 +86,8 @@ public class ShutterTxSource(
         ulong currentSlot = timeSinceGenesis / slotLength;
         ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
-        // if in first third then building for this slot, otherwise next
-        return (slotOffset <= (slotLength / 3)) ? currentSlot : currentSlot + 1;
+        // if inside the build window then building for this slot, otherwise next
+        return (slotOffset <= _extraBuildWindowMs) ? currentSlot : currentSlot + 1;
     }
 
 }

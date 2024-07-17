@@ -44,7 +44,7 @@ public class ShutterTxLoader(
         Block? head = readOnlyBlockTree.Head;
 
         List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool...");
+        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot}...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 

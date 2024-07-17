@@ -24,9 +24,9 @@ public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel 
 
         public bool IsEnabled(MsLogLevel logLevel)
         {
-            if (lowerLogLevel)
+            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
             {
-                return true;
+                logLevel = MsLogLevel.Debug;
             }
 
             return logLevel switch
@@ -43,6 +43,11 @@ public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel 
         public void Log<TState>(MsLogLevel logLevel, EventId eventId,
                                 TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
+            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
+            {
+                logLevel = MsLogLevel.Debug;
+            }
+
             switch (logLevel)
             {
                 case MsLogLevel.Critical:
