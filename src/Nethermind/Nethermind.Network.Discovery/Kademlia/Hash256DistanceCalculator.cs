@@ -1,0 +1,93 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using System.Numerics;
+using System.Runtime.Intrinsics;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Network.Discovery.Kademlia;
+
+public class Hash256DistanceCalculator: IDistanceCalculator<ValueHash256>
+{
+    public int CalculateDistance(ValueHash256 h1, ValueHash256 h2)
+    {
+        int zeros = 0;
+        for (int i = 0; i < 32; i+=1)
+        {
+            byte b1 = h1.Bytes[i];
+            byte b2 = h2.Bytes[i];
+            byte xord = (byte)(b1 ^ b2);
+            if (xord == 0)
+            {
+                zeros += 8;
+                continue;
+            }
+
+            int nonZeroPostfix = 1;
+            while ((xord >>= 1) != 0)
+            {
+                nonZeroPostfix++;
+            }
+            zeros += 8 - nonZeroPostfix;
+
+            break;
+        }
+
+        return MaxDistance - zeros;
+    }
+
+    public int MaxDistance => 256;
+
+    public ValueHash256 RandomizeHashAtDistance(ValueHash256 currentHash, int distance)
+    {
+        // TODO: Just add a min/max range per bucket and randomized between them.
+        if (distance == MaxDistance)
+        {
+            return currentHash;
+        }
+
+        ValueHash256 randomized = new ValueHash256();
+        return CopyForRandom(currentHash, randomized, distance);
+    }
+
+    public int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
+    {
+        ValueHash256 ac = new ValueHash256();
+        (new Vector<byte>(a.BytesAsSpan) ^ new Vector<byte>(c.BytesAsSpan)).CopyTo(ac.BytesAsSpan);
+
+        ValueHash256 bc = new ValueHash256();
+        (new Vector<byte>(b.BytesAsSpan) ^ new Vector<byte>(c.BytesAsSpan)).CopyTo(bc.BytesAsSpan);
+
+        return ac.CompareTo(bc);
+    }
+
+    public static ValueHash256 CopyForRandom(ValueHash256 currentHash, ValueHash256 randomizedHash, int distance)
+    {
+        if (distance >= 256) return currentHash;
+
+        currentHash.Bytes[0..(distance/ 8)].CopyTo(randomizedHash.BytesAsSpan);
+
+        int remainingBit = distance % 8;
+        int remainingBitByte = distance / 8;
+        byte mask = (byte)((1 << remainingBit) - 1);
+        byte randomized = randomizedHash.BytesAsSpan[remainingBitByte];
+        byte original = currentHash.BytesAsSpan[remainingBitByte];
+        randomizedHash.BytesAsSpan[remainingBitByte] = (byte)((original & mask) | (randomized & (~mask)));
+
+        if (distance < 255)
+        {
+            // So it always assume that the next bucket (the closer one) is always populated and therefore,
+            // the bits here for that distance must not be the same as in currentHash.
+            int nextBit = (distance + 1) % 8;
+            int nextBitByte = (distance + 1) / 8;
+            mask = (byte)((1 << nextBit) - 1);
+            randomized = randomizedHash.BytesAsSpan[nextBitByte];
+            byte opposite = (byte)~(currentHash.BytesAsSpan[nextBitByte]);
+
+            randomizedHash.BytesAsSpan[nextBitByte] = (byte)((opposite & mask) | (randomized & (~mask)));
+        }
+
+        return randomizedHash;
+    }
+}
