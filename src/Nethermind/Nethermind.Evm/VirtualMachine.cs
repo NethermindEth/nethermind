@@ -2364,13 +2364,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         stack.PopUInt256(out UInt256 offset);
                         stack.PopUInt256(out UInt256 size);
 
-                        if (!UpdateGas(GasCostOf.DataCopy, ref gasAvailable))
+                        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
                             goto OutOfGas;
 
                         if (size > UInt256.Zero)
                         {
-                            if (!UpdateGas(GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable) ||
-                                !UpdateMemoryCost(vmState, ref gasAvailable, in memOffset, size))
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in memOffset, size))
                                 goto OutOfGas;
 
                             ZeroPaddedSpan dataSectionSlice = dataSection.SliceWithZeroPadding(offset, (int)size);
