@@ -2304,9 +2304,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         stack.PopUInt256(out b);
                         ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
 
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
                         if (b > UInt256.Zero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
                             int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
                             if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
@@ -2940,7 +2940,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         int initcontainerSize = container.Header.ContainerSections.Value[initcontainerIndex].Size;
 
         // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
-        long hashCost = (GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize));
+        long hashCost = GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize);
         if (!UpdateGas(hashCost, ref gasAvailable))
             return (EvmExceptionType.OutOfGas, null);
 

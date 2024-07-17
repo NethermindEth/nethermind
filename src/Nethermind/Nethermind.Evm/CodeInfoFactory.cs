@@ -29,11 +29,12 @@ public static class CodeInfoFactory
         extraCalldata = default;
         if (spec.IsEofEnabled && data.Span.StartsWith(EvmObjectFormat.MAGIC))
         {
-            if (EvmObjectFormat.IsValidEof(data.Span, EvmObjectFormat.ValidationStrategy.ValidateInitcodeMode | EvmObjectFormat.ValidationStrategy.ValidateFullBody | EvmObjectFormat.ValidationStrategy.ValidateSubContainers | EvmObjectFormat.ValidationStrategy.AllowTrailingBytes, out EofHeader? header))
+            if (EvmObjectFormat.IsValidEof(data.Span, EvmObjectFormat.ValidationStrategy.ValidateInitcodeMode | EvmObjectFormat.ValidationStrategy.ValidateFullBody | EvmObjectFormat.ValidationStrategy.AllowTrailingBytes, out EofHeader? header))
             {
                 int containerSize = header.Value.DataSection.EndOffset;
                 extraCalldata = data.Slice(containerSize);
-                codeInfo = new EofCodeInfo(codeInfo, header.Value);
+                ICodeInfo innerCodeInfo = new CodeInfo(data.Slice(0, containerSize));
+                codeInfo = new EofCodeInfo(innerCodeInfo, header.Value);
                 return true;
             }
             return false;

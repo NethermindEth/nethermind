@@ -56,13 +56,12 @@ public static class EvmObjectFormat
     {
         None = 0,
         Validate = 1,
-        ValidateSubContainers = Validate | 2,
-        ValidateFullBody = Validate | 4,
-        ValidateInitcodeMode = Validate | 8,
-        ValidateRuntimeMode = Validate | 16,
-        AllowTrailingBytes = Validate | 32,
-        ExractHeader = 64,
-        HasEofMagic = 128,
+        ValidateFullBody = Validate | 2,
+        ValidateInitcodeMode = Validate | 4,
+        ValidateRuntimeMode = Validate | 8,
+        AllowTrailingBytes = Validate | 16,
+        ExractHeader = 32,
+        HasEofMagic = 64,
 
     }
 
@@ -124,23 +123,9 @@ public static class EvmObjectFormat
             && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
             && handler.TryParseEofHeader(container, out header))
         {
-            bool validateBody = true || strategy.HasFlag(ValidationStrategy.Validate);
+            bool validateBody = strategy.HasFlag(ValidationStrategy.Validate);
             if (validateBody && handler.ValidateBody(container, header.Value, strategy))
             {
-                if (strategy.HasFlag(ValidationStrategy.ValidateSubContainers) && header?.ContainerSections?.Count > 0)
-                {
-                    int containerSize = header.Value.ContainerSections.Value.Count;
-
-                    for (int i = 0; i < containerSize; i++)
-                    {
-                        ReadOnlySpan<byte> subContainer = container.Slice(header.Value.ContainerSections.Value.Start + header.Value.ContainerSections.Value[i].Start, header.Value.ContainerSections.Value[i].Size);
-                        if (!IsValidEof(subContainer, ValidationStrategy.Validate, out _))
-                        {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
                 return true;
             }
             return !validateBody;
@@ -623,6 +608,12 @@ public static class EvmObjectFormat
 
             Span<bool> visitedSections = stackalloc bool[header.CodeSections.Count];
             Span<byte> visitedContainerSections = stackalloc byte[header.ContainerSections is null ? 1 : 1 + header.ContainerSections.Value.Count];
+            visitedContainerSections[0] = strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode)
+                ? (byte)ValidationStrategy.ValidateInitcodeMode
+                : (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode)
+                    ? (byte)ValidationStrategy.ValidateRuntimeMode
+                    : (byte)0);
+
             visitedSections.Clear();
 
             Queue<ushort> validationQueue = new Queue<ushort>();
@@ -969,7 +960,7 @@ public static class EvmObjectFormat
 
                         visitedContainers[initcodeSectionId + 1] = (byte)ValidationStrategy.ValidateInitcodeMode;
                         ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSections.Value.Start + header.ContainerSections.Value[initcodeSectionId].Start, header.ContainerSections.Value[initcodeSectionId].Size);
-                        if (!IsValidEof(subcontainer, ValidationStrategy.ValidateInitcodeMode | ValidationStrategy.ValidateSubContainers | ValidationStrategy.ValidateFullBody, out _))
+                        if (!IsValidEof(subcontainer, ValidationStrategy.ValidateInitcodeMode | ValidationStrategy.ValidateFullBody, out _))
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must be a valid Eof");
                             return false;
