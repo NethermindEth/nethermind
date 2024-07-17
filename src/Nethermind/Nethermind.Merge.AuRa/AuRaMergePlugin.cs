@@ -4,12 +4,11 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin;
@@ -72,6 +71,11 @@ namespace Nethermind.Merge.AuRa
                 _manualTimestamper!,
                 _blocksConfig,
                 _api.LogManager);
+
+        protected override IBlockFinalizationManager InitializeMergeFinilizationManager()
+        {
+            return new AuRaMergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
+        }
 
         public bool ShouldRunSteps(INethermindApi api)
         {
