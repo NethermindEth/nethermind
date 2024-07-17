@@ -2305,17 +2305,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-                        if (b > UInt256.Zero)
+
+                        int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
+                        if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
                         {
-
-                            int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
-                            if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
-                            {
-                                goto AccessViolation;
-                            }
-
-                            auxData = vmState.Memory.Load(a, b);
+                            goto AccessViolation;
                         }
+
+                        auxData = vmState.Memory.Load(a, b);
 
                         return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
                     }
