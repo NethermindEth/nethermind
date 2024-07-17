@@ -49,23 +49,18 @@ public class ShutterTxSource(
 
         // atomic fetch
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
+        bool isProposer = auraSealer.CanSeal(parent.Number + 1, parent.Hash ?? Keccak.Zero);
+
         if (shutterTransactions is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Decryption keys have not been received, cannot include Shutter transactions.");
+            if (isProposer && _logger.IsWarn)
+                _logger.Warn($"Is proposer for slot {buildingSlot}, but no shutter tx could be loaded.");
         }
         else
         {
             int txCount = shutterTransactions.Value.Transactions.Length;
-            if (shutterTransactions.Value.Slot == buildingSlot)
-            {
-                if (_logger.IsInfo) _logger.Info($"Building Shutter block for slot {buildingSlot} with {txCount} transactions.");
-                return shutterTransactions.Value.Transactions;
-            }
-
-            bool isProposer = auraSealer.CanSeal(parent.Number + 1, parent.Hash ?? Keccak.Zero);
-            if (_logger.IsWarn && isProposer)
-                _logger.Warn($"Is proposer for slot {buildingSlot}, but missing decryption keys. Pending shutter transactions: {txCount}");
-            if (_logger.IsDebug) _logger.Debug($"Current Shutter decryption keys stored for slot {shutterTransactions.Value.Slot}");
+            if (_logger.IsInfo) _logger.Info($"Can build for Shutter block slot {buildingSlot} with {txCount} transactions.");
+            return shutterTransactions.Value.Transactions;
         }
 
         return [];
