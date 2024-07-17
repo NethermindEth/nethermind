@@ -75,7 +75,7 @@ public class ShutterTxSource(
             Interlocked.CompareExchange(ref _highestSlotSeen, local, _extraBuildWindowMs);
     }
 
-    public ulong HighestLoadedSlot() => _transactionCache is null ? 0 : _highestSlotSeen;
+    public ulong HighestLoadedSlot() => _highestSlotSeen;
 
     private ulong GetBuildingSlot()
     {
