@@ -2937,12 +2937,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         int initcontainerSize = container.Header.ContainerSections.Value[initcontainerIndex].Size;
         long numberOfWordInInitcode = EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize);
         // Eip3860
-        if (spec.IsEip3860Enabled)
-        {
-            if(!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
-                return (EvmExceptionType.OutOfGas, null);
-            if (initcontainerSize > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
-        }
+        // if (spec.IsEip3860Enabled)
+        // {
+        //     if(!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
+        //         return (EvmExceptionType.OutOfGas, null);
+        //     if (initcontainerSize > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
+        // }
 
         // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
         long hashCost = GasCostOf.Sha3Word * numberOfWordInInitcode;
