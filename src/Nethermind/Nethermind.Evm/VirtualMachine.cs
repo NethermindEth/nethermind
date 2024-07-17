@@ -660,11 +660,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.EXTCODEHASH:
                     {
-                        var gasCodeHash = vmState.Env.Witness.AccessForCodeHash(address);
-                        if (gasCodeHash > 0)
+                        if (!isAddressPreCompile)
+                        {
+                            var gasCodeHash = vmState.Env.Witness.AccessForCodeHash(address);
+                            if (gasCodeHash > 0)
+                            {
+                                witnessGasCharged = true;
+                                result = UpdateGas(gasCodeHash, ref gasAvailable);
+                            }
+                        }
+                        else
                         {
                             witnessGasCharged = true;
-                            result = UpdateGas(gasCodeHash, ref gasAvailable);
                         }
                         break;
                     }
