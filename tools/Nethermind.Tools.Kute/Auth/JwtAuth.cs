@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
 
@@ -32,12 +31,12 @@ class JwtAuth : IAuth
 
     private string GenerateAuthToken()
     {
-        var signingKey = new SymmetricSecurityKey(_secret);
-        var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
-        var claims = new[] { new Claim(JwtRegisteredClaimNames.Iat, _clock.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64) };
-        var token = new JwtSecurityToken(claims: claims, signingCredentials: credentials);
-        var handler = new JwtSecurityTokenHandler();
+        var handler = new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false };
 
-        return handler.WriteToken(token);
+        return handler.CreateToken(new SecurityTokenDescriptor
+        {
+            IssuedAt = _clock.UtcNow.UtcDateTime,
+            SigningCredentials = new(new SymmetricSecurityKey(_secret), SecurityAlgorithms.HmacSha256)
+        });
     }
 }
