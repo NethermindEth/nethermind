@@ -552,24 +552,3 @@ public class JsonRpcSocketsClientTests
         return new string(stringChars);
     }
 }
-
-public class MemoryMessageStream : MemoryStream, IMessageBorderPreservingStream
-{
-    private static readonly byte Delimiter = Convert.ToByte('\n');
-
-    public Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer)
-    {
-        int read = Read(buffer.AsSpan());
-        return Task.FromResult<ReceiveResult?>(new ReceiveResult
-        {
-            Read = read,
-            EndOfMessage = read > 0 && buffer[read - 1] == Delimiter
-        });
-    }
-
-    public Task<int> WriteEndOfMessageAsync()
-    {
-        WriteByte(Delimiter);
-        return Task.FromResult(1);
-    }
-}
