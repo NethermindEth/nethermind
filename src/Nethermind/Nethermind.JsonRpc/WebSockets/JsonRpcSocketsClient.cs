@@ -16,7 +16,7 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDuplexClient where TStream : Stream, IMessageBorderPreservingStream
+public sealed class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDuplexClient where TStream : Stream, IMessageBorderPreservingStream
 {
     public event EventHandler? Closed;
 
@@ -116,7 +116,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         }
     }
 
-    public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
+    public async Task<int> SendJsonRpcResult(JsonRpcResult result)
     {
         await _sendSemaphore.WaitAsync();
         try
@@ -138,7 +138,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                             responseSize += 1;
                         }
                         isFirst = false;
-                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
+                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, indented: false);
                         _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                         // We reached the limit and don't want to responded to more request in the batch
