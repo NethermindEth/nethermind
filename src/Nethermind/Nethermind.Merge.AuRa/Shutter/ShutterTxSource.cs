@@ -26,7 +26,6 @@ public class ShutterTxSource(
     ShutterTxLoader txLoader,
     IShutterConfig shutterConfig,
     ISpecProvider specProvider,
-    ISealer auraSealer,
     ILogManager logManager)
     : ITxSource
 {
@@ -37,6 +36,7 @@ public class ShutterTxSource(
     private ulong _highestSlotSeen = 0;
     private ulong _extraBuildWindowMs = shutterConfig.ExtraBuildWindow
         == default ? shutterConfig.GetDefaultValue<ulong>(nameof(ShutterConfig.ExtraBuildWindow)) : shutterConfig.ExtraBuildWindow;
+    private readonly object _slotSeenLock = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -50,12 +50,10 @@ public class ShutterTxSource(
 
         // atomic fetch
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
-        bool isProposer = auraSealer.CanSeal(parent.Number + 1, parent.Hash ?? Keccak.Zero);
-
         if (shutterTransactions is null)
         {
-            if (isProposer && _logger.IsWarn)
-                _logger.Warn($"Is proposer for slot {buildingSlot}, but no shutter tx could be loaded.");
+            if (_logger.IsWarn)
+                _logger.Warn($"No shutter tx could be loaded for slot {buildingSlot}.");
         }
         else
         {
@@ -70,9 +68,11 @@ public class ShutterTxSource(
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
-        ulong local = Thread.VolatileRead(ref _extraBuildWindowMs);
-        if (local < slot)
-            Interlocked.CompareExchange(ref _highestSlotSeen, local, _extraBuildWindowMs);
+        lock (_slotSeenLock)
+        {
+            if (_highestSlotSeen < slot)
+                _highestSlotSeen = slot;
+        }
     }
 
     public ulong HighestLoadedSlot() => _highestSlotSeen;
