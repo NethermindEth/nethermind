@@ -261,10 +261,7 @@ public class T8NTests
             1,
             inputParams.StateFork,
             inputParams.StateReward,
-            false,
-            false,
-            false,
-            false
+            TraceOptions.Default
         );
 
         Assert.That(output.ExitCode, Is.EqualTo(expectedExitCode));
