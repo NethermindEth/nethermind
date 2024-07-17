@@ -274,8 +274,6 @@ public class TestCaseGenerator
                 return SimpleInstructionTwoContracts.GetTxs([Instruction.PUSH0, Instruction.BLOBHASH], privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.CodeCopy:
                 return CodeCopy.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
-            // case TestCase.BalanceNonExisting:
-            //     return BalanceNonExisting.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcRecover:
                 return EcRecover.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SHA2From1Byte:
@@ -308,10 +306,6 @@ public class TestCaseGenerator
             case TestCase.ModexpMinGasExpHeavy:
             case TestCase.ModexpMinGasBalanced:
             case TestCase.Modexp215GasExpHeavy:
-            // case TestCase.Modexp1KGasBaseHeavy:
-            // case TestCase.Modexp1KGasBalanced:
-            // case TestCase.Modexp10KGasExpHeavy:
-            // case TestCase.Modexp135KGasBalanced:
                 return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcAddInfinities:
             case TestCase.EcAdd12:
@@ -325,22 +319,14 @@ public class TestCaseGenerator
             case TestCase.EcMul32ByteCoordinates32ByteScalar:
                 return EcMul.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcPairing0Input:
-            // case TestCase.EcPairing1Set:
             case TestCase.EcPairing2Sets:
-            // case TestCase.EcPairing4Sets:
-            // case TestCase.EcPairing16Sets:
                 return EcPairing.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
-            // case TestCase.PointEvaluationZeros:
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:
             case TestCase.SStoreManyAccountsConsecutiveKeysZeroValue:
             case TestCase.SStoreManyAccountsRandomKeysRandomValue:
             case TestCase.SStoreManyAccountsRandomKeysZeroValue:
-            // case TestCase.TStoreConsecutiveKeysRandomValue:
-            // case TestCase.TStoreConsecutiveKeysZeroValue:
-            // case TestCase.TStoreRandomKeysRandomValue:
-            // case TestCase.TStoreRandomKeysZeroValue:
                 return SStore.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreOneAccountOneKeyConstantValue:
             case TestCase.SStoreOneAccountOneKeyZeroValue:
