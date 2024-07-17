@@ -389,9 +389,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         else if (previousState.ExecutionType.IsAnyCreateEof())
                         {
                             // ReturnContract was called with a container index and auxdata
-
-                            EofCodeInfo eofCodeInfo = (EofCodeInfo)previousState.Env.CodeInfo;
-
                             // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
                             ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
                             EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
@@ -2941,7 +2938,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         int initcontainerSize = container.Header.ContainerSections.Value[initcontainerIndex].Size;
 
         // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
-        if (!UpdateGas(GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize), ref gasAvailable))
+        long hashCost =  (GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize));
+        if (!UpdateGas(hashCost, ref gasAvailable))
             return (EvmExceptionType.OutOfGas, null);
 
         // 7 - check that current call depth is below STACK_DEPTH_LIMIT and that caller balance is enough to transfer value
