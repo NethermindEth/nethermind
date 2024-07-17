@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core.Caching;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Config;
+using System.Threading;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -69,11 +70,12 @@ public class ShutterTxSource(
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
-        if (_highestSlotSeen < slot)
-            _highestSlotSeen = slot;
+        ulong local = Thread.VolatileRead(ref _extraBuildWindowMs);
+        if (local < slot)
+            Interlocked.CompareExchange(ref _highestSlotSeen, local, _extraBuildWindowMs);
     }
 
-    public ulong MaximumLoadedSlot() => _transactionCache is null ? 0 : _highestSlotSeen;
+    public ulong HighestLoadedSlot() => _transactionCache is null ? 0 : _highestSlotSeen;
 
     private ulong GetBuildingSlot()
     {

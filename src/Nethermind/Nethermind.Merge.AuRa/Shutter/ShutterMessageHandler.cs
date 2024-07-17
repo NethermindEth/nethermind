@@ -26,7 +26,7 @@ public class ShutterMessageHandler(
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        ulong loadedTransactionsSlot = txSource.MaximumLoadedSlot();
+        ulong loadedTransactionsSlot = txSource.HighestLoadedSlot();
 
         if (decryptionKeys.Gnosis.Slot <= loadedTransactionsSlot)
         {
