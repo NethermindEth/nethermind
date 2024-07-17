@@ -2291,9 +2291,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.RETURNCONTRACT:
                     {
-                        const int MAX_CODE_SIZE = 24576;
-                        const int MAX_INITCODE_SIZE = MAX_CODE_SIZE * 2;
-
                         if (!spec.IsEofEnabled || !vmState.ExecutionType.IsAnyCreateEof())
                             goto InvalidInstruction;
 
@@ -2310,7 +2307,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
                         int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
-                        if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > MAX_INITCODE_SIZE)
+                        if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
                         {
                             goto AccessViolation;
                         }
