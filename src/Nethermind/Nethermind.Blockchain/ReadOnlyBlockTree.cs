@@ -30,6 +30,8 @@ namespace Nethermind.Blockchain
         public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
+        public BlockHeader BestProcessedStatelessHeader => _wrapped.BestProcessedStatelessHeader;
+        public Block BestProcessedStatelessBlock => _wrapped.BestProcessedStatelessBlock;
         public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
 
@@ -151,6 +153,14 @@ namespace Nethermind.Blockchain
             add { }
             remove { }
         }
+
+        public event EventHandler<BlockEventArgs>? OnUpdateStatelessChain
+        {
+            add { }
+            remove { }
+        }
+
+        public void UpdateStatelessBlock(Block block) => _wrapped.UpdateStatelessBlock(block);
 
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {

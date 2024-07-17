@@ -59,8 +59,12 @@ namespace Nethermind.Blockchain
         public Block? Head { get; private set; }
 
         public BlockHeader? BestSuggestedHeader { get; private set; }
-
         public Block? BestSuggestedBody { get; private set; }
+
+        // for stateless chain -  this can be even used for cases where we need BestSuggestedStatelessHeader
+        public BlockHeader? BestProcessedStatelessHeader { get; private set; }
+        public Block? BestProcessedStatelessBlock { get; private set; }
+
         public BlockHeader? LowestInsertedHeader { get; private set; }
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
@@ -1484,6 +1488,8 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
 
+        public event EventHandler<BlockEventArgs>? OnUpdateStatelessChain;
+
         public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
 
         public event EventHandler<BlockEventArgs>? NewSuggestedBlock;
@@ -1617,6 +1623,14 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
+        }
+
+        // TODO: find better way to add stuff to the stateless chain and update the main chain
+        public void UpdateStatelessBlock(Block block)
+        {
+            BestProcessedStatelessHeader = block.Header;
+            BestProcessedStatelessBlock = block;
+            OnUpdateStatelessChain?.Invoke(this, new BlockEventArgs(block));
         }
     }
 }

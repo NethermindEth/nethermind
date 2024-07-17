@@ -40,6 +40,9 @@ namespace Nethermind.Blockchain
         /// </summary>
         Block? BestSuggestedBody { get; }
 
+        public BlockHeader? BestProcessedStatelessHeader { get; }
+        public Block? BestProcessedStatelessBlock { get; }
+
         BlockHeader? BestSuggestedBeaconHeader { get; }
 
         /// <summary>
@@ -177,6 +180,13 @@ namespace Nethermind.Blockchain
         /// the whole branch.
         /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
+
+        /// <summary>
+        ///
+        /// </summary>
+        event EventHandler<BlockEventArgs> OnUpdateStatelessChain;
+
+        public void UpdateStatelessBlock(Block block);
 
         int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
 
