@@ -33,7 +33,6 @@ jobs:
       matrix:
         project:
           - Nethermind.Abi.Test
-          - Nethermind.AccountAbstraction.Test
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
           - Nethermind.Blockchain.Test

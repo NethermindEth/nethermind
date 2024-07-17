@@ -16,7 +16,7 @@ internal static partial class MetricsGenerator
         var startMark = "<!--[start autogen]-->";
         var endMark = "<!--[end autogen]-->";
         var fileName = "metrics.md";
-        var excluded = new[] { "AccountAbstraction", "Mev" };
+        var excluded = new[] { "Mev" };
 
         var types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
