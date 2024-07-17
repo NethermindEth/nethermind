@@ -14,8 +14,8 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssest="All"/>
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers"  PrivateAssets="All"/>
   </ItemGroup>
-  <ItemGroup>
+  <!-- <ItemGroup>
     <ProjectReference Include="../../Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
-  </ItemGroup>
+  </ItemGroup> -->
 
 </Project>
