@@ -36,7 +36,7 @@ public static class SStoreOneKey
         switch (testCase)
         {
             case TestCase.SStoreOneAccountOneKeyTwoValues:
-                return PrepareCodeTwoValues(testCase).ToArray();
+                return PrepareCodeTwoValues().ToArray();
             default:
                 return PrepareCodeOneValue(testCase).ToArray();
         }
@@ -101,10 +101,8 @@ public static class SStoreOneKey
         }
     }
 
-    private static byte[] PrepareCodeTwoValues(TestCase testCase)
+    private static byte[] PrepareCodeTwoValues()
     {
-        byte[] constantWord = Keccak.Compute("random").BytesToArray();
-
         List<byte> codeToDeploy = new();
 
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
