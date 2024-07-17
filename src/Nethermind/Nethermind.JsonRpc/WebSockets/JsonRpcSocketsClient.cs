@@ -16,7 +16,7 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public sealed class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDuplexClient where TStream : Stream, IMessageBorderPreservingStream
+public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDuplexClient where TStream : Stream, IMessageBorderPreservingStream
 {
     public event EventHandler? Closed;
 
@@ -116,7 +116,7 @@ public sealed class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJson
         }
     }
 
-    public async Task<int> SendJsonRpcResult(JsonRpcResult result)
+    public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
     {
         await _sendSemaphore.WaitAsync();
         try
