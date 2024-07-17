@@ -15,7 +15,6 @@ namespace Nethermind.JsonRpc.Modules
         public const string Erc20 = nameof(Erc20);
         public const string Eth = nameof(Eth);
         public const string Evm = nameof(Evm);
-        public const string Mev = nameof(Mev);
         public const string NdmProvider = nameof(NdmProvider);
         public const string NdmConsumer = nameof(NdmConsumer);
         public const string Net = nameof(Net);
@@ -42,7 +41,6 @@ namespace Nethermind.JsonRpc.Modules
             Erc20,
             Eth,
             Evm,
-            Mev,
             NdmProvider,
             NdmConsumer,
             Net,

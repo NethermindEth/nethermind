@@ -54,7 +54,6 @@ jobs:
           - Nethermind.Logging.NLog.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mev.Test
           - Nethermind.Mining.Test
           - Nethermind.Monitoring.Test
           - Nethermind.Network.Discovery.Test
