@@ -137,7 +137,7 @@ namespace Ethereum.Test.Base
                 var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
                 withdrawalProcessor.ProcessWithdrawals(block, spec);
             }
-            else if (test.Withdrawals is not null && test.Withdrawals.Length > 0)
+            else if (!test.Withdrawals.IsNullOrEmpty())
             {
                 throw new T8NException("withdrawals are not supported in state tests", ExitCodes.ErrorEVM);
             }
