@@ -2933,19 +2933,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
         // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
-        ReadOnlySpan<byte> initcontainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initcontainerIndex).Value];
-        int initcontainerSize = container.Header.ContainerSections.Value[initcontainerIndex].Size;
-        long numberOfWordInInitcode = EvmPooledMemory.Div32Ceiling((UInt256)initcontainerSize);
+        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initcontainerIndex).Value];
         // Eip3860
-        // if (spec.IsEip3860Enabled)
-        // {
-        //     if(!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
-        //         return (EvmExceptionType.OutOfGas, null);
-        //     if (initcontainerSize > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
-        // }
+        if (spec.IsEip3860Enabled)
+        {
+            //if (!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
+            //    return (EvmExceptionType.OutOfGas, null);
+            if (initContainer.Length > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
+        }
 
         // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
-        long hashCost = GasCostOf.Sha3Word * numberOfWordInInitcode;
+        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length);
+        long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
         if (!UpdateGas(hashCost, ref gasAvailable))
             return (EvmExceptionType.OutOfGas, null);
 
@@ -2979,7 +2978,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _state.IncrementNonce(env.ExecutingAccount);
 
         // 11 - calculate new_address as keccak256(0xff || sender || salt || keccak256(initcontainer))[12:]
-        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initcontainer);
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer);
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
@@ -3011,7 +3010,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
 
-        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initcontainer.ToArray(), spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
 
         ExecutionEnvironment callEnv = new
         (
