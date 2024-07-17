@@ -407,11 +407,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
         }
 
-        bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
-        if (updateHead)
+        bool updateHead = processingBranch.Blocks.Count != 0 &&
+                          !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
+        if (updateHead) _blockTree.UpdateMainChain(processingBranch.Blocks, true);
+
+        // TODO: find better way to do this - probably set this block in block tree from new payload handler
+        //       and flow the same flow as with MainChain
+        if (options.ContainsFlag(ProcessingOptions.StatelessProcessing))
         {
-            if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-            _blockTree.UpdateMainChain(processingBranch.Blocks, true);
+            foreach (Block? block in processedBlocks)
+            {
+                _blockTree.UpdateStatelessBlock(block);
+            }
         }
 
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
@@ -730,7 +737,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
     {
         /* a bit hacky way to get the invalid branch out of the processing loop */
-        if (suggestedBlock.Number != 0 &&
+        // TODO: is this correct, or should we find a better way to get this solved for stateless chain
+        // find a way to only send this here when we have parent block stored in the block tree
+        if (!options.ContainsFlag(ProcessingOptions.StatelessProcessing) && suggestedBlock.Number != 0 &&
             !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
         {
             if (_logger.IsDebug)
