@@ -76,11 +76,12 @@ public class DiscoveryApp : IDiscoveryApp
         _nodesLocator.Initialize(_nodeTable.MasterNode);
     }
 
-    public void Start()
+    public Task StartAsync()
     {
         try
         {
             Initialize();
+            return Task.CompletedTask;
         }
         catch (Exception e)
         {

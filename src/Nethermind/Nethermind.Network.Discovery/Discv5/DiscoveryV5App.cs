@@ -177,8 +177,6 @@ public class DiscoveryV5App : IDiscoveryApp
         return true;
     }
 
-    public List<Node> LoadInitialList() => [];
-
     public event EventHandler<NodeEventArgs>? NodeAdded;
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
@@ -191,7 +189,11 @@ public class DiscoveryV5App : IDiscoveryApp
         channel.Pipeline.AddLast(handler);
     }
 
-    public void Start() => _ = DiscoverViaCustomRandomWalk();
+    public Task StartAsync()
+    {
+        _ = DiscoverViaCustomRandomWalk();
+        return Task.CompletedTask;
+    }
 
     private async Task DiscoverViaCustomRandomWalk()
     {

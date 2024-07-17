@@ -126,9 +126,7 @@ namespace Nethermind.Api
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
-        public IConnectionsPool? DiscoveryConnections { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
-        public IDiscoveryApp? DiscoveryV5App { get; set; }
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }

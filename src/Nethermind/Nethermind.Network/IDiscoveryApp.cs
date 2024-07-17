@@ -12,7 +12,7 @@ namespace Nethermind.Network
     {
         void Initialize(PublicKey masterPublicKey);
         void InitializeChannel(IDatagramChannel channel);
-        void Start();
+        Task StartAsync();
         Task StopAsync();
         void AddNodeToDiscovery(Node node);
     }
