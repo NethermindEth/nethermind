@@ -33,8 +33,6 @@ namespace Evm.JsonTypes
         public ulong? ParentBlobGasUsed { get; set; }
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
         public Ommer[] Ommers { get; set; } = [];
-        
-        public bool IsStateTest { get; set; }
 
         public Hash256? GetCurrentRandomHash256()
         {
