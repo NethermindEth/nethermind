@@ -92,9 +92,6 @@ public enum TestCase
     [TestCaseMetadata("CodeCopy", "Endlessly loading 32-bytes of code to the memory")]
     CodeCopy,
 
-    // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
-    // BalanceNonExisting,
-
     [TestCaseMetadata("EcRecover precompile", "EcRecover precompile calculations")]
     EcRecover,
 
@@ -164,18 +161,6 @@ public enum TestCase
     [TestCaseMetadata("Modexp 215 gas, exp heavy", "Modexp precompile consuming 215 gas, with base and modulo byte size equal 8 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
     Modexp215GasExpHeavy,
 
-    // [TestCaseMetadata("Modexp 1k gas, base heavy", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 440 and exponent equal 3 (0b11 - 2x 1s in binary)")]
-    // Modexp1KGasBaseHeavy,
-    //
-    // [TestCaseMetadata("Modexp 1k gas, balanced", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 56 and exponent equal 2^62 - 1 (62x 1s in binary)")]
-    // Modexp1KGasBalanced,
-    //
-    // [TestCaseMetadata("Modexp 10k gas, exp heavy", "Modexp precompile consuming 10_500 gas, with base and modulo byte size equal 56 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
-    // Modexp10KGasExpHeavy,
-    //
-    // [TestCaseMetadata("Modexp 135k gas, balanced", "Modexp precompile consuming 135_000 gas, with base and modulo byte size equal 200 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
-    // Modexp135KGasBalanced,
-
     [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
     EcAddInfinities,
 
@@ -206,17 +191,8 @@ public enum TestCase
     [TestCaseMetadata("EcPairing with empty input", "EcPairing precompile with empty input")]
     EcPairing0Input,
 
-    // [TestCaseMetadata("EcPairing with 1 set of data", "EcPairing precompile with 1 set of valid input data (6x 32-byte value)")]
-    // EcPairing1Set,
-
     [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
     EcPairing2Sets,
-
-    // [TestCaseMetadata("EcPairing with 4 sets of data", "EcPairing precompile with 4 sets of valid input data (6x 32-byte value)")]
-    // EcPairing4Sets,
-    //
-    // [TestCaseMetadata("EcPairing with 16 sets of data", "EcPairing precompile with 16 sets of valid input data (6x 32-byte value)")]
-    // EcPairing16Sets,
 
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,
@@ -230,9 +206,6 @@ public enum TestCase
     [TestCaseMetadata("Blake2f 10M rounds", "Blake2f precompile with 10_000_000 rounds of computations")]
     Blake10MRounds,
 
-    // [TestCaseMetadata("Point evaluation - zeros", "Point evaluation precompile with just zeros as an argument")]
-    // PointEvaluationZeros,
-
     [TestCaseMetadata("Point evaluation - one data", "Point evaluation precompile repeating computations on the same data")]
     PointEvaluationOneData,
 
@@ -244,18 +217,6 @@ public enum TestCase
 
     [TestCaseMetadata("TStore - one storage key, repeating random values", "TStore - repeating storing random 32-byte values in single key of transient storage")]
     TStoreOneKeyRandomValue,
-
-    // [TestCaseMetadata("TStore - consecutive storage keys, random values", "TStore - storing random 32-byte values in consecutive keys of transient storage")]
-    // TStoreConsecutiveKeysRandomValue,
-    //
-    // [TestCaseMetadata("TStore - random storage keys, random values", "TStore - storing random 32-byte values in random keys of transient storage")]
-    // TStoreRandomKeysRandomValue,
-    //
-    // [TestCaseMetadata("TStore - consecutive storage keys, zero values", "TStore - storing zeros in consecutive keys of transient storage")]
-    // TStoreConsecutiveKeysZeroValue,
-    //
-    // [TestCaseMetadata("TStore - random storage keys, zero values", "TStore - storing zeros in random keys of transient storage")]
-    // TStoreRandomKeysZeroValue,
 
     [TestCaseMetadata("SStore - one storage key, repeating zero value", "SStore - repeating storing zero in single storage key of single account")]
     SStoreOneAccountOneKeyZeroValue,
