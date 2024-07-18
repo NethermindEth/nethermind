@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Contract\AuRaContractGasLimitOverrideTests.json" />
+    <EmbeddedResource Include="Contract\TxPriorityContractTests.json" />
+    <EmbeddedResource Include="Transactions\TxCertifierFilterTests.json" />
+    <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V2.json" />
+    <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V3.json" />
+    <None Remove="Transactions\TxPermissionsFilterTest.V1.json" />
+    <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V1.json" />
+    <None Remove="Transactions\TxPermissionFilterTest.V4.json" />
+    <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V4.json" />
+  </ItemGroup>
+
+</Project>

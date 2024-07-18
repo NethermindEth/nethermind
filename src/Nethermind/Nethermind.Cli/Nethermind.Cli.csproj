@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>nethermind-cli</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Colorful.Console" />
+    <PackageReference Include="Jint" />
+    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
+    <PackageReference Include="ReadLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="handlebars-v4.0.12.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="plugins\readme.txt" />
+  </ItemGroup>
+</Project>
