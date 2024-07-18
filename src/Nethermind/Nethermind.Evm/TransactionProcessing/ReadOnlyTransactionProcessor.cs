@@ -23,22 +23,22 @@ namespace Nethermind.Evm.TransactionProcessing
             _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
         }
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.Execute(transaction, in blCtx, txTracer);
+        public TransactionResult Execute(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.Execute(transaction, worldState, in blCtx, txTracer);
 
-        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.CallAndRestore(transaction, in blCtx, txTracer);
+        public TransactionResult CallAndRestore(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.CallAndRestore(transaction, worldState, in blCtx, txTracer);
 
-        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.BuildUp(transaction, in blCtx, txTracer);
+        public TransactionResult BuildUp(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.BuildUp(transaction, worldState, in blCtx, txTracer);
 
-        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.Trace(transaction, in blCtx, txTracer);
+        public TransactionResult Trace(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.Trace(transaction, worldState, in blCtx, txTracer);
 
 
         public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
 
-        public ITransactionProcessor WithNewStateProvider(IWorldState worldState) => _transactionProcessor.WithNewStateProvider(worldState);
+        public ITransactionProcessor WithNewStateProvider() => _transactionProcessor.WithNewStateProvider();
 
         public void Dispose()
         {

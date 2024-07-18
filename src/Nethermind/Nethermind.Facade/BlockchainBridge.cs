@@ -152,10 +152,10 @@ namespace Nethermind.Facade
             public AccessList? AccessList { get; set; }
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput Call(IWorldState worldState, BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(worldState, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput
             {
@@ -166,12 +166,13 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
             using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
+                worldState,
                 header,
                 tx,
                 true,
@@ -179,7 +180,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
                 _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
+            long estimate = gasEstimator.Estimate(tx, worldState, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
             {
@@ -189,7 +190,7 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
+        public CallOutput CreateAccessList(IWorldState worldState, BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
         {
             CallOutputTracer callOutputTracer = new();
             AccessTxTracer accessTxTracer = optimize
@@ -197,7 +198,7 @@ namespace Nethermind.Facade
                     tx.GetRecipient(tx.IsContractCreation ? _processingEnv.StateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
                 : new(header.GasBeneficiary);
 
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(worldState, header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput
@@ -211,6 +212,7 @@ namespace Nethermind.Facade
         }
 
         private TransactionResult TryCallAndRestore(
+            IWorldState worldState,
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
@@ -218,7 +220,7 @@ namespace Nethermind.Facade
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer);
+                return CallAndRestore(worldState, blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer);
             }
             catch (InsufficientBalanceException ex)
             {
@@ -227,6 +229,7 @@ namespace Nethermind.Facade
         }
 
         private TransactionResult CallAndRestore(
+            IWorldState worldState,
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
@@ -277,7 +280,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return transactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return transactionProcessor.CallAndRestore(transaction, worldState, new(callHeader), tracer);
         }
 
         public ulong GetChainId()

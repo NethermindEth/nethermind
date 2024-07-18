@@ -16,12 +16,12 @@ namespace Nethermind.Evm.TransactionProcessing
             _transactionProcessor = transactionProcessor;
         }
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            _transactionProcessor.CallAndRestore(transaction, in blkCtx, txTracer);
+        public TransactionResult Execute(Transaction transaction, IWorldState worldState, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
+            _transactionProcessor.CallAndRestore(transaction, worldState, in blkCtx, txTracer);
 
-        public ITransactionProcessorAdapter WithNewStateProvider(IWorldState worldState)
+        public ITransactionProcessorAdapter WithNewStateProvider()
         {
-            return new CallAndRestoreTransactionProcessorAdapter(_transactionProcessor.WithNewStateProvider(worldState));
+            return new CallAndRestoreTransactionProcessorAdapter(_transactionProcessor.WithNewStateProvider());
         }
     }
 }

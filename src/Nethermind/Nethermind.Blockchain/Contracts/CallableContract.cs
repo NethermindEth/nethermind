@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Contracts
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
 
-        private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
+        private byte[] Call(IWorldState worldState, BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, worldState, header, functionName, transaction);
 
         /// <summary>
         /// Calls the function in contract, state modification is allowed.
@@ -51,22 +51,22 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="gasLimit">Gas limit for generated transaction.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
-        protected object[] Call(BlockHeader header, string functionName, Address sender, long gasLimit, params object[] arguments)
+        protected object[] Call(IWorldState worldState, BlockHeader header, string functionName, Address sender, long gasLimit, params object[] arguments)
         {
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
-            var result = Call(header, functionName, transaction);
+            var result = Call(worldState, header, functionName, transaction);
             var objects = DecodeData(function.GetReturnInfo(), result);
             return objects;
         }
 
-        private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
+        private bool TryCall(IWorldState worldState, BlockHeader header, Transaction transaction, out byte[] result)
         {
             CallOutputTracer tracer = new();
 
             try
             {
-                _transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
+                _transactionProcessor.Execute(transaction, worldState, new BlockExecutionContext(header), tracer);
                 result = tracer.ReturnValue;
                 return tracer.StatusCode == StatusCode.Success;
             }
@@ -80,18 +80,20 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AbiException"/>.
         /// </summary>
+        /// <param name="worldState">worldState for transaction processor</param>
         /// <param name="header">Header in which context the call is done.</param>
         /// <param name="functionName"></param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) =>
-            TryCall(header, functionName, sender, DefaultContractGasLimit, out result, arguments);
+        protected bool TryCall(IWorldState worldState, BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) =>
+            TryCall(worldState, header, functionName, sender, DefaultContractGasLimit, out result, arguments);
 
         /// <summary>
         /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AbiException"/>.
         /// </summary>
+        /// <param name="worldState">worldState for transaction processor</param>
         /// <param name="header">Header in which context the call is done.</param>
         /// <param name="functionName"></param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
@@ -99,11 +101,11 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(BlockHeader header, string functionName, Address sender, long gasLimit, out object[] result, params object[] arguments)
+        protected bool TryCall(IWorldState worldState, BlockHeader header, string functionName, Address sender, long gasLimit, out object[] result, params object[] arguments)
         {
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
-            if (TryCall(header, transaction, out var bytes))
+            if (TryCall(worldState, header, transaction, out var bytes))
             {
                 result = DecodeData(function.GetReturnInfo(), bytes);
                 return true;

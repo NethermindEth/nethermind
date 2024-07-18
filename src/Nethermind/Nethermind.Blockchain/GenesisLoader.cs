@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
-            Preallocate(genesis);
+            Preallocate(genesis, _stateProvider);
 
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain
             return genesis;
         }
 
-        private void Preallocate(Block genesis)
+        private void Preallocate(Block genesis, IWorldState worldState)
         {
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
                     };
 
                     CallOutputTracer outputTracer = new();
-                    _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer);
+                    _transactionProcessor.Execute(constructorTransaction, worldState, new BlockExecutionContext(genesis.Header), outputTracer);
 
                     if (outputTracer.StatusCode != StatusCode.Success)
                     {

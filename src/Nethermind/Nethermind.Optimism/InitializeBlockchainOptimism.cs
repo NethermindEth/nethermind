@@ -44,7 +44,6 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
-            _api.WorldState,
             virtualMachine,
             _api.LogManager,
             _api.L1CostHelper,

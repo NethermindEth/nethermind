@@ -72,7 +72,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
             _statelessWorldState.Reset();
             _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
             worldState = _statelessWorldState;
-            blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider(worldState);
+            blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider();
         }
         else
         {

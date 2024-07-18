@@ -339,7 +339,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
     }
 
-    public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<string> eth_call(IWorldState worldState, TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 

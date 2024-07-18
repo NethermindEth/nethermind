@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _worldStateManager, _blockTree, _specProvider, _logManager);
 
-            RpcBlockTransactionsExecutor traceExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+            RpcBlockTransactionsExecutor traceExecutor = new(txProcessingEnv.TransactionProcessor);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager, traceExecutor);
