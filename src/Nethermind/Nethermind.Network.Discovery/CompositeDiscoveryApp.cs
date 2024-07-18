@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net.Sockets;
@@ -45,7 +45,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _connections = new DiscoveryConnectionsPool(_logger, _networkConfig, _discoveryConfig);
     }
 
-    // Subscribe for V4 only
     public event EventHandler<NodeEventArgs>? NodeAdded
     {
         add
@@ -60,7 +59,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         }
     }
 
-    // Subscribe for V4 only
     public event EventHandler<NodeEventArgs>? NodeRemoved
     {
         add
