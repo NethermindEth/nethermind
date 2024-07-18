@@ -21,7 +21,7 @@ public class PragueStateTests : GeneralStateTestBase
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
         {
             ArchiveName = "fixtures_eip7692.tar.gz",
-            ArchiveVersion = "eip7692@v1.0.5"
+            ArchiveVersion = "eip7692@v1.0.6"
         }, $"fixtures/state_tests/prague");
         return loader.LoadTests().Cast<GeneralStateTest>();
     }
