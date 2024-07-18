@@ -16,6 +16,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
 
     public bool Get(TKey key)
     {
+        if (MaxCapacity == 0) return false;
         if (_cacheMap.TryGetValue(key, out int offset))
         {
             MarkAccessedNonConcurrent(offset);
@@ -26,6 +27,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
 
     public bool Set(TKey key)
     {
+        if (MaxCapacity == 0) return true;
         if (_cacheMap.TryGetValue(key, out int offset))
         {
             MarkAccessedNonConcurrent(offset);
