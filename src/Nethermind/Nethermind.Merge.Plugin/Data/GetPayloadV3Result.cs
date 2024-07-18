@@ -3,30 +3,26 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Blockchain.Blocks;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Merge.Plugin.Data;
 
 public class GetPayloadV3Result : GetPayloadV2Result
 {
-    public GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle) : base(block, blockFees)
+    private readonly CensorshipDetector _censorshipDetector;
+
+    public GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, CensorshipDetector censorshipDetector) : base(block, blockFees)
     {
         ExecutionPayload = new(block);
         BlobsBundle = blobsBundle;
+        _censorshipDetector = censorshipDetector;
     }
 
     public BlobsBundleV1 BlobsBundle { get; }
 
     public override ExecutionPayloadV3 ExecutionPayload { get; }
 
-    public bool ShouldOverrideBuilder
-    {
-        get
-        {
-            return CensorshipDetector.Instance().CensorshipDetected();
-        }
-    }
-
+    public bool ShouldOverrideBuilder => _censorshipDetector.CensorshipDetected;
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
 }

@@ -46,9 +46,12 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    private INethermindApi? _api;
+
     [SetUp]
     public Task Setup()
     {
+        _api = Substitute.For<INethermindApi>();
         return KzgPolynomialCommitments.InitializeAsync();
     }
 
@@ -93,7 +96,8 @@ public partial class EngineModuleTests
             new GetPayloadV3Handler(
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
-                chain.LogManager),
+                chain.LogManager,
+                _api!.CensorshipDetector),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
@@ -303,6 +307,12 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
     {
         add => _blockProcessorImplementation.BlocksProcessing += value;
         remove => _blockProcessorImplementation.BlocksProcessing -= value;
+    }
+
+    public event EventHandler<BlockEventArgs>? BlockProcessing
+    {
+        add => _blockProcessorImplementation.BlockProcessing += value;
+        remove => _blockProcessorImplementation.BlockProcessing -= value;
     }
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
