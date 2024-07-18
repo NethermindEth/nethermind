@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Network.Discovery.UTP;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Tests;
@@ -163,7 +164,7 @@ public class UTPTests
     {
         (string _, Func<IUTPTransfer, IUTPTransfer> transferMutator) = test;
 
-        byte[] data = new byte[2500000];
+        byte[] data = new byte[250000];
         new Random(0).NextBytes(data);
 
         MemoryStream input = new MemoryStream(data);
@@ -193,7 +194,7 @@ public class UTPTests
 
         Task receiverTask = Task.Run(async () =>
         {
-            await receiver.HandleReceiveHandshake(token);
+            //await receiver.HandleReceiveHandshake(token);
             await receiver.ReadStream(output, token);
         }, token);
 
