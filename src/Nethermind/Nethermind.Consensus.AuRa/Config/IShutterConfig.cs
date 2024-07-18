@@ -62,6 +62,6 @@ public interface IShutterConfig : IConfig
     ulong EncryptedGasLimit { get; set; }
 
     [ConfigItem(Description = "Amount of milliseconds into the slot, where block building should be attempted.",
-        DefaultValue = "1333")]
+        DefaultValue = "1666")]
     ulong ExtraBuildWindow { get; }
 }

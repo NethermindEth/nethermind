@@ -18,8 +18,6 @@ using Nethermind.Core.Extensions;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
-using Microsoft.Extensions.Logging;
-using Nethermind.Network.Discovery;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
