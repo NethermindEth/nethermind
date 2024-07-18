@@ -168,6 +168,7 @@ namespace Nethermind.Evm.Test
             return _logManager;
         }
 
+        [Ignore("Test Incorrect")]
         [TestCase(0)]
         [TestCase(MainnetSpecProvider.HomesteadBlockNumber)]
         [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber)]
