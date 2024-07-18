@@ -16,8 +16,6 @@ namespace Nethermind.Network.Discovery;
 
 public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMsgSender
 {
-    private const int ProtocolVersion = 4;
-
     private readonly ILogger _logger;
     private readonly IDiscoveryManager _discoveryManager;
     private readonly IDatagramChannel _channel;

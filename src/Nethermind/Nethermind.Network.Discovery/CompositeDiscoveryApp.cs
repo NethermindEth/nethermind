@@ -21,6 +21,9 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
 
+/// <summary>
+/// Combines several protocol versions under a single <see cref="IDiscoveryApp"/> implementation.
+/// </summary>
 public class CompositeDiscoveryApp : IDiscoveryApp
 {
     private const string DiscoveryNodesDbPath = "discoveryNodes";
