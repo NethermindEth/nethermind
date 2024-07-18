@@ -62,7 +62,7 @@ public class TransactionSubstate
         ShouldRevert = false;
     }
 
-    public static readonly TransactionSubstate FailedInitCode = new TransactionSubstate();
+    public static TransactionSubstate FailedInitCode { get; } = new TransactionSubstate();
 
     private TransactionSubstate()
     {

@@ -606,6 +606,8 @@ namespace Nethermind.Evm.TransactionProcessing
                             if (tracer.IsTracingRefunds)
                                 tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
                         }
+
+                        statusCode = StatusCode.Success;
                     }
                 }
                 else
@@ -613,8 +615,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     substate = TransactionSubstate.FailedInitCode;
                 }
                 spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice);
-
-                statusCode = env.CodeInfo is not null ? StatusCode.Success : StatusCode.Failure;
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
             {
