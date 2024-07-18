@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
-using Microsoft.IdentityModel.Tokens;
 using Nethermind.Int256;
 
 namespace Ethereum.Test.Base;
@@ -17,6 +15,6 @@ public class AccountState
 
     public bool IsEmptyAccount()
     {
-        return Balance.IsZero && Nonce.IsZero && Code.IsNullOrEmpty() && Storage.IsNullOrEmpty();
+        return Balance.IsZero && Nonce.IsZero && (Code == null || Code.Length == 0) && (Storage == null || Storage.Count == 0);
     }
 }

@@ -57,7 +57,7 @@ public class T8NResult
             .ToArray();
         var bloom = new Bloom(logEntries);
 
-        var gasUsed = blockReceiptsTracer.TxReceipts.IsNullOrEmpty() ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
+        var gasUsed = blockReceiptsTracer.TxReceipts.Count == 0  ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
 
         ulong? blobGasUsed = test.Fork.IsEip4844Enabled
             ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray())
@@ -68,7 +68,7 @@ public class T8NResult
         t8NResult.LogsBloom = bloom;
         t8NResult.LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes);
         t8NResult.Receipts = txReport.SuccessfulTransactionReceipts.ToArray();
-        t8NResult.Rejected = txReport.RejectedTransactionReceipts.IsNullOrEmpty()
+        t8NResult.Rejected = txReport.RejectedTransactionReceipts.Count == 0
             ? null
             : txReport.RejectedTransactionReceipts.ToArray();
         t8NResult.CurrentDifficulty = test.CurrentDifficulty;
