@@ -118,8 +118,8 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
     public void AddNodeToDiscovery(Node node)
     {
+        // Add to v4 only
         _v4?.AddNodeToDiscovery(node);
-        _v5?.AddNodeToDiscovery(node);
     }
 
     private void InitDiscoveryV4(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
