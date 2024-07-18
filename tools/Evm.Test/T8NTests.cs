@@ -266,12 +266,11 @@ public class T8NTests
 
         Assert.That(output.ExitCode, Is.EqualTo(expectedExitCode));
 
-        if (expectedOutputFile != null)
-        {
-            var outputString = _ethereumJsonSerializer.Serialize(output, true);
-            var fileContent = File.ReadAllText(expectedOutputFile);
-            Assert.That(AreEqual(fileContent, outputString));
-        }
+        if (expectedOutputFile == null) return;
+
+        var outputString = _ethereumJsonSerializer.Serialize(output, true);
+        var fileContent = File.ReadAllText(expectedOutputFile);
+        Assert.That(AreEqual(fileContent, outputString));
     }
 
     private static bool AreEqual(string json1, string json2)
