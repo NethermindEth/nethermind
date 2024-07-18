@@ -2314,6 +2314,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         auxData = vmState.Memory.Load(a, b);
 
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
                     }
                 case Instruction.DATASIZE:
