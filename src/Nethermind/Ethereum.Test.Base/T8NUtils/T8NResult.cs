@@ -57,7 +57,7 @@ public class T8NResult
             .ToArray();
         var bloom = new Bloom(logEntries);
 
-        var gasUsed = blockReceiptsTracer.TxReceipts.Count == 0  ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
+        var gasUsed = blockReceiptsTracer.TxReceipts.Count == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
 
         ulong? blobGasUsed = test.Fork.IsEip4844Enabled
             ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray())
