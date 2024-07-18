@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;

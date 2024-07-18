@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 
-using System.Runtime.CompilerServices;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 using System.Diagnostics;

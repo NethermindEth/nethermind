@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
-using Org.BouncyCastle.Bcpg;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 
 using static Nethermind.Evm.VirtualMachine;
