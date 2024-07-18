@@ -5,20 +5,14 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
-using Nethermind.Blockchain;
 using Nethermind.Specs;
-using Nethermind.Consensus;
-using Nethermind.Core.Crypto;
 using System;
 using Nethermind.Core.Caching;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Config;
-using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -36,7 +30,7 @@ public class ShutterTxSource(
     private ulong _highestSlotSeen = 0;
     private ulong _extraBuildWindowMs = shutterConfig.ExtraBuildWindow
         == default ? shutterConfig.GetDefaultValue<ulong>(nameof(ShutterConfig.ExtraBuildWindow)) : shutterConfig.ExtraBuildWindow;
-    private readonly object _slotSeenLock = new();
+    private readonly object _highestSlotSeenLock = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -46,10 +40,14 @@ public class ShutterTxSource(
             return [];
         }
 
-        ulong buildingSlot = GetBuildingSlot();
+        (ulong buildingSlot, ushort offset) = GetBuildingSlotAndOffset();
 
-        // atomic fetch
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
+        if (shutterTransactions is null)
+        {
+            WaitForKeysInCurrentSlot(buildingSlot, offset).GetAwaiter().GetResult();
+            shutterTransactions = _transactionCache.Get(buildingSlot);
+        }
         if (shutterTransactions is null)
         {
             if (_logger.IsWarn)
@@ -65,10 +63,27 @@ public class ShutterTxSource(
         return [];
     }
 
+    private Task WaitForKeysInCurrentSlot(ulong buildingSlot, ushort timeLeft)
+    {
+        Task timeout = Task.Delay(timeLeft);
+        Task loopCache = Task.Run(() =>
+        {
+            while (true)
+            {
+                if (timeout.IsCompleted || _transactionCache.Contains(buildingSlot))
+                {
+                    return;
+                }
+                Task.Delay(50).GetAwaiter().GetResult();
+            }
+        });
+        return Task.WhenAny(loopCache, timeout);
+    }
+
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
-        lock (_slotSeenLock)
+        lock (_highestSlotSeenLock)
         {
             if (_highestSlotSeen < slot)
                 _highestSlotSeen = slot;
@@ -77,14 +92,15 @@ public class ShutterTxSource(
 
     public ulong HighestLoadedSlot() => _highestSlotSeen;
 
-    private ulong GetBuildingSlot()
+    private (ulong, ushort) GetBuildingSlotAndOffset()
     {
+        ulong currentSlot;
+        ushort slotOffset;
         ulong timeSinceGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - genesisTimestamp;
-        ulong currentSlot = timeSinceGenesis / slotLength;
-        ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
+        currentSlot = timeSinceGenesis / slotLength;
+        slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
         // if inside the build window then building for this slot, otherwise next
-        return (slotOffset <= _extraBuildWindowMs) ? currentSlot : currentSlot + 1;
+        return ((slotOffset <= _extraBuildWindowMs) ? currentSlot : currentSlot + 1, slotOffset);
     }
-
 }

@@ -125,11 +125,11 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
+        private async Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
             if (TrySetState(parent.StateRoot))
             {
-                Block block = PrepareBlock(parent, payloadAttributes);
+                Block block = await PrepareBlock(parent, payloadAttributes);
                 if (PreparedBlockCanBeMined(block))
                 {
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Producers
                     }
                     else
                     {
-                        return SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block?>, Block?>)(t =>
+                        return await SealBlock(processedBlock, parent, token).ContinueWith(t =>
                         {
                             if (t.IsCompletedSuccessfully)
                             {
@@ -171,12 +171,12 @@ namespace Nethermind.Consensus.Producers
                             }
 
                             return null;
-                        }), token);
+                        }, token);
                     }
                 }
             }
 
-            return Task.FromResult((Block?)null);
+            return null;
         }
 
         /// <summary>
@@ -244,13 +244,13 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected virtual Task<Block> PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
 
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            return Task.FromResult((Block)new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals));
         }
     }
 }

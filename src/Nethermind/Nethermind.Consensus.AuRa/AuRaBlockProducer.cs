@@ -56,9 +56,9 @@ namespace Nethermind.Consensus.AuRa
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected async override Task<Block> PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
+            Block block = await base.PrepareBlock(parent, payloadAttributes);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
             return block;
         }

@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Evm;
+using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
@@ -72,9 +73,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             throw new EmptyBlockProductionException("Setting state for processing block failed");
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected async override Task<Block> PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
+            Block block = await base.PrepareBlock(parent, payloadAttributes);
             AmendHeader(block.Header, parent);
             return block;
         }
