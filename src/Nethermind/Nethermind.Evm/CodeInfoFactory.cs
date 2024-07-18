@@ -25,7 +25,6 @@ public static class CodeInfoFactory
 
     public static bool CreateInitCodeInfo(Memory<byte> data, IReleaseSpec spec, out ICodeInfo codeInfo, out Memory<byte> extraCalldata)
     {
-        codeInfo = new CodeInfo(data);
         extraCalldata = default;
         if (spec.IsEofEnabled && data.Span.StartsWith(EvmObjectFormat.MAGIC))
         {
@@ -37,8 +36,10 @@ public static class CodeInfoFactory
                 codeInfo = new EofCodeInfo(innerCodeInfo, header.Value);
                 return true;
             }
+            codeInfo = null;
             return false;
         }
+        codeInfo = new CodeInfo(data);
         codeInfo.AnalyseInBackgroundIfRequired();
         return true;
     }

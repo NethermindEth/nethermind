@@ -62,6 +62,17 @@ public class TransactionSubstate
         ShouldRevert = false;
     }
 
+    public static readonly TransactionSubstate FailedInitCode = new TransactionSubstate();
+
+    private TransactionSubstate()
+    {
+        Error = "Eip 7698: Invalid CreateTx InitCode";
+        Refund = 0;
+        DestroyList = _emptyDestroyList;
+        Logs = _emptyLogs;
+        ShouldRevert = true;
+    }
+
     public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         long refund,
         IReadOnlyCollection<Address> destroyList,
