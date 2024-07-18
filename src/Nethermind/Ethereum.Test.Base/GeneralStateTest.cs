@@ -46,7 +46,7 @@ namespace Ethereum.Test.Base
         public UInt256? ParentBlobGasUsed { get; set; }
         public UInt256? ParentExcessBlobGas { get; set; }
 
-        public Withdrawal[]? Withdrawals { get; set; }
+        public Withdrawal[] Withdrawals { get; set; } = [];
         public ulong ParentTimestamp { get; set; } // optional?
         public UInt256? ParentDifficulty { get; set; }
         public Hash256? ParentUncleHash { get; set; }
