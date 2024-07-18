@@ -10,7 +10,7 @@ namespace Nethermind.Tools.Kute.Auth;
 
 class JwtAuth : IAuth
 {
-    private readonly byte[] _secret;
+    private readonly SymmetricSecurityKey _key;
     private readonly ISystemClock _clock;
 
     public string AuthToken
@@ -23,10 +23,10 @@ class JwtAuth : IAuth
         _clock = clock;
 
         var hexSecret = secretProvider.Secret;
-        _secret = Enumerable.Range(0, hexSecret.Length)
+        _key = new(Enumerable.Range(0, hexSecret.Length)
             .Where(x => x % 2 == 0)
             .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
-            .ToArray();
+            .ToArray());
     }
 
     private string GenerateAuthToken()
@@ -36,7 +36,7 @@ class JwtAuth : IAuth
         return handler.CreateToken(new SecurityTokenDescriptor
         {
             IssuedAt = _clock.UtcNow.UtcDateTime,
-            SigningCredentials = new(new SymmetricSecurityKey(_secret), SecurityAlgorithms.HmacSha256)
+            SigningCredentials = new(_key, SecurityAlgorithms.HmacSha256)
         });
     }
 }
