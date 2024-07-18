@@ -51,10 +51,12 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         add
         {
             if (_v4 != null) _v4.NodeAdded += value;
+            if (_v5 != null) _v5.NodeAdded += value;
         }
         remove
         {
             if (_v4 != null) _v4.NodeAdded -= value;
+            if (_v5 != null) _v5.NodeAdded -= value;
         }
     }
 
@@ -64,10 +66,12 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         add
         {
             if (_v4 != null) _v4.NodeRemoved += value;
+            if (_v5 != null) _v5.NodeRemoved += value;
         }
         remove
         {
             if (_v4 != null) _v4.NodeRemoved -= value;
+            if (_v5 != null) _v5.NodeRemoved -= value;
         }
     }
 
