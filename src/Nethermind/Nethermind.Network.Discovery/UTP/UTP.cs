@@ -28,10 +28,6 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     private AckInfo _receiverAck_nr = new AckInfo(0, null); // Mutated by receiver only // From spec: c.ack_nr
     private ConnectionState _state;
 
-    // m_cwnd
-    // private uint EffectiveWindowSize => Math.Min(_trafficControl.WindowSize, _lastPacketFromPeer?.WindowSize ?? 1024);
-    private uint EffectiveWindowSize => _trafficControl.WindowSize;
-
     // Well... technically I want a deque
     // The head's Header.SeqNumber is analogous to m_acked_seq_nr
     private LinkedList<UnackedItem> unackedWindow = new LinkedList<UnackedItem>();
@@ -236,8 +232,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 ulong initialWindowSize = _inflightDataCalculator.GetCurrentUInflightData();
                 _inflightDataCalculator.CalculateInflightData(_lastPacketHeaderFromPeer, unackedWindow);
                 ulong ackedBytes = initialWindowSize - _inflightDataCalculator.GetCurrentUInflightData();
-                _trafficControl.OnAck(ackedBytes, initialWindowSize, _lastPacketHeaderFromPeer.TimestampDeltaMicros,
-                    UTPUtil.GetTimestamp());
+                _trafficControl.OnAck(ackedBytes, initialWindowSize, _lastPacketHeaderFromPeer.TimestampDeltaMicros, UTPUtil.GetTimestamp());
             }
 
             await Retransmit(unackedWindow, token);
@@ -254,7 +249,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         async Task IngestStream()
         {
             while (!streamFinished &&
-                   _inflightDataCalculator.GetCurrentInflightData() + PAYLOAD_SIZE < EffectiveWindowSize)
+                   _inflightDataCalculator.GetCurrentInflightData() + PAYLOAD_SIZE < _trafficControl.WindowSize)
             {
                 byte[] buffer = new byte[PAYLOAD_SIZE];
 
@@ -265,7 +260,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
                     _seq_nr++;
                     Console.Error.WriteLine(
-                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
+                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
                     unackedWindow.AddLast(new UnackedItem(header, asMemory));
                     await peer.ReceiveMessage(header, asMemory.Span, token);
                     _inflightDataCalculator.IncrementInflightData(asMemory.Length);
@@ -275,7 +270,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
                     Memory<byte> asMemory = Memory<byte>.Empty;
                     Console.Error.WriteLine(
-                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
+                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
 
                     unackedWindow.AddLast(new UnackedItem(header, asMemory));
                     await peer.ReceiveMessage(header, asMemory.Span, token);
@@ -291,8 +286,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         // TODO: MTU probe
         // TODO: in libp2p this is added to m_outbuf, and therefore part of the
         // resend logic
-
-        _seq_nr = 64000; // Now, for some reason, tis is one, but from the other side, its random?
+        _seq_nr = 1;
         UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StSyn);
         _seq_nr++;
         _state = ConnectionState.CsSynSent;
@@ -531,10 +525,10 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             // may have just throttle it fine probably.
             // TODO: make overflow safe
             UTPPacketHeader header = unackedItem.Header;
-            if (_inflightDataCalculator.GetCurrentInflightData() + unackedItem.Buffer.Length >= EffectiveWindowSize)
+            if (_inflightDataCalculator.GetCurrentInflightData() + unackedItem.Buffer.Length >= _trafficControl.WindowSize)
             {
                 Console.Error.WriteLine(
-                    $"S Not retransmit {header.SeqNumber} due to window limit {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
+                    $"S Not retransmit {header.SeqNumber} due to window limit {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
                 return false;
             }
 

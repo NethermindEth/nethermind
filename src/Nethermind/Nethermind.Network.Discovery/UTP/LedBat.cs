@@ -41,6 +41,8 @@ public class LedBat
     private uint _lastBaseDelayAdj = 0;
     private uint _lastDataLossAdjustment = 0;
 
+    // m_cwnd
+    // private uint EffectiveWindowSize => Math.Min(_trafficControl.WindowSize, _lastPacketFromPeer?.WindowSize ?? 1024);
     public uint WindowSize { get; set; } = INIT_CWND * MSS;
 
     // Kinda slowstart. See https://github.com/arvidn/libtorrent/blob/9aada93c982a2f0f76b129857bec3f885a37c437/src/utp_stream.cpp#L3223
