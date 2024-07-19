@@ -11,7 +11,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using System;
 using Nethermind.Core.Caching;
-using Nethermind.Config;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -37,7 +36,9 @@ public class ShutterTxSource(
             return [];
         }
 
-        ulong buildingSlot = GetBuildingSlot();
+        ulong currentTimestamp = payloadAttributes is null ?
+            (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() : payloadAttributes.Timestamp;
+        ulong buildingSlot = GetBuildingSlot(currentTimestamp);
 
         // atomic fetch
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
@@ -68,9 +69,9 @@ public class ShutterTxSource(
 
     public ulong HighestLoadedSlot() => _highestSlotSeen;
 
-    private ulong GetBuildingSlot()
+    private ulong GetBuildingSlot(ulong currentTimestamp)
     {
-        ulong timeSinceGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - genesisTimestamp;
+        ulong timeSinceGenesis = currentTimestamp - genesisTimestamp;
         ulong currentSlot = timeSinceGenesis / slotLength;
         ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
