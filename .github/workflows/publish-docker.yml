@@ -59,4 +59,3 @@ jobs:
             --build-arg CI=$CI \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
             . --push
-
