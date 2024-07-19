@@ -24,15 +24,17 @@ public abstract class ClockCacheBase<TKey>
 
     protected ClockCacheBase(int maxCapacity)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
 
         MaxCapacity = maxCapacity;
-        KeyToOffset = new TKey[maxCapacity];
-        HasBeenAccessedBitmap = new long[GetInt64ArrayLengthFromBitLength(maxCapacity)];
+        KeyToOffset = maxCapacity == 0 ? Array.Empty<TKey>() : new TKey[maxCapacity];
+        HasBeenAccessedBitmap = maxCapacity == 0 ? Array.Empty<long>() : new long[GetInt64ArrayLengthFromBitLength(maxCapacity)];
     }
 
     protected void Clear()
     {
+        if (MaxCapacity == 0) return;
+
         Clock = 0;
         FreeOffsets.Clear();
         KeyToOffset.AsSpan().Clear();
@@ -41,6 +43,8 @@ public abstract class ClockCacheBase<TKey>
 
     protected bool ClearAccessed(int position)
     {
+        if (MaxCapacity == 0) return false;
+
         uint offset = (uint)position >> BitShiftPerInt64;
         long flags = 1L << position;
 
@@ -57,6 +61,8 @@ public abstract class ClockCacheBase<TKey>
 
     protected bool ClearAccessedNonConcurrent(int position)
     {
+        if (MaxCapacity == 0) return false;
+
         uint offset = (uint)position >> BitShiftPerInt64;
         long flags = 1L << position;
 
@@ -69,6 +75,8 @@ public abstract class ClockCacheBase<TKey>
 
     protected void MarkAccessed(int position)
     {
+        if (MaxCapacity == 0) return;
+
         uint offset = (uint)position >> BitShiftPerInt64;
         long flags = 1L << position;
 
@@ -79,6 +87,8 @@ public abstract class ClockCacheBase<TKey>
 
     protected void MarkAccessedNonConcurrent(int position)
     {
+        if (MaxCapacity == 0) return;
+
         uint offset = (uint)position >> BitShiftPerInt64;
         long flags = 1L << position;
 
