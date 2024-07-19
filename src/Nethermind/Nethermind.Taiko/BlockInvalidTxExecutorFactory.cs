@@ -1,9 +1,6 @@
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 
 namespace Nethermind.Taiko;
 

@@ -4,12 +4,9 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using System;
 
 namespace Nethermind.Taiko;
 

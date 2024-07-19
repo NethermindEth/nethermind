@@ -1,6 +1,4 @@
-using System.Linq;
 using System.Text;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;

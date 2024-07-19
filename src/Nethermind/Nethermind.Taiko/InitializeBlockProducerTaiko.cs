@@ -5,7 +5,6 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
 using Nethermind.Init.Steps;
 
 namespace Nethermind.Taiko;

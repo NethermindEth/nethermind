@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
@@ -15,7 +14,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.TxPool;
 
 namespace Nethermind.Taiko;
 

@@ -33,7 +33,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Taiko;
 

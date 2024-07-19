@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
 
