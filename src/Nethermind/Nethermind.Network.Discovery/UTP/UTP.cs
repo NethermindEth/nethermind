@@ -43,6 +43,107 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     private ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
     private ulong _incomingBufferSize = 0;
 
+    //Put things in a buffer and signal ReadStram to process those buffer
+    public Task ReceiveMessage(UTPPacketHeader packageHeader, ReadOnlySpan<byte> data, CancellationToken token)
+    {
+        // TODO: Probably should be handled at deserializer level
+        if (packageHeader.Version != 1) return Task.CompletedTask;
+
+        // TODO: When EOF was obtained from FIN, filter out sequence higher than that.
+        _lastReceivedMicrosecond = packageHeader.TimestampMicros;
+        _lastPacketHeaderFromPeer = UpdateLastUTPPackageHeaderReceived(packageHeader);
+
+        switch (packageHeader.PacketType)
+        {
+            case UTPPacketType.StSyn:
+                _seq_nr = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
+                _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
+                _state = ConnectionState.CsSynRecv; // From spec: c.state
+                _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
+                break;
+
+            case UTPPacketType.StState:
+                if (_state == ConnectionState.CsSynSent) _state = ConnectionState.CsConnected;
+                // Otherwise most logic is in ProcessAck.
+                break;
+
+            case UTPPacketType.StFin:
+                if (!ShouldNotHandleSequence(packageHeader, ReadOnlySpan<byte>.Empty))
+                {
+                    _receiveBuffer[packageHeader.SeqNumber] = null;
+                }
+
+                if (_state == ConnectionState.CsEnded)
+                {
+                    // Special case, once FIN is first received, the reader stream thread would have exited after its ACK.
+                    // In the case where the last ACK is lost, the sender send FIN again, so this need to happen.
+                    _ = SendStatePackage(token);
+                }
+
+                break;
+
+            case UTPPacketType.StData:
+                if (_state == ConnectionState.CsSynRecv) _state = ConnectionState.CsConnected;
+                if (!ShouldNotHandleSequence(packageHeader, data))
+                {
+                    // TODO: Fast path without going to receive buffer?
+                    _incomingBufferSize += (ulong)data.Length;
+                    _receiveBuffer[packageHeader.SeqNumber] = data.ToArray();
+                }
+
+                break;
+
+            case UTPPacketType.StReset:
+                _state = ConnectionState.CsEnded;
+                break;
+        }
+
+        _utpSynchronizer.awakePeer();
+        // TODO: step every minute, apparently
+        /**
+                 * 	// this is the difference between their send time and our receive time
+                    // 0 means no sample yet
+                    std::uint32_t their_delay = 0;
+                    if (ph->timestamp_microseconds != 0)
+                    {
+                        std::uint32_t timestamp = std::uint32_t(total_microseconds(
+                            receive_time.time_since_epoch()) & 0xffffffff);
+                        m_reply_micro = timestamp - ph->timestamp_microseconds;
+                        std::uint32_t const prev_base = m_their_delay_hist.initialized() ? m_their_delay_hist.base() : 0;
+                        their_delay = m_their_delay_hist.add_sample(m_reply_micro, step);
+                        int const base_change = int(m_their_delay_hist.base() - prev_base);
+                        UTP_LOGV("%8p: their_delay::add_sample:%u prev_base:%u new_base:%u\n"
+                            , static_cast<void*>(this), m_reply_micro, prev_base, m_their_delay_hist.base());
+
+                        if (prev_base && base_change < 0 && base_change > -10000 && m_delay_hist.initialized())
+                        {
+                            // their base delay went down. This is caused by clock drift. To compensate,
+                            // adjust our base delay upwards
+                            // don't adjust more than 10 ms. If the change is that big, something is probably wrong
+                            m_delay_hist.adjust_base(-base_change);
+                        }
+
+                        UTP_LOGV("%8p: incoming packet reply_micro:%u base_change:%d\n"
+                            , static_cast<void*>(this), m_reply_micro, prev_base ? base_change : 0);
+                    }
+                    // the test for INT_MAX here is a work-around for a bug in uTorrent where
+                        // it's sometimes sent as INT_MAX when it is in fact uninitialized
+                        const std::uint32_t sample = ph->timestamp_difference_microseconds == INT_MAX
+                            ? 0 : ph->timestamp_difference_microseconds;
+
+                        std::uint32_t delay = 0;
+                        if (sample != 0)
+                        {
+                            delay = m_delay_hist.add_sample(sample, step);
+                            m_delay_sample_hist[m_delay_sample_idx++] = delay;
+                            if (m_delay_sample_idx >= m_delay_sample_hist.size())
+                                m_delay_sample_idx = 0;
+                        }
+                 */
+
+        return Task.CompletedTask;
+    }
+
     public async Task ReadStream(Stream output, CancellationToken token)
     {
         await _utpSynchronizer.WaitTillSenderSendsST_SYNAndReceiverReceiveIt();
@@ -121,6 +222,88 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         }
 
         return selectiveAck;
+    }
+
+    public async Task WriteStream(Stream input, CancellationToken token)
+    {
+        bool streamFinished = false;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+
+            if (_lastPacketHeaderFromPeer != null)
+            {
+                ulong initialWindowSize = _inflightDataCalculator.GetCurrentUInflightData();
+                _inflightDataCalculator.CalculateInflightData(_lastPacketHeaderFromPeer, unackedWindow);
+                ulong ackedBytes = initialWindowSize - _inflightDataCalculator.GetCurrentUInflightData();
+                _trafficControl.OnAck(ackedBytes, initialWindowSize, _lastPacketHeaderFromPeer.TimestampDeltaMicros,
+                    UTPUtil.GetTimestamp());
+            }
+
+            await Retransmit(unackedWindow, token);
+            await IngestStream();
+
+            if (streamFinished && unackedWindow.Count == 0)
+            {
+                break;
+            }
+
+            await _utpSynchronizer.WaitForReceiverToSync();
+        }
+
+        async Task IngestStream()
+        {
+            while (!streamFinished &&
+                   _inflightDataCalculator.GetCurrentInflightData() + PAYLOAD_SIZE < EffectiveWindowSize)
+            {
+                byte[] buffer = new byte[PAYLOAD_SIZE];
+
+                int readLength = await input.ReadAsync(buffer, token);
+                if (readLength != 0) // Note: We assume ReadAsync will return 0 multiple time.
+                {
+                    Memory<byte> asMemory = buffer.AsMemory()[..readLength];
+                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
+                    _seq_nr++;
+                    Console.Error.WriteLine(
+                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
+                    unackedWindow.AddLast(new UnackedItem(header, asMemory));
+                    await peer.ReceiveMessage(header, asMemory.Span, token);
+                    _inflightDataCalculator.IncrementInflightData(asMemory.Length);
+                }
+                else
+                {
+                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
+                    Memory<byte> asMemory = Memory<byte>.Empty;
+                    Console.Error.WriteLine(
+                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
+
+                    unackedWindow.AddLast(new UnackedItem(header, asMemory));
+                    await peer.ReceiveMessage(header, asMemory.Span, token);
+                    _inflightDataCalculator.IncrementInflightData(asMemory.Length);
+                    streamFinished = true;
+                }
+            }
+        }
+    }
+
+    public async Task InitiateHandshake(CancellationToken token)
+    {
+        // TODO: MTU probe
+        // TODO: in libp2p this is added to m_outbuf, and therefore part of the
+        // resend logic
+
+        _seq_nr = 64000; // Now, for some reason, tis is one, but from the other side, its random?
+        UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StSyn);
+        _seq_nr++;
+        _state = ConnectionState.CsSynSent;
+
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            await SendSynPackageToReceiver(header, token);
+            await _utpSynchronizer.WaitForReceiverToSync();
+            if (_state == ConnectionState.CsConnected) break;
+        }
     }
 
     private async Task SendStatePackage(CancellationToken token)
@@ -204,94 +387,12 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         return false;
     }
 
-    public async Task InitiateHandshake(CancellationToken token)
-    {
-        // TODO: MTU probe
-        // TODO: in libp2p this is added to m_outbuf, and therefore part of the
-        // resend logic
-
-        _seq_nr = 64000; // Now, for some reason, tis is one, but from the other side, its random?
-        UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StSyn);
-        _seq_nr++;
-        _state = ConnectionState.CsSynSent;
-
-        while (true)
-        {
-            token.ThrowIfCancellationRequested();
-            await SendSynPackageToReceiver(header, token);
-            await _utpSynchronizer.WaitForReceiverToSync();
-            if (_state == ConnectionState.CsConnected) break;
-        }
-    }
-
     private async Task SendSynPackageToReceiver(UTPPacketHeader header, CancellationToken token)
     {
         await peer.ReceiveMessage(header, ReadOnlySpan<byte>.Empty, token);
     }
 
-    public async Task WriteStream(Stream input, CancellationToken token)
-    {
-        bool streamFinished = false;
-        while (true)
-        {
-            token.ThrowIfCancellationRequested();
-
-            if (_lastPacketHeaderFromPeer != null)
-            {
-                ulong initialWindowSize = _inflightDataCalculator.GetCurrentUInflightData();
-                _inflightDataCalculator.CalculateInflightData(_lastPacketHeaderFromPeer, unackedWindow);
-                ulong ackedBytes = initialWindowSize - _inflightDataCalculator.GetCurrentUInflightData();
-                _trafficControl.OnAck(ackedBytes, initialWindowSize, _lastPacketHeaderFromPeer.TimestampDeltaMicros,
-                    UTPUtil.GetTimestamp());
-            }
-
-            await Retransmit(unackedWindow, token);
-            await IngestStream();
-
-            if (streamFinished && unackedWindow.Count == 0)
-            {
-                break;
-            }
-
-            await _utpSynchronizer.WaitForReceiverToSync();
-        }
-
-        async Task IngestStream()
-        {
-            while (!streamFinished &&
-                   _inflightDataCalculator.GetCurrentInflightData() + PAYLOAD_SIZE < EffectiveWindowSize)
-            {
-                byte[] buffer = new byte[PAYLOAD_SIZE];
-
-                int readLength = await input.ReadAsync(buffer, token);
-                if (readLength != 0) // Note: We assume ReadAsync will return 0 multiple time.
-                {
-                    Memory<byte> asMemory = buffer.AsMemory()[..readLength];
-                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
-                    _seq_nr++;
-                    Console.Error.WriteLine(
-                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
-                    unackedWindow.AddLast(new UnackedItem(header, asMemory));
-                    await peer.ReceiveMessage(header, asMemory.Span, token);
-                    _inflightDataCalculator.IncrementInflightData(asMemory.Length);
-                }
-                else
-                {
-                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
-                    Memory<byte> asMemory = Memory<byte>.Empty;
-                    Console.Error.WriteLine(
-                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
-
-                    unackedWindow.AddLast(new UnackedItem(header, asMemory));
-                    await peer.ReceiveMessage(header, asMemory.Span, token);
-                    _inflightDataCalculator.IncrementInflightData(asMemory.Length);
-                    streamFinished = true;
-                }
-            }
-        }
-    }
-
-    async Task Retransmit(LinkedList<UnackedItem> unackedWindow, CancellationToken token)
+    private async Task Retransmit(LinkedList<UnackedItem> unackedWindow, CancellationToken token)
     {
         UTPPacketHeader? lastPacketFromPeer = _lastPacketHeaderFromPeer;
         if (lastPacketFromPeer == null)
@@ -475,106 +576,6 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         };
     }
 
-    //Put things in a buffer and signal ReadStram to process those buffer
-    public Task ReceiveMessage(UTPPacketHeader packageHeader, ReadOnlySpan<byte> data, CancellationToken token)
-    {
-        // TODO: Probably should be handled at deserializer level
-        if (packageHeader.Version != 1) return Task.CompletedTask;
-
-        // TODO: When EOF was obtained from FIN, filter out sequence higher than that.
-        _lastReceivedMicrosecond = packageHeader.TimestampMicros;
-        _lastPacketHeaderFromPeer = UpdateLastUTPPackageHeaderReceived(packageHeader);
-
-        switch (packageHeader.PacketType)
-        {
-            case UTPPacketType.StSyn:
-                _seq_nr = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
-                _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
-                _state = ConnectionState.CsSynRecv; // From spec: c.state
-                _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
-                break;
-
-            case UTPPacketType.StState:
-                if (_state == ConnectionState.CsSynSent) _state = ConnectionState.CsConnected;
-                // Otherwise most logic is in ProcessAck.
-                break;
-
-            case UTPPacketType.StFin:
-                if (!ShouldNotHandleSequence(packageHeader, ReadOnlySpan<byte>.Empty))
-                {
-                    _receiveBuffer[packageHeader.SeqNumber] = null;
-                }
-
-                if (_state == ConnectionState.CsEnded)
-                {
-                    // Special case, once FIN is first received, the reader stream thread would have exited after its ACK.
-                    // In the case where the last ACK is lost, the sender send FIN again, so this need to happen.
-                    _ = SendStatePackage(token);
-                }
-                break;
-
-            case UTPPacketType.StData:
-                if (_state == ConnectionState.CsSynRecv) _state = ConnectionState.CsConnected;
-                if (!ShouldNotHandleSequence(packageHeader, data))
-                {
-                    // TODO: Fast path without going to receive buffer?
-                    _incomingBufferSize += (ulong)data.Length;
-                    _receiveBuffer[packageHeader.SeqNumber] = data.ToArray();
-                }
-
-                break;
-
-            case UTPPacketType.StReset:
-                _state = ConnectionState.CsEnded;
-                break;
-        }
-
-        _utpSynchronizer.awakePeer();
-        // TODO: step every minute, apparently
-        /**
-                 * 	// this is the difference between their send time and our receive time
-                    // 0 means no sample yet
-                    std::uint32_t their_delay = 0;
-                    if (ph->timestamp_microseconds != 0)
-                    {
-                        std::uint32_t timestamp = std::uint32_t(total_microseconds(
-                            receive_time.time_since_epoch()) & 0xffffffff);
-                        m_reply_micro = timestamp - ph->timestamp_microseconds;
-                        std::uint32_t const prev_base = m_their_delay_hist.initialized() ? m_their_delay_hist.base() : 0;
-                        their_delay = m_their_delay_hist.add_sample(m_reply_micro, step);
-                        int const base_change = int(m_their_delay_hist.base() - prev_base);
-                        UTP_LOGV("%8p: their_delay::add_sample:%u prev_base:%u new_base:%u\n"
-                            , static_cast<void*>(this), m_reply_micro, prev_base, m_their_delay_hist.base());
-
-                        if (prev_base && base_change < 0 && base_change > -10000 && m_delay_hist.initialized())
-                        {
-                            // their base delay went down. This is caused by clock drift. To compensate,
-                            // adjust our base delay upwards
-                            // don't adjust more than 10 ms. If the change is that big, something is probably wrong
-                            m_delay_hist.adjust_base(-base_change);
-                        }
-
-                        UTP_LOGV("%8p: incoming packet reply_micro:%u base_change:%d\n"
-                            , static_cast<void*>(this), m_reply_micro, prev_base ? base_change : 0);
-                    }
-                    // the test for INT_MAX here is a work-around for a bug in uTorrent where
-                        // it's sometimes sent as INT_MAX when it is in fact uninitialized
-                        const std::uint32_t sample = ph->timestamp_difference_microseconds == INT_MAX
-                            ? 0 : ph->timestamp_difference_microseconds;
-
-                        std::uint32_t delay = 0;
-                        if (sample != 0)
-                        {
-                            delay = m_delay_hist.add_sample(sample, step);
-                            m_delay_sample_hist[m_delay_sample_idx++] = delay;
-                            if (m_delay_sample_idx >= m_delay_sample_hist.size())
-                                m_delay_sample_idx = 0;
-                        }
-                 */
-
-        return Task.CompletedTask;
-    }
-
     private UTPPacketHeader UpdateLastUTPPackageHeaderReceived(UTPPacketHeader packageHeaderJustReceived)
     {
         if (_lastPacketHeaderFromPeer == null ||
@@ -583,6 +584,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             // Note, even if equal, we reset it because selective ack
             return packageHeaderJustReceived;
         }
+
         return _lastPacketHeaderFromPeer;
     }
 }
