@@ -336,6 +336,10 @@ public class TestCaseGenerator
             case TestCase.TStoreOneKeyConstantValue:
             case TestCase.TStoreOneKeyRandomValue:
                 return SStoreOneKey.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Secp256r1ValidSignature:
+                return Secp256r1.GetTxsWithValidSig(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Secp256r1InvalidSignature:
+                return Secp256r1.GetTxsWithInvalidSig(privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
