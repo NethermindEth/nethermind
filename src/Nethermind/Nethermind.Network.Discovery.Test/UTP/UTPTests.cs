@@ -194,7 +194,6 @@ public class UTPTests
 
         Task receiverTask = Task.Run(async () =>
         {
-            //await receiver.HandleReceiveHandshake(token);
             await receiver.ReadStream(output, token);
         }, token);
 
