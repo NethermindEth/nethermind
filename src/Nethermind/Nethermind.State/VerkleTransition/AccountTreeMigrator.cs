@@ -60,6 +60,12 @@ public class AccountTreeMigrator : ITreeVisitor
     }
 
 
+    /// <summary>
+    /// Converts a 0-padded hex string to a byte array, i.e. from '050502' to '552'.
+    /// TODO: check if this is the best way to do this
+    /// </summary>
+    /// <param name="paddedHex"></param>
+    /// <returns></returns>
     private static byte[] ConvertPaddedHexToBytes(string paddedHex)
     {
         // Remove the padding (leading zeros)
