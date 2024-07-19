@@ -8,10 +8,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Extensions.ObjectPool;
 using Microsoft.VisualBasic;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -20,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -52,6 +56,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
+        private readonly IDb _logIndexDb;
         private readonly IReceiptsRecovery _recovery;
 
         private readonly string rootDirectory = @"C:\Users\merto\Programming\Nethermind\customIndexLukasczFINAL7";
@@ -63,6 +68,8 @@ namespace Nethermind.Init.Steps.Migrations
         private long totalBlocks;
         private const int BatchSize = 100;
 
+        static string finalFilePath = "finalizied_index.bin"; 
+        static string tempFilePath = "temp_index.bin"; 
         //take some number of blocks, make the internal collections as *lighweight as possible) <-- HOW???
         //Drop concurrentDict
         //loading of receipts is parallel!!!
@@ -74,6 +81,7 @@ namespace Nethermind.Init.Steps.Migrations
             api.ChainLevelInfoRepository!,
             api.Config<IReceiptConfig>(),
             api.DbProvider?.ReceiptsDb!,
+            api.DbProvider?.LogIndexDb!,
             new ReceiptsRecovery(api.EthereumEcdsa, api.SpecProvider),
             api.LogManager
         )
@@ -87,6 +95,7 @@ namespace Nethermind.Init.Steps.Migrations
             IChainLevelInfoRepository chainLevelInfoRepository,
             IReceiptConfig receiptConfig,
             IColumnsDb<ReceiptsColumns> receiptsDb,
+            IDb logIndexDb,
             IReceiptsRecovery recovery,
             ILogManager logManager
         )
@@ -99,6 +108,7 @@ namespace Nethermind.Init.Steps.Migrations
             _receiptsDb = receiptsDb;
             _receiptsBlockDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+            _logIndexDb = logIndexDb;
             _recovery = recovery;
             _logger = logManager.GetClassLogger();
 
@@ -112,29 +122,10 @@ namespace Nethermind.Init.Steps.Migrations
             // Create root directory if it doesn't exist
             Directory.CreateDirectory(rootDirectory);
 
-            // Create subdirectories for the first three characters 0-9, a-z
-            foreach (char c1 in "0123456789abcdefghijklmnopqrstuvwxyz")
-            {
-                string subfolder1 = Path.Combine(rootDirectory, c1.ToString());
-                Directory.CreateDirectory(subfolder1);
+            using FileStream fs_f = File.Create(Path.Combine(rootDirectory, finalFilePath));
 
-                foreach (char c2 in "0123456789abcdefghijklmnopqrstuvwxyz")
-                {
-                    string subfolder2 = Path.Combine(subfolder1, c2.ToString());
-                    Directory.CreateDirectory(subfolder2);
-
-                    foreach (char c3 in "0123456789abcdefghijklmnopqrstuvwxyz")
-                    {
-                        string subfolder3 = Path.Combine(subfolder2, c3.ToString());
-                        Directory.CreateDirectory(subfolder3);
-                        foreach (char c4 in "0123456789abcdefghijklmnopqrstuvwxyz")
-                        {
-                            string subfolder4 = Path.Combine(subfolder2, c4.ToString());
-                            Directory.CreateDirectory(subfolder3);
-                        }
-                    }
-                }
-            }
+            using FileStream fs_t = File.Create(Path.Combine(rootDirectory, tempFilePath));
+            
         }
 
 
@@ -191,6 +182,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void RunMigration(CancellationToken token)
         {
+
+
             if (_logger.IsInfo) _logger.Info("KeyValueMigration started");
 
             using Timer timer = new(10000);
@@ -203,6 +196,11 @@ namespace Nethermind.Init.Steps.Migrations
             Dictionary<Hash256AsKey, WriterInfo> topicWriters = new();
             Dictionary<AddressAsKey, WriterInfo> addressWriters = new();
 
+            Span<byte> metaDataKey = Encoding.UTF8.GetBytes("Metadata_free_slots");
+            if(_logIndexDb.KeyExists(metaDataKey) == false) {
+                _logIndexDb.PutSpan(metaDataKey, []);
+            }
+
             try
             {
                 int parallelism = _receiptConfig.ReceiptsMigrationDegreeOfParallelism;
@@ -211,7 +209,9 @@ namespace Nethermind.Init.Steps.Migrations
                     parallelism = Environment.ProcessorCount;
                 }
 
-                Span<byte> buffer = stackalloc byte[sizeof(int)];
+                int bufferSize = 4000;
+                Span<byte> buffer = stackalloc byte[bufferSize];
+                Span<byte> location = stackalloc byte[18];
 
                 foreach ((long, TxReceipt[]) block in GetBlockBodiesForMigration(token)
                              .Select(i => _blockTree.FindBlock(i.Item2, BlockTreeLookupOptions.None) ?? GetMissingBlock(i.Item1, i.Item2))
@@ -226,6 +226,85 @@ namespace Nethermind.Init.Steps.Migrations
                             foreach (LogEntry log in receipt.Logs)
                             {
                                 AddressAsKey key = log.LoggersAddress;
+                                // First check if key, if not then create it
+                                var keyBytes = key.Value.Bytes;
+                                long position = 0;
+                                int slotSize = 0;
+                                int lastBlockNumber = blockNumber;
+
+                                // Find the offset in temp file for a given address / topic
+                                // 2-T/F  8 - position 4 - length 4 - last block number added
+                                if (_logIndexDb.GetSpan(keyBytes).Length == 0)
+                                {
+                                    Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
+                                    if(freeSlots.Length < 8) {
+                                        using (var stream = new FileStream(tempFilePath, FileMode.Append))
+                                        {
+                                            position = stream.Position;
+                                            stream.Write(buffer.ToArray(), 0, buffer.Length);
+                                        }
+                                    } else {
+                                        position = BitConverter.ToInt64(freeSlots.Slice(0,8).ToArray(), 0);
+                                        freeSlots = freeSlots.Slice(8);
+                                        _logIndexDb.PutSpan(metaDataKey, freeSlots);
+                                    }
+                                    using SafeFileHandle fileHandle = File.OpenHandle(Path.Combine(rootDirectory, tempFilePath), FileMode.OpenOrCreate);
+                                    RandomAccess.Write(fileHandle,blockNumber.ToBytes(), position+slotSize);
+
+                                    "T".ToBytes().CopyTo(location);
+                                    position.ToBytes().CopyTo(location.Slice(2));
+                                    (slotSize+1).ToBytes().CopyTo(location.Slice(10));
+                                    lastBlockNumber.ToBytes().CopyTo(location.Slice(14));
+
+                                    _logIndexDb.PutSpan(keyBytes, location);
+                                } else {
+                                    location = _logIndexDb.GetSpan(keyBytes);
+                                    string file = location.Slice(0, 2).ToString();
+                                    position = BitConverter.ToInt64(location.Slice(2, 8).ToArray(), 0);
+                                    slotSize = BitConverter.ToInt32(location.Slice(10, 4).ToArray(), 0);
+                                    lastBlockNumber = BitConverter.ToInt32(location.Slice(14, 4).ToArray(), 0);
+
+                                    if(lastBlockNumber == blockNumber) {
+                                        continue;
+                                    } 
+
+                                    lastBlockNumber = blockNumber;
+
+                                    AssertionRequirement.Equals(file != "F", "Final file should not be used for writing");
+
+                                    using SafeFileHandle fileHandle = File.OpenHandle(Path.Combine(rootDirectory, tempFilePath), FileMode.OpenOrCreate);
+                                    RandomAccess.Write(fileHandle, blockNumber.ToBytes(), position+slotSize);
+                                    
+                                    // fill it till 4_000 bytes or less
+                                    if(slotSize + 1 == bufferSize) {
+                                        // if it's full, write it to the final file
+                                        // write to final the buffer is full
+
+                                        // TODO: Get all the block numbers and encode/compress them
+
+
+                                        // add to freeSlot
+                                        Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
+                                        Span<byte> newFreeSlots = new byte[freeSlots.Length + 8];
+                                        freeSlots.CopyTo(newFreeSlots);
+                                        position.ToBytes().CopyTo(newFreeSlots.Slice(freeSlots.Length));
+                                        _logIndexDb.PutSpan(metaDataKey, newFreeSlots);
+                                    } else {
+                                        // if it's not full, write it to the temp file
+                                        // write to temp
+                                        // update the slot size and last block number
+                                        "T".ToBytes().CopyTo(location);
+                                        (slotSize+1).ToBytes().CopyTo(location.Slice(10));
+                                        lastBlockNumber.ToBytes().CopyTo(location.Slice(14));
+
+                                        _logIndexDb.PutSpan(keyBytes, location);
+                                    }
+                                }
+
+
+
+
+                                
 
                                 ref WriterInfo? writer = ref CollectionsMarshal.GetValueRefOrAddDefault(addressWriters, key, out bool exists);
 
