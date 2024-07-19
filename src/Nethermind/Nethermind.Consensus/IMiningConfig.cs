@@ -56,5 +56,5 @@ public interface IMiningConfig : IConfig
     Description = "Url for an external signer like clef: https://github.com/ethereum/go-ethereum/blob/master/cmd/clef/tutorial.md",
     HiddenFromDocs = false,
     DefaultValue = "null")]
-    string Signer { get; set; }
+    string? Signer { get; set; }
 }
