@@ -140,7 +140,7 @@ public class UTPTests
             pendingSequence[pendingSequenceNum] = Memory<byte>.Empty;
         }
 
-        byte[] ackBitset = UTPStream.CompileSelectiveAckBitset(1, pendingSequence);
+        byte[] ackBitset = UTPUtil.CompileSelectiveAckBitset(1, pendingSequence);
 
         string bitSetString = string.Concat(ackBitset.Select(b => Convert.ToString(b, 2).PadLeft(8, '0')));
         Assert.That(bitSetString, Is.EqualTo(stringRep));

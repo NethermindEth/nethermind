@@ -18,7 +18,7 @@ namespace Nethermind.Network.Discovery.UTP;
 // TODO: Ethernet MTU is 1500
 public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 {
-    private const uint PAYLOAD_SIZE = 508;
+    private const uint PayloadSize = 508;
     private const int MAX_PAYLOAD_SIZE = 64000;
     private const uint RECEIVE_WINDOW_SIZE = 128000;
 
@@ -60,7 +60,6 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
             case UTPPacketType.StState:
                 if (_state == ConnectionState.CsSynSent) _state = ConnectionState.CsConnected;
-                // Otherwise most logic is in ProcessAck.
                 break;
 
             case UTPPacketType.StFin:
@@ -181,7 +180,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             byte[]? selectiveAck = null;
             if (_receiveBuffer.Count >= 2) // If its only one, then the logic on the receiver is kinda useless
             {
-                selectiveAck = CompileSelectiveAckBitset(curAck, _receiveBuffer);
+                selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
             }
 
             Console.Error.WriteLine($"R set receiver ack {curAck}");
@@ -190,34 +189,6 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             await SendStatePackage(token);
             await _utpSynchronizer.WaitForReceiverToSync();
         }
-    }
-
-    public static byte[] CompileSelectiveAckBitset(ushort curAck,
-        ConcurrentDictionary<ushort, Memory<byte>?> receiveBuffer)
-    {
-        byte[] selectiveAck;
-        // Fixed 64 bit.
-        // TODO: use long
-        // TODO: no need to encode trailing zeros
-        selectiveAck = new byte[8];
-
-        // Shortcut the loop if all buffer was iterated
-        int counted = 0;
-        int maxCounted = receiveBuffer.Count;
-
-        for (int i = 0; i < 64 && counted < maxCounted; i++)
-        {
-            ushort theAck = (ushort)(curAck + 2 + i);
-            if (receiveBuffer.ContainsKey(theAck))
-            {
-                int iIdx = i / 8;
-                int iOffset = i % 8;
-                selectiveAck[iIdx] = (byte)(selectiveAck[iIdx] | 1 << iOffset);
-                counted++;
-            }
-        }
-
-        return selectiveAck;
     }
 
     public async Task WriteStream(Stream input, CancellationToken token)
@@ -238,47 +209,39 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             await Retransmit(unackedWindow, token);
             await IngestStream();
 
-            if (streamFinished && unackedWindow.Count == 0)
-            {
-                break;
-            }
+            if (streamFinished && unackedWindow.Count == 0)   break;
 
             await _utpSynchronizer.WaitForReceiverToSync();
         }
 
         async Task IngestStream()
         {
-            while (!streamFinished &&
-                   _inflightDataCalculator.GetCurrentInflightData() + PAYLOAD_SIZE < _trafficControl.WindowSize)
+            while (!streamFinished && _inflightDataCalculator.GetCurrentInflightData() + PayloadSize < _trafficControl.WindowSize)
             {
-                byte[] buffer = new byte[PAYLOAD_SIZE];
+                byte[] buffer = new byte[PayloadSize];
 
                 int readLength = await input.ReadAsync(buffer, token);
                 if (readLength != 0) // Note: We assume ReadAsync will return 0 multiple time.
                 {
-                    Memory<byte> asMemory = buffer.AsMemory()[..readLength];
-                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
+                    await SendPackage(UTPPacketType.StData, buffer.AsMemory()[..readLength], token);
                     _seq_nr++;
-                    Console.Error.WriteLine(
-                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
-                    unackedWindow.AddLast(new UnackedItem(header, asMemory));
-                    await peer.ReceiveMessage(header, asMemory.Span, token);
-                    _inflightDataCalculator.IncrementInflightData(asMemory.Length);
                 }
                 else
                 {
-                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
-                    Memory<byte> asMemory = Memory<byte>.Empty;
-                    Console.Error.WriteLine(
-                        $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
-
-                    unackedWindow.AddLast(new UnackedItem(header, asMemory));
-                    await peer.ReceiveMessage(header, asMemory.Span, token);
-                    _inflightDataCalculator.IncrementInflightData(asMemory.Length);
+                    await SendPackage(UTPPacketType.StFin, Memory<byte>.Empty, token);
                     streamFinished = true;
                 }
             }
         }
+    }
+
+    private async Task SendPackage(UTPPacketType type, Memory<byte> asMemory, CancellationToken token)
+    {
+        UTPPacketHeader header = CreateBaseHeader(type);
+        Console.Error.WriteLine($"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
+        unackedWindow.AddLast(new UnackedItem(header, asMemory));
+        await peer.ReceiveMessage(header, asMemory.Span, token);
+        _inflightDataCalculator.IncrementInflightData(asMemory.Length);
     }
 
     public async Task InitiateHandshake(CancellationToken token)
@@ -324,10 +287,10 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
         // What if the sequence number is way too high. The threshold is estimated based on the window size
         // and the payload size
-        if (!UTPUtil.IsLess(meta.SeqNumber, (ushort)(receiverAck + RECEIVE_WINDOW_SIZE / PAYLOAD_SIZE)))
+        if (!UTPUtil.IsLess(meta.SeqNumber, (ushort)(receiverAck + RECEIVE_WINDOW_SIZE / PayloadSize)))
         {
             Console.Error.WriteLine(
-                $"Ignored due to too high sequnce {meta.SeqNumber} RA {receiverAck} T {(ushort)(receiverAck + RECEIVE_WINDOW_SIZE / PAYLOAD_SIZE)}");
+                $"Ignored due to too high sequnce {meta.SeqNumber} RA {receiverAck} T {(ushort)(receiverAck + RECEIVE_WINDOW_SIZE / PayloadSize)}");
             return true;
         }
 
@@ -569,7 +532,6 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             TimestampDeltaMicros = timestamp - _lastReceivedMicrosecond // TODO: double check m_reply_micro logic
         };
     }
-
     private UTPPacketHeader UpdateLastUTPPackageHeaderReceived(UTPPacketHeader packageHeaderJustReceived)
     {
         if (_lastPacketHeaderFromPeer == null ||
