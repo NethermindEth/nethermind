@@ -26,6 +26,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
 using Microsoft.IdentityModel.Tokens;
+using System.Linq;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -166,7 +167,7 @@ namespace Nethermind.Merge.AuRa
 
         private void CheckRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory, ILogger logger)
         {
-            if (validatorsInfo.IsNullOrEmpty())
+            if (validatorsInfo.Count == 0)
             {
                 return;
             }

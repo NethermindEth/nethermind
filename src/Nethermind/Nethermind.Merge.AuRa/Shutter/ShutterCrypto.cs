@@ -70,7 +70,7 @@ internal static class ShutterCrypto
 
         static byte[] UnpadAndJoin(in Bytes32[] blocks)
         {
-            if (blocks.IsNullOrEmpty())
+            if (blocks.Length == 0)
             {
                 return [];
             }

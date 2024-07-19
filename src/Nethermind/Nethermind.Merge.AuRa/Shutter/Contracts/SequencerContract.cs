@@ -74,11 +74,11 @@ public class SequencerContract : Contract
                 break;
             }
 
-            List<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer, start.BlockNumber!.Value, end.BlockNumber!.Value).ToList();
+            List<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer, start.BlockNumber!.Value, end.BlockNumber!.Value, out int len);
             eventBlocks.Add(events);
             count++;
 
-            if (!events.IsNullOrEmpty())
+            if (len > 0)
             {
                 ISequencerContract.TransactionSubmitted tx = events.First();
                 if (tx.Eon < eon || tx.TxIndex <= txPointer)
@@ -93,11 +93,11 @@ public class SequencerContract : Contract
         return eventBlocks;
     }
 
-    private List<ISequencerContract.TransactionSubmitted> eventsFromLogs(List<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock)
+    private List<ISequencerContract.TransactionSubmitted> eventsFromLogs(List<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock, out int eventCount)
     {
         List<ISequencerContract.TransactionSubmitted> events = [];
 
-        int eventCount = 0;
+        eventCount = 0;
         int logCount = 0;
         foreach (FilterLog log in logs)
         {

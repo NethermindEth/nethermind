@@ -66,7 +66,7 @@ public class ShutterMessageHandler(
             return false;
         }
 
-        if (decryptionKeys.Keys.IsNullOrEmpty())
+        if (decryptionKeys.Keys.Count == 0)
         {
             if (_logger.IsDebug) _logger.Error("Invalid Shutter decryption keys received: expected placeholder key.");
             return false;
