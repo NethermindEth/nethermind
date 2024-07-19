@@ -46,7 +46,7 @@ public class ShutterTxSource(
             return [];
         }
 
-        ulong buildingSlot = GetBuildingSlot();
+        ulong buildingSlot = GetBuildingSlot(payloadAttributes);
 
         // atomic fetch
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
@@ -77,9 +77,10 @@ public class ShutterTxSource(
 
     public ulong HighestLoadedSlot() => _highestSlotSeen;
 
-    private ulong GetBuildingSlot()
+    private ulong GetBuildingSlot(PayloadAttributes? payloadAttributes)
     {
-        ulong timeSinceGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - genesisTimestamp;
+        var unixTime = payloadAttributes != null ? payloadAttributes.Timestamp : (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        ulong timeSinceGenesis = unixTime - genesisTimestamp;
         ulong currentSlot = timeSinceGenesis / slotLength;
         ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
