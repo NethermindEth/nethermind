@@ -1,20 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.IdentityModel.Tokens;
-
 namespace Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
-class ComposedJsonRpcMethodFilter : IJsonRpcMethodFilter
+class ComposedJsonRpcMethodFilter(IEnumerable<IJsonRpcMethodFilter> filters) : IJsonRpcMethodFilter
 {
-    private readonly IEnumerable<IJsonRpcMethodFilter> _filters;
+    private readonly IEnumerable<IJsonRpcMethodFilter> _filters = filters;
 
-    public ComposedJsonRpcMethodFilter(IEnumerable<IJsonRpcMethodFilter> filters)
-    {
-        _filters = filters;
-    }
+    private bool HasFilters => _filters?.Any() ?? false;
 
-    public bool ShouldSubmit(string methodName) =>
-        (!_filters?.Any() ?? true) ||
-        _filters!.Any(f => f.ShouldSubmit(methodName));
+    public bool ShouldSubmit(string methodName) => !HasFilters || _filters.Any(f => f.ShouldSubmit(methodName));
 }
