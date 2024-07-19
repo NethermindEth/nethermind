@@ -40,21 +40,23 @@ public class SequencerContract : Contract
 
     public IEnumerable<ISequencerContract.TransactionSubmitted> GetEvents(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        List<IEnumerable<ISequencerContract.TransactionSubmitted>> eventBlocks = GetEventBlocks(eon, txPointer, headBlockNumber).ToList();
-        eventBlocks.Reverse();
-        foreach (IEnumerable<ISequencerContract.TransactionSubmitted> block in eventBlocks)
+        List<List<ISequencerContract.TransactionSubmitted>> eventBlocks = GetEventBlocks(eon, txPointer, headBlockNumber, out int len);
+        for (int i = len - 1; i >= 0; i--)
         {
-            foreach (ISequencerContract.TransactionSubmitted tx in block)
+            foreach (ISequencerContract.TransactionSubmitted tx in eventBlocks[i])
             {
                 yield return tx;
             }
         }
     }
 
-    private IEnumerable<IEnumerable<ISequencerContract.TransactionSubmitted>> GetEventBlocks(ulong eon, ulong txPointer, long headBlockNumber)
+    private List<List<ISequencerContract.TransactionSubmitted>> GetEventBlocks(ulong eon, ulong txPointer, long headBlockNumber, out int count)
     {
+        List<List<ISequencerContract.TransactionSubmitted>> eventBlocks = [];
+
         BlockParameter end = new(headBlockNumber);
 
+        count = 0;
         for (int i = 0; i < LogScanCutoffChunks; i++)
         {
             long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
@@ -69,39 +71,48 @@ public class SequencerContract : Contract
             catch (ResourceNotFoundException e)
             {
                 if (_logger.IsDebug) _logger.Warn($"Cannot fetch Shutter transactions from logs: {e}");
-                yield break;
+                break;
             }
 
-            IEnumerable<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer, start.BlockNumber!.Value, end.BlockNumber!.Value);
-            yield return events;
+            List<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer, start.BlockNumber!.Value, end.BlockNumber!.Value).ToList();
+            eventBlocks.Add(events);
+            count++;
 
             if (!events.IsNullOrEmpty())
             {
                 ISequencerContract.TransactionSubmitted tx = events.First();
                 if (tx.Eon < eon || tx.TxIndex <= txPointer)
                 {
-                    yield break;
+                    break;
                 }
             }
 
             end = new BlockParameter(startBlockNumber - 1);
         }
+
+        return eventBlocks;
     }
 
-    private IEnumerable<ISequencerContract.TransactionSubmitted> eventsFromLogs(IEnumerable<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock)
+    private List<ISequencerContract.TransactionSubmitted> eventsFromLogs(List<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock)
     {
-        int count = 0;
+        List<ISequencerContract.TransactionSubmitted> events = [];
+
+        int eventCount = 0;
+        int logCount = 0;
         foreach (FilterLog log in logs)
         {
             ISequencerContract.TransactionSubmitted tx = ParseTransactionSubmitted(log);
             if (tx.Eon == eon && tx.TxIndex >= txPointer)
             {
-                yield return tx;
+                events.Add(tx);
+                eventCount++;
             }
-            count++;
+            logCount++;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Got {count} Shutter logs from blocks {startBlock} - {endBlock}");
+        if (_logger.IsDebug) _logger.Debug($"Found {eventCount} Shutter events from {logCount} logs in block range {startBlock} - {endBlock}");
+
+        return events;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
