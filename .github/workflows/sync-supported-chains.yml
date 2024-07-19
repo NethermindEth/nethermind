@@ -11,7 +11,7 @@ on:
       nethermind_image:
         description: "Docker image to be used by action"
         default: "nethermindeth/nethermind:master"
-        required: true
+        required: false
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        client-network: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     outputs:
       runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
@@ -52,9 +52,9 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "create"
-          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
+          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
-          machine_type: "${{ matrix.client-network.agent }}"
+          machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
           tags: "core, self-hosted, dynamic"
           organization: "NethermindEth"
@@ -65,11 +65,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        client-network: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
         
-    name: "Run sync of ${{ matrix.client-network.network }} chain"
-    runs-on: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
-    timeout-minutes: ${{ matrix.client-network.timeout }}
+    name: "Run sync of ${{ matrix.config.network }} chain"
+    runs-on: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+    timeout-minutes: ${{ matrix.config.timeout }}
     
     steps:
       - name: Checkout repository
@@ -106,17 +106,17 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
-          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.client-network.network }} \
-          -c ${{ matrix.client-network.cl }}:${{ matrix.client-network.cl_image }} -e nethermind:$docker_image \
+          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.config.network }} \
+          -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} -e nethermind:$docker_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --el-extra-flag Sync.SnapSync=true \
-          --checkpoint-sync-url=${{ matrix.client-network.checkpoint-sync-url }}
+          --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
-      - name: Wait for ${{ matrix.client-network.network }} to sync
+      - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         timeout-minutes: 180
         run: |
@@ -193,7 +193,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        client-network: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     steps:    
       - name: Destroy a Runner
@@ -203,8 +203,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy"
-          runner_label: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
-          search_phrase: ${{ matrix.client-network.network }}-${{ matrix.client-network.cl }}-${{ github.run_id }}
+          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          search_phrase: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
