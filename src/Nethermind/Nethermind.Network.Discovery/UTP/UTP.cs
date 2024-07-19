@@ -24,7 +24,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
     private uint _lastReceivedMicrosecond = 0;
     private UTPPacketHeader? _lastPacketHeaderFromPeer;
-    private ushort _senderSequenceNumber = 0; // Incremented by ST_SYN and ST_DATA
+    private ushort _seq_nr = 0; // Incremented by ST_SYN and ST_DATA
     private AckInfo _receiverAck_nr = new AckInfo(0, null); // Mutated by receiver only // From spec: c.ack_nr
     private ConnectionState _state;
 
@@ -182,7 +182,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 keptBuffers.Sort((it1, it2) => (it2 - receiverAck) - (it1 - receiverAck));
 
                 ulong targetSize = _incomingBufferSize / 2;
-                ushort minKept = (ushort)(_senderSequenceNumber + 65);
+                ushort minKept = (ushort)(_seq_nr + 65);
                 int i = 0;
                 while (i < keptBuffers.Count && _incomingBufferSize > targetSize)
                 {
@@ -210,9 +210,9 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         // TODO: in libp2p this is added to m_outbuf, and therefore part of the
         // resend logic
 
-        _senderSequenceNumber = 64000; // Now, for some reason, tis is one, but from the other side, its random?
+        _seq_nr = 64000; // Now, for some reason, tis is one, but from the other side, its random?
         UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StSyn);
-        _senderSequenceNumber++;
+        _seq_nr++;
         _state = ConnectionState.CsSynSent;
 
         while (true)
@@ -268,7 +268,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 {
                     Memory<byte> asMemory = buffer.AsMemory()[..readLength];
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
-                    _senderSequenceNumber++;
+                    _seq_nr++;
                     Console.Error.WriteLine(
                         $"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {EffectiveWindowSize}");
                     unackedWindow.AddLast(new UnackedItem(header, asMemory));
@@ -467,7 +467,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             Version = 1,
             ConnectionId = connectionId,
             WindowSize = _trafficControl.WindowSize,
-            SeqNumber = _senderSequenceNumber,
+            SeqNumber = _seq_nr,
             AckNumber = _receiverAck_nr.seq_nr,
             SelectiveAck = _receiverAck_nr.selectiveAckData,
             TimestampMicros = timestamp,
@@ -488,7 +488,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         switch (packageHeader.PacketType)
         {
             case UTPPacketType.StSyn:
-                _senderSequenceNumber = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
+                _seq_nr = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
                 _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
                 _state = ConnectionState.CsSynRecv; // From spec: c.state
                 _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
