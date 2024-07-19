@@ -18,9 +18,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         private readonly TopicExpression[] _expressions;
 
-        public static IEnumerable<long> Any = [-1];
+        public static IEnumerable<int> Any = [-1];
 
-        public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
+        public override IEnumerable<int> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
         {
             if (_expressions is null || _expressions.Length == 0)
             {
@@ -29,15 +29,15 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             var blocks = _expressions.Select(e => e.GetBlockNumbersFrom(logIndexStorage));
-            IEnumerator<long>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
+            IEnumerator<int>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
 
             try
             {
-                DictionarySortedSet<long, IEnumerator<long>> transactions = new();
+                DictionarySortedSet<int, IEnumerator<int>> transactions = new();
 
                 for (int i = 0; i < enumerators.Length; i++)
                 {
-                    IEnumerator<long> enumerator = enumerators[i];
+                    IEnumerator<int> enumerator = enumerators[i];
                     if (enumerator.MoveNext())
                     {
                         transactions.Add(enumerator.Current!, enumerator);
@@ -47,10 +47,10 @@ namespace Nethermind.Blockchain.Filters.Topics
 
                 while (transactions.Count == enumerators.Length)
                 {
-                    (long blockNumber, IEnumerator<long> enumerator) = transactions.Min;
+                    (int blockNumber, IEnumerator<int> enumerator) = transactions.Min;
 
 
-                    (long blockNumber2, IEnumerator<long> enumerator2) = transactions.Max;
+                    (int blockNumber2, IEnumerator<int> enumerator2) = transactions.Max;
 
                     bool isIntersection = blockNumber == blockNumber2;
                     transactions.Remove(blockNumber);

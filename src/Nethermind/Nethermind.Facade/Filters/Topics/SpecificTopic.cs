@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Filters.Topics
         private readonly Hash256 _topic;
         private Bloom.BloomExtract _bloomExtract;
 
-        public override IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
+        public override IEnumerable<int> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
         {
             return logIndexStorage.GetBlocksForTopic(_topic);
         }
