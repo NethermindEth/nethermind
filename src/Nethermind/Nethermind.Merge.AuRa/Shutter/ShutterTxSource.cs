@@ -82,10 +82,13 @@ public class ShutterTxSource(
         var unixTime = payloadAttributes != null ? payloadAttributes.Timestamp : (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         ulong timeSinceGenesis = unixTime - genesisTimestamp;
         ulong currentSlot = timeSinceGenesis / slotLength;
+        if (payloadAttributes!=null)
+        {
+            return currentSlot;
+        }
         ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
         // if inside the build window then building for this slot, otherwise next
         return (slotOffset <= _extraBuildWindowMs) ? currentSlot : currentSlot + 1;
     }
-
 }
