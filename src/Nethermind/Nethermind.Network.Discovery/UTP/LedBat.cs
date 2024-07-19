@@ -49,10 +49,6 @@ public class LedBat
     private uint SsThres { get; set; }
     private bool IsSlowStart = true;
 
-    public LedBat(uint nowMicros)
-    {
-    }
-
     public void OnAck(ulong ackedBytes, ulong flightSize, uint delayMicros, uint nowMicros)
     {
         // TODO: Or.. it can stay uint?

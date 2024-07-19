@@ -33,7 +33,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
     private readonly UTPSynchronizer _utpSynchronizer = new UTPSynchronizer();
     private readonly InflightDataCalculator _inflightDataCalculator = new InflightDataCalculator();
-    private readonly LedBat _trafficControl = new LedBat(UTPUtil.GetTimestamp());
+    private readonly LedBat _trafficControl = new LedBat();
 
     // TODO: Use LRU instead. Need a special expiry handling so that the _incomingBufferSize is correct.
     private ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
@@ -53,7 +53,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            await SendSynPackageToReceiver(header, token);
+            await SendSynPacketToReceiver(header, token);
             await _utpSynchronizer.WaitForReceiverToSync();
             if (_state == ConnectionState.CsConnected) break;
         }
@@ -93,7 +93,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 {
                     // Special case, once FIN is first received, the reader stream thread would have exited after its ACK.
                     // In the case where the last ACK is lost, the sender send FIN again, so this need to happen.
-                    _ = SendStatePackage(token);
+                    _ = SendStatePacket(token);
                 }
 
                 break;
@@ -188,7 +188,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 if (packetIngested > 4)
                 {
                     _receiverAck_nr = new AckInfo(curAck, null);
-                    await SendStatePackage(token);
+                    await SendStatePacket(token);
                     packetIngested = 0;
                 }
 
@@ -207,7 +207,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             Console.Error.WriteLine($"R set receiver ack {curAck}");
             _receiverAck_nr = new AckInfo(curAck, selectiveAck);
 
-            await SendStatePackage(token);
+            await SendStatePacket(token);
             await _utpSynchronizer.WaitForReceiverToSync();
         }
     }
@@ -235,10 +235,10 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 int readLength = await input.ReadAsync(buffer, token);
 
                 if (readLength != 0) {  // Note: We assume ReadAsync will return 0 multiple time.
-                    await SendPackage(UTPPacketType.StData, buffer.AsMemory()[..readLength], token);
+                    await SendPacket(UTPPacketType.StData, buffer.AsMemory()[..readLength], token);
                     _seq_nr++;
                 }else {
-                    await SendPackage(UTPPacketType.StFin, Memory<byte>.Empty, token);
+                    await SendPacket(UTPPacketType.StFin, Memory<byte>.Empty, token);
                     streamFinished = true;
                 }
             }
@@ -252,7 +252,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         return _inflightDataCalculator.GetCurrentInflightData() + PayloadSize < _trafficControl.WindowSize;
     }
 
-    private async Task SendPackage(UTPPacketType type, Memory<byte> asMemory, CancellationToken token)
+    private async Task SendPacket(UTPPacketType type, Memory<byte> asMemory, CancellationToken token)
     {
         UTPPacketHeader header = CreateBaseHeader(type);
         Console.Error.WriteLine($"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
@@ -261,7 +261,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         _inflightDataCalculator.IncrementInflightData(asMemory.Length);
     }
 
-    private async Task SendStatePackage(CancellationToken token)
+    private async Task SendStatePacket(CancellationToken token)
     {
         UTPPacketHeader stateHeader = CreateBaseHeader(UTPPacketType.StState);
         await peer.ReceiveMessage(stateHeader, ReadOnlySpan<byte>.Empty, token);
@@ -341,7 +341,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         return false;
     }
 
-    private async Task SendSynPackageToReceiver(UTPPacketHeader header, CancellationToken token)
+    private async Task SendSynPacketToReceiver(UTPPacketHeader header, CancellationToken token)
     {
         await peer.ReceiveMessage(header, ReadOnlySpan<byte>.Empty, token);
     }
