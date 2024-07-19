@@ -6,21 +6,24 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Int256;
+using Nethermind.Core.Extensions;
+using Nethermind.Db;
+using System.Linq;
+
+namespace Nethermind.State.VerkleTransition;
 
 public class AccountTreeMigrator : ITreeVisitor
 {
     private readonly VerkleStateTree _verkleStateTree;
     private readonly IStateReader _stateReader;
-    private readonly TrieStore _trieStore;
-    private int _accountsProcessed = 0;
+    private readonly IDb _preImageDb;
 
-    public AccountTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, TrieStore trieStore)
+    public AccountTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb preImageDb)
     {
         _verkleStateTree = verkleStateTree;
         _stateReader = stateReader;
-        _trieStore = trieStore;
+        _preImageDb = preImageDb;
     }
 
     public bool IsFullDbScan => true;
@@ -43,17 +46,51 @@ public class AccountTreeMigrator : ITreeVisitor
 
     private readonly AccountDecoder decoder = new();
 
+    /// <summary>
+    /// Get the address from the node key. Currently, the last 20 bytes of the key are used as the address.
+    /// TODO: remove this once we have implemented pre-image db logic
+    /// </summary>
+    /// <param name="nodeKey"></param>
+    /// <returns></returns>
+    private Address? GetAddress(byte[] nodeKey)
+    {
+        byte[] unpaddedNodeKey = ConvertPaddedHexToBytes(nodeKey.ToHexString());
+        Console.WriteLine($"Unpadded node key: {unpaddedNodeKey.ToHexString()}");
+        return new Address(unpaddedNodeKey.Slice(unpaddedNodeKey.Length - 20, 20));
+    }
+
+
+    private static byte[] ConvertPaddedHexToBytes(string paddedHex)
+    {
+        // Remove the padding (leading zeros)
+        string unpadded = string.Concat(
+            paddedHex
+                .Where((c, i) => i % 2 == 1)
+                .Select(c => c.ToString())
+        );
+
+        // Convert the unpadded hex string to byte array
+        return Enumerable.Range(0, unpadded.Length / 2)
+            .Select(x => Convert.ToByte(unpadded.Substring(x * 2, 2), 16))
+            .ToArray();
+    }
+
+
     public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
+        Console.WriteLine($"Visiting leaf for node: {node}");
+
         if (!trieVisitContext.IsStorage)
         {
-            Rlp.ValueDecoderContext valueDecoderContext = new(value);
+            Account account = decoder.Decode(new RlpStream(node.Value.ToArray()));
 
-            // Assume the address is the last 20 bytes of the path
-            // TODO: verify if this address is correct
-            Nibble[] fullPath = Nibbles.FromBytes(node.Key);
-            var address = new Address(Nibbles.ToPackedByteArray(fullPath)[..20]);
-            Account account = decoder.Decode(ref valueDecoderContext);
+            Address? address = GetAddress(node.Key);
+            if (address is null)
+            {
+                Console.WriteLine($"Address is null for node: {node}");
+                return;
+            }
+            Console.WriteLine($"Migrating account for {address} {node.Key.ToHexString()}");
 
             MigrateAccount(address, account);
 
@@ -61,10 +98,19 @@ public class AccountTreeMigrator : ITreeVisitor
             {
                 MigrateContractCode(address, account.CodeHash);
             }
+        }
+        else
+        {
+            Address? address = GetAddress(node.Key);
+            if (address is null)
+            {
+                Console.WriteLine($"Address is null for storage node: {node}");
+                return;
+            }
+            Console.WriteLine($"Migrating storage for {address} {node.Key.ToHexString()}");
 
-            MigrateAccountStorage(address, account.StorageRoot);
-
-            _accountsProcessed++;
+            byte[] storageValue = value.ToArray();
+            MigrateAccountStorage(address, node.Key.ToUInt256(), storageValue);
         }
     }
 
@@ -78,21 +124,20 @@ public class AccountTreeMigrator : ITreeVisitor
     private void MigrateContractCode(Address address, Hash256 codeHash)
     {
         byte[] code = _stateReader.GetCode(codeHash);
+        Console.WriteLine($"Migrating code for {address} {codeHash.Bytes.ToHexString()}");
         _verkleStateTree.SetCode(address, code);
     }
 
-    private void MigrateAccountStorage(Address address, Hash256 storageRoot)
+    private void MigrateAccountStorage(Address address, UInt256 index, byte[] value)
     {
-            var storageTree = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), storageRoot, null);
-            var storageVisitor = new StorageTreeMigrator(_verkleStateTree, address);
-            storageTree.Accept(storageVisitor, storageRoot);
-            storageVisitor.FinalizeMigration();
+        StorageCell storageKey = new StorageCell(address, index);
+        _verkleStateTree.SetStorage(storageKey, value);
     }
 
-    public void FinalizeMigration()
+    public void FinalizeMigration(long blockNumber)
     {
         _verkleStateTree.Commit();
-        _verkleStateTree.CommitTree(0); // Assuming we're committing to block 0 for initial state
-        Console.WriteLine($"Migration completed. Total accounts processed: {_accountsProcessed}");
+        _verkleStateTree.CommitTree(blockNumber);
+        Console.WriteLine($"Migration completed");
     }
 }

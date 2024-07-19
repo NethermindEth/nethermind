@@ -10,6 +10,7 @@ using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -85,6 +86,37 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
             Insert(key, chunk);
             chunkId += 1;
         }
+
+        // Update the account's CodeSize and CodeHash
+        AccountStruct? account = Get(address);
+        if (account.HasValue)
+        {
+            var newAccount = new Account(account.Value.Nonce, account.Value.Balance, account.Value.CodeSize, account.Value.Version, new Hash256(account.Value.StorageRoot), new Hash256(account.Value.CodeHash));
+            Set(address, newAccount);
+        }
+    }
+
+    public byte[] GetCode(Address address, Hash256? stateRoot = null)
+    {
+        using var codeStream = new MemoryStream();
+        UInt256 chunkId = 0;
+        while (true)
+        {
+            Hash256? key = AccountHeader.GetTreeKeyForCodeChunk(address.Bytes, chunkId);
+            Console.WriteLine($"Getting code chunk {key}");
+
+            byte[] chunk = Get(key, stateRoot) ?? Array.Empty<byte>();
+
+            // No more chunks
+            if (chunk.Length == 0)
+            {
+                break;
+            }
+
+            codeStream.Write(chunk, 0, chunk.Length);
+            chunkId += 1;
+        }
+        return codeStream.ToArray();
     }
 
     public void SetStorage(StorageCell cell, byte[] value)
