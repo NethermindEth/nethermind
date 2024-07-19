@@ -59,15 +59,4 @@ jobs:
             --build-arg CI=$CI \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
             . --push
-      - name: Trigger notification action on test repo
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/master') || startsWith(github.ref, 'refs/heads/release/'))
-        continue-on-error: true
-        uses: benc-uk/workflow-dispatch@v1
-        with:
-          workflow: receive-push-notification.yml
-          repo: NethermindEth/post-merge-smoke-tests
-          ref: "main"
-          token: "${{ steps.gh-app.outputs.token }}"
-          inputs: '{
-            "nethermind_branch": "${{ github.ref}}"
-          }'
+
