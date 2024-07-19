@@ -5,20 +5,13 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
-using Nethermind.Blockchain;
 using Nethermind.Specs;
-using Nethermind.Consensus;
-using Nethermind.Core.Crypto;
 using System;
 using Nethermind.Core.Caching;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Config;
-using System.Threading;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -84,7 +77,7 @@ public class ShutterTxSource(
         ulong currentSlot = timeSinceGenesis / slotLength;
         if (payloadAttributes!=null)
         {
-            return currentSlot;
+            return currentSlot;a
         }
         ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
