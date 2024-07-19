@@ -9,16 +9,16 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
 
-using Cache = Nethermind.Core.Caching.LruCacheLowObject<Nethermind.Core.AddressAsKey, Nethermind.Core.Account>;
+using Cache = Nethermind.Core.Caching.ClockCache<Nethermind.Core.AddressAsKey, Nethermind.Core.Account>;
 
 namespace Nethermind.Core.Test.Caching
 {
     [TestFixture]
-    public class LruCacheLowObjectTests
+    public class ClockCacheTests
     {
         private static Cache Create()
         {
-            return new Cache(Capacity, "test")!;
+            return new Cache(Capacity)!;
         }
 
         private const int Capacity = 32;
@@ -183,7 +183,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity_lru_parallel()
         {
-            Cache cache = new(Capacity, "test");
+            Cache cache = new(Capacity);
             Parallel.For(0, Environment.ProcessorCount * 8, (iter) =>
             {
                 for (int ii = 0; ii < Capacity; ii++)
@@ -275,7 +275,7 @@ namespace Nethermind.Core.Test.Caching
             int itemsToKeep = 10;
             int iterations = 40;
 
-            LruCacheLowObject<int, int> cache = new(maxCapacity, "test");
+            ClockCache<int, int> cache = new(maxCapacity);
 
             for (int i = 0; i < iterations; i++)
             {
@@ -297,6 +297,26 @@ namespace Nethermind.Core.Test.Caching
             }
 
             count.Should().Be(itemsToKeep);
+        }
+
+        [Test]
+        public void Capacity_zero()
+        {
+            ClockCache<AddressAsKey, int> cache = new(0);
+            for (int i = 0; i < Capacity * 2; i++)
+            {
+                cache.Set(_addresses[i], 0).Should().BeTrue();
+            }
+
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.TryGet(_addresses[i], out _).Should().BeFalse();
+            }
+            // Check in reverse order
+            for (int i = Capacity * 2 - 1; i >= Capacity; i--)
+            {
+                cache.TryGet(_addresses[i], out _).Should().BeFalse();
+            }
         }
     }
 }
