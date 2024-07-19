@@ -3,15 +3,16 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -20,7 +21,6 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -31,7 +31,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
 {
     private readonly ISyncConfig _syncConfig;
     private readonly IL1OriginStore _l1OriginStore;
-    private readonly TxDecoder _txDecoder;
+    private readonly IBlockchainProcessor _chainProcessor;
 
     public TaikoRpcModule(
         IJsonRpcConfig rpcConfig,
@@ -49,7 +49,8 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
         IFeeHistoryOracle feeHistoryOracle,
         ulong? secondsPerSlot,
         ISyncConfig syncConfig,
-        IL1OriginStore l1OriginStore) : base(
+        IL1OriginStore l1OriginStore,
+        IBlockchainProcessor chainProcessor) : base(
        rpcConfig,
        blockchainBridge,
        blockFinder,
@@ -67,7 +68,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
     {
         _syncConfig = syncConfig;
         _l1OriginStore = l1OriginStore;
-        _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
+        _chainProcessor = chainProcessor;
     }
 
     public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(_syncConfig switch
@@ -96,10 +97,9 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
         return origin is null ? ResultWrapper<L1Origin?>.Fail("not found") : ResultWrapper<L1Origin?>.Success(origin);
     }
 
-    public Task<ResultWrapper<PreBuiltTxList[]?>> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, Address[] localAccounts, ulong maxTransactionsLists)
+    public Task<ResultWrapper<PreBuiltTxList[]?>> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
+        ulong maxBytesPerTxList, Address[] localAccounts, int maxTransactionsLists)
     {
-        List<PreBuiltTxList> txLists = [];
-
         KeyValuePair<AddressAsKey, Queue<Transaction>>[] pendingTxs =
             _txPoolBridge.GetPendingTransactionsBySender()
                 .ToDictionary(tx => tx.Key, tx => new Queue<Transaction>(tx.Value.Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee))))
@@ -115,79 +115,33 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
 
         List<KeyValuePair<AddressAsKey, Queue<Transaction>>> source = [.. localTxs, .. remoteTxs];
 
-        TxDecoder decoder = (Rlp.GetStreamDecoder<Transaction>() as TxDecoder)!;
 
-        PreBuiltTxList PickTransactions()
+        BlockHeader? head = _blockFinder.Head?.Header;
+
+        if (source.Count is 0 || head is null)
         {
-            List<Transaction> txs = [];
-            ulong gasUsed = 0;
-
-            byte[] lastCompressed = [];
-
-            while (source.Count is not 0)
-            {
-                if (source.First().Value.Count is 0)
-                {
-                    source.RemoveAt(0);
-                    continue;
-                }
-
-                Transaction nextTx = source.First().Value.Peek();
-
-                if ((ulong)nextTx.GasLimit > (blockMaxGasLimit - gasUsed))
-                {
-                    break;
-                }
-
-                txs.Add(nextTx);
-
-                byte[] compressed = EncodeAndCompress(txs.ToArray());
-
-                if ((ulong)compressed.LongLength > maxBytesPerTxList)
-                {
-                    txs.RemoveAt(txs.Count - 1);
-                    if (lastCompressed.Length is not 0)
-                    {
-                        break;
-                    }
-                }
-
-                lastCompressed = compressed;
-                gasUsed += (ulong)nextTx.GasLimit;
-                source.First().Value.Dequeue();
-            }
-
-            return new PreBuiltTxList(lastCompressed, gasUsed, lastCompressed.LongLength);
+            return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        for (ulong i = 0; i < maxTransactionsLists; i++)
+        var block = new TxListBlock(new BlockHeader(
+                head.Hash!,
+                Keccak.OfAnEmptySequenceRlp,
+                beneficiary,
+                UInt256.Zero,
+                head!.Number + 1,
+                (long)blockMaxGasLimit,
+                head.Timestamp + 1,
+                [])
         {
-            PreBuiltTxList list = PickTransactions();
-            if (list.Transactions.Length == 0)
-            {
-                break;
-            }
-            txLists.Add(list);
-        }
+            TotalDifficulty = 0,
+            BaseFeePerGas = baseFee,
+            StateRoot = head.StateRoot,
+            IsPostMerge = true,
+        }, source, maxTransactionsLists, maxBytesPerTxList);
 
-        return ResultWrapper<PreBuiltTxList[]?>.Success([.. txLists]);
-    }
 
-    private byte[] EncodeAndCompress(Transaction[] txs)
-    {
-        int contentLength = txs.Sum(tx => _txDecoder.GetLength(tx, RlpBehaviors.None));
-        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
-
-        rlpStream.StartSequence(contentLength);
-        foreach (Transaction tx in txs)
-        {
-            _txDecoder.Encode(rlpStream, tx);
-        }
-
-        using MemoryStream stream = new();
-        using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
-        compressingStream.Write(rlpStream.Data);
-        compressingStream.Close();
-        return stream.ToArray();
+        return ResultWrapper<PreBuiltTxList[]?>.Success(_chainProcessor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance) is not TxListBlock processed ?
+            [] :
+            processed.Batches.ToArray());
     }
 }

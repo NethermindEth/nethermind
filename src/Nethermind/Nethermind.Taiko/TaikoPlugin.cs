@@ -148,44 +148,46 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
 
-        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+        TaikoSimplePayloadPreparationService payloadPreparationService = null!;
 
-        //IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        {
+            TaikoReadOnlyTxProcessingEnv txProcessingEnv =
+                new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-        BlockProcessor blockProcessor =
-            new(_api.SpecProvider,
-                _api.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState),
-                _api.WorldState,
-                _api.ReceiptStorage,
-                new BlockhashStore(_api.SpecProvider, _api.WorldState),
-                _api.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(_api.WorldState, _api.LogManager)));
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
-        IBlockchainProcessor blockchainProcessor =
-            new BlockchainProcessor(
-                readonlyBlockTree,
-                blockProcessor,
-                _api.BlockPreprocessor,
-                txProcessingEnv.StateReader,
-                _api.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
+            BlockProcessor blockProcessor =
+                new(_api.SpecProvider,
+                    _api.BlockValidator,
+                    NoBlockRewards.Instance,
+                    new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
+                    scope.WorldState,
+                    _api.ReceiptStorage,
+                    new BlockhashStore(_api.SpecProvider, scope.WorldState),
+                    _api.LogManager,
+                    new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
 
-        OneTimeChainProcessor chainProcessor = new(
-            _api.WorldState,
-            blockchainProcessor);
+            IBlockchainProcessor blockchainProcessor =
+                new BlockchainProcessor(
+                    _api.BlockTree,
+                    blockProcessor,
+                    _api.BlockPreprocessor,
+                    txProcessingEnv.StateReader,
+                    _api.LogManager,
+                    BlockchainProcessor.Options.NoReceipts);
 
-        // BlockProducerEnv env = ((TaikoBlockProducerEnvFactory)_api.BlockProducerEnvFactory).CreateWithInvalidTxExecutor();
+            OneTimeChainProcessor chainProcessor = new(
+                scope.WorldState,
+                blockchainProcessor);
 
-        TaikoSimplePayloadPreparationService payloadPreparationService = new(
-            chainProcessor,
-            // env.ChainProcessor,
-            _api.WorldState,
-            // env.ReadOnlyStateProvider,
-            l1OriginStore,
-            _api.LogManager);
+            // BlockProducerEnv env = ((TaikoBlockProducerEnvFactory)_api.BlockProducerEnvFactory).CreateWithInvalidTxExecutor();
+
+            payloadPreparationService = new(
+                chainProcessor,
+                scope.WorldState,
+                l1OriginStore,
+                _api.LogManager);
+        }
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -234,34 +236,72 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                     : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
             _api.LogManager);
 
+
+
         ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(engineRpcModule);
 
         _api.RpcModuleProvider.RegisterSingle(engine);
 
+
         FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
 
-        TaikoRpcModule taikoRpc = new(
-            _api.Config<IJsonRpcConfig>(),
-            _api.CreateBlockchainBridge(),
-            _api.BlockTree.AsReadOnly(),
-            _api.ReceiptStorage,
-            _api.StateReader,
-            _api.TxPool,
-            _api.TxSender,
-            _api.Wallet,
-            _api.LogManager,
-            _api.SpecProvider,
-            _api.GasPriceOracle,
-            _api.EthSyncingInfo,
-            feeHistoryOracle,
-            _api.Config<IBlocksConfig>().SecondsPerSlot,
-            _api.Config<ISyncConfig>(),
-            l1OriginStore
-            );
 
-        _api.RpcModuleProvider.RegisterSingle((ITaikoRpcModule)taikoRpc);
-        _api.RpcModuleProvider.RegisterSingle((ITaikoAuthRpcModule)taikoRpc);
+        {
+            TaikoReadOnlyTxProcessingEnv txProcessingEnv =
+                new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+
+            BlockProcessor blockProcessor =
+                new(_api.SpecProvider,
+                    _api.BlockValidator,
+                    NoBlockRewards.Instance,
+                    new TxListBlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
+                    scope.WorldState,
+                    _api.ReceiptStorage,
+                    new BlockhashStore(_api.SpecProvider, scope.WorldState),
+                    _api.LogManager,
+                    new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
+
+            IBlockchainProcessor blockchainProcessor =
+                new BlockchainProcessor(
+                    readonlyBlockTree,
+                    blockProcessor,
+                    _api.BlockPreprocessor,
+                    txProcessingEnv.StateReader,
+                    _api.LogManager,
+                    BlockchainProcessor.Options.NoReceipts);
+
+            OneTimeChainProcessor chainProcessor = new(
+                scope.WorldState,
+                blockchainProcessor);
+
+            TaikoRpcModule taikoRpc = new(
+           _api.Config<IJsonRpcConfig>(),
+               _api.CreateBlockchainBridge(),
+               _api.BlockTree.AsReadOnly(),
+               _api.ReceiptStorage,
+               _api.StateReader,
+               _api.TxPool,
+               _api.TxSender,
+               _api.Wallet,
+               _api.LogManager,
+               _api.SpecProvider,
+               _api.GasPriceOracle,
+               _api.EthSyncingInfo,
+               feeHistoryOracle,
+               _api.Config<IBlocksConfig>().SecondsPerSlot,
+               _api.Config<ISyncConfig>(),
+               l1OriginStore,
+               chainProcessor
+               );
+
+            _api.RpcModuleProvider.RegisterSingle((ITaikoRpcModule)taikoRpc);
+            _api.RpcModuleProvider.RegisterSingle((ITaikoAuthRpcModule)taikoRpc);
+        }
+
+
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
     }

@@ -38,5 +38,6 @@ namespace Nethermind.Consensus.Producers
         {
             Transactions = transactions;
         }
+        public override Block Copy(BlockHeader header) => new BlockToProduce(header, Transactions, Uncles, Withdrawals);
     }
 }
