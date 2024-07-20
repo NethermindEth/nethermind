@@ -417,7 +417,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             bytecodeResultArray = bytecodeResult.ToArray();
 
                             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-                            bool invalidCode = !(bytecodeResultArray.Length <= spec.MaxCodeSize);
+                            bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
