@@ -11,7 +11,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class PrageBlockChainTests : BlockchainTestBase
+public class PragueBlockChainTests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => await RunTest(test);
