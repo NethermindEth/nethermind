@@ -15,23 +15,23 @@ namespace Nethermind.Blockchain.Filters
 
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
-        public static readonly IEnumerable<long> Any = [-1];
+        public static readonly IEnumerable<int> Any = [-1];
 
-        public IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
+        public IEnumerable<int> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
         {
             if (Addresses is not null)
             {
                 var blocks = Addresses.Select(a => logIndexStorage.GetBlocksForAddress(a));
-                IEnumerator<long>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
+                IEnumerator<int>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
 
                 try
                 {
 
-                    DictionarySortedSet<long, IEnumerator<long>> transactions = new();
+                    DictionarySortedSet<int, IEnumerator<int>> transactions = new();
 
                     for (int i = 0; i < enumerators.Length; i++)
                     {
-                        IEnumerator<long> enumerator = enumerators[i];
+                        IEnumerator<int> enumerator = enumerators[i];
                         if (enumerator.MoveNext())
                         {
                             transactions.Add(enumerator.Current!, enumerator);
@@ -41,14 +41,14 @@ namespace Nethermind.Blockchain.Filters
 
                     while (transactions.Count > 0)
                     {
-                        (long blockNumber, IEnumerator<long> enumerator) = transactions.Min;
+                        (int blockNumber, IEnumerator<int> enumerator) = transactions.Min;
 
                         transactions.Remove(blockNumber);
                         bool isRepeated = false;
 
                         if (transactions.Count > 0)
                         {
-                            (long blockNumber2, IEnumerator<long> enumerator2) = transactions.Min;
+                            (int blockNumber2, IEnumerator<int> enumerator2) = transactions.Min;
                             isRepeated = blockNumber == blockNumber2;
                         }
 
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Filters
                 yield return Any.First();
                 yield break;
             }
-            yield return logIndexStorage.GetBlocksForAddress(Address).First();
+            yield return logIndexStorage.GetBlocksForAddress(Address).FirstOrDefault();
         }
 
         public AddressFilter(Address address)

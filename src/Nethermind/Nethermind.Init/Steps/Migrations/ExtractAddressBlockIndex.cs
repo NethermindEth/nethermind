@@ -18,6 +18,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Crypto;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Db;

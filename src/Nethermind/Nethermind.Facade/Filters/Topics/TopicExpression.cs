@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public abstract bool Matches(ref BloomStructRef bloom);
 
-        public abstract IEnumerable<long> GetBlockNumbersFrom(LogIndexStorage logIndexStorage);
+        public abstract IEnumerable<int> GetBlockNumbersFrom(LogIndexStorage logIndexStorage);
 
     }
 }

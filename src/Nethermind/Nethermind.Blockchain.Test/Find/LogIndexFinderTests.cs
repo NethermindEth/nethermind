@@ -161,6 +161,16 @@ namespace Nethermind.Blockchain.Test.Find
             Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
         }
 
+        [Test]
+        public void filter_by_address_from_file()
+        {
+            _logIndexStorage.LoadFile(TestItem.AddressA, "/Users/srj31/Documents/Nethermind/nethermind/src/Nethermind/Nethermind.Blockchain.Test/Find/output.bin");
+
+            var logFilter = AllBlockFilter().WithAddress(TestItem.AddressA).FromBlock(1510030).ToBlock(1510031).Build();
+
+            var blocks = _logFinder.FindLogs(logFilter).ToArray();
+            Assert.That(blocks.Length, Is.EqualTo(10));
+        }
         public static IEnumerable FilterByBlocksTestsData
         {
             get
