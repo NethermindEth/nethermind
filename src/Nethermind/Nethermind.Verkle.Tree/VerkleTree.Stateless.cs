@@ -96,7 +96,7 @@ public partial class VerkleTree
         }
     }
 
-    public bool InsertIntoStatelessTree(VerkleProofSerialized proof, List<byte[]> keys, List<byte[]?> values, Banderwagon root)
+    public bool InsertIntoStatelessTree(VerkleProofSerialized proof, List<byte[]> keys, List<byte[]?> values, byte[] root)
     {
         var verification = VerifyVerkleProof(proof, keys, values, root, out UpdateHint? updateHint);
         if (!verification) return false;
@@ -104,12 +104,12 @@ public partial class VerkleTree
         return true;
     }
 
-    public void InsertAfterVerification(UpdateHint hint, List<byte[]> keys, List<byte[]?> values, Banderwagon root,
+    public void InsertAfterVerification(UpdateHint hint, List<byte[]> keys, List<byte[]?> values, byte[] root,
         bool skipRoot = true)
     {
         if (!skipRoot)
         {
-            InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(root));
+            InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false)));
             SetInternalNode(Array.Empty<byte>(), rootNode);
         }
 
@@ -123,14 +123,14 @@ public partial class VerkleTree
         }
     }
 
-    public bool InsertIntoStatelessTree(ExecutionWitness? execWitness, Banderwagon root, bool skipRoot = false)
+    public bool InsertIntoStatelessTree(ExecutionWitness? execWitness, byte[] root, bool skipRoot = false)
     {
         // when witness or proof is null that means there is no access values and just save the root
         if (execWitness?.VerkleProof is null)
         {
             if (!skipRoot)
             {
-                InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(root));
+                InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false)));
                 SetInternalNode(Array.Empty<byte>(), rootNode);
             }
 
@@ -142,7 +142,7 @@ public partial class VerkleTree
 
         if (!skipRoot)
         {
-            InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(root));
+            InternalNode rootNode = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false)));
             SetInternalNode(Array.Empty<byte>(), rootNode);
         }
 
@@ -208,7 +208,7 @@ public partial class VerkleTree
         }
     }
 
-    public bool CreateStatelessTreeFromRange(VerkleProofSerialized proof, Banderwagon rootPoint, Stem startStem, Stem endStem,
+    public bool CreateStatelessTreeFromRange(VerkleProofSerialized proof, byte[] rootPoint, Stem startStem, Stem endStem,
         in ReadOnlySpan<PathWithSubTree> subTrees)
     {
         var numberOfStems = 2;
@@ -218,7 +218,7 @@ public partial class VerkleTree
 
         // create a array of sorted commitments including root commitment
         var commSortedByPath = new Banderwagon[proof.CommsSorted.Length + 1];
-        commSortedByPath[0] = rootPoint;
+        commSortedByPath[0] = Banderwagon.FromBytesUncompressedUnchecked(rootPoint, isBigEndian: false);
         proof.CommsSorted.CopyTo(commSortedByPath.AsSpan(1));
 
         // map stems to depth and extension status and create a list of stem with extension present

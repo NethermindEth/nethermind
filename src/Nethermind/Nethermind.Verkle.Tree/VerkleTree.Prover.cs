@@ -23,13 +23,13 @@ public partial class VerkleTree
     private Dictionary<byte[], FrE[]> ProofBranchPolynomialCache { get; } = new(Bytes.EqualityComparer);
     private Dictionary<Stem, SuffixPoly> ProofStemPolynomialCache { get; } = new();
 
-    public ExecutionWitness GenerateExecutionWitnessFromStore(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitnessFromStore(byte[][] keys, out byte[] rootPoint)
     {
         VerkleTree tree = new(_verkleStateStore, LimboLogs.Instance);
         return tree.GenerateExecutionWitness(keys, out rootPoint);
     }
 
-    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out byte[] rootPoint)
     {
         if (keys.Length == 0)
         {
@@ -78,7 +78,7 @@ public partial class VerkleTree
         });
     }
 
-    public VerkleProofSerialized CreateVerkleProof(byte[][] keys, out Banderwagon rootPoint)
+    public VerkleProofSerialized CreateVerkleProof(byte[][] keys, out byte[] rootPoint)
     {
         if (keys.Length == 0)
         {
@@ -155,7 +155,7 @@ public partial class VerkleTree
         return finalProof;
     }
 
-    public VerkleProofSerialized CreateVerkleRangeProof(Stem startStem, Stem endStem, out Banderwagon rootPoint, Hash256? rootHash = null)
+    public VerkleProofSerialized CreateVerkleRangeProof(Stem startStem, Stem endStem, out byte[] rootPoint, Hash256? rootHash = null)
     {
         ProofBranchPolynomialCache.Clear();
         ProofStemPolynomialCache.Clear();
@@ -245,7 +245,7 @@ public partial class VerkleTree
     }
 
     private VerkleProofSerialized CreateProofStruct(HashSet<byte[]> stemList,
-        Dictionary<byte[], HashSet<byte>> neededOpenings, bool addLeafOpenings, out Banderwagon rootPoint, Hash256? rootHash)
+        Dictionary<byte[], HashSet<byte>> neededOpenings, bool addLeafOpenings, out byte[] rootPoint, Hash256? rootHash)
     {
         List<VerkleProverQuerySerialized> queries = [];
         HashSet<byte[]> stemWithNoProofSet = new(Bytes.EqualityComparer);
@@ -264,10 +264,10 @@ public partial class VerkleTree
             AddBranchCommitmentsOpening(elem.Key, elem.Value, queries, rootHash);
         }
 
-        rootPoint = Banderwagon.FromBytesUncompressedUnchecked(queries[0].NodeCommitPoint, isBigEndian: false);
+        rootPoint = queries[0].NodeCommitPoint;
         foreach (VerkleProverQuerySerialized query in queries)
         {
-            if (query.NodeCommitPoint.SequenceEqual(rootPoint.ToBytesUncompressedLittleEndian())) continue;
+            if (query.NodeCommitPoint.SequenceEqual(rootPoint)) continue;
 
             if (sortedCommitments.Count == 0 || !sortedCommitments[^1].ToBytesUncompressedLittleEndian().SequenceEqual(query.NodeCommitPoint))
                 sortedCommitments.Add(Banderwagon.FromBytesUncompressedUnchecked(query.NodeCommitPoint, isBigEndian: false));

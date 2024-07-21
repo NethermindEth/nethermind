@@ -38,7 +38,7 @@ public class VerkleProofTest
             VerkleTestUtils.MaxValue,
         };
         VerkleTree tree = VerkleTestUtils.CreateVerkleTreeWithKeysAndValues(keys, keys);
-        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
 
         TestProofSerialization(proof);
 
@@ -68,7 +68,7 @@ public class VerkleProofTest
         };
         VerkleTree tree = VerkleTestUtils.CreateVerkleTreeWithKeysAndValues(keys.ToArray(), values.ToArray());
 
-        VerkleProofSerialized proof = tree.CreateVerkleProof(keys.ToArray(), out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys.ToArray(), out byte[] root);
         TestProofSerialization(proof);
 
         bool verified = VerkleTree.VerifyVerkleProof(proof, keys, values, root, out _);
@@ -95,7 +95,7 @@ public class VerkleProofTest
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
         TestProofSerialization(proof);
 
         const string expectedProof = "00000000040000000a0a0a0a0800000056778fe0bcf12a14820d4c054d85cfcae4bdb7017107b6769cecd42629a3825e38f30e21c" +
@@ -151,7 +151,7 @@ public class VerkleProofTest
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
         TestProofSerialization(proof);
 
         const string expectedProof = "00000000010000000a020000000b2cd97f2703f0e0030f8356c66ef9cda8587109aab48ebdf02fd49ceefa716d1731296" +
@@ -199,7 +199,7 @@ public class VerkleProofTest
             },
         };
 
-        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
         TestProofSerialization(proof);
 
         const string expectedProof =
@@ -292,7 +292,7 @@ public class VerkleProofTest
         }
         tree.CommitTree(0);
 
-        VerkleProofSerialized proof = tree.CreateVerkleProof(keys[..500], out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys[..500], out byte[] root);
         //TestProofSerialization(proof);
         bool verified = VerkleTree.VerifyVerkleProof(proof, new(keys[..500]),
             new(values[..500]), root, out _);
@@ -382,8 +382,7 @@ public class VerkleProofTest
         ExecutionPayload? result = serializer.Deserialize<ExecutionPayload>(payload);
 
         VerkleWorldState state = new VerkleWorldState(result.ExecutionWitness,
-            Banderwagon.FromBytes(
-                Bytes.FromHexString("0x3d339c16f3b906126a2f00f7130ff3bca99a176f1c97185ddf1e783417986510")).Value,
+            Bytes.FromHexString("0x3d339c16f3b906126a2f00f7130ff3bca99a176f1c97185ddf1e783417986510"),
             SimpleConsoleLogManager.Instance);
 
         BlockHashInStateHandler handler = new BlockHashInStateHandler();

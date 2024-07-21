@@ -46,7 +46,7 @@ public partial class VerkleTree
 
     private static bool VerifyVerkleProof(
         ExecutionWitness execWitness,
-        Banderwagon root,
+        byte[] root,
         [NotNullWhen(true)] out UpdateHint? updateHint)
     {
         // var logg = SimpleConsoleLogger.Instance;
@@ -56,7 +56,7 @@ public partial class VerkleTree
 
         // sorted commitments including root
         var commSortedByPath = new Banderwagon[verkleProof.CommitmentsByPath.Length + 1];
-        commSortedByPath[0] = root;
+        commSortedByPath[0] = Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false);
         verkleProof.CommitmentsByPath.CopyTo(commSortedByPath, 1);
 
         Stem[] stems = GetStemsFromStemStateDiff(execWitness.StateDiff);
@@ -200,7 +200,7 @@ public partial class VerkleTree
         Stem[] differentStemNoProof,
         List<byte[]> keys,
         List<byte[]?> values,
-        Banderwagon root,
+        byte[] root,
         [NotNullWhen(true)] out UpdateHint? updateHint)
     {
         updateHint = null;
@@ -208,7 +208,7 @@ public partial class VerkleTree
         var numberOfStems = depths.Length;
 
         // sorted commitments including root
-        List<Banderwagon> commSortedByPath = new(commitmentsSorted.Length + 1) { root };
+        List<Banderwagon> commSortedByPath = new(commitmentsSorted.Length + 1) { Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false) };
         commSortedByPath.AddRange(commitmentsSorted);
 
         Stem[] stems = GetStemsFromKeys(CollectionsMarshal.AsSpan(keys), numberOfStems);
@@ -349,7 +349,7 @@ public partial class VerkleTree
         return isTrue;
     }
 
-    public static bool VerifyVerkleProof(VerkleProofSerialized proof, List<byte[]> keys, List<byte[]?> values, Banderwagon root,
+    public static bool VerifyVerkleProof(VerkleProofSerialized proof, List<byte[]> keys, List<byte[]?> values, byte[] root,
         [NotNullWhen(true)] out UpdateHint? updateHint)
     {
         return VerifyVerkleProof(proof.Proof.IpaProofSerialized, proof.Proof.D, proof.CommsSorted, proof.VerifyHint.Depths,

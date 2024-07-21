@@ -47,9 +47,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
-
-
+        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out byte[] root);
 
         var subTrees = new List<PathWithSubTree>();
         var leafs = new List<LeafInSubTree>();
@@ -71,8 +69,9 @@ public class VerkleRangeProofTests
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
 
-        tree.Accept(oldTreeDumper, new Hash256(root.ToBytes()));
-        newTree.Accept(newTreeDumper, new Hash256(root.ToBytes()));
+        Banderwagon banderwagonRoot = Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false);
+        tree.Accept(oldTreeDumper, new Hash256(banderwagonRoot.ToBytes()));
+        newTree.Accept(newTreeDumper, new Hash256(banderwagonRoot.ToBytes()));
 
         oldTreeDumper.ToString().Should().BeEquivalentTo(newTreeDumper.ToString());
     }
@@ -100,7 +99,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stem, stem, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stem, stem, out byte[] root);
 
         List<PathWithSubTree> subTrees = [];
         List<LeafInSubTree> leafs = [];
@@ -120,8 +119,8 @@ public class VerkleRangeProofTests
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
 
-        tree.Accept(oldTreeDumper, new Hash256(root.ToBytes()));
-        newTree.Accept(newTreeDumper, new Hash256(root.ToBytes()));
+        tree.Accept(oldTreeDumper, new Hash256(Banderwagon.FromBytesUncompressedUnchecked(root).ToBytes()));
+        newTree.Accept(newTreeDumper, new Hash256(Banderwagon.FromBytesUncompressedUnchecked(root).ToBytes()));
         oldTreeDumper.ToString().Should().BeEquivalentTo(newTreeDumper.ToString());
     }
 
@@ -156,7 +155,7 @@ public class VerkleRangeProofTests
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleRangeProof(stems[0], stems[^1], out byte[] root);
 
         // bool verified = VerkleTree.VerifyVerkleRangeProof(proof, stems[0], stems[^1], stems, root, out _);
         // Assert.That(verified, Is.True);
@@ -183,8 +182,8 @@ public class VerkleRangeProofTests
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
 
-        tree.Accept(oldTreeDumper, new Hash256(root.ToBytes()));
-        newTree.Accept(newTreeDumper, new Hash256(root.ToBytes()));
+        tree.Accept(oldTreeDumper, new Hash256(Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false).ToBytes()));
+        newTree.Accept(newTreeDumper, new Hash256(Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false).ToBytes()));
 
         Console.WriteLine("oldTreeDumper");
         Console.WriteLine(oldTreeDumper.ToString());

@@ -61,7 +61,7 @@ public class VerkleWorldState : IWorldState
         _storageProvider = new VerkleStorageProvider(verkleTree, logManager);
     }
 
-    public void InsertExecutionWitness(ExecutionWitness? executionWitness, Banderwagon root)
+    public void InsertExecutionWitness(ExecutionWitness? executionWitness, byte[] root)
     {
         _tree.Reset();
         if (!_tree.InsertIntoStatelessTree(executionWitness, root))
@@ -87,7 +87,7 @@ public class VerkleWorldState : IWorldState
     }
 
     // create a state provider using execution witness
-    public VerkleWorldState(ExecutionWitness? executionWitness, Banderwagon root, ILogManager? logManager)
+    public VerkleWorldState(ExecutionWitness? executionWitness, byte[] root, ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));
         _tree = VerkleStateTree.CreateStatelessTreeFromExecutionWitness(executionWitness, root, logManager);
@@ -126,7 +126,7 @@ public class VerkleWorldState : IWorldState
         set => _tree.StateRoot = value;
     }
 
-    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out byte[] rootPoint)
     {
         return _tree.GenerateExecutionWitnessFromStore(keys, out rootPoint);
     }
