@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             var blocks = _subexpressions.Select(e => e.GetBlockNumbersFrom(logIndexStorage));
             IEnumerator<int>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
-
+            
             try
             {
 

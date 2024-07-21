@@ -49,7 +49,6 @@ namespace Nethermind.Blockchain.Filters.Topics
                 {
                     (int blockNumber, IEnumerator<int> enumerator) = transactions.Min;
 
-
                     (int blockNumber2, IEnumerator<int> enumerator2) = transactions.Max;
 
                     bool isIntersection = blockNumber == blockNumber2;

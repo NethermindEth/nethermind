@@ -15,7 +15,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -96,18 +95,6 @@ namespace Nethermind.Blockchain.Test.Find
                     yield return Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(TestItem.KeccakD, TestItem.KeccakA).TestObject;
                 }
             }
-
-
-            else if (block.Number >= 1510030 & block.Number <= 1510100)
-            {
-                if (transaction.Value == 1)
-                {
-                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject;
-
-
-                }
-            }
-
         }
 
         public static IEnumerable FilterByAddressTestsData
@@ -174,7 +161,6 @@ namespace Nethermind.Blockchain.Test.Find
             Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
         }
 
-
         [Test]
         public void filter_by_address_from_file()
         {
@@ -185,7 +171,6 @@ namespace Nethermind.Blockchain.Test.Find
             var blocks = _logFinder.FindLogs(logFilter).ToArray();
             Assert.That(blocks.Length, Is.EqualTo(10));
         }
-
         public static IEnumerable FilterByBlocksTestsData
         {
             get
