@@ -88,7 +88,7 @@ static class Program
             // For dry runs we still want to trigger the generation of an AuthToken
             // This is to ensure that all parameters required for the generation are correct,
             // and not require a real run to verify that this is the case.
-            string _  = provider.GetRequiredService<IAuth>().AuthToken;
+            string _ = provider.GetRequiredService<IAuth>().AuthToken;
             return new NullJsonRpcSubmitter();
         });
         collection.AddSingleton<IResponseTracer>(
@@ -125,7 +125,6 @@ static class Program
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );
-
         collection.AddSingleton<IJsonRpcFlowManager>(new JsonRpcFlowManager(config.RequestsPerSecond, config.UnwrapBatch));
 
         return collection.BuildServiceProvider();
