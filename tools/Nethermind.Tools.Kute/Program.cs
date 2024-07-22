@@ -69,7 +69,7 @@ static class Program
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 config.MethodFilters
-                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern))
+                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
                     .ToList()
             )
         );
