@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
@@ -30,42 +29,15 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             var blocks = _expressions.Select(e => e.GetBlockNumbersFrom(logIndexStorage));
             IEnumerator<int>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
-
             try
             {
-                DictionarySortedSet<int, IEnumerator<int>> transactions = new();
-
-                for (int i = 0; i < enumerators.Length; i++)
+                IEnumerable<int> result = LogOperators<int>.Intersect(enumerators);
+                foreach (int blockNumber in result)
                 {
-                    IEnumerator<int> enumerator = enumerators[i];
-                    if (enumerator.MoveNext())
-                    {
-                        transactions.Add(enumerator.Current!, enumerator);
-                    }
+                    yield return blockNumber;
                 }
-
-
-                while (transactions.Count == enumerators.Length)
-                {
-                    (int blockNumber, IEnumerator<int> enumerator) = transactions.Min;
-
-                    (int blockNumber2, IEnumerator<int> enumerator2) = transactions.Max;
-
-                    bool isIntersection = blockNumber == blockNumber2;
-                    transactions.Remove(blockNumber);
-
-                    if (enumerator.MoveNext())
-                    {
-                        transactions.Add(enumerator.Current!, enumerator);
-                    }
-
-                    if (isIntersection)
-                    {
-                        yield return blockNumber;
-                    }
-                }
-
             }
+
             finally
             {
 

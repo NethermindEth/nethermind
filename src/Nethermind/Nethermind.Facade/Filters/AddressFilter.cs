@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
@@ -26,46 +28,13 @@ namespace Nethermind.Blockchain.Filters
 
                 try
                 {
-
-                    DictionarySortedSet<int, IEnumerator<int>> transactions = new();
-
-                    for (int i = 0; i < enumerators.Length; i++)
+                    IEnumerable<int> result = LogOperators<int>.Union(enumerators);
+                    foreach (int blockNumber in result)
                     {
-                        IEnumerator<int> enumerator = enumerators[i];
-                        if (enumerator.MoveNext())
-                        {
-                            transactions.Add(enumerator.Current!, enumerator);
-                        }
+                        yield return blockNumber;
                     }
-
-
-                    while (transactions.Count > 0)
-                    {
-                        (int blockNumber, IEnumerator<int> enumerator) = transactions.Min;
-
-                        transactions.Remove(blockNumber);
-                        bool isRepeated = false;
-
-                        if (transactions.Count > 0)
-                        {
-                            (int blockNumber2, IEnumerator<int> enumerator2) = transactions.Min;
-                            isRepeated = blockNumber == blockNumber2;
-                        }
-
-                        if (enumerator.MoveNext())
-                        {
-
-                            transactions.Add(enumerator.Current!, enumerator);
-                        }
-
-                        if (!isRepeated)
-                        {
-                            yield return blockNumber;
-                        }
-
-                    }
-
                 }
+
                 finally
                 {
 
@@ -74,6 +43,7 @@ namespace Nethermind.Blockchain.Filters
                         enumerators[i].Dispose();
                     }
                 }
+
                 yield break;
             }
             if (Address is null)
