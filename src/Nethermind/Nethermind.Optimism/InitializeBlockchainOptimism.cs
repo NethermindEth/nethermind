@@ -6,9 +6,11 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -82,7 +84,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor()
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -105,7 +107,9 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             new BlockhashStore(_api.BlockTree, _api.SpecProvider, _api.WorldState),
             _api.LogManager,
             _api.SpecHelper,
-            contractRewriter);
+            contractRewriter,
+            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            preWarmer: preWarmer);
     }
 
     protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;

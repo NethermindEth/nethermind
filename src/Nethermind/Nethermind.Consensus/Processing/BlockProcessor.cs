@@ -116,9 +116,9 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 using CancellationTokenSource cancellationTokenSource = new();
-                Task? preWarmTask = suggestedBlock.Transactions.Length < 3 ?
-                    null :
-                    _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
+                Task? preWarmTask = suggestedBlock.Transactions.Length < 3
+                    ? null
+                    : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 cancellationTokenSource.Cancel();
                 preWarmTask?.GetAwaiter().GetResult();
@@ -159,8 +159,11 @@ public partial class BlockProcessor : IBlockProcessor
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
-            _preWarmer?.ClearCaches();
             throw;
+        }
+        finally
+        {
+            _preWarmer?.ClearCaches();
         }
     }
 

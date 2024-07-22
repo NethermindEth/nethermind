@@ -104,7 +104,11 @@ namespace Nethermind.Init.Steps
 
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
-            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
+            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
+                ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager, preBlockCaches), _api.SpecProvider, _api.LogManager, preBlockCaches)
+                : null;
+            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor(preWarmer);
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -212,7 +216,7 @@ namespace Nethermind.Init.Steps
             _api.LogManager);
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor()
+        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
         {
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -221,13 +225,7 @@ namespace Nethermind.Init.Steps
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            IBlocksConfig blocksConfig = _api.Config<IBlocksConfig>();
             IWorldState worldState = _api.WorldState!;
-
-            PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, preBlockCaches), _api.SpecProvider, _api.LogManager, preBlockCaches)
-                : null;
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
