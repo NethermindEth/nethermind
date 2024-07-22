@@ -10,6 +10,9 @@ using Nethermind.Int256;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using System.Linq;
+using System.Collections.Generic;
+using Microsoft.IdentityModel.Tokens;
+using DotNetty.Common.Utilities;
 
 namespace Nethermind.State.VerkleTransition;
 
@@ -18,6 +21,9 @@ public class AccountTreeMigrator : ITreeVisitor
     private readonly VerkleStateTree _verkleStateTree;
     private readonly IStateReader _stateReader;
     private readonly IDb _preImageDb;
+    private readonly List<byte[]> _currentPath = [];
+    private Address? _lastAddress;
+    private Account? _lastAccount;
 
     public AccountTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb preImageDb)
     {
@@ -33,6 +39,9 @@ public class AccountTreeMigrator : ITreeVisitor
     public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
     {
         Console.WriteLine($"Starting migration from Merkle tree with root: {rootHash}");
+        _currentPath.Clear();
+        _lastAddress = null;
+        _lastAccount = null;
     }
 
     public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
@@ -40,25 +49,36 @@ public class AccountTreeMigrator : ITreeVisitor
         Console.WriteLine($"Warning: Missing node encountered: {nodeHash}");
     }
 
-    public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext) { }
-
-    public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext) { }
-
-    private readonly AccountDecoder decoder = new();
-
-    /// <summary>
-    /// Get the address from the node key. Currently, the last 20 bytes of the key are used as the address.
-    /// TODO: remove this once we have implemented pre-image db logic
-    /// </summary>
-    /// <param name="nodeKey"></param>
-    /// <returns></returns>
-    private Address? GetAddress(byte[] nodeKey)
+    public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
     {
-        byte[] unpaddedNodeKey = ConvertPaddedHexToBytes(nodeKey.ToHexString());
-        Console.WriteLine($"Unpadded node key: {unpaddedNodeKey.ToHexString()}");
-        return new Address(unpaddedNodeKey.Slice(unpaddedNodeKey.Length - 20, 20));
+        Console.WriteLine($"Visiting branch node: {trieVisitContext.AbsolutePathIndex.ToArray().ToHexString(false, true)} {trieVisitContext.BranchChildIndex}");
+        if (trieVisitContext.BranchChildIndex.HasValue)
+        {
+            _currentPath.Add([(byte)trieVisitContext.BranchChildIndex.Value]);
+        }
+        else if (trieVisitContext.Level > 1 && _currentPath.Count > 0)
+        {
+            // Pop off last value when exiting branch. Since BranchChildIndex is only defined after each VisitBranch, we should not remove if
+            // we are at level 1
+            Console.WriteLine($"Exiting branch node, popping: {_currentPath[^1].ToHexString(false, true)}");
+            _currentPath.RemoveAt(_currentPath.Count - 1);
+        }
     }
 
+    public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+    {
+        if (node.Key is not null)
+        {
+            _currentPath.Add(Bytes.WithoutLeadingZeros(node.Key).ToArray());
+        }
+        else if (_currentPath.Count > 0)
+        {
+            // Pop off last value when exiting an extension node
+            _currentPath.RemoveAt(_currentPath.Count - 1);
+        }
+    }
+
+    private readonly AccountDecoder decoder = new();
 
     /// <summary>
     /// Converts a 0-padded hex string to a byte array, i.e. from '050502' to '552'.
@@ -81,42 +101,85 @@ public class AccountTreeMigrator : ITreeVisitor
             .ToArray();
     }
 
+    private byte[] ConstructFullHash(int branchIndex, byte[] nodeKey)
+    {
+        string branchPath = "";
+        if (!_currentPath.IsNullOrEmpty())
+        {
+            branchPath = _currentPath.ToArray().CombineBytes().ToHexString(false, noLeadingZeros: true);
+        }
+        string branchIndexHex = branchIndex.ToString("x");
+        string currentKey = ConvertPaddedHexToBytes(nodeKey.ToHexString()).ToHexString(false, noLeadingZeros: true);
+        string addressHash = branchPath + branchIndexHex + currentKey;
+
+        return Bytes.FromHexString(addressHash);
+    }
+
+    private byte[] ConstructFullHash(byte[] nodeKey)
+    {
+        string branchPath = "";
+        if (!_currentPath.IsNullOrEmpty())
+        {
+            branchPath = _currentPath.ToArray().CombineBytes().ToHexString(false, noLeadingZeros: true);
+        }
+        string currentKey = ConvertPaddedHexToBytes(nodeKey.ToHexString()).ToHexString(false, noLeadingZeros: true);
+        string addressHash = branchPath + currentKey;
+
+        return Bytes.FromHexString(addressHash);
+
+    }
 
     public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
-        Console.WriteLine($"Visiting leaf for node: {node}");
-
         if (!trieVisitContext.IsStorage)
         {
             Account account = decoder.Decode(new RlpStream(node.Value.ToArray()));
 
-            Address? address = GetAddress(node.Key);
-            if (address is null)
+            // Reconstruct the full keccak hash
+            byte[] addressHash;
+            if (trieVisitContext.BranchChildIndex.HasValue)
             {
-                Console.WriteLine($"Address is null for node: {node}");
-                return;
+                addressHash = ConstructFullHash(trieVisitContext.BranchChildIndex.Value, node.Key);
             }
-            Console.WriteLine($"Migrating account for {address} {node.Key.ToHexString()}");
-
-            MigrateAccount(address, account);
-
-            if (account.IsContract)
+            else
             {
-                MigrateContractCode(address, account.CodeHash);
+                addressHash = ConstructFullHash(node.Key);
+            }
+            byte[]? addressBytes = _preImageDb.Get(addressHash);
+            if (addressBytes is not null)
+            {
+                var address = new Address(addressBytes);
+                MigrateAccount(address, account);
+
+                if (account.IsContract)
+                {
+                    MigrateContractCode(address, account.CodeHash);
+                }
+
+                _lastAddress = address;
+                _lastAccount = account;
             }
         }
         else
         {
-            Address? address = GetAddress(node.Key);
-            if (address is null)
+            if (_lastAddress is null || _lastAccount is null)
             {
                 Console.WriteLine($"Address is null for storage node: {node}");
                 return;
             }
-            Console.WriteLine($"Migrating storage for {address} {node.Key.ToHexString()}");
+            // Reconstruct the full keccak hash
+            // byte[] storageHashFull;
+            // if (trieVisitContext.BranchChildIndex.HasValue)
+            // {
+            //     storageHashFull = ConstructFullHash(trieVisitContext.BranchChildIndex.Value, node.Key);
+            // }
+            // else
+            // {
+            //     storageHashFull = ConstructFullHash(node.Key);
+            // }
 
             byte[] storageValue = value.ToArray();
-            MigrateAccountStorage(address, node.Key.ToUInt256(), storageValue);
+            MigrateAccountStorage(_lastAddress, trieVisitContext.AbsolutePathIndex.ToArray().ToUInt256(), storageValue);
         }
     }
 
@@ -129,9 +192,11 @@ public class AccountTreeMigrator : ITreeVisitor
 
     private void MigrateContractCode(Address address, Hash256 codeHash)
     {
-        byte[] code = _stateReader.GetCode(codeHash);
-        Console.WriteLine($"Migrating code for {address} {codeHash.Bytes.ToHexString()}");
-        _verkleStateTree.SetCode(address, code);
+        byte[]? code = _stateReader.GetCode(codeHash);
+        if (code is not null)
+        {
+            _verkleStateTree.SetCode(address, code);
+        }
     }
 
     private void MigrateAccountStorage(Address address, UInt256 index, byte[] value)

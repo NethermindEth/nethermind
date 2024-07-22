@@ -86,14 +86,6 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
             Insert(key, chunk);
             chunkId += 1;
         }
-
-        // Update the account's CodeSize and CodeHash
-        AccountStruct? account = Get(address);
-        if (account.HasValue)
-        {
-            var newAccount = new Account(account.Value.Nonce, account.Value.Balance, account.Value.CodeSize, account.Value.Version, new Hash256(account.Value.StorageRoot), new Hash256(account.Value.CodeHash));
-            Set(address, newAccount);
-        }
     }
 
     public byte[] GetCode(Address address, Hash256? stateRoot = null)
@@ -103,7 +95,6 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
         while (true)
         {
             Hash256? key = AccountHeader.GetTreeKeyForCodeChunk(address.Bytes, chunkId);
-            Console.WriteLine($"Getting code chunk {key}");
 
             byte[] chunk = Get(key, stateRoot) ?? Array.Empty<byte>();
 
