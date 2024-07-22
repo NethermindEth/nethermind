@@ -119,8 +119,9 @@ public class VerkleRangeProofTests
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
 
-        tree.Accept(oldTreeDumper, new Hash256(Banderwagon.FromBytesUncompressedUnchecked(root).ToBytes()));
-        newTree.Accept(newTreeDumper, new Hash256(Banderwagon.FromBytesUncompressedUnchecked(root).ToBytes()));
+        Banderwagon banderwagonRoot = Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false);
+        tree.Accept(oldTreeDumper, new Hash256(banderwagonRoot.ToBytes()));
+        newTree.Accept(newTreeDumper, new Hash256(banderwagonRoot.ToBytes()));
         oldTreeDumper.ToString().Should().BeEquivalentTo(newTreeDumper.ToString());
     }
 
