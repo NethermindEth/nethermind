@@ -39,6 +39,8 @@ public class EofCodeInfo : ICodeInfo
             );
     }
 
+    public bool ValidateJump(int destination) => true;
+
     public EofCodeInfo(ICodeInfo codeInfo, in EofHeader header)
     {
         _codeInfo = codeInfo;

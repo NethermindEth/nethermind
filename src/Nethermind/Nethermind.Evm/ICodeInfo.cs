@@ -22,4 +22,5 @@ public interface ICodeInfo
     SectionHeader? ContainerSectionOffset(int idx);
     (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index) => (0, 0, 1024);
     void AnalyseInBackgroundIfRequired() { }
+    bool ValidateJump(int destination);
 }
