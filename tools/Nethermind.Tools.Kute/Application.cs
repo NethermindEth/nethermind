@@ -12,7 +12,6 @@ using Nethermind.Tools.Kute.ProgressReporter;
 using Nethermind.Tools.Kute.ResponseTracer;
 using System.Collections.Concurrent;
 using Nethermind.Tools.Kute.FlowManager;
-using System.Threading.Tasks;
 
 namespace Nethermind.Tools.Kute;
 
@@ -54,7 +53,7 @@ class Application
     {
         _progressReporter.ReportStart();
 
-        BlockingCollection<(Task<HttpResponseMessage>, JsonRpc)> responseTasks = new BlockingCollection<(Task<HttpResponseMessage>, JsonRpc)>();
+        BlockingCollection<(Task<HttpResponseMessage?>, JsonRpc)> responseTasks = new BlockingCollection<(Task<HttpResponseMessage?>, JsonRpc)>();
         var responseHandlingTask = Task.Run(async () =>
         {
             await Parallel.ForEachAsync(responseTasks.GetConsumingEnumerable(), async (task, ct) =>
@@ -121,7 +120,7 @@ class Application
         await _metricsConsumer.ConsumeMetrics(_metrics);
     }
 
-    public async Task AnalyzeRequest((Task<HttpResponseMessage>, JsonRpc) task)
+    public async Task AnalyzeRequest((Task<HttpResponseMessage?>, JsonRpc) task)
     {
         switch (task.Item2)
         {
@@ -133,12 +132,14 @@ class Application
                 }
             case JsonRpc.BatchJsonRpc batch:
                 {
-                    HttpResponseMessage content;
+                    HttpResponseMessage? content;
                     using (_metrics.TimeBatch())
                     {
                         content = await task.Item1;
                     }
-                    var deserialized = JsonSerializer.Deserialize<JsonDocument>(content.Content.ReadAsStream());
+                    var deserialized = content != null
+                        ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
+                        : null;
 
                     if (_validator.IsInvalid(batch, deserialized))
                     {
@@ -155,12 +156,15 @@ class Application
                 }
             case JsonRpc.SingleJsonRpc single:
                 {
-                    HttpResponseMessage content;
+                    HttpResponseMessage? content;
                     using (_metrics.TimeMethod(single.MethodName))
                     {
                         content = await task.Item1;
                     }
-                    var deserialized = JsonSerializer.Deserialize<JsonDocument>(content.Content.ReadAsStream());
+
+                    var deserialized = content != null
+                        ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
+                        : null;
 
                     if (single.MethodName is null)
                     {
