@@ -166,6 +166,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
     private readonly ICodeInfoRepository _codeInfoRepository;
     private IReleaseSpec _spec;
 
+    public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _spec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _state;
@@ -934,47 +935,14 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                     exceptionType = InstructionEnvUInt256<OpCallDataSize>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.CALLDATACOPY:
-                    {
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
-
-                        if (!result.IsZero)
-                        {
-                            if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, in result)) goto OutOfGas;
-
-                            slice = env.InputData.SliceWithZeroPadding(b, (int)result);
-                            _vmState.Memory.Save(in a, in slice);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                            {
-                                _txTracer.ReportMemoryChange((long)a, slice);
-                            }
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionCodeCopy<OpCallDataCopy>(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.CODESIZE:
                     exceptionType = InstructionEnvUInt256<OpCodeSize>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.CODECOPY:
-                    {
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
-
-                        if (!result.IsZero)
-                        {
-                            if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, result)) goto OutOfGas;
-
-                            slice = env.CodeInfo.MachineCode.SliceWithZeroPadding(in b, (int)result);
-                            _vmState.Memory.Save(in a, in slice);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, in slice);
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionCodeCopy<OpCodeCopy>(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.GASPRICE:
                     exceptionType = InstructionEnvUInt256<OpGasPrice>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
@@ -1040,42 +1008,8 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                         break;
                     }
                 case Instruction.EXTCODECOPY:
-                    {
-                        Address address = stack.PopAddress();
-                        if (address is null) goto StackUnderflow;
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-
-                        gasAvailable -= _spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
-
-                        if (!ChargeAccountAccessGas(ref gasAvailable, _vmState, address)) goto OutOfGas;
-
-                        if (!result.IsZero)
-                        {
-
-                            ReadOnlyMemory<byte> externalCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, _spec).MachineCode;
-
-                            if (_spec.IsEofEnabled && EvmObjectFormat.IsEof(externalCode.Span, out _))
-                            {
-                                slice = EOF.EvmObjectFormat.MAGIC.SliceWithZeroPadding(b, (int)result);
-                            }
-                            else
-                            {
-                                slice = externalCode.SliceWithZeroPadding(b, (int)result);
-                            }
-
-                            if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, result)) goto OutOfGas;
-                            _vmState.Memory.Save(in a, in slice);
-
-                            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                            {
-                                _txTracer.ReportMemoryChange((long)a, in slice);
-                            }
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionExtCodeCopy(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.RETURNDATASIZE:
                     {
                         if (!_spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;

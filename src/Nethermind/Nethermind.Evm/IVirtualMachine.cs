@@ -23,5 +23,6 @@ namespace Nethermind.Evm
         ITxTracer TxTracer { get; }
         IWorldState WorldState { get; }
         ReadOnlySpan<byte> ChainId { get; }
+        ICodeInfoRepository CodeInfoRepository { get; }
     }
 }

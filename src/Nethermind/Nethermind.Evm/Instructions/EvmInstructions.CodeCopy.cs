@@ -5,8 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.Evm.Tracing;
-using static Nethermind.Evm.VirtualMachine;
+using Nethermind.Evm.EOF;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -30,12 +29,12 @@ internal sealed partial class EvmInstructions
         if (!result.IsZero)
         {
             if (!UpdateMemoryCost(vm.State, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
-            ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vmState).SliceWithZeroPadding(in b, (int)result);
+            ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm).SliceWithZeroPadding(in b, (int)result);
             vm.State.Memory.Save(in a, in slice);
-            //if (vmState.TxTracer.IsTracingInstructions)
-            //{
-            //    vmState.TxTracer.ReportMemoryChange((long)a, in slice);
-            //}
+            if (vm.TxTracer.IsTracingInstructions)
+            {
+              vm.TxTracer.ReportMemoryChange((long)a, in slice);
+            }
         }
 
         return EvmExceptionType.None;
@@ -47,10 +46,10 @@ internal sealed partial class EvmInstructions
             => vm.State.Env.InputData.Span;
     }
 
-    public struct OpCallCopy : IOpCodeCopy
+    public struct OpCodeCopy : IOpCodeCopy
     {
         public static ReadOnlySpan<byte> GetCode(IEvm vm)
-            => vm.State.CodeInfo.MachineCode.Span;
+            => vm.State.Env.CodeInfo.MachineCode.Span;
     }
 
     [SkipLocalsInit]
@@ -71,7 +70,11 @@ internal sealed partial class EvmInstructions
         {
             if (!UpdateMemoryCost(vm.State, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
 
-            ReadOnlySpan<byte> externalCode = vm.GetCachedCodeInfo(vmState.WorldState, address, spec).MachineCode.Span;
+            ReadOnlySpan<byte> externalCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, spec).MachineCode.Span;
+            if (spec.IsEofEnabled && EvmObjectFormat.IsEof(externalCode, out _))
+            {
+                externalCode = EvmObjectFormat.MAGIC;
+            }
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
             vm.State.Memory.Save(in a, in slice);
             if (vm.TxTracer.IsTracingInstructions)

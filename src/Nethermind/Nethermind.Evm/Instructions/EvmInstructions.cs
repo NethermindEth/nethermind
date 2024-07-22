@@ -217,7 +217,6 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-
     public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
