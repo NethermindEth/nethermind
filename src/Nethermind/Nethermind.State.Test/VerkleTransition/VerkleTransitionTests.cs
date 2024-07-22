@@ -5,19 +5,18 @@ using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.VerkleTransition;
 using Nethermind.Trie.Pruning;
-using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree.TreeStore;
 using NUnit.Framework;
 
@@ -88,32 +87,35 @@ public class MerkleToVerkleTransitionTests
         migratedAccount.Value.Balance.Should().Be(account.Balance);
         migratedAccount.Value.Nonce.Should().Be(account.Nonce);
         migratedAccount.Value.CodeHash.Should().Be(account.CodeHash);
+
+        _verkleStateTree.StateRoot.Should().NotBe(Hash256.Zero);
     }
 
     [Test]
     public void Can_migrate_multiple_accounts()
     {
-        Account account1 = new Account(0).WithChangedBalance(1);
-        Account account2 = new Account(1).WithChangedBalance(2);
-        _merkleStateTree.Set(TestItem.AddressA, account1);
-        _merkleStateTree.Set(TestItem.AddressB, account2);
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF];
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            Account account = new Account((UInt256)i).WithChangedBalance((UInt256)i + 1).WithChangedNonce((UInt256)i + 2).WithChangedCodeHash(Keccak.Compute(i.ToBigEndianByteArray()));
+            _merkleStateTree.Set(addresses[i], account);
+            _preImageDb.Set(Keccak.Compute(addresses[i].Bytes).Bytes, addresses[i].Bytes);
+        }
         _merkleStateTree.Commit(0);
-        _preImageDb.Set(Keccak.Compute(TestItem.AddressA.Bytes).Bytes, TestItem.AddressA.Bytes);
-        _preImageDb.Set(Keccak.Compute(TestItem.AddressB.Bytes).Bytes, TestItem.AddressB.Bytes);
-
-        _preImageDb.GetAll().ForEach(kv => Console.WriteLine($"preimage db key: {kv.Key.ToHexString()} value: {kv.Value.ToHexString()}"));
-
         _merkleStateTree.Accept(_migrator, _merkleStateTree.RootHash);
         _migrator.FinalizeMigration(0);
 
-        AccountStruct? migratedAccount1 = _verkleStateTree.Get(TestItem.AddressA);
-        AccountStruct? migratedAccount2 = _verkleStateTree.Get(TestItem.AddressB);
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            AccountStruct? migratedAccount = _verkleStateTree.Get(addresses[i]);
+            migratedAccount.Should().NotBeNull();
+            migratedAccount.Value.IsTotallyEmpty.Should().BeFalse();
+            migratedAccount.Value.Balance.Should().Be((UInt256)i + 1);
+            migratedAccount.Value.Nonce.Should().Be((UInt256)i + 2);
+            migratedAccount.Value.CodeHash.Should().Be(Keccak.Compute(i.ToBigEndianByteArray()));
+        }
 
-        migratedAccount1.Should().NotBeNull();
-        migratedAccount1.Value.Balance.Should().Be(account1.Balance);
-
-        migratedAccount2.Should().NotBeNull();
-        migratedAccount2.Value.Balance.Should().Be(account2.Balance);
+        _verkleStateTree.StateRoot.Should().NotBe(Hash256.Zero);
     }
 
     [Test]
@@ -130,6 +132,10 @@ public class MerkleToVerkleTransitionTests
         storageTree.Commit(0);
 
         _preImageDb.Set(Keccak.Compute(TestItem.AddressA.Bytes).Bytes, TestItem.AddressA.Bytes);
+        var storageAKey = GetStorageKey(1);
+        var storageBKey = GetStorageKey(2);
+        _preImageDb.Set(storageAKey, [1]);
+        _preImageDb.Set(storageBKey, [2]);
 
         account = account.WithChangedStorageRoot(storageTree.RootHash);
 
@@ -142,8 +148,8 @@ public class MerkleToVerkleTransitionTests
         AccountStruct? migratedAccount = _verkleStateTree.Get(TestItem.AddressA);
         migratedAccount.Should().NotBeNull();
 
-        var storageValue1 = _verkleStateTree.Get(TestItem.AddressA, 1, storageTree.RootHash);
-        var storageValue2 = _verkleStateTree.Get(TestItem.AddressA, 2, storageTree.RootHash);
+        var storageValue1 = _verkleStateTree.Get(TestItem.AddressA, 1, storageTree.RootHash).AsRlpStream().DecodeByteArraySpan().ToArray();
+        var storageValue2 = _verkleStateTree.Get(TestItem.AddressA, 2, storageTree.RootHash).AsRlpStream().DecodeByteArraySpan().ToArray();
 
         storageValue1.Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
         storageValue2.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
@@ -166,8 +172,7 @@ public class MerkleToVerkleTransitionTests
         AccountStruct? migratedAccount = _verkleStateTree.Get(TestItem.AddressA);
         migratedAccount.Should().NotBeNull();
         migratedAccount.Value.CodeHash.Should().Be(account.CodeHash);
-        // TODO: why is CodeSize not set?
-        // migratedAccount.Value.CodeSize.Should().Be(account.CodeSize);
+        migratedAccount.Value.CodeSize.Should().Be((UInt256)code.Length);
         migratedAccount.Value.HasCode.Should().BeTrue();
 
         byte[] migratedCode = _verkleStateTree.GetCode(TestItem.AddressA);
@@ -197,15 +202,11 @@ public class MerkleToVerkleTransitionTests
         _preImageDb.Set(Keccak.Compute(TestItem.AddressA.Bytes).Bytes, TestItem.AddressA.Bytes);
         _preImageDb.Set(Keccak.Compute(TestItem.AddressB.Bytes).Bytes, TestItem.AddressB.Bytes);
 
-        Hash256 merkleRootBefore = _merkleStateTree.RootHash;
 
         _merkleStateTree.Accept(_migrator, _merkleStateTree.RootHash);
         _migrator.FinalizeMigration(0);
 
-        Hash256 verkleRootAfter = _verkleStateTree.StateRoot;
-
-        verkleRootAfter.Should().NotBe(Hash256.Zero);
-        verkleRootAfter.Should().NotBe(merkleRootBefore);
+        _verkleStateTree.StateRoot.Should().NotBe(Hash256.Zero);
 
         // Verify that the accounts exist in the Verkle tree
         AccountStruct? migratedAccount1 = _verkleStateTree.Get(TestItem.AddressA);
@@ -233,5 +234,15 @@ public class MerkleToVerkleTransitionTests
             }
         }
         return true;
+    }
+
+    private static byte[] GetStorageKey(UInt256 index)
+    {
+        Span<byte> key = stackalloc byte[32];
+        Span<byte> buffer = stackalloc byte[32];
+        index.ToBigEndian(buffer);
+        byte[] hash = Keccak.Compute(buffer).BytesToArray();
+        hash.CopyTo(key);
+        return key.ToArray();
     }
 }
