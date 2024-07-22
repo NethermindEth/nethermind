@@ -24,7 +24,7 @@ public class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc?>
                     yield return jsonRpc;
                     break;
                 case JsonRpc.BatchJsonRpc batch:
-                    foreach (JsonRpc.SingleJsonRpc single in batch.Items())
+                    foreach (JsonRpc.SingleJsonRpc? single in batch.Items())
                     {
                         yield return single;
                     }
