@@ -3,16 +3,21 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Compression;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -21,6 +26,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -31,7 +37,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
 {
     private readonly ISyncConfig _syncConfig;
     private readonly IL1OriginStore _l1OriginStore;
-    private readonly IBlockchainProcessor _chainProcessor;
+    private readonly ReadOnlyTxProcessingEnv _readonlyTxProcessingEnv;
 
     public TaikoRpcModule(
         IJsonRpcConfig rpcConfig,
@@ -50,7 +56,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
         ulong? secondsPerSlot,
         ISyncConfig syncConfig,
         IL1OriginStore l1OriginStore,
-        IBlockchainProcessor chainProcessor) : base(
+        ReadOnlyTxProcessingEnv readonlyTxProcessingEnv) : base(
        rpcConfig,
        blockchainBridge,
        blockFinder,
@@ -68,7 +74,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
     {
         _syncConfig = syncConfig;
         _l1OriginStore = l1OriginStore;
-        _chainProcessor = chainProcessor;
+        _readonlyTxProcessingEnv = readonlyTxProcessingEnv;
     }
 
     public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(_syncConfig switch
@@ -123,7 +129,9 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        var block = new TxListBlock(new BlockHeader(
+        using IReadOnlyTxProcessingScope scope = _readonlyTxProcessingEnv.Build(Keccak.EmptyTreeHash);
+
+        return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 beneficiary,
@@ -137,11 +145,128 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             BaseFeePerGas = baseFee,
             StateRoot = head.StateRoot,
             IsPostMerge = true,
-        }, source, maxTransactionsLists, maxBytesPerTxList);
+        }, source, maxTransactionsLists, maxBytesPerTxList));
+    }
 
 
-        return ResultWrapper<PreBuiltTxList[]?>.Success(_chainProcessor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance) is not TxListBlock processed ?
-            [] :
-            processed.Batches.ToArray());
+    private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
+
+    public PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, List<KeyValuePair<AddressAsKey, Queue<Transaction>>> txSource, int maxBatchCount, ulong maxBytesPerTxList)
+    {
+        lock (worldState)
+        {
+            if (txSource.Count is 0 || blockHeader.StateRoot is null)
+            {
+                return [];
+            }
+
+            List<PreBuiltTxList> Batches = [];
+
+            List<Transaction> currentBatch = [];
+
+            void CommitBatch()
+            {
+                byte[] list = EncodeAndCompress(currentBatch.ToArray());
+                Batches.Add(new PreBuiltTxList(list, (ulong)blockHeader.GasUsed, list.Length));
+                currentBatch = [];
+                blockHeader.GasUsed = 0;
+            }
+
+            bool TryAddToBatch(Transaction tx)
+            {
+                currentBatch.Add(tx);
+
+                byte[] compressed = EncodeAndCompress(currentBatch.ToArray());
+
+                if ((ulong)compressed.LongLength > maxBytesPerTxList)
+                {
+                    currentBatch.RemoveAt(currentBatch.Count - 1);
+                    return false;
+                }
+
+                return true;
+            }
+
+            BlockExecutionContext blkCtx = new(blockHeader);
+            worldState.StateRoot = blockHeader.StateRoot;
+
+            for (int senderCounter = 0; senderCounter < txSource.Count; senderCounter++)
+            {
+                while (txSource[senderCounter].Value.Count != 0)
+                {
+                    Snapshot snapshot = worldState.TakeSnapshot(true);
+                    Transaction tx = txSource[senderCounter].Value.Peek();
+
+                    if (tx.Type == TxType.Blob)
+                    {
+                        txSource[senderCounter].Value.Clear();
+                        break;
+                    }
+
+                    try
+                    {
+                        if (!txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance))
+                        {
+                            txSource[senderCounter].Value.Clear();
+                            worldState.Restore(snapshot);
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        txSource[senderCounter].Value.Clear();
+                        worldState.Restore(snapshot);
+                        break;
+                    }
+
+                    if (TryAddToBatch(tx))
+                    {
+                        txSource[senderCounter].Value.Dequeue();
+                    }
+                    else
+                    {
+                        if (!currentBatch.Any())
+                        {
+                            txSource[senderCounter].Value.Clear();
+                            worldState.Restore(snapshot);
+                        }
+                        else
+                        {
+                            CommitBatch();
+                            worldState.Restore(snapshot);
+                            if (maxBatchCount <= Batches.Count)
+                            {
+                                return Batches.ToArray();
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (currentBatch.Any())
+            {
+                CommitBatch();
+            }
+
+            return Batches.ToArray();
+        }
+    }
+
+    byte[] EncodeAndCompress(Transaction[] txs)
+    {
+        int contentLength = txs.Sum(tx => _txDecoder.GetLength(tx, RlpBehaviors.None));
+        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+
+        rlpStream.StartSequence(contentLength);
+        foreach (Transaction tx in txs)
+        {
+            _txDecoder.Encode(rlpStream, tx);
+        }
+
+        using MemoryStream stream = new();
+        using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
+        compressingStream.Write(rlpStream.Data);
+        compressingStream.Close();
+        return stream.ToArray();
     }
 }
