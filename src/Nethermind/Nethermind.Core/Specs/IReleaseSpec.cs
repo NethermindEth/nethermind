@@ -437,5 +437,7 @@ namespace Nethermind.Core.Specs
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+
+        public object? EvmInstructions { get; set; }
     }
 }

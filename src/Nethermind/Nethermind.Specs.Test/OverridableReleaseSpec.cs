@@ -184,5 +184,7 @@ namespace Nethermind.Specs.Test
         public bool IsEofEnabled => _spec.IsEofEnabled;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
+
+        public object? EvmInstructions { get => _spec.EvmInstructions; set => _spec.EvmInstructions = value; }
     }
 }

@@ -140,5 +140,6 @@ namespace Nethermind.Specs
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
+        public object EvmInstructions { get; set; }
     }
 }

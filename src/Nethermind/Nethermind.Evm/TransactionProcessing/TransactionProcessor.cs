@@ -641,9 +641,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 using (EvmState state = EvmState.RentTopLevel(unspentGas, executionType, snapshot, env, accessedItems))
                 {
-                    substate = !tracer.IsTracingActions
-                        ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
-                        : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
+                    substate = VirtualMachine.Run(state, WorldState, tracer);
 
                     unspentGas = state.GasAvailable;
 
