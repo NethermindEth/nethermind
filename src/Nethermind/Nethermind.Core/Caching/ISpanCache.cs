@@ -31,5 +31,6 @@ namespace Nethermind.Core.Caching
         /// <returns>True if key existed in the cache, otherwise false.</returns>
         bool Delete(ReadOnlySpan<TKey> key);
         bool Contains(ReadOnlySpan<TKey> key);
+        int Count { get; }
     }
 }

@@ -10,6 +10,8 @@ namespace Nethermind.Config;
 public interface IProcessExitSource
 {
     public void Exit(int exitCode);
+
+    public CancellationToken Token { get; }
 }
 
 public class ProcessExitSource : IProcessExitSource

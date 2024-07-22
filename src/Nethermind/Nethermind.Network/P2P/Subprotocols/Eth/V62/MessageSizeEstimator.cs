@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return 100UL + (ulong)(tx.Data?.Length ?? 0);
         }
 
-        public static ulong EstimateSize(Block block)
+        public static ulong EstimateSize(Block? block)
         {
             if (block is null)
             {

@@ -126,9 +126,10 @@ namespace Nethermind.Core
                 LogEntry logEntry = logEntries[entryIndex];
                 byte[] addressBytes = logEntry.LoggersAddress.Bytes;
                 Set(addressBytes, blockBloom);
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                Hash256[] topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    Hash256 topic = logEntry.Topics[topicIndex];
+                    Hash256 topic = topics[topicIndex];
                     Set(topic.Bytes, blockBloom);
                 }
             }
@@ -148,9 +149,10 @@ namespace Nethermind.Core
         {
             if (Matches(logEntry.LoggersAddress))
             {
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                Hash256[] topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    if (!Matches(logEntry.Topics[topicIndex]))
+                    if (!Matches(topics[topicIndex]))
                     {
                         return false;
                     }
@@ -236,7 +238,7 @@ namespace Nethermind.Core
 
         public ReadOnlySpan<byte> Bytes { get; }
 
-        public bool Matches(ReadOnlySpan<byte> sequence)
+        public readonly bool Matches(ReadOnlySpan<byte> sequence)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             return Matches(in indexes);
@@ -281,13 +283,14 @@ namespace Nethermind.Core
             return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
         }
 
-        public bool Matches(LogEntry logEntry)
+        public readonly bool Matches(LogEntry logEntry)
         {
             if (Matches(logEntry.LoggersAddress))
             {
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                Hash256[] topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    if (!Matches(logEntry.Topics[topicIndex]))
+                    if (!Matches(topics[topicIndex]))
                     {
                         return false;
                     }
@@ -306,9 +309,9 @@ namespace Nethermind.Core
             return Bytes[bytePosition].GetBit(shift);
         }
 
-        public bool Matches(Address address) => Matches(address.Bytes);
+        public readonly bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Hash256 topic) => Matches(topic.Bytes);
+        public readonly bool Matches(Hash256 topic) => Matches(topic.Bytes);
 
         public readonly bool Matches(in Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 

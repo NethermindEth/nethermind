@@ -18,5 +18,5 @@ public static class PeerInfoExtensions
     public static bool CanGetSnapData(this PeerInfo peerInfo) => peerInfo.SyncPeer.CanGetSnapData();
 
     public static bool CanGetSnapData(this ISyncPeer peer) =>
-        peer.ClientType != NodeClientType.Nethermind && peer.TryGetSatelliteProtocol<object>(Protocol.Snap, out _);
+        peer.TryGetSatelliteProtocol<object>(Protocol.Snap, out _);
 }

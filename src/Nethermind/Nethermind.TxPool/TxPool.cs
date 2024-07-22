@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -19,6 +20,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
+
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -42,6 +45,7 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _accounts;
+        private readonly AccountCache _accountCache;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
@@ -52,7 +56,8 @@ namespace Nethermind.TxPool
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
-        private readonly Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
+        private readonly UpdateGroupDelegate _updateBucket;
+        private readonly UpdateGroupDelegate _updateBucketAdded;
 
         /// <summary>
         /// Indexes transactions
@@ -62,6 +67,8 @@ namespace Nethermind.TxPool
         private readonly ITimer? _timer;
         private Transaction[]? _transactionSnapshot;
         private Transaction[]? _blobTransactionSnapshot;
+        private long _lastBlockNumber = -1;
+        private Hash256? _lastBlockHash;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -94,7 +101,7 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
-            _accounts = _headInfo.AccountStateProvider;
+            _accounts = _accountCache = new AccountCache(_headInfo.AccountStateProvider);
             _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -102,6 +109,7 @@ namespace Nethermind.TxPool
 
             // Capture closures once rather than per invocation
             _updateBucket = UpdateBucket;
+            _updateBucketAdded = UpdateBucketWithAddedTransaction;
 
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
@@ -160,10 +168,10 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
-        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
 
-        public IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -202,6 +210,23 @@ namespace Nethermind.TxPool
                     {
                         try
                         {
+                            ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
+                            if (!CanUseCache(args.Block, accountChanges))
+                            {
+                                // Not sequential block, reset cache
+                                _accountCache.Reset();
+                            }
+                            else
+                            {
+                                // Sequential block, just remove changed accounts from cache
+                                _accountCache.RemoveAccounts(accountChanges);
+                            }
+                            args.Block.AccountChanges = null;
+                            accountChanges?.Dispose();
+
+                            _lastBlockNumber = args.Block.Number;
+                            _lastBlockHash = args.Block.Hash;
+
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
@@ -214,6 +239,11 @@ namespace Nethermind.TxPool
                             if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                         }
                     }
+                }
+
+                bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
+                {
+                    return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
                 }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
@@ -379,7 +409,7 @@ namespace Nethermind.TxPool
 
             TxFilteringState state = new(tx, _accounts);
 
-            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, state);
+            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, ref state);
 
             if (!accepted)
             {
@@ -387,7 +417,7 @@ namespace Nethermind.TxPool
             }
             else
             {
-                accepted = AddCore(tx, state, startBroadcast);
+                accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
                     // Clear proper snapshot
@@ -401,12 +431,12 @@ namespace Nethermind.TxPool
             return accepted;
         }
 
-        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
+        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+                AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted)
                 {
@@ -418,7 +448,7 @@ namespace Nethermind.TxPool
             filters = _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+                AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted) return accepted;
             }
@@ -426,7 +456,7 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private AcceptTxResult AddCore(Transaction tx, TxFilteringState state, bool isPersistentBroadcast)
+        private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
             bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
@@ -450,17 +480,20 @@ namespace Nethermind.TxPool
             if (tx.Hash == removed?.Hash)
             {
                 // it means it was added and immediately evicted - pool was full of better txs
-                if (isPersistentBroadcast)
+                if (!isPersistentBroadcast || tx.SupportsBlobs || !_broadcaster.Broadcast(tx, true))
                 {
                     // we are adding only to persistent broadcast - not good enough for standard pool,
                     // but can be good enough for TxBroadcaster pool - for local txs only
-                    _broadcaster.Broadcast(tx, isPersistentBroadcast);
+                    Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
+                    return AcceptTxResult.FeeTooLowToCompete;
                 }
-                Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
-                return AcceptTxResult.FeeTooLowToCompete;
+                else
+                {
+                    return AcceptTxResult.Accepted;
+                }
             }
 
-            relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
+            relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
             Metrics.PendingTransactionsAdded++;
             if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
             if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
@@ -484,23 +517,19 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucketWithAddedTransaction(
-            Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
+        private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
 
-                foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
-                {
-                    yield return changedTx;
-                }
+                UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
             }
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateGasBottleneck(
-            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance)
+        private void UpdateGasBottleneck(
+            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance, Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -513,7 +542,7 @@ namespace Nethermind.TxPool
                 if (tx.Nonce < currentNonce)
                 {
                     _broadcaster.StopBroadcast(tx.Hash!);
-                    yield return (tx, null);
+                    updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                 }
                 else
                 {
@@ -535,14 +564,14 @@ namespace Nethermind.TxPool
                         {
                             // balance too low, remove tx from the pool
                             _broadcaster.StopBroadcast(tx.Hash!);
-                            yield return (tx, null);
+                            updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                         }
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx, gasBottleneck);
+                        updateTx(transactions, tx, gasBottleneck, lastElement);
                     }
 
                     previousTxBottleneck = gasBottleneck;
@@ -557,7 +586,7 @@ namespace Nethermind.TxPool
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
+        private void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             if (transactions.Count != 0)
             {
@@ -597,15 +626,13 @@ namespace Nethermind.TxPool
                         // transaction removed from TxPool because of insufficient balance should have opportunity
                         // to come back in the future, so it is removed from long term cache as well.
                         _hashCache.DeleteFromLongTerm(transaction.Hash!);
-                        yield return (transaction, null);
+
+                        updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
                     }
                 }
                 else
                 {
-                    foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
-                    {
-                        yield return changedTx;
-                    }
+                    UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
                 }
             }
         }
@@ -641,17 +668,13 @@ namespace Nethermind.TxPool
             ? _blobTransactions.ContainsKey(hash)
             : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
 
-        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
-        {
-            return _transactions.TryGetValue(hash, out transaction)
-                    || _blobTransactions.TryGetValue(hash, out transaction)
-                    || _broadcaster.TryGetPersistentTx(hash, out transaction);
-        }
+        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
+            _transactions.TryGetValue(hash, out transaction)
+            || _blobTransactions.TryGetValue(hash, out transaction)
+            || _broadcaster.TryGetPersistentTx(hash, out transaction);
 
-        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
-        {
-            return _blobTransactions.TryGetValue(hash, out blobTransaction);
-        }
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
+            _blobTransactions.TryGetValue(hash, out blobTransaction);
 
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
@@ -661,7 +684,7 @@ namespace Nethermind.TxPool
         // maybe it should use NonceManager, as it already has info about local txs?
         public UInt256 GetLatestPendingNonce(Address address)
         {
-            UInt256 maxPendingNonce = _accounts.GetAccount(address).Nonce;
+            UInt256 maxPendingNonce = _accounts.GetNonce(address);
 
             bool hasPendingTxs = _transactions.GetBucketCount(address) > 0;
             if (!hasPendingTxs && !(_blobTransactions.GetBucketCount(address) > 0))
@@ -729,7 +752,7 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
+                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256AsKey, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
                     .PadLeft(8));
         }
 
@@ -738,6 +761,74 @@ namespace Nethermind.TxPool
             WriteTxPoolReport(_logger);
 
             _timer!.Enabled = true;
+        }
+
+        internal void ResetAddress(Address address)
+        {
+            ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
+            arrayPoolList.Add(address);
+            _accountCache.RemoveAccounts(arrayPoolList);
+        }
+
+        private sealed class AccountCache : IAccountStateProvider
+        {
+            private readonly IAccountStateProvider _provider;
+            private readonly ClockCache<AddressAsKey, AccountStruct>[] _caches;
+
+            public AccountCache(IAccountStateProvider provider)
+            {
+                _provider = provider;
+                _caches = new ClockCache<AddressAsKey, AccountStruct>[16];
+                for (int i = 0; i < _caches.Length; i++)
+                {
+                    // Cache per nibble to reduce contention as TxPool is very parallel
+                    _caches[i] = new ClockCache<AddressAsKey, AccountStruct>(1_024);
+                }
+            }
+
+            public bool TryGetAccount(Address address, out AccountStruct account)
+            {
+                var cache = _caches[GetCacheIndex(address)];
+                if (!cache.TryGet(new AddressAsKey(address), out account))
+                {
+                    if (!_provider.TryGetAccount(address, out account))
+                    {
+                        cache.Set(address, AccountStruct.TotallyEmpty);
+                        return false;
+                    }
+                    cache.Set(address, account);
+                }
+                else
+                {
+                    Db.Metrics.IncrementStateTreeCacheHits();
+                }
+
+                return true;
+            }
+
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
+            {
+                Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
+                    n =>
+                    {
+                        ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
+                        foreach (AddressAsKey a in n)
+                        {
+                            cache.Delete(a);
+                        }
+                    }
+                );
+            }
+
+            private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
+
+            public void Reset()
+            {
+                for (int i = 0; i < _caches.Length; i++)
+                {
+                    _caches[i].Clear();
+                }
+            }
         }
 
         private static void WriteTxPoolReport(in ILogger logger)
@@ -808,8 +899,8 @@ Amounts:
 * Blobs:                {Metrics.BlobsInBlock,24:N0}
 ------------------------------------------------
 Db usage:
-* BlobDb writes:        {Db.Metrics.BlobTransactionsDbWrites,24:N0}
-* BlobDb reads:         {Db.Metrics.BlobTransactionsDbReads,24:N0}
+* BlobDb writes:        {Db.Metrics.DbWrites.GetValueOrDefault("BlobTransactions"),24:N0}
+* BlobDb reads:         {Db.Metrics.DbReads.GetValueOrDefault("BlobTransactions"),24:N0}
 ------------------------------------------------
 ");
         }

@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";
 
-        protected override IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address, Transaction[]> pendingTransactions, IComparer<Transaction> comparer)
+        protected override IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer)
         {
             if (_logger.IsTrace)
             {

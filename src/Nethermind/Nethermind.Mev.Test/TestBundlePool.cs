@@ -74,6 +74,10 @@ namespace Nethermind.Mev.Test
 
     public class MockProvider : IAccountStateProvider
     {
-        public AccountStruct GetAccount(Address address) => new(0);
+        public bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            account = AccountStruct.TotallyEmpty;
+            return false;
+        }
     }
 }

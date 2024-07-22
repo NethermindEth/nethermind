@@ -4,6 +4,7 @@ using App.Metrics.Formatters.Json;
 using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
+using Nethermind.Tools.Kute.FlowManager;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
@@ -49,7 +50,14 @@ static class Program
             )
         );
         collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(config.MessagesFilePath));
-        collection.AddSingleton<IMessageProvider<JsonRpc?>, JsonRpcMessageProvider>();
+        collection.AddSingleton<IMessageProvider<JsonRpc?>>(serviceProvider =>
+        {
+            var messageProvider = serviceProvider.GetRequiredService<IMessageProvider<string>>();
+            bool unwrapBatches = config.UnwrapBatch;
+            return new JsonRpcMessageProvider(messageProvider, unwrapBatches);
+        });
+
+
         collection.AddSingleton<IJsonRpcValidator>(
             config.DryRun
                 ? new NullJsonRpcValidator()
@@ -97,7 +105,7 @@ static class Program
                 // - A second one to actually process each message.
                 // We can reduce the cost by not parsing each message on the first enumeration
                 // At the same time, this optimization relies on implementation details.
-                var messagesProvider = provider.GetRequiredService<IMessageProvider<string>>();
+                var messagesProvider = provider.GetRequiredService<IMessageProvider<JsonRpc?>>();
                 var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
                 return new ConsoleProgressReporter(totalMessages);
             }
@@ -113,6 +121,8 @@ static class Program
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );
+
+        collection.AddSingleton<IJsonRpcFlowManager>(new JsonRpcFlowManager(config.RequestsPerSecond, config.UnwrapBatch));
 
         return collection.BuildServiceProvider();
     }

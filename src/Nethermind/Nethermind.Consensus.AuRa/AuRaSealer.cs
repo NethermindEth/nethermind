@@ -74,8 +74,8 @@ namespace Nethermind.Consensus.AuRa
 
             bool IsThisNodeTurn(long step)
             {
-                var validators = _validatorStore.GetValidators();
-                return _validSealerStrategy.IsValidSealer(validators, _signer.Address, step);
+                Address[] validators = _validatorStore.GetValidators();
+                return _validSealerStrategy.IsValidSealer(validators, _signer.Address, step, out _);
             }
 
             long currentStep = _auRaStepCalculator.CurrentStep;

@@ -24,7 +24,7 @@ public interface ITxPoolConfig : IConfig
                       - `InMemory`: Blob transactions stored only in memory
                       - `Storage`: Blob transactions stored in db
                       - `StorageWithReorgs`: Blob transactions stored in db with support for restoring reorganized blob transactions to blob pool
-                      """, DefaultValue = "Disabled")]
+                      """, DefaultValue = "StorageWithReorgs")]
     BlobsSupportMode BlobsSupport { get; set; }
 
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]

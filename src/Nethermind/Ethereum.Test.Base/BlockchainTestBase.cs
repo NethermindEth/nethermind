@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -142,14 +143,16 @@ namespace Ethereum.Test.Base
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, _logManager);
             ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+            CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
+                codeInfoRepository,
                 _logManager);
 
             IBlockProcessor blockProcessor = new BlockProcessor(
@@ -161,11 +164,12 @@ namespace Ethereum.Test.Base
                         specProvider,
                         stateProvider,
                         virtualMachine,
+                        codeInfoRepository,
                         _logManager),
                     stateProvider),
                 stateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(specProvider, stateProvider),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
@@ -181,15 +185,13 @@ namespace Ethereum.Test.Base
             stopwatch?.Start();
             List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
 
-            if (test.GenesisRlp == null)
-            {
-                test.GenesisRlp = Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-            }
+            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
+
             blockTree.NewHeadBlock += (_, args) =>
             {
                 if (args.Block.Number == 0)
@@ -214,7 +216,7 @@ namespace Ethereum.Test.Base
                 {
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block))
+                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, out _))
                     {
                         blockTree.SuggestBlock(correctRlp[i].Block);
                     }
@@ -270,7 +272,6 @@ namespace Ethereum.Test.Base
                     if (testBlockJson.BlockHeader is not null)
                     {
                         Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
-
 
                         for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                         {
@@ -339,13 +340,13 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
         {
-            if (test.PostStateRoot != null)
+            if (test.PostStateRoot is not null)
             {
                 return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
             }
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
-                                                     .Where(b => b.BlockHeader != null)
+                                                     .Where(b => b.BlockHeader is not null)
                                                      .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
             BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
             List<string> differences = new();

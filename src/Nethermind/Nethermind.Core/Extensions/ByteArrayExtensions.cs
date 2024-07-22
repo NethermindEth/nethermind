@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Extensions
 {
@@ -34,7 +35,7 @@ namespace Nethermind.Core.Extensions
         {
             if (length == 1)
             {
-                return new[] { bytes[startIndex] };
+                return [bytes[startIndex]];
             }
 
             byte[] slice = new byte[length];
@@ -69,5 +70,6 @@ namespace Nethermind.Core.Extensions
             bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan(0, copiedFragmentLength));
             return slice;
         }
+
     }
 }

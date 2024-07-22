@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -19,14 +17,17 @@ public class McsLock
     /// <summary>
     /// Thread-local storage to ensure each thread has its own node instance.
     /// </summary>
-    private readonly ThreadLocal<ThreadNode> _node = new(() => new ThreadNode());
+    private readonly ThreadLocal<ThreadNode> _node;
 
     /// <summary>
     /// Points to the last node in the queue (tail). Used to manage the queue of waiting threads.
     /// </summary>
     private volatile ThreadNode? _tail;
 
-    internal volatile Thread? currentLockHolder = null;
+    public McsLock()
+    {
+        _node = new(() => new ThreadNode(this));
+    }
 
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
@@ -34,63 +35,62 @@ public class McsLock
     /// </summary>
     public Disposable Acquire()
     {
-        // Check for reentrancy.
-        if (Thread.CurrentThread == currentLockHolder)
-            ThrowInvalidOperationException();
-
         ThreadNode node = _node.Value!;
-        node.Locked = true;
+
+        node.State = (nuint)LockState.Waiting;
 
         ThreadNode? predecessor = Interlocked.Exchange(ref _tail, node);
         if (predecessor is not null)
         {
-            // If there was a previous tail, it means the lock is already held by someone.
-            // Set this node as the next node of the predecessor.
-            predecessor.Next = node;
+            WaitForUnlock(node, predecessor);
+        }
 
-            // Busy-wait (spin) until our 'Locked' flag is set to false by the thread
-            // that is releasing the lock.
-            SpinWait sw = default;
-            // This lock is more scalable than regular locks as each thread
-            // spins on their own local flag rather than a shared flag for
-            // lower cpu cache thrashing. Drawback is it is a strict queue and
-            // the next thread in line may be sleeping when lock is released.
-            while (node.Locked)
+        return new Disposable(node);
+    }
+
+    private static void WaitForUnlock(ThreadNode node, ThreadNode predecessor)
+    {
+        // If there was a previous tail, it means the lock is already held by someone.
+        // Set this node as the next node of the predecessor.
+        predecessor.Next = node;
+
+        // Busy-wait (spin) until our 'Locked' flag is set to false by the thread
+        // that is releasing the lock.
+        SpinWait sw = default;
+        // This lock is more scalable than regular locks as each thread
+        // spins on their own local flag rather than a shared flag for
+        // lower cpu cache thrashing. Drawback is it is a strict queue and
+        // the next thread in line may be sleeping when lock is released.
+        while (node.State != (nuint)LockState.ReadyToAcquire)
+        {
+            if (sw.NextSpinWillYield)
             {
-                if (sw.NextSpinWillYield)
-                {
-                    // We use Monitor signalling to try to combat additional latency
-                    // that may be introduced by the strict in-order thread queuing
-                    // rather than letting the SpinWait sleep the thread.
-                    lock (node)
-                    {
-                        if (node.Locked)
-                            // Sleep till signal
-                            Monitor.Wait(node);
-                        else
-                        {
-                            // Acquired the lock
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    sw.SpinOnce();
-                }
+                WaitForSignal(node);
+                // Acquired the lock
+                break;
+            }
+            else
+            {
+                sw.SpinOnce();
             }
         }
 
-        // Set current lock holder.
-        currentLockHolder = Thread.CurrentThread;
+        node.State = (nuint)LockState.Acquired;
+        Interlocked.MemoryBarrier();
+    }
 
-        return new Disposable(this);
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowInvalidOperationException()
+    private static void WaitForSignal(ThreadNode node)
+    {
+        // We use Monitor signalling to try to combat additional latency
+        // that may be introduced by the strict in-order thread queuing
+        // rather than letting the SpinWait sleep the thread.
+        lock (node)
         {
-            throw new InvalidOperationException("Lock is not reentrant");
+            if (node.State != (nuint)LockState.ReadyToAcquire)
+            {
+                // Sleep till signal
+                Monitor.Wait(node);
+            }
         }
     }
 
@@ -98,13 +98,13 @@ public class McsLock
     /// Used to releases the lock. If there are waiting threads in the queue, it passes the lock to the next
     /// thread in line.
     /// </summary>
-    public readonly struct Disposable : IDisposable
+    public readonly ref struct Disposable
     {
-        readonly McsLock _lock;
+        readonly ThreadNode _node;
 
-        internal Disposable(McsLock @lock)
+        internal Disposable(ThreadNode node)
         {
-            _lock = @lock;
+            _node = node;
         }
 
         /// <summary>
@@ -113,58 +113,86 @@ public class McsLock
         /// </summary>
         public void Dispose()
         {
-            ThreadNode node = _lock._node.Value!;
-
+            ThreadNode node = _node;
             // If there is no next node, it means this thread might be the last in the queue.
             if (node.Next is null)
             {
                 // Attempt to atomically set the tail to null, indicating no thread is waiting.
                 // If it is still 'node', then there are no other waiting threads.
-                if (Interlocked.CompareExchange(ref _lock._tail, null, node) == node)
+                if (Interlocked.CompareExchange(ref node.Lock._tail, null, node) == node)
                 {
-                    // Clear current lock holder.
-                    _lock.currentLockHolder = null;
                     return;
                 }
 
-                // If another thread is in the process of enqueuing itself,
-                // wait until it finishes setting its node as the 'Next' node.
-                SpinWait sw = default;
-                while (node.Next is null)
+                if (node.Next is null)
                 {
-                    sw.SpinOnce();
+                    SpinTillNextNotNull(node);
                 }
             }
 
-            // Clear current lock holder.
-            _lock.currentLockHolder = null;
-
+            ThreadNode next = node.Next!;
             // Pass the lock to the next thread by setting its 'Locked' flag to false.
-            node.Next.Locked = false;
+            next.State = (nuint)LockState.ReadyToAcquire;
 
-            lock (node.Next)
+            // Give the next thread a chance to acquire the lock before checking.
+            Interlocked.MemoryBarrier();
+
+            if (next.State == (nuint)LockState.ReadyToAcquire)
             {
-                // Wake up next node if sleeping
-                Monitor.Pulse(node.Next);
+                SignalUnlock(next);
             }
             // Remove the reference to the next node 
             node.Next = null;
         }
+
+        private static void SpinTillNextNotNull(ThreadNode node)
+        {
+            // If another thread is in the process of enqueuing itself,
+            // wait until it finishes setting its node as the 'Next' node.
+            SpinWait sw = default;
+            while (node.Next is null)
+            {
+                sw.SpinOnce();
+            }
+        }
+
+        private static void SignalUnlock(ThreadNode nextNode)
+        {
+            lock (nextNode)
+            {
+                if (nextNode.State == (nuint)LockState.ReadyToAcquire)
+                {
+                    // Wake up next node if sleeping
+                    Monitor.Pulse(nextNode);
+                }
+            }
+        }
+    }
+
+    private enum LockState : uint
+    {
+        ReadyToAcquire = 0,
+        Waiting = 1,
+        Acquired = 2
     }
 
     /// <summary>
     /// Node class to represent each thread in the MCS lock queue.
     /// </summary>
-    private class ThreadNode
+    internal class ThreadNode(McsLock @lock)
     {
-        /// <summary>
-        /// Indicates whether the current thread is waiting for the lock.
-        /// </summary>
-        public volatile bool Locked = true;
-
         /// <summary>
         /// Points to the next node in the queue.
         /// </summary>
-        public ThreadNode? Next = null;
+        public volatile ThreadNode? Next = null;
+
+        /// <summary>
+        /// The lock for access to _tail
+        /// </summary>
+        public readonly McsLock Lock = @lock;
+        /// <summary>
+        /// Indicates whether the current thread is waiting for the lock.
+        /// </summary>
+        public volatile nuint State = (nuint)LockState.Waiting;
     }
 }

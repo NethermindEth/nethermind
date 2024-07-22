@@ -30,21 +30,6 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 
 ### On Linux
 
-#### Prerequisites
-
-- #### Ubuntu / Debian
-
-  ```sh
-  sudo apt-get install libsnappy-dev
-  ```
-
-- #### CentOS / Fedora
-
-  ```sh
-  sudo dnf install -y snappy
-  sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
-  ```
-
 #### Install using PPA
 
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind` \
@@ -93,7 +78,7 @@ The output should show the image digest, and then you can copy that to the `FROM
 
 ### Prerequisites
 
-Install [.NET SDK](https://dotnet.microsoft.com/en-us/download)
+Install [.NET SDK](https://dotnet.microsoft.com/en-us/download).
 
 ### Clone the repository
 

@@ -19,7 +19,7 @@ namespace Nethermind.AuRa.Test
         [TestCase(1)]
         public void step_increases_after_timeToNextStep(int stepDuration)
         {
-            ManualTimestamper manualTimestamper = new(DateTime.Now);
+            ManualTimestamper manualTimestamper = new(DateTime.UtcNow);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), manualTimestamper, LimboLogs.Instance);
             long step = calculator.CurrentStep;
             manualTimestamper.Add(calculator.TimeToNextStep);
@@ -30,7 +30,7 @@ namespace Nethermind.AuRa.Test
         [TestCase(1)]
         public void after_waiting_for_next_step_timeToNextStep_should_be_close_to_stepDuration_in_seconds(int stepDuration)
         {
-            ManualTimestamper manualTimestamper = new(DateTime.Now);
+            ManualTimestamper manualTimestamper = new(DateTime.UtcNow);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), manualTimestamper, LimboLogs.Instance);
             manualTimestamper.Add(calculator.TimeToNextStep);
             calculator.TimeToNextStep.Should().BeCloseTo(TimeSpan.FromSeconds(stepDuration), TimeSpan.FromMilliseconds(200));

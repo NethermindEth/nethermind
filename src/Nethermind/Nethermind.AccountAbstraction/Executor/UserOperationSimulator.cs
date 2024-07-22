@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
@@ -86,14 +87,14 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
-            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
-            ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
+            IReadOnlyTxProcessorSource processorSource = _readOnlyTxProcessingEnvFactory.Create();
+            using IReadOnlyTxProcessingScope scope = processorSource.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
                 BuildSimulateValidationTransaction(userOperation, parent, specFor1559);
 
-            UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
+            UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, scope.TransactionProcessor);
 
             if (!simulationResult.Success)
                 return ResultWrapper<Hash256>.Fail(simulationResult.Error ?? "unknown simulation failure");
@@ -185,24 +186,24 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         [Todo("Refactor once BlockchainBridge is separated")]
-        public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
-            using IReadOnlyTransactionProcessor transactionProcessor = txProcessingEnv.Build(header.StateRoot!);
+            IReadOnlyTxProcessorSource txProcessorSource = _readOnlyTxProcessingEnvFactory.Create();
+            using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
-                transactionProcessor,
+                scope.TransactionProcessor,
                 header,
                 Math.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, cancellationToken);
+            GasEstimator gasEstimator = new(scope.TransactionProcessor, _stateProvider, _specProvider, _blocksConfig);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, GasEstimator.DefaultErrorMargin, cancellationToken);
 
-            return new BlockchainBridge.CallOutput
+            return new CallOutput
             {
                 Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
                 GasSpent = estimate,

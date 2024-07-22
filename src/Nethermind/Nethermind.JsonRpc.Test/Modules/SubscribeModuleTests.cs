@@ -15,7 +15,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
@@ -138,7 +137,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
-            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(100));
+            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
 
             subscriptionId = logsSubscription.Id;
             return jsonRpcResults;
@@ -832,13 +831,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
-            using JsonRpcSocketsClient client = new(
+            using WebSocketMessageStream stream = new(socket, NullLogManager.Instance);
+            using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
-                handler: handler,
+                stream: stream,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
-                jsonRpcService: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                 jsonSerializer: new EthereumJsonSerializer()
             );
@@ -867,13 +865,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
-            using JsonRpcSocketsClient client = new(
+            using WebSocketMessageStream stream = new(socket, NullLogManager.Instance);
+            using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
-                handler: handler,
+                stream: stream,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
-                jsonRpcService: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                 jsonSerializer: new EthereumJsonSerializer()
             );

@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -526,9 +527,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(push2Hex)
                 .Done;
 
-            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code, 1000000.Ether());
+            UInt256 value = 2.Ether();
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code, value);
             Assert.Null(trace.VmTrace);
-            Assert.That(trace.Action.Value, Is.EqualTo(1000000.Ether()));
+            Assert.That(trace.Action.Value, Is.EqualTo(value));
         }
 
         [Test]
@@ -841,7 +843,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
             ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(transaction, block.Header, tracer);
+            TransactionResult result = _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
     }

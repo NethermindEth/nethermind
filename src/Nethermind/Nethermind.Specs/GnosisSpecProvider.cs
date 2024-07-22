@@ -17,6 +17,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const long LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestamp = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
+    public const ulong CancunTimestamp = 0x65ef4dbc;
 
     private GnosisSpecProvider() { }
 
@@ -32,7 +33,8 @@ public class GnosisSpecProvider : ISpecProvider
             _ => forkActivation.Timestamp switch
             {
                 null or < ShanghaiTimestamp => London.Instance,
-                _ => Shanghai.Instance
+                < CancunTimestamp => Shanghai.Instance,
+                _ => Cancun.Instance
             }
         };
     }

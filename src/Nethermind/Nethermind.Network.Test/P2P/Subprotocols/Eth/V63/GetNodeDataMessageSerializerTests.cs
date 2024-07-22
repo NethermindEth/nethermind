@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using NUnit.Framework;
@@ -13,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(Hash256[] keys)
         {
-            GetNodeDataMessage message = new(keys);
+            using GetNodeDataMessage message = new(keys.ToPooledList());
             GetNodeDataMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);

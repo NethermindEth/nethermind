@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.FastSync
                     return EmptyBatch!;
                 }
 
-                return await _treeSync.PrepareRequest(_currentSyncMode);
+                return await _treeSync.PrepareRequest();
             }
             catch (Exception e)
             {
@@ -60,7 +60,8 @@ namespace Nethermind.Synchronization.FastSync
 
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peer = null)
         {
-            return _treeSync.HandleResponse(batch, peer);
+            using StateSyncBatch? b = batch;
+            return _treeSync.HandleResponse(b, peer);
         }
 
         public void Dispose()

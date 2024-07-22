@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -19,6 +20,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             Hash256[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return hashes;
+        }
+
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream nettyRlpStream = new(byteBuffer);
+            return DeserializeHashesArrayPool(nettyRlpStream);
+        }
+
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream)
+        {
+            return rlpStream.DecodeArrayPoolList(itemContext => itemContext.DecodeKeccak());
         }
 
         public void Serialize(IByteBuffer byteBuffer, T message)

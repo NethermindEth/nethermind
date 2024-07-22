@@ -329,12 +329,12 @@ namespace Nethermind.PerfTest
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(address, allocation.Balance);
-                if (allocation.Code != null)
+                if (allocation.Code is not null)
                 {
                     stateProvider.InsertCode(address, allocation.Code, specProvider.GenesisSpec);
                 }
 
-                if (allocation.Constructor != null)
+                if (allocation.Constructor is not null)
                 {
                     Transaction constructorTransaction = new SystemTransaction()
                     {

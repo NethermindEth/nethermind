@@ -3,7 +3,11 @@
 
 using System;
 using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -18,16 +22,6 @@ namespace Nethermind.Synchronization.FastSync
             NodeDataType = nodeType;
             Level = (byte)level;
             Rightness = rightness;
-        }
-
-        public StateSyncItem(StateSyncItem original, NodeDataType nodeDataType)
-        {
-            Hash = original.Hash;
-            AccountPathNibbles = original.AccountPathNibbles;
-            PathNibbles = original.PathNibbles;
-            NodeDataType = nodeDataType;
-            Level = original.Level;
-            Rightness = original.Rightness;
         }
 
         public Hash256 Hash { get; }
@@ -55,5 +49,45 @@ namespace Nethermind.Synchronization.FastSync
         public uint Rightness { get; }
 
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
+
+        private TreePath? _treePath = null;
+        public TreePath Path => _treePath ??= TreePath.FromNibble(PathNibbles);
+
+        private Hash256? _address = null;
+        public Hash256? Address => (AccountPathNibbles?.Length ?? 0) != 0 ? (_address ??= new Hash256(Nibbles.ToBytes(AccountPathNibbles))) : null;
+
+        private NodeKey? _key = null;
+        public NodeKey Key => _key ??= new(Address, Path, Hash);
+
+        [StructLayout(LayoutKind.Auto)]
+        public readonly struct NodeKey(Hash256? address, TreePath? path, Hash256 hash) : IEquatable<NodeKey>
+        {
+            private readonly ValueHash256 Address = address ?? default;
+            private readonly TreePath? Path = path;
+            private readonly ValueHash256 Hash = hash;
+
+            public readonly bool Equals(NodeKey other)
+                => Address == other.Address && Path == other.Path && Hash == other.Hash;
+
+            public override bool Equals(object obj)
+                => obj is NodeKey && Equals((NodeKey)obj);
+
+            public override int GetHashCode()
+            {
+                uint hash0 = (uint)hash.GetHashCode();
+                ulong hash1 = ((ulong)(uint)(address?.GetHashCode() ?? 1) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
+                return (int)BitOperations.Crc32C(hash0, hash1);
+            }
+
+            public static bool operator ==(in NodeKey left, in NodeKey right)
+            {
+                return left.Equals(right);
+            }
+
+            public static bool operator !=(in NodeKey left, in NodeKey right)
+            {
+                return !(left == right);
+            }
+        }
     }
 }

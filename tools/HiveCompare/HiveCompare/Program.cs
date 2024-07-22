@@ -1,5 +1,5 @@
 using HiveCompare.Models;
-using Microsoft.Extensions.CommandLineUtils;
+using McMaster.Extensions.CommandLineUtils;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 

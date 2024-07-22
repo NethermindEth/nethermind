@@ -88,18 +88,20 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    protected override bool Remove(ValueHash256 hash, Transaction tx)
+    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
     {
-        _blobTxCache.Delete(hash);
-        _blobTxStorage.Delete(hash, tx.Timestamp);
-        return base.Remove(hash, tx);
-    }
+        if (base.Remove(hash, out tx))
+        {
+            if (tx is not null)
+            {
+                _blobTxStorage.Delete(hash, tx.Timestamp);
+            }
 
-    public override void VerifyCapacity()
-    {
-        base.VerifyCapacity();
+            _blobTxCache.Delete(hash);
 
-        if (_logger.IsDebug && Count == _poolCapacity)
-            _logger.Debug($"Blob persistent storage has reached max size of {_poolCapacity}, blob txs can be evicted now");
+            return true;
+        }
+
+        return false;
     }
 }

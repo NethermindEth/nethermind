@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -51,7 +51,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string BlockHash
+        string BlockHash,
+        int ErrorCode
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
@@ -130,7 +131,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(SpecProvider, State),
                 LogManager,
                 WithdrawalProcessor);
 
@@ -156,8 +157,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
                 _api!,
-                new AuRaConfig(),
-                new DisposableStack(),
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,
@@ -172,12 +171,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
-            PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, BlockProductionTrigger);
+            PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
-                ),
+                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -190,7 +188,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             AuRaBlockProducer preMergeBlockProducer = new(
                 txPoolTxSource,
                 blockProducerEnvFactory.Create().ChainProcessor,
-                BlockProductionTrigger,
                 State,
                 sealer,
                 BlockTree,

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -38,8 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             ScheduleAction(async () =>
             {
-                JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
-
+                using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
             });

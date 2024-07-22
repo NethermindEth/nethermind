@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Mev.Test
 {
@@ -48,11 +49,11 @@ namespace Nethermind.Mev.Test
             await plugin.InitRpcModules();
 
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
-            consensusPlugin.InitBlockProducer().Returns(Substitute.For<IBlockProducer>());
+            consensusPlugin.InitBlockProducer(null).Returns(Substitute.For<IBlockProducer>());
 
-            Task<IBlockProducer> blockProducer = plugin.InitBlockProducer(consensusPlugin);
+            IBlockProducer blockProducer = plugin.InitBlockProducer(consensusPlugin, null);
 
-            blockProducer.Result.Should().BeOfType(typeof(MevBlockProducer));
+            blockProducer.Should().BeOfType(typeof(MevBlockProducer));
         }
     }
 }

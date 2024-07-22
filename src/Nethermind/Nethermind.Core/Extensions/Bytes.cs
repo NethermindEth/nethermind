@@ -145,20 +145,12 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBit(this ref byte b, int bitNumber)
         {
-            byte mask = (byte)(1 << (7 - bitNumber));
-            b = b |= mask;
+            int mask = (1 << (7 - bitNumber));
+            b |= (byte)mask;
         }
 
         public static int GetHighestSetBitIndex(this byte b)
-        {
-            if ((b & 128) == 128) return 8;
-            if ((b & 64) == 64) return 7;
-            if ((b & 32) == 32) return 6;
-            if ((b & 16) == 16) return 5;
-            if ((b & 8) == 8) return 4;
-            if ((b & 4) == 4) return 3;
-            return (b & 2) == 2 ? 2 : b;
-        }
+            => 32 - BitOperations.LeadingZeroCount((uint)b);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
@@ -649,7 +641,7 @@ namespace Nethermind.Core.Extensions
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
         {
-            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingNibbleZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
@@ -743,7 +735,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        internal static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
+        public static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
         {
             if (withZeroX)
             {
@@ -943,30 +935,78 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static int CountLeadingZeros(this ReadOnlySpan<byte> bytes)
+        public static int CountLeadingNibbleZeros(this ReadOnlySpan<byte> bytes)
         {
-            int leadingZeros = 0;
-            for (int i = 0; i < bytes.Length; i++)
+            int firstNonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (firstNonZero < 0)
             {
-                if ((bytes[i] & 0b1111_0000) == 0)
-                {
-                    leadingZeros++;
-                    if ((bytes[i] & 0b1111) == 0)
-                    {
-                        leadingZeros++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
+                return bytes.Length * 2;
+            }
+
+            int leadingZeros = firstNonZero * 2;
+            if ((bytes[firstNonZero] & 0b1111_0000) == 0)
+            {
+                leadingZeros++;
             }
 
             return leadingZeros;
+        }
+
+        public static int CountZeros(this Span<byte> data)
+            => CountZeros((ReadOnlySpan<byte>)data);
+
+        public static int CountZeros(this ReadOnlySpan<byte> data)
+        {
+            int totalZeros = 0;
+            if (Vector512.IsHardwareAccelerated && data.Length >= Vector512<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
+                {
+                    Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
+                    ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+            if (Vector256.IsHardwareAccelerated && data.Length >= Vector256<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
+                {
+                    Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
+                    uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+            if (Vector128.IsHardwareAccelerated && data.Length >= Vector128<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
+                {
+                    Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
+                    uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (data[i] == 0)
+                {
+                    totalZeros++;
+                }
+            }
+
+            return totalZeros;
         }
 
         [DebuggerStepThrough]
@@ -993,19 +1033,7 @@ namespace Nethermind.Core.Extensions
                 ThrowInvalidOperationException();
             }
 
-            bool isSuccess;
-            if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
-                hexString.Length >= Vector128<byte>.Count)
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf8_Vector128(hexString, result);
-            }
-            else
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1);
-            }
-
-            if (!isSuccess)
+            if (!HexConverter.TryDecodeFromUtf8(hexString, result))
             {
                 ThrowFormatException_IncorrectHexString();
             }

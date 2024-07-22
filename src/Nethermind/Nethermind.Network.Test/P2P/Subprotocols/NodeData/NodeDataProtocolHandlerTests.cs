@@ -3,13 +3,18 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
@@ -38,6 +43,7 @@ public class NodeDataProtocolHandlerTests
             _svc,
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             LimboLogs.Instance);
         _handler.Init();
     }
@@ -61,7 +67,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Can_handle_get_node_data()
     {
-        var msg = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+        var msg = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
 
         HandleZeroMessage(msg, NodeDataMessageCode.GetNodeData);
         _session.Received().DeliverMessage(Arg.Any<NodeDataMessage>());
@@ -70,7 +76,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Can_handle_node_data()
     {
-        var msg = new NodeDataMessage(System.Array.Empty<byte[]>());
+        var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
 
         ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
         HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
@@ -79,15 +85,16 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Should_throw_when_receiving_unrequested_node_data()
     {
-        var msg = new NodeDataMessage(System.Array.Empty<byte[]>());
+        var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
 
         System.Action act = () => HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
         act.Should().Throw<SubprotocolException>();
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         IByteBuffer getPacket = _svc.ZeroSerialize(msg);
+        msg.Dispose();
         getPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getPacket) { PacketType = (byte)messageCode });
     }

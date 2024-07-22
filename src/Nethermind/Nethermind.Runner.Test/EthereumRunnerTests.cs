@@ -7,6 +7,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
+using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -33,9 +34,17 @@ namespace Nethermind.Runner.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumRunnerTests
     {
-        private static readonly Lazy<ICollection> _cachedProviders = new(InitOnce);
+        static EthereumRunnerTests()
+        {
+            AssemblyLoadContext.Default.Resolving += (context, name) =>
+            {
+                return null;
+            };
+        }
 
-        public static ICollection InitOnce()
+        private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
+
+        private static ICollection InitOnce()
         {
             // by pre-caching configs providers we make the tests do lot less work
             ConcurrentQueue<(string, ConfigProvider)> result = new();
@@ -55,9 +64,8 @@ namespace Nethermind.Runner.Test
             get
             {
                 int index = 0;
-                foreach (var cachedProvider in _cachedProviders.Value)
+                foreach (var cachedProvider in _cachedProviders!.Value)
                 {
-
                     yield return new TestCaseData(cachedProvider, index);
                     index++;
                 }

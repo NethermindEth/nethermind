@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -22,9 +21,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -91,16 +88,18 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result>? payloadUpdateResult = await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes);
-        return
-            ValidateAttributes(payloadAttributes, version) ??
-            payloadUpdateResult ??
-            StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
+        return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
+            ?? ValidateAttributes(payloadAttributes, version)
+            ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
     }
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>?> ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
-        using var handle = Thread.CurrentThread.BoostPriority();
+        // if a head is unknown we are syncing
+        bool isDefinitelySyncing = newHeadBlock is null;
+        using ThreadExtensions.Disposable handle = isDefinitelySyncing ?
+            default : // Don't boost priority if we are definitely syncing
+            Thread.CurrentThread.BoostPriority();
 
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
@@ -108,7 +107,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
 
-        if (newHeadBlock is null) // if a head is unknown we are syncing
+        if (isDefinitelySyncing)
         {
             string simpleRequestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) _logger.Info($"Received {simpleRequestStr}");
@@ -136,7 +135,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
+        BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock!.Number, newHeadBlock.GetOrCalculateHash()).Info;
         BlockHeader? safeBlockHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         string requestStr = payloadAttributes is null
@@ -153,6 +152,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (!blockInfo.WasProcessed)
         {
+            if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+            {
+                if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            }
+
             BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
             if (blockParent is null)
             {
@@ -184,7 +189,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
-                if (_logger.IsInfo) _logger.Info($"Syncing beacon headers, Request: {requestStr}");
+                // Debug as already output in Received ForkChoice
+                if (_logger.IsDebug) _logger.Debug($"Syncing beacon headers, Request: {requestStr}");
             }
             else
             {
@@ -308,8 +314,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         {
             PayloadAttributesValidationResult.InvalidParams =>
                 ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams),
+            PayloadAttributesValidationResult.InvalidPayloadAttributes =>
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, MergeErrorCodes.InvalidPayloadAttributes),
             PayloadAttributesValidationResult.UnsupportedFork =>
-                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.UnsupportedFork),
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, MergeErrorCodes.UnsupportedFork),
             _ => null,
         };
     }

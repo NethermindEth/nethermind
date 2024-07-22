@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -40,7 +40,7 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+        ChainSpec chainSpec = loader.LoadFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
         var logManager = Substitute.For<ILogManager>();
@@ -83,7 +83,7 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+        ChainSpec chainSpec = loader.LoadFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
@@ -184,43 +184,6 @@ public class ChainSpecBasedSpecProviderTests
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
     }
 
-    public static IEnumerable<TestCaseData> GoerliActivations
-    {
-        get
-        {
-            yield return new TestCaseData((ForkActivation)0) { TestName = "Genesis" };
-            yield return new TestCaseData((ForkActivation)1) { TestName = "1" };
-            yield return new TestCaseData((ForkActivation)(GoerliSpecProvider.IstanbulBlockNumber - 1)) { TestName = "Before Istanbul" };
-            yield return new TestCaseData((ForkActivation)GoerliSpecProvider.IstanbulBlockNumber) { TestName = "Istanbul" };
-            yield return new TestCaseData((ForkActivation)(GoerliSpecProvider.BerlinBlockNumber - 1)) { TestName = "Before Berlin" };
-            yield return new TestCaseData((ForkActivation)GoerliSpecProvider.BerlinBlockNumber) { TestName = "Berlin" };
-            yield return new TestCaseData((ForkActivation)(GoerliSpecProvider.LondonBlockNumber - 1)) { TestName = "Before London" };
-            yield return new TestCaseData((ForkActivation)GoerliSpecProvider.LondonBlockNumber) { TestName = "London" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp - 1)) { TestName = "Before Shanghai" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp)) { TestName = "Shanghai" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
-        }
-    }
-
-    [TestCaseSource(nameof(GoerliActivations))]
-    public void Goerli_loads_properly(ForkActivation forkActivation)
-    {
-        ChainSpec chainSpec = LoadChainSpecFromChainFolder("goerli");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
-
-        CompareSpecs(goerli, provider, forkActivation);
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(GoerliSpecProvider.LondonBlockNumber));
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GoerliSpecProvider.Instance.TerminalTotalDifficulty));
-        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Goerli));
-        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Goerli));
-
-        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GoerliSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
-    }
-
     public static IEnumerable<TestCaseData> ChiadoActivations
     {
         get
@@ -272,9 +235,11 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)GnosisSpecProvider.BerlinBlockNumber) { TestName = "Berlin" };
             yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber - 1)) { TestName = "Before London" };
             yield return new TestCaseData((ForkActivation)GnosisSpecProvider.LondonBlockNumber) { TestName = "London" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber, GnosisSpecProvider.ShanghaiTimestamp - 1)) { TestName = "Before Shanghai" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber, GnosisSpecProvider.ShanghaiTimestamp)) { TestName = "Shanghai" };
-            yield return new TestCaseData((ForkActivation)(999_999_999, 999_999_999)) { TestName = "Future" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 1, GnosisSpecProvider.ShanghaiTimestamp - 1)) { TestName = "Before Shanghai" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 1, GnosisSpecProvider.ShanghaiTimestamp)) { TestName = "Shanghai" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -292,10 +257,8 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisPreShanghaiSpecifics(provider);
 
-        IReleaseSpec? preShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
-            GnosisSpecProvider.ShanghaiTimestamp - 1));
-        IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
-            GnosisSpecProvider.ShanghaiTimestamp));
+        IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp - 1));
+        IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics();
@@ -373,7 +336,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.ArrowGlacierBlockNumber - 1)) { TestName = "Before GrayGlacier" };
             yield return new TestCaseData((ForkActivation)MainnetSpecProvider.ArrowGlacierBlockNumber) { TestName = "GrayGlacier" };
             yield return new TestCaseData(MainnetSpecProvider.ShanghaiActivation) { TestName = "Shanghai" };
-            yield return new TestCaseData(new ForkActivation(99_000_000, 99_681_338_455)) { TestName = "Future" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp - 1)) { TestName = "Before Cancun" };
+            yield return new TestCaseData(MainnetSpecProvider.CancunActivation) { TestName = "Cancun" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -487,7 +452,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
-        return loader.Load(File.ReadAllText(path));
+        return loader.LoadFromFile(path);
     }
 
     [Test]
@@ -806,7 +771,7 @@ public class ChainSpecBasedSpecProviderTests
         TestTransitions((ForkActivation)20280L, r => { r.IsEip2028Enabled = true; });
         TestTransitions((ForkActivation)22000L, r => { r.IsEip2200Enabled = true; });
         TestTransitions((ForkActivation)23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
-        TestTransitions((ForkActivation)24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
+        TestTransitions((ForkActivation)24000L, r => { r.ValidateChainId = r.ValidateReceipts = true; });
         TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2565Enabled = true; });
         TestTransitions((ForkActivation)29300L, r => { r.IsEip2930Enabled = true; });
         TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
