@@ -87,6 +87,12 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
+    public static EvmExceptionType InstructionInvalid(IEvm _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        gasAvailable -= GasCostOf.High;
+        return EvmExceptionType.BadInstruction;
+    }
+
     public static EvmExceptionType InstructionBadInstruction(IEvm _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         => EvmExceptionType.BadInstruction;
 

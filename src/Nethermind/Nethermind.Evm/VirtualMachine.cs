@@ -833,7 +833,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 StartInstructionTrace(instruction, _vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
-            Span<byte> bytes;
             switch (instruction)
             {
                 case Instruction.STOP:
@@ -872,69 +871,11 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                     exceptionType = InstructionMath3Param<OpMulMod>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.EXP:
-                    {
-                        gasAvailable -= GasCostOf.Exp;
-
-                        Metrics.ExpOpcode++;
-
-                        if (!stack.PopUInt256(out a) || !stack.PopWord256(out bytes)) goto StackUnderflow;
-
-                        int leadingZeros = bytes.LeadingZerosCount();
-                        if (leadingZeros != 32)
-                        {
-                            int expSize = 32 - leadingZeros;
-                            gasAvailable -= _spec.GetExpByteCost() * expSize;
-                        }
-                        else
-                        {
-                            stack.PushOne();
-                            break;
-                        }
-
-                        if (a.IsZero)
-                        {
-                            stack.PushZero();
-                        }
-                        else if (a.IsOne)
-                        {
-                            stack.PushOne();
-                        }
-                        else
-                        {
-                            UInt256.Exp(a, new UInt256(bytes, true), out result);
-                            stack.PushUInt256(in result);
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionExp(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.SIGNEXTEND:
-                    {
-                        gasAvailable -= GasCostOf.Low;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (a >= BigInt32)
-                        {
-                            if (!stack.EnsureDepth(1)) goto StackUnderflow;
-                            break;
-                        }
-
-                        int position = 31 - (int)a;
-
-                        bytes = stack.PeekWord256();
-                        sbyte sign = (sbyte)bytes[position];
-
-                        if (sign >= 0)
-                        {
-                            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
-                        }
-                        else
-                        {
-                            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
-                        }
-
-                        // Didn't remove from stack so don't need to push back
-                        break;
-                    }
+                    exceptionType = InstructionSignExtend(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.LT:
                     exceptionType = InstructionMath2Param<OpLt>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
@@ -966,42 +907,11 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                     exceptionType = InstructionMath1Param<OpNot>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.BYTE:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
-
-                        if (a >= BigInt32)
-                        {
-                            stack.PushZero();
-                            break;
-                        }
-
-                        int adjustedPosition = bytes.Length - 32 + (int)a;
-                        if (adjustedPosition < 0)
-                        {
-                            stack.PushZero();
-                        }
-                        else
-                        {
-                            stack.PushByte(bytes[adjustedPosition]);
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionByte(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.KECCAK256:
-                    {
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in b);
-
-                        if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-
-                        bytes = _vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
-                        break;
-                    }
+                    exceptionType = InstructionKeccak256(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.ADDRESS:
                     exceptionType = InstructionEnvBytes<OpAddress>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
@@ -1018,13 +928,8 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                     exceptionType = InstructionEnvBytes<OpOrigin>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.CALLDATALOAD:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        stack.PushBytes(env.InputData.SliceWithZeroPadding(result, 32));
-                        break;
-                    }
+                    exceptionType = InstructionCallDataLoad(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.CALLDATASIZE:
                     exceptionType = InstructionEnvUInt256<OpCallDataSize>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
@@ -1249,20 +1154,8 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                     exceptionType = InstructionEnvBytes<OpCoinbase>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.PREVRANDAO:
-                    {
-                        gasAvailable -= GasCostOf.Base;
-
-                        if (blkCtx.Header.IsPostMerge)
-                        {
-                            stack.PushBytes(blkCtx.Header.Random.Bytes);
-                        }
-                        else
-                        {
-                            result = blkCtx.Header.Difficulty;
-                            stack.PushUInt256(in result);
-                        }
-                        break;
-                    }
+                    exceptionType = InstructionPrevRandao(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.TIMESTAMP:
                     exceptionType = InstructionEnvUInt256<OpTimestamp>(this, ref stack, ref gasAvailable, ref programCounter);
                     break;
@@ -1565,11 +1458,8 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                         goto DataReturn;
                     }
                 case Instruction.INVALID:
-                    {
-                        gasAvailable -= GasCostOf.High;
-
-                        goto InvalidInstruction;
-                    }
+                    exceptionType = InstructionInvalid(this, ref stack, ref gasAvailable, ref programCounter);
+                    break;
                 case Instruction.SELFDESTRUCT:
                     exceptionType = InstructionSelfDestruct(this, ref stack, ref gasAvailable, ref programCounter);
                     if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
