@@ -256,7 +256,7 @@ public partial class VerkleTree
             if (stemList.Contains(elem.Key))
             {
                 InternalNode suffix = GetInternalNode(elem.Key, rootHash);
-                var stemWithNoProof = AddStemCommitmentsOpeningsSer(suffix, elem.Value, queries, addLeafOpenings, rootHash);
+                var stemWithNoProof = AddStemCommitmentsOpenings(suffix, elem.Value, queries, addLeafOpenings, rootHash);
                 if (stemWithNoProof) stemWithNoProofSet.Add(suffix.Stem.Bytes);
                 continue;
             }
@@ -298,64 +298,10 @@ public partial class VerkleTree
     }
 
     private bool AddStemCommitmentsOpenings(InternalNode? suffix, HashSet<byte> stemChild,
-        List<VerkleProverQuery> queries, bool addLeafOpenings, Hash256? rootHash)
-    {
-        var stemPath = suffix!.Stem!.Bytes;
-        AddExtensionCommitmentOpenings(stemPath, addLeafOpenings ? stemChild : new byte[] { }, suffix, queries);
-        if (stemChild.Count == 0) return true;
-
-        // this is used for sync proofs - we dont need to include proofs for leaf openings as we send all the leafs
-        // the client can generate the leaf and verify the commitments
-        if (!addLeafOpenings) return false;
-
-        ProofStemPolynomialCache.TryGetValue(stemPath, out SuffixPoly hashStruct);
-
-        FrE[] c1Hashes = hashStruct.C1;
-        FrE[] c2Hashes = hashStruct.C2;
-
-        Span<byte> key = new byte[32];
-        stemPath.CopyTo(key);
-        foreach (var valueIndex in stemChild)
-        {
-            var valueLowerIndex = 2 * (valueIndex % 128);
-            var valueUpperIndex = valueLowerIndex + 1;
-            key[31] = valueIndex;
-            (FrE valueLow, FrE valueHigh) = VerkleUtils.BreakValueInLowHigh(Get(key, rootHash));
-
-            var offset = valueIndex < 128 ? 0 : 128;
-
-            Banderwagon commitment;
-            FrE[] poly;
-            switch (offset)
-            {
-                case 0:
-                    commitment = suffix.C1.Point;
-                    poly = c1Hashes.ToArray();
-                    break;
-                case 128:
-                    commitment = suffix.C2.Point;
-                    poly = c2Hashes.ToArray();
-                    break;
-                default:
-                    throw new Exception("unreachable");
-            }
-
-            VerkleProverQuery openAtValLow = new(new LagrangeBasis(poly), commitment, (byte)valueLowerIndex, valueLow);
-            VerkleProverQuery openAtValUpper =
-                new(new LagrangeBasis(poly), commitment, (byte)valueUpperIndex, valueHigh);
-
-            queries.Add(openAtValLow);
-            queries.Add(openAtValUpper);
-        }
-
-        return false;
-    }
-
-    private bool AddStemCommitmentsOpeningsSer(InternalNode? suffix, HashSet<byte> stemChild,
         List<VerkleProverQuerySerialized> queries, bool addLeafOpenings, Hash256? rootHash)
     {
         var stemPath = suffix!.Stem!.Bytes;
-        AddExtensionCommitmentOpeningsSer(stemPath, addLeafOpenings ? stemChild : new byte[] { }, suffix, queries);
+        AddExtensionCommitmentOpenings(stemPath, addLeafOpenings ? stemChild : new byte[] { }, suffix, queries);
         if (stemChild.Count == 0) return true;
 
         // this is used for sync proofs - we dont need to include proofs for leaf openings as we send all the leafs
@@ -405,44 +351,8 @@ public partial class VerkleTree
         return false;
     }
 
+
     private static void AddExtensionCommitmentOpenings(Stem stem, IEnumerable<byte> value, InternalNode suffix,
-        List<VerkleProverQuery> queries)
-    {
-        var extPoly = new FrE[256];
-        for (var i = 0; i < 256; i++) extPoly[i] = FrE.Zero;
-        extPoly[0] = FrE.One;
-        extPoly[1] = FrE.FromBytesReduced(stem.Bytes.Reverse().ToArray());
-        extPoly[2] = suffix.C1!.PointAsField;
-        extPoly[3] = suffix.C2!.PointAsField;
-
-        VerkleProverQuery openAtOne = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 0, FrE.One);
-        VerkleProverQuery openAtStem = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 1,
-            FrE.FromBytesReduced(stem.Bytes.Reverse().ToArray()));
-        queries.Add(openAtOne);
-        queries.Add(openAtStem);
-
-        var openC1 = false;
-        var openC2 = false;
-        foreach (var valueIndex in value)
-            if (valueIndex < 128) openC1 = true;
-            else openC2 = true;
-
-        if (openC1)
-        {
-            VerkleProverQuery openAtC1 = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 2,
-                suffix.C1.PointAsField);
-            queries.Add(openAtC1);
-        }
-
-        if (openC2)
-        {
-            VerkleProverQuery openAtC2 = new(new LagrangeBasis(extPoly), suffix.InternalCommitment.Point, 3,
-                suffix.C2.PointAsField);
-            queries.Add(openAtC2);
-        }
-    }
-
-    private static void AddExtensionCommitmentOpeningsSer(Stem stem, IEnumerable<byte> value, InternalNode suffix,
     List<VerkleProverQuerySerialized> queries)
     {
         var extPoly = new FrE[256];
