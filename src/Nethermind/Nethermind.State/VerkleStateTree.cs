@@ -86,6 +86,14 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
             Insert(key, chunk);
             chunkId += 1;
         }
+
+        // Update code size
+        AccountStruct? account = Get(address);
+        if (account.HasValue)
+        {
+            var newAccount = new Account(account.Value.Nonce, account.Value.Balance, (UInt256)code.Length, account.Value.Version, new Hash256(account.Value.StorageRoot), Keccak.Compute(code));
+            Set(address, newAccount);
+        }
     }
 
     public byte[] GetCode(Address address, Hash256? stateRoot = null)
