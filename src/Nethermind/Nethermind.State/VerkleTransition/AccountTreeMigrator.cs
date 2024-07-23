@@ -157,12 +157,18 @@ public class AccountTreeMigrator : ITreeVisitor
             if (addressBytes is not null)
             {
                 var address = new Address(addressBytes);
-                MigrateAccount(address, account);
 
-                if (account.IsContract)
+                // Update code size if account has code
+                if (account.HasCode)
                 {
-                    MigrateContractCode(address, account.CodeHash);
+                    byte[]? code = _stateReader.GetCode(account.CodeHash);
+                    if (code is not null)
+                    {
+                        account.CodeSize = (UInt256)code.Length;
+                        MigrateContractCode(address, code);
+                    }
                 }
+                MigrateAccount(address, account);
 
                 _lastAddress = address;
                 _lastAccount = account;
@@ -205,18 +211,14 @@ public class AccountTreeMigrator : ITreeVisitor
         _verkleStateTree.Set(address, account);
     }
 
-    private void MigrateContractCode(Address address, Hash256 codeHash)
+    private void MigrateContractCode(Address address, byte[] code)
     {
-        byte[]? code = _stateReader.GetCode(codeHash);
-        if (code is not null)
-        {
-            _verkleStateTree.SetCode(address, code);
-        }
+        _verkleStateTree.SetCode(address, code);
     }
 
     private void MigrateAccountStorage(Address address, UInt256 index, byte[] value)
     {
-        StorageCell storageKey = new StorageCell(address, index);
+        var storageKey = new StorageCell(address, index);
         _verkleStateTree.SetStorage(storageKey, value);
     }
 
