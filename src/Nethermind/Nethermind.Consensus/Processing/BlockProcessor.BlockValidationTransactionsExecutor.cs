@@ -53,11 +53,6 @@ namespace Nethermind.Consensus.Processing
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, executionTracerr.TxReceipts[index]));
             }
 
-            public IBlockProcessor.IBlockTransactionsExecutor WithNewStateProvider()
-            {
-                return new BlockValidationTransactionsExecutor(_transactionProcessor);
-            }
-
             [DoesNotReturn]
             [StackTraceHidden]
             private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)

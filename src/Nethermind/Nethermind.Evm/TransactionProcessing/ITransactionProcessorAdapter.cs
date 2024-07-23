@@ -10,7 +10,5 @@ namespace Nethermind.Evm.TransactionProcessing
     public interface ITransactionProcessorAdapter
     {
         TransactionResult Execute(Transaction transaction, IWorldState worldState, in BlockExecutionContext blkCtx, ITxTracer txTracer);
-
-        public ITransactionProcessorAdapter WithNewStateProvider();
     }
 }

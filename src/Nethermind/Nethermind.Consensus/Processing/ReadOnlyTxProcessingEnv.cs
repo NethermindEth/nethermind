@@ -17,22 +17,24 @@ namespace Nethermind.Consensus.Processing
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
         public IStateReader StateReader { get; }
-        public IWorldState StateProvider { get; }
+        public WorldStateProvider WorldStateProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
+            WorldStateProvider worldStateProvider,
             IWorldStateManager worldStateManager,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(worldStateProvider, worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
+            WorldStateProvider worldStateProvider,
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
@@ -42,7 +44,7 @@ namespace Nethermind.Consensus.Processing
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
             StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState();
+            WorldStateProvider = worldStateProvider;
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
@@ -51,6 +53,6 @@ namespace Nethermind.Consensus.Processing
             TransactionProcessor = new TransactionProcessor(specProvider, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateProvider, stateRoot);
     }
 }

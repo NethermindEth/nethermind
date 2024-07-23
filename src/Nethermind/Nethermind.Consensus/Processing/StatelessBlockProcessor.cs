@@ -31,7 +31,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
+        WorldStateProvider? worldStateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         IBlockTree? blockTree,
@@ -42,7 +42,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
             blockValidator,
             rewardCalculator,
             blockTransactionsExecutor,
-            stateProvider,
+            worldStateProvider,
             receiptStorage,
             witnessCollector,
             blockTree,
@@ -63,7 +63,6 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
 
     protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
     {
-        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor;
         IWorldState worldState;
         if (!block.IsGenesis)
         {
@@ -72,14 +71,12 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
             _statelessWorldState.Reset();
             _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
             worldState = _statelessWorldState;
-            blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider();
         }
         else
         {
-            blockTransactionsExecutor = _blockTransactionsExecutor;
-            worldState = _stateProvider;
+            worldState = _worldStateProvider.GetWorldState(block);
         }
 
-        return (blockTransactionsExecutor, worldState);
+        return (_blockTransactionsExecutor, worldState);
     }
 }

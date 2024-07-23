@@ -29,10 +29,4 @@ public interface ITransactionProcessor
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
     TransactionResult Trace(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer);
-
-    /// <summary>
-    ///
-    /// </summary>
-    /// <returns></returns>
-    ITransactionProcessor WithNewStateProvider();
 }

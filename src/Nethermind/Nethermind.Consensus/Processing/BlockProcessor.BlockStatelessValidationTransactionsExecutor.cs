@@ -32,12 +32,6 @@ public partial class BlockProcessor
 
         public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-        public IBlockProcessor.IBlockTransactionsExecutor WithNewStateProvider()
-        {
-            _transactionProcessor = _transactionProcessor.WithNewStateProvider();
-            return new BlockStatelessValidationTransactionsExecutor(_transactionProcessor);
-        }
-
         public TxReceipt[] ProcessTransactions(IWorldState worldState, Block block, ProcessingOptions processingOptions, BlockExecutionTracer receiptsTracer, IReleaseSpec spec)
         {
             Evm.Metrics.ResetBlockStats();

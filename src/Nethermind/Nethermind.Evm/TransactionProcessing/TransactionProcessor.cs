@@ -80,11 +80,6 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public ITransactionProcessor WithNewStateProvider()
-        {
-            return new TransactionProcessor(SpecProvider, VirtualMachine, LogManager);
-        }
-
         public TransactionResult CallAndRestore(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             Execute(transaction, worldState, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
 

@@ -136,12 +136,6 @@ namespace Nethermind.Consensus.Processing
                 return args.Action;
             }
 
-            public IBlockProcessor.IBlockTransactionsExecutor WithNewStateProvider()
-            {
-                return new BlockProductionTransactionsExecutor(_transactionProcessor,
-                    _blockProductionTransactionPicker, _logManager);
-            }
-
             protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
 
             protected static void SetTransactions(Block block, IEnumerable<Transaction> transactionsInBlock)

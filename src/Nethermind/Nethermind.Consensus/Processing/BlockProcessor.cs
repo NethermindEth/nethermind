@@ -40,7 +40,7 @@ public partial class BlockProcessor : IBlockProcessor
 {
     private readonly ILogger _logger;
     protected readonly ISpecProvider _specProvider;
-    protected readonly IWorldState _stateProvider;
+    protected readonly WorldStateProvider _worldStateProvider;
     private readonly IReceiptStorage _receiptStorage;
     protected readonly IReceiptsRootCalculator _receiptsRootCalculator;
     private readonly IWitnessCollector _witnessCollector;
@@ -68,7 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
+        WorldStateProvider? worldStateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         IBlockTree? blockTree,
@@ -79,10 +79,10 @@ public partial class BlockProcessor : IBlockProcessor
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-        _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+        _worldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
-        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
+        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(worldStateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
@@ -280,7 +280,7 @@ public partial class BlockProcessor : IBlockProcessor
 
     protected virtual (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
     {
-        return (_blockTransactionsExecutor, _stateProvider);
+        return (_blockTransactionsExecutor, _worldStateProvider.GetWorldState(block));
     }
 
     // TODO: block processor pipeline
@@ -446,7 +446,7 @@ public partial class BlockProcessor : IBlockProcessor
                 tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
                 if (txTracer.IsTracingState)
                 {
-                    _stateProvider.Commit(spec, txTracer);
+                    _worldStateProvider.GetWorldState(block).Commit(spec, txTracer);
                 }
             }
         }
@@ -455,15 +455,16 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline (only where rewards needed)
     private void ApplyMinerReward(Block block, BlockReward reward, IReleaseSpec spec)
     {
+        var worldState = _worldStateProvider.GetWorldState(block);
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        if (!_stateProvider.AccountExists(reward.Address))
+        if (!worldState.AccountExists(reward.Address))
         {
-            _stateProvider.CreateAccount(reward.Address, reward.Value);
+            worldState.CreateAccount(reward.Address, reward.Value);
         }
         else
         {
-            _stateProvider.AddToBalance(reward.Address, reward.Value, spec);
+            worldState.AddToBalance(reward.Address, reward.Value, spec);
         }
     }
 
@@ -472,18 +473,19 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == block.Header.Number)
         {
+            var worldState = _worldStateProvider.GetWorldState(block);
             if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-            if (!_stateProvider.AccountExists(withdrawAccount))
+            if (!worldState.AccountExists(withdrawAccount))
             {
-                _stateProvider.CreateAccount(withdrawAccount, 0);
+                worldState.CreateAccount(withdrawAccount, 0);
             }
 
             foreach (Address daoAccount in DaoData.DaoAccounts)
             {
-                UInt256 balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
-                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+                UInt256 balance = worldState.GetBalance(daoAccount);
+                worldState.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                worldState.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
         }
     }
