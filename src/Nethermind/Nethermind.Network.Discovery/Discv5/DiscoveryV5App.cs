@@ -20,11 +20,18 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Db;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Reflection;
 using DotNetty.Transport.Channels.Sockets;
+using Lantern.Discv5.WireProtocol.Packet.Handlers;
+using Lantern.Discv5.WireProtocol.Packet.Types;
 using Nethermind.Core;
 using Nethermind.Api;
 using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
+using Nethermind.Network.Discovery.Portal;
+using Nethermind.Network.Enr;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
 
@@ -55,14 +62,20 @@ public class DiscoveryV5App : IDiscoveryApp
             SessionKeys = new SessionKeys(privateKeyProvider.Generate().KeyBytes),
         };
 
-        string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
+        // string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
+        var bootstrapNodes = new[]
+        {
+            // Add your bootstrap ENR strings here
+            "enr:-Ku4QImhMc1z8yCiNJ1TyUxdcfNucje3BGwEHzodEZUan8PherEo4sF7pPHPSIB1NNuSg5fZy7qFsjmUKs2ea1Whi0EBh2F0dG5ldHOIAAAAAAAAAACEZXRoMpD1pf1CAAAAAP__________gmlkgnY0gmlwhBLf22SJc2VjcDI1NmsxoQOVphkDqal4QzPMksc5wnpuC3gvSC8AfbFOnZY_On34wIN1ZHCCIyg",
+            "enr:-Le4QPUXJS2BTORXxyx2Ia-9ae4YqA_JWX3ssj4E_J-3z1A-HmFGrU8BpvpqhNabayXeOZ2Nq_sbeDgtzMJpLLnXFgAChGV0aDKQtTA_KgEAAAAAIgEAAAAAAIJpZIJ2NIJpcISsaa0Zg2lwNpAkAIkHAAAAAPA8kv_-awoTiXNlY3AyNTZrMaEDHAD2JKYevx89W0CcFJFiskdcEzkH_Wdv9iW42qLK79ODdWRwgiMohHVkcDaCI4I"
+        };
 
         IServiceCollection services = new ServiceCollection()
-           .AddSingleton<ILoggerFactory, NullLoggerFactory>()
            .AddSingleton(sessionOptions.Verifier)
            .AddSingleton(sessionOptions.Signer);
 
-        EnrFactory enrFactory = new(new EnrEntryRegistry());
+        EnrEntryRegistry registry = new EnrEntryRegistry();
+        EnrFactory enrFactory = new(registry);
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
             .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
@@ -77,7 +90,7 @@ public class DiscoveryV5App : IDiscoveryApp
                     .Build()),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
             // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr => enrFactory.CreateFromBytes(enr, identityVerifier))
+            // .. _discoveryDb.GetAllValues().Select(enr => enrFactory.CreateFromBytes(enr, identityVerifier))
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
@@ -97,7 +110,11 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
-            .WithServices(NettyDiscoveryV5Handler.Register);
+            .WithServices((components) =>
+            {
+                NettyDiscoveryV5Handler.Register(components);
+                services.AddSingleton<IPacketHandlerFactory, CustomPacketHandlerFactory>();
+            });
 
         _discv5Protocol = discv5Builder.Build();
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
@@ -105,6 +122,26 @@ public class DiscoveryV5App : IDiscoveryApp
 
         _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
+    }
+
+    public class CustomPacketHandlerFactory(IServiceProvider serviceProvider) : IPacketHandlerFactory
+    {
+        private readonly Dictionary<PacketType, Type> _handlerTypes = new()
+        {
+            { PacketType.Ordinary, typeof(HacklyLanternPacketHandler) },
+            { PacketType.WhoAreYou, typeof(WhoAreYouPacketHandler) },
+            { PacketType.Handshake, typeof(HandshakePacketHandler) },
+        };
+
+        public IPacketHandler GetPacketHandler(PacketType packetType)
+        {
+            if (_handlerTypes.TryGetValue(packetType, out var handlerType))
+            {
+                return (IPacketHandler)ActivatorUtilities.CreateInstance(serviceProvider, handlerType);
+            }
+
+            throw new InvalidOperationException($"No handler found for packet type {packetType}");
+        }
     }
 
     private void NodeAddedByDiscovery(IEnr newEntry)
@@ -191,10 +228,21 @@ public class DiscoveryV5App : IDiscoveryApp
         channel.Pipeline.AddLast(handler);
     }
 
-    public void Start() => _ = DiscoverViaCustomRandomWalk();
+    public void Start() => Task.Run(async () =>
+    {
+        try
+        {
+            await DiscoverViaCustomRandomWalk();
+        }
+        catch (Exception e)
+        {
+            _logger.Error("Error", e);
+        }
+    });
 
     private async Task DiscoverViaCustomRandomWalk()
     {
+        _logger.Error("Start discover");
         async Task DiscoverAsync(IEnumerable<IEnr> getAllNodes, byte[] nodeId, CancellationToken token)
         {
             static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
@@ -251,9 +299,10 @@ public class DiscoveryV5App : IDiscoveryApp
         IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
 
         Random random = new();
+        _logger.Error("Init async");
         await _discv5Protocol.InitAsync();
 
-        if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
+        if (_logger.IsWarn) _logger.Warn($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
 
         const int RandomNodesToLookupCount = 3;
 

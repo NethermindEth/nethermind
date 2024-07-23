@@ -4,6 +4,7 @@
 using System.Net;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 
@@ -19,6 +20,7 @@ public class DiscoveryConnectionsPool : IConnectionsPool
     private readonly INetworkConfig _networkConfig;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly IPAddress _ip;
+    private readonly McsLock _lock = new McsLock();
     private readonly Dictionary<int, Task<IChannel>> _byPort = new();
 
     public DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig)
@@ -31,8 +33,7 @@ public class DiscoveryConnectionsPool : IConnectionsPool
 
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
     {
-        if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
-        _byPort.Add(port, task = bootstrap.BindAsync(_ip, port));
+        Task<IChannel> task = GetChannel(bootstrap, port);
 
         return await task.ContinueWith(t =>
         {
@@ -46,6 +47,25 @@ public class DiscoveryConnectionsPool : IConnectionsPool
 
             return t.Result;
         });
+    }
+
+    private Task<IChannel> GetChannel(Bootstrap bootstrap, int port)
+    {
+        Task<IChannel> task;
+
+        using (var _ = _lock.Acquire())
+        {
+            if (_byPort.TryGetValue(port, out task!))
+            {
+                return task;
+            }
+
+            _logger.Error($"Binding port {port}");
+            task = bootstrap.BindAsync(_ip, port);
+            _byPort.Add(port, task);
+        }
+
+        return task;
     }
 
     public async Task StopAsync()

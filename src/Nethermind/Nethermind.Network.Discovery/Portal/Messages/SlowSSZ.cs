@@ -63,6 +63,11 @@ public class SlowSSZ
             return asUint256.ToLittleEndian();
         }
 
+        if (obj is byte[] asBytes)
+        {
+            return asBytes;
+        }
+
         if (obj is IUnion)
         {
             return SerializeUnion(obj);
@@ -222,6 +227,11 @@ public class SlowSSZ
         if (targetType == typeof(UInt256))
         {
             return new UInt256(span[..32]);
+        }
+
+        if (targetType == typeof(byte[]))
+        {
+            return span.ToArray();
         }
 
         if (targetType.IsAssignableTo(typeof(IUnion)))

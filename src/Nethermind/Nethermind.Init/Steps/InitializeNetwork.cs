@@ -298,8 +298,15 @@ public class InitializeNetwork : IStep
 
         bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(channel =>
         {
-            discoveryApp?.InitializeChannel(channel);
-            discoveryV5App?.InitializeChannel(channel);
+            try
+            {
+                discoveryApp?.InitializeChannel(channel);
+                discoveryV5App?.InitializeChannel(channel);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Handler exception {ex}");
+            }
         }));
 
         await _api.DiscoveryConnections!.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
