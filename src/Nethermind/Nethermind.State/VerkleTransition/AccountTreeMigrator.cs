@@ -25,6 +25,9 @@ public class AccountTreeMigrator : ITreeVisitor
     private readonly List<byte[]> _currentPathStorage = [];
     private Address? _lastAddress;
     private Account? _lastAccount;
+    private int _leafNodeCounter = 0;
+
+    private const int StateTreeCommitThreshold = 1000;
 
     public AccountTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb preImageDb)
     {
@@ -202,7 +205,20 @@ public class AccountTreeMigrator : ITreeVisitor
             byte[] storageValue = value.ToArray();
             MigrateAccountStorage(_lastAddress, storageSlot, storageValue);
         }
+
+        CommitIfThresholdReached();
     }
+
+    private void CommitIfThresholdReached()
+    {
+        _leafNodeCounter++;
+        if (_leafNodeCounter >= StateTreeCommitThreshold)
+        {
+            _verkleStateTree.Commit();
+            _leafNodeCounter = 0;
+        }
+    }
+
 
     public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext) { }
 
@@ -224,7 +240,11 @@ public class AccountTreeMigrator : ITreeVisitor
 
     public void FinalizeMigration(long blockNumber)
     {
-        _verkleStateTree.Commit();
+        // Commit any remaining changes
+        if (_leafNodeCounter > 0)
+        {
+            _verkleStateTree.Commit();
+        }
         _verkleStateTree.CommitTree(blockNumber);
         Console.WriteLine($"Migration completed");
     }
