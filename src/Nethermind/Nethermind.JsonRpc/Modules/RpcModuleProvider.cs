@@ -99,16 +99,28 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context)
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
         {
+            module = null;
+
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            {
                 return ModuleResolution.Unknown;
+            }
+
+            module = result.ModuleType;
 
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
+            {
                 return ModuleResolution.EndpointDisabled;
+            }
 
             if (context.Url is not null)
-                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+            {
+                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase)
+                    ? ModuleResolution.Enabled
+                    : ModuleResolution.Disabled;
+            }
 
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }

@@ -432,12 +432,12 @@ public class JsonRpcService : IJsonRpcService
 
         methodName = methodName.Trim();
 
-        ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
+        ModuleResolution result = _rpcModuleProvider.Check(methodName, context, out string? module);
         return result switch
         {
             ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
-            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
-            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
+            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module '{module}' is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module '{module}' in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
+            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' in module '{module}' but is disabled for {context.RpcEndpoint}"),
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),
             _ => (null, null)
         };
