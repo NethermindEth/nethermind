@@ -377,7 +377,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                     if (previousState.ExecutionType.IsAnyCreate())
                     {
+                        // previous state was a CREATE statement, and now we use that the gas left from create execution
+                        // is the gas we can use for code deposit
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
+
                         previousCallResult = callCodeOwner.Bytes;
                         previousCallOutputDestination = UInt256.Zero;
                         _returnDataBuffer = Array.Empty<byte>();
@@ -408,11 +411,28 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             InsertCode(code, callCodeOwner, spec);
 
                             currentState.GasAvailable -= codeDepositGasCost;
+                            gasAvailableForCodeDeposit -= codeDepositGasCost;
 
-                            if (typeof(TTracingActions) == typeof(IsTracing))
+                            // TODO: check if here we need to deduct gas from currentGas.GasAvailable or gasForCodeDeposit?
+                            // Are they even different? - yes they are different - currentState.GasAvailable > gasAvailableForCodeDeposit
+                            long contractCreationCompleteGas = currentState.Env.Witness.AccessForContractCreated(callCodeOwner);
+                            if (gasAvailableForCodeDeposit >= contractCreationCompleteGas)
                             {
-                                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
+                                currentState.GasAvailable -= contractCreationCompleteGas;
+                                if (typeof(TTracingActions) == typeof(IsTracing))
+                                {
+                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost - contractCreationCompleteGas, callCodeOwner, callResult.Output);
+                                }
                             }
+                            else
+                            {
+                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                                if (typeof(TTracingActions) == typeof(IsTracing))
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                }
+                            }
+
                         }
                         else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                         {
@@ -2716,15 +2736,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
-        var contractCreationInitCost =
-            env.Witness.AccessForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero);
-        if (!UpdateGas(contractCreationInitCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
-
         if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
+
+
+        var contractCreationInitCost =
+            env.Witness.AccessForContractCreationInit(contractAddress, !value.IsZero);
+        if (!UpdateGas(contractCreationInitCost, ref callGas)) return (EvmExceptionType.OutOfGas, null);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2762,9 +2783,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
-
-        long contractCreationCompleteGas = env.Witness.AccessForContractCreated(contractAddress);
-        if (!UpdateGas(contractCreationCompleteGas, ref callGas)) return (EvmExceptionType.OutOfGas, null);
 
         ExecutionEnvironment callEnv = new
         (
