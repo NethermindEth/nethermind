@@ -130,6 +130,7 @@ public class LedBat
     }
 
     public void OnDataLoss(uint nowMicros)
+
     {
         Console.Error.WriteLine($"TC Data loss");
         if (_lastDataLossAdjustment / RTT != nowMicros / RTT)

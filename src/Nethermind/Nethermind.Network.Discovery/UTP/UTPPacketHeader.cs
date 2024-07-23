@@ -167,8 +167,8 @@ public class UTPPacketHeader : IEquatable<UTPPacketHeader>
         if (SelectiveAck != null)
         {
             string bitSetString = string.Concat(SelectiveAck.Select(b => Convert.ToString(b, 2).PadLeft(8, '0')));
-            return $"{PacketType} SN {SeqNumber} AN {AckNumber} SACK {bitSetString}";
+            return $"{PacketType} with seq_nr={SeqNumber} and ack_nr={AckNumber} and selective_ack_nr={bitSetString}";
         }
-        return $"{PacketType} SN {SeqNumber} AN {AckNumber}";
+        return $"{PacketType} with seq_nr={SeqNumber} and ack_nr={AckNumber}";
     }
 }

@@ -39,7 +39,6 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     private ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
     private ulong _incomingBufferSize = 0;
 
-
     public async Task InitiateHandshake(CancellationToken token)
     {
         // TODO: MTU probe
@@ -49,6 +48,8 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StSyn);
         _seq_nr++;
         _state = ConnectionState.CsSynSent;
+        Console.Error.WriteLine("Initiate Handshake");
+
 
         while (true)
         {
@@ -63,7 +64,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     {
         // TODO: Probably should be handled at deserializer level
         if (packageHeader.Version != 1) return Task.CompletedTask;
-
+       // Console.Error.WriteLine($"Packet received: {packageHeader}");
         // TODO: When EOF was obtained from FIN, filter out sequence higher than that.
         _lastReceivedMicrosecond = packageHeader.TimestampMicros;
         if (_lastPacketHeaderFromPeer == null ||  UTPUtil.IsLessOrEqual(_lastPacketHeaderFromPeer.AckNumber, packageHeader.AckNumber)) {
@@ -76,11 +77,16 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 _seq_nr = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
                 _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
                 _state = ConnectionState.CsSynRecv; // From spec: c.state
-                _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
+               _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
                 break;
 
             case UTPPacketType.StState:
-                if (_state == ConnectionState.CsSynSent) _state = ConnectionState.CsConnected;
+
+                if (_state == ConnectionState.CsSynSent)
+                {
+                    _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
+                    _state = ConnectionState.CsConnected;
+                }
                 break;
 
             case UTPPacketType.StFin:
@@ -93,7 +99,10 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 {
                     // Special case, once FIN is first received, the reader stream thread would have exited after its ACK.
                     // In the case where the last ACK is lost, the sender send FIN again, so this need to happen.
-                    _ = SendStatePacket(token);
+                    //_ = SendStatePacket(token);
+                    UTPPacketHeader stateHeader = CreateBaseHeader(UTPPacketType.StState);
+                    Console.Error.WriteLine($"On receiver sends {stateHeader}");
+                    _ = peer.ReceiveMessage(stateHeader, ReadOnlySpan<byte>.Empty, token);
                 }
 
                 break;
@@ -114,7 +123,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 break;
         }
 
-        _utpSynchronizer.awakePeer();
+      _utpSynchronizer.awakePeer();
         // TODO: step every minute, apparently
         /**
                  * 	// this is the difference between their send time and our receive time
@@ -164,8 +173,10 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     {
         await _utpSynchronizer.WaitTillSenderSendsST_SYNAndReceiverReceiveIt();
         bool finished = false;
+        Console.Error.WriteLine("Initiate reading");
         while (!finished || _state == ConnectionState.CsEnded)
         {
+            Console.Error.WriteLine("Reading...");
             token.ThrowIfCancellationRequested();
 
             ushort curAck = _receiverAck_nr.seq_nr;
@@ -188,11 +199,11 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 if (packetIngested > 4)
                 {
                     _receiverAck_nr = new AckInfo(curAck, null);
+                    //
+                    Console.Error.WriteLine("Periodically send out ack.");
                     await SendStatePacket(token);
                     packetIngested = 0;
                 }
-
-                Console.Error.WriteLine($"R ingest {curAck}");
                 await output.WriteAsync(packetData.Value, token);
                 _incomingBufferSize -= (ulong)packetData.Value.Length;
             }
@@ -204,8 +215,8 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
             }
 
-            Console.Error.WriteLine($"R set receiver ack {curAck}");
             _receiverAck_nr = new AckInfo(curAck, selectiveAck);
+
 
             await SendStatePacket(token);
             await _utpSynchronizer.WaitForReceiverToSync();
@@ -223,8 +234,10 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             {
                 ulong initialWindowSize = _inflightDataCalculator.GetCurrentUInflightData();
                 _inflightDataCalculator.CalculateInflightData(_lastPacketHeaderFromPeer);
+                Console.Error.WriteLine($"S calculates inflightdata= {_inflightDataCalculator.GetCurrentInflightData()}");
                 ulong ackedBytes = initialWindowSize - _inflightDataCalculator.GetCurrentUInflightData();
                 _trafficControl.OnAck(ackedBytes, initialWindowSize, _lastPacketHeaderFromPeer.TimestampDeltaMicros, UTPUtil.GetTimestamp());
+
             }
 
             await Retransmit(_inflightDataCalculator.getUnAckedWindow(), token);
@@ -255,7 +268,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     private async Task SendPacket(UTPPacketType type, Memory<byte> asMemory, CancellationToken token)
     {
         UTPPacketHeader header = CreateBaseHeader(type);
-        Console.Error.WriteLine($"S Send {header.SeqNumber} {_inflightDataCalculator.GetCurrentInflightData()} {_trafficControl.WindowSize}");
+        Console.Error.WriteLine($"S sends {header}");
         _inflightDataCalculator.trackPacket(asMemory, header);
         await peer.ReceiveMessage(header, asMemory.Span, token);
         _inflightDataCalculator.IncrementInflightData(asMemory.Length);
@@ -264,6 +277,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     private async Task SendStatePacket(CancellationToken token)
     {
         UTPPacketHeader stateHeader = CreateBaseHeader(UTPPacketType.StState);
+        Console.Error.WriteLine($"R replys {stateHeader}");
         await peer.ReceiveMessage(stateHeader, ReadOnlySpan<byte>.Empty, token);
     }
     private bool ShouldNotHandleSequence(UTPPacketHeader meta, ReadOnlySpan<byte> data)
@@ -343,6 +357,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
     private async Task SendSynPacketToReceiver(UTPPacketHeader header, CancellationToken token)
     {
+        Console.Error.WriteLine($"S sends {header}");
         await peer.ReceiveMessage(header, ReadOnlySpan<byte>.Empty, token);
     }
 

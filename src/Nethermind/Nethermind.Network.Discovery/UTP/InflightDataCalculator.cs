@@ -12,7 +12,6 @@ public class InflightDataCalculator {
     public  void CalculateInflightData(UTPPacketHeader lastPacketHeaderSent)
     {
             ushort ackNumberPlus1 = UTPUtil.WrappedAddOne(lastPacketHeaderSent.AckNumber);
-            Console.Error.WriteLine($"S process ack {lastPacketHeaderSent}");
             LinkedListNode<UnackedItem>? unackedHead = unackedWindow.First;
             while (true)
             {

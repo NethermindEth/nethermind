@@ -29,7 +29,7 @@ public class UTPSynchronizer
     }
 
 
-    //This should awake the readStream method on the receiver to move foward with the sync
+    //This should awake the readStream method on the receiver to move forward with the sync
     public void AwakeReceiverToStarSynchronization(UTPPacketHeader meta)
     {
         _syncTcs.TrySetResult(meta);
