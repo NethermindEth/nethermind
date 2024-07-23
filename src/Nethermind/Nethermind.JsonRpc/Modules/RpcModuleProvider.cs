@@ -23,8 +23,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        private readonly HashSet<string> _modules = new(StringComparer.InvariantCultureIgnoreCase);
-        private readonly HashSet<string> _enabledModules = new(StringComparer.InvariantCultureIgnoreCase);
+        private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
         private FrozenDictionary<string, ResolvedMethodInfo> _methods = FrozenDictionary<string, ResolvedMethodInfo>.Empty;
         private FrozenDictionary<string, Pool> _pools = FrozenDictionary<string, Pool>.Empty;
@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 _modules.Add(moduleType);
 
-                if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.InvariantCultureIgnoreCase))
+                if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.OrdinalIgnoreCase))
                 {
                     _enabledModules.Add(moduleType);
                 }
@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules
 
             if (context.Url is not null)
             {
-                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase)
+                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.OrdinalIgnoreCase)
                     ? ModuleResolution.Enabled
                     : ModuleResolution.Disabled;
             }
