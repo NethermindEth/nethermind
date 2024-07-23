@@ -57,7 +57,7 @@ public class AccountTreeMigrator : ITreeVisitor
     {
         List<byte[]> currentPath = trieVisitContext.IsStorage ? _currentPathStorage : _currentPath;
         // If there are more nodes traversed than the current level, we should pop the nodes until we are at the current level
-        while (currentPath.Count > trieVisitContext.Level)
+        while (currentPath.Count >= trieVisitContext.Level && trieVisitContext.Level > 0)
         {
             currentPath.RemoveAt(currentPath.Count - 1);
         }
