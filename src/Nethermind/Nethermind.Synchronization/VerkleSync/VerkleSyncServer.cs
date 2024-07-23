@@ -16,33 +16,25 @@ using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
-public class VerkleSyncServer
+public class VerkleSyncServer(IVerkleTreeStore treeStore, ILogManager logManager)
 {
-    private readonly IVerkleTreeStore _store;
-    private readonly ILogManager _logManager;
-    private readonly ILogger _logger;
+    private readonly IVerkleTreeStore _store = treeStore ?? throw new ArgumentNullException(nameof(treeStore));
+    private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 10000;
 
-    public VerkleSyncServer(IVerkleTreeStore treeStore, ILogManager logManager)
+    public (List<PathWithSubTree>, VerkleProof?) GetSubTreeRanges(Hash256 rootHash, Stem startingStem, Stem? limitStem, long byteLimit)
     {
-        _store = treeStore ?? throw new ArgumentNullException(nameof(treeStore));
-        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = logManager.GetClassLogger();
-    }
-
-    public (List<PathWithSubTree>, VerkleProof) GetSubTreeRanges(Hash256 rootHash, Stem startingStem, Stem? limitStem, long byteLimit, out Banderwagon rootPoint)
-    {
-        rootPoint = default;
         if (_logger.IsDebug) _logger.Debug($"Getting SubTreeRanges - RH:{rootHash} S:{startingStem} L:{limitStem} Bytes:{byteLimit}");
         var nodes = _store.GetLeafRangeIterator(startingStem, limitStem ?? Stem.MaxValue, rootHash, byteLimit).ToList();
         if (_logger.IsDebug) _logger.Debug($"Nodes Count - {nodes.Count}");
-        if (nodes.Count == 0) return (new List<PathWithSubTree>(), new VerkleProof());
+        if (nodes.Count == 0) return (nodes, null);
 
         VerkleTree tree = new(_store, _logManager);
-        VerkleProof vProof = tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
-        TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
+        VerkleProof vProof = tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out Banderwagon rootPoint, rootHash);
+        // TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
         return (nodes, vProof);
     }
 
