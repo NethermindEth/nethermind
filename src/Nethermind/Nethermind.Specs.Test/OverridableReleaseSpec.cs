@@ -160,5 +160,23 @@ namespace Nethermind.Specs.Test
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
+
+        private ulong? _overridenEip6800TransitionTimeStamp;
+        public ulong Eip6800TransitionTimeStamp
+        {
+            get => _overridenEip6800TransitionTimeStamp ?? _spec.Eip6800TransitionTimeStamp;
+            set => _overridenEip6800TransitionTimeStamp = value;
+        }
+
+        public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
+        public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
+        public bool IsVerkleTreeEipEnabled => _spec.IsVerkleTreeEipEnabled;
+
+        private ulong? _overridenEip2935TransitionTimeStamp;
+        public ulong Eip2935TransitionTimeStamp
+        {
+            get => _overridenEip2935TransitionTimeStamp ?? _spec.Eip2935TransitionTimeStamp;
+            set => _overridenEip2935TransitionTimeStamp = value;
+        }
     }
 }

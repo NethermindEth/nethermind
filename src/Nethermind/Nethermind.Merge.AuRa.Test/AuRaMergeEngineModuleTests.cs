@@ -131,6 +131,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 State,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
+                BlockTree,
                 LogManager,
                 WithdrawalProcessor);
 

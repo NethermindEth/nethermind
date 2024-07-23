@@ -24,6 +24,7 @@ namespace Nethermind.Evm
         public const long SSet = 20000;
         public const long SReset = 5000;
         public const long Create = 32000;
+        public const long CreatePostVerkle = 1000;
         public const long CodeDeposit = 200;
         public const long Call = 40;
         public const long CallEip150 = 700;
@@ -62,5 +63,11 @@ namespace Nethermind.Evm
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
+
+        public const long WitnessChunkRead = 200; // verkle-trees
+        public const long WitnessChunkWrite = 500; // verkle-trees
+        public const long WitnessChunkFill = 6200; // verkle-trees
+        public const long WitnessBranchRead = 1900; // verkle-trees
+        public const long WitnessBranchWrite = 3000; // verkle-trees
     }
 }

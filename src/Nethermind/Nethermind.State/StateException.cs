@@ -11,8 +11,15 @@ namespace Nethermind.State
         {
         }
 
-        public StateException(string message) : base(message)
+        protected StateException(string message) : base(message)
         {
+        }
+
+        public class StateDeleteNotSupported : NotSupportedException
+        {
+            public StateDeleteNotSupported(string message) : base(message) { }
+
+            public StateDeleteNotSupported() : base("Verkle Trees does not support deletion of data from the tree") { }
         }
     }
 }

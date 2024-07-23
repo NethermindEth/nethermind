@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Verkle;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
@@ -33,8 +34,9 @@ namespace Nethermind.Consensus.Producers
             BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
-            IEnumerable<Withdrawal>? withdrawals = null)
-            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals)
+            IEnumerable<Withdrawal>? withdrawals = null,
+            ExecutionWitness? execWitness = null)
+            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals, execWitness)
         {
             Transactions = transactions;
         }

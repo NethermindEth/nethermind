@@ -39,7 +39,7 @@ public class SnapServerTest
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         MemDb clientStateDb = new();
-        using ProgressTracker progressTracker = new(null!, clientStateDb, LimboLogs.Instance);
+        using SnapProgressTracker progressTracker = new(null!, clientStateDb, LimboLogs.Instance);
 
         INodeStorage nodeStorage = new NodeStorage(clientStateDb);
 
@@ -215,7 +215,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        using SnapProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
@@ -251,7 +251,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        using SnapProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
