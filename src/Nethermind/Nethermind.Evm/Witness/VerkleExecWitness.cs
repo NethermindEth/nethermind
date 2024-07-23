@@ -218,7 +218,11 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
-        if (gasAvailable < gasCost) return false;
+        if (gasAvailable < gasCost)
+        {
+            gasAvailable = 0;
+            return false;
+        }
         gasAvailable -= gasCost;
         return true;
     }
