@@ -654,9 +654,9 @@ internal class ILCompiler
                     method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
                     method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
+
                     method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
                     method.LoadLocalAddress(uint256B);
                     method.LoadLocal(uint256C);
                     method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -682,9 +682,9 @@ internal class ILCompiler
                     method.StackPop(head, 1);
                     method.StoreLocal(uint256A);
 
+
                     method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.InputData)));
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
 
                     method.LoadLocalAddress(uint256A);
                     method.LoadConstant(Word.Size);

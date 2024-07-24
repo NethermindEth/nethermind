@@ -14,11 +14,15 @@ using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal ref struct ILEvmState
 {
-    public byte[] MachineCode;
+    public ReadOnlyMemory<byte> MachineCode;
+    public EvmState EvmState;
     // static arguments
-    public ref ExecutionEnvironment Env;
-    public ref TxExecutionContext TxCtx;
-    public ref BlockExecutionContext BlkCtx;
+    // * vmState.Env :
+    public ref readonly ExecutionEnvironment Env;
+    // * vmState.Env.TxCtx :
+    public ref readonly TxExecutionContext TxCtx;
+    // * vmState.Env.TxCtx.BlkCtx :
+    public ref readonly BlockExecutionContext BlkCtx;
     // in case of exceptions
     public EvmExceptionType EvmException;
     // in case of jumps crossing section boundaries
@@ -30,31 +34,39 @@ internal ref struct ILEvmState
     public bool ShouldReturn;
     public bool ShouldJump;
 
-    public int StackHead;
+    // * vmState.DataStackHead :
+    public ref int StackHead;
+    // * vmState.DataStack :
     public Span<byte> Stack;
 
+    // * vmState.Memory :
     public ref EvmPooledMemory Memory;
 
-    public ref ReadOnlyMemory<byte> InputBuffer;
+    public ref readonly ReadOnlyMemory<byte> InputBuffer;
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
-    public ILEvmState(byte[] machineCode, ref ExecutionEnvironment env, ref TxExecutionContext txCtx, ref BlockExecutionContext blkCtx, EvmExceptionType evmException, ushort programCounter, long gasAvailable, int stackHead, Span<byte> stack, ref EvmPooledMemory memory, ref ReadOnlyMemory<byte> inputBuffer, ref ReadOnlyMemory<byte> returnBuffer)
+    public ILEvmState(EvmState evmState, EvmExceptionType evmException, ushort programCounter, long gasAvailable, ref ReadOnlyMemory<byte> returnBuffer)
     {
-        MachineCode = machineCode;
-        Env = ref env;
-        TxCtx = ref txCtx;
-        BlkCtx = ref blkCtx;
+        // locals for ease of access
+        EvmState = evmState; 
+        MachineCode = evmState.Env.CodeInfo.MachineCode;
+        Env = ref evmState.Env;
+        TxCtx = ref evmState.Env.TxExecutionContext;
+        BlkCtx = ref evmState.Env.TxExecutionContext.BlockExecutionContext;
+        StackHead = ref evmState.DataStackHead;
+        Stack = evmState.DataStack;
+        Memory = ref evmState.Memory;
+
         EvmException = evmException;
         ProgramCounter = programCounter;
         GasAvailable = gasAvailable;
+
+        InputBuffer = ref evmState.Env.InputData;
+        ReturnBuffer = ref returnBuffer;
+
         ShouldStop = false;
         ShouldRevert = false;
         ShouldReturn = false;
         ShouldJump = false;
-        StackHead = stackHead;
-        Stack = stack;
-        Memory = ref memory;
-        ReturnBuffer = ref returnBuffer;
-        InputBuffer = ref inputBuffer;
     }
 }

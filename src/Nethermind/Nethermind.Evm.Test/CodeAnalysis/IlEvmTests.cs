@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
@@ -9,6 +10,7 @@ using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.State;
 using NUnit.Framework;
 using Sigil;
 using System;
@@ -413,10 +415,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()]);
             var envExCtx = new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
             var stack = new byte[1024 * 32];
-            var memory = new EvmPooledMemory();
             var inputBuffer = envExCtx.InputData;
             var returnBuffer = ReadOnlyMemory<byte>.Empty;
-            ILEvmState iLEvmState = new ILEvmState(testcase.bytecode, ref envExCtx, ref txExCtx, ref blkExCtx, EvmExceptionType.None, 0, 100000, 0, stack, ref memory, ref inputBuffer, ref returnBuffer);
+
+            var state = new EvmState(
+                1_000_000,
+                new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
+                ExecutionType.CALL,
+                isTopLevel: false,
+                Snapshot.Empty,
+                isContinuation: false);
+
+            state.InitStacks();
+
+            ILEvmState iLEvmState = new ILEvmState(state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
             ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, _blockhashProvider, ctx.Data);

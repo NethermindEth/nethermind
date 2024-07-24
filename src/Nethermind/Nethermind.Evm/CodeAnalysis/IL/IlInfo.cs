@@ -61,7 +61,7 @@ internal class IlInfo
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
     public FrozenDictionary<ushort, SegmentExecutionCtx> Segments { get; set; }
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, BlockExecutionContext blkCtx, TxExecutionContext txCtx, ISpecProvider specProvider, IBlockhashProvider blockHashProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldJump, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
+    public bool TryExecute<TTracingInstructions>(EvmState vmState, ref ReadOnlyMemory<byte> outputBuffer, ISpecProvider specProvider, IBlockhashProvider blockHashProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldJump, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         shouldReturn = false;
@@ -80,6 +80,7 @@ internal class IlInfo
                     {
                         return false;
                     }
+                    var blkCtx = vmState.Env.TxExecutionContext.BlockExecutionContext;
                     chunk.Invoke(vmState, specProvider.GetSpec(blkCtx.Header.Number, blkCtx.Header.Timestamp), ref programCounter, ref gasAvailable, ref stack);
                     break;
                 }
@@ -90,28 +91,19 @@ internal class IlInfo
                         return false;
                     }
 
-                    var ilvmState = new ILEvmState
-                    {
-                        GasAvailable = (int)gasAvailable,
-                        Stack = vmState.DataStack,
-                        StackHead = vmState.DataStackHead,
-                        Env = vmState.Env,
-                        BlkCtx = ref blkCtx,
-                        TxCtx = ref txCtx,
-                        ProgramCounter = (ushort)programCounter,
-                        Memory = ref vmState.Memory,
-                    };
+                    var ilvmState = new ILEvmState(vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
                     ctx.Method.Invoke(ref ilvmState, specProvider, blockHashProvider, ctx.Data);
+
                     gasAvailable = ilvmState.GasAvailable;
-                    vmState.DataStack = ilvmState.Stack.ToArray();
-                    vmState.DataStackHead = ilvmState.StackHead;
                     programCounter = ilvmState.ProgramCounter;
                     shouldStop = ilvmState.ShouldStop;
                     shouldReturn = ilvmState.ShouldReturn;
                     shouldRevert = ilvmState.ShouldRevert;
+
                     returnData = ilvmState.ReturnBuffer;
                     shouldJump = ilvmState.ShouldJump;
+
                     break;
                 }
         }
