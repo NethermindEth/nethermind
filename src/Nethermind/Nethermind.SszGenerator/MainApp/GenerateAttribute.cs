@@ -15,3 +15,8 @@ sealed class FieldAttribute : Attribute
 sealed class FunctionAttribute : Attribute
 {
 }
+
+[AttributeUsage(AttributeTargets.Struct)]
+sealed class FieldStructAttribute : Attribute
+{
+}
