@@ -58,17 +58,13 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IReceiptsRecovery _recovery;
 
         static string finalFilePath = "finalizied_index.bin";
-        private static SafeFileHandle finalizedFileHandle = File.OpenHandle(finalFilePath, FileMode.OpenOrCreate);
+        private static SafeFileHandle finalizedFileHandle = File.OpenHandle(finalFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
         static string tempFilePath = "temp_index.bin";
         private static SafeFileHandle tempFileHandle = File.OpenHandle(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
         private FileStream finalizedFileStream = new FileStream(finalizedFileHandle, FileAccess.ReadWrite);
         private FileStream tempFileStream = new FileStream(tempFileHandle, FileAccess.ReadWrite);
-        private readonly ConcurrentDictionary<string, object> fileLocks = new ConcurrentDictionary<string, object>();
-        private readonly object batchLock = new object();
         private int blocksProcessed = 0;
         private long totalBlocks;
-        private const int BatchSize = 100;
-
 
         public ExtractKeyValueMigration(IApiWithNetwork api) : this(
             api.ReceiptStorage!,
@@ -253,7 +249,7 @@ namespace Nethermind.Init.Steps.Migrations
                                     {
                                         RandomAccess.Write(tempFileHandle, BitConverter.GetBytes(blockNumber), position + slotSize * 4);
 
-                                        if (slotSize + 1 == bufferSize)
+                                        if (slotSize + 1 == bufferSize / 4)
                                         {
                                             Span<byte> blockNumbers = new byte[bufferSize];
                                             RandomAccess.Read(tempFileHandle, blockNumbers, position);
@@ -261,14 +257,14 @@ namespace Nethermind.Init.Steps.Migrations
 
                                             _logger.Info($"Saving block numbers to final: {string.Join(", ", blockNumbersInt.ToArray())}");
 
-                                            var encoded = TurboPFor.p4nd1enc256v32(blockNumbersInt.ToArray(), blockNumbersInt.Length, bufferForEncodedInts);
+                                            TurboPFor.p4nd1enc256v32(blockNumbersInt.ToArray(), blockNumbersInt.Length, bufferForEncodedInts);
                                             finalizedFileStream.Write(bufferForEncodedInts);
 
-                                            Span<int> decodedBlockNumbers = new int[bufferSize / 4];
-                                            TurboPFor.p4nd1dec256v32(bufferForEncodedInts, encoded, decodedBlockNumbers.ToArray());
+                                            int[] decodedBlockNumbers = new int[bufferSize / 4];
+                                            TurboPFor.p4nd1dec256v32(bufferForEncodedInts, 1000, decodedBlockNumbers);
 
-                                            _logger.Info($"Encoded data: {BitConverter.ToString(bufferForEncodedInts, 0, encoded)}");
-                                            _logger.Info($"Decoded block numbers: {string.Join(", ", decodedBlockNumbers.ToArray())}");
+                                            _logger.Info($"Encoded data: {BitConverter.ToString(bufferForEncodedInts, 0, bufferForEncodedInts.Length)}");
+                                            _logger.Info($"Decoded block numbers: {string.Join(", ", decodedBlockNumbers)}");
 
                                             "F".ToBytes().CopyTo(location);
                                             BitConverter.GetBytes(finalizedFileStream.Position).CopyTo(location.Slice(2));
