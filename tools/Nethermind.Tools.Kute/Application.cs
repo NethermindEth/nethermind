@@ -137,7 +137,7 @@ class Application
                     {
                         content = await task.Item1;
                     }
-                    var deserialized = content != null
+                    var deserialized = content is not null
                         ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
                         : null;
 
@@ -162,7 +162,7 @@ class Application
                         content = await task.Item1;
                     }
 
-                    var deserialized = content != null
+                    var deserialized = content is not null
                         ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
                         : null;
 
