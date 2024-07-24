@@ -12,5 +12,6 @@
 
   <ItemGroup>
     <PackageReference Include="NonBlocking" />
+    <PackageReference Include="RocksDB" />
   </ItemGroup>
 </Project>

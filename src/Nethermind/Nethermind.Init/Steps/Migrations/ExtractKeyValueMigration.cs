@@ -4,11 +4,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,11 +24,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
+using RocksDbSharp;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Init.Steps.Migrations
@@ -54,7 +58,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
-        private readonly IDb _logIndexDb;
+        private readonly IDbWithIterator _logIndexDb;
         private readonly IReceiptsRecovery _recovery;
 
         static string finalFilePath = "finalizied_index.bin";
@@ -87,7 +91,7 @@ namespace Nethermind.Init.Steps.Migrations
             IChainLevelInfoRepository chainLevelInfoRepository,
             IReceiptConfig receiptConfig,
             IColumnsDb<ReceiptsColumns> receiptsDb,
-            IDb logIndexDb,
+            IDbWithIterator logIndexDb,
             IReceiptsRecovery recovery,
             ILogManager logManager
         )
@@ -189,6 +193,16 @@ namespace Nethermind.Init.Steps.Migrations
                 byte[] bufferForEncodedInts = new byte[bufferSize * 3];
                 Span<byte> location = stackalloc byte[18];
 
+                using Iterator iterator = _logIndexDb.CreateIterator(true);
+                iterator.Seek("balls".ToBytes());
+                while (iterator.Valid())
+                {
+                    if (Bytes.BytesComparer.Compare(iterator.Key(), endKey) >= 0)
+                        break;
+                    //do stuff
+                    iterator.Next();
+                }
+
                 foreach ((long, TxReceipt[]) block in GetBlockBodiesForMigration(token)
                              .Select(i => _blockTree.FindBlock(i.Item2, BlockTreeLookupOptions.None) ?? GetMissingBlock(i.Item1, i.Item2))
                              .Select(b => (b.Number, _receiptStorage.Get(b, false))).AsParallel().AsOrdered())
@@ -213,7 +227,7 @@ namespace Nethermind.Init.Steps.Migrations
                                     if (freeSlots.Length < 8)
                                     {
                                         position = tempFileStream.Position;
-                                        tempFileStream.Write(buffer.ToArray(), 0, buffer.Length);
+                                        tempFileStream.Write(buffer.ToArray());
                                     }
                                     else
                                     {
