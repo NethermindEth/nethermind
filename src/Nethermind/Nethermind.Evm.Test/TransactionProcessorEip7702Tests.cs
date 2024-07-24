@@ -484,7 +484,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        CallOutputTracer tracer = new ();
+        CallOutputTracer tracer = new();
         _transactionProcessor.Execute(tx, block.Header, tracer);
 
         Assert.That(tracer.ReturnValue, Is.EquivalentTo(code));
