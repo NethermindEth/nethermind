@@ -77,7 +77,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _processStateless = processStateless;
-        if (_processStateless) _defaultProcessingOptions |= ProcessingOptions.StatelessProcessing;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
@@ -127,6 +126,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
+        // this is generally the situation we have when we didn't process any FCU. after we get the first FCU,
+        // we fetch the head block header from a peer and then insert so the tree, in ForkChoiceHandler
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
@@ -149,8 +150,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Syncing;
         }
 
-        // parent is not null - here we can start processing blocks stateless
-        if (_processStateless) block.Header.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
+        // TODO: this condition can be removed in future, we might start including parent state root in witness
+        // but even after including it in the witness - should we verify this?
+        block.ExecutionWitness!.StateRoot = parentHeader.StateRoot;
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
@@ -159,7 +161,10 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Valid(block.Hash);
         }
 
-        if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
+        var shouldProcessBlock = ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions);
+        var isStatelessProcessing = processingOptions.ContainsFlag(ProcessingOptions.StatelessProcessing);
+
+        if (!shouldProcessBlock || isStatelessProcessing) // we shouldn't process block
         {
             if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
             {
@@ -172,7 +177,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
-                return NewPayloadV1Result.Syncing;
+                if(!shouldProcessBlock) return NewPayloadV1Result.Syncing;
             }
 
             if (_beaconPivot.ProcessDestination is not null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
@@ -185,7 +190,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
 
             if (_logger.IsInfo) _logger.Info($"Syncing... Inserting block {block}.");
-            return NewPayloadV1Result.Syncing;
+            if (!shouldProcessBlock) return NewPayloadV1Result.Syncing;
         }
 
         if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
@@ -204,8 +209,14 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Invalid(Keccak.Zero, errorMessage);
         }
 
-        // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
-        _mergeSyncController.StopSyncing();
+        // TODO: check how to properly deal with this while running in stateless mode, do we still want to complete the
+        //       beacon sync - it only downloads blocks from pivot to head?
+        //       Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
+        //       I think this needs a much more formal definition of "stateless clients". Should they store unfinalized
+        //       chain or they just work as stand alone execution unit
+
+        // in the stateful world, if we reach here - that means we have synced the required data and we can stop syncing
+        if (!isStatelessProcessing) _mergeSyncController.StopSyncing();
 
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
@@ -217,6 +228,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
         }
 
+        // TODO: check what are the effects of not returning Syncing here? I dont think it would make much difference
+        // if (result == ValidationResult.Syncing || !processingOptions.ContainsFlag(ProcessingOptions.StatelessProcessing))
         if (result == ValidationResult.Syncing)
         {
             if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
@@ -252,8 +265,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
 
-        // when stateless processing enabled we dont need processed parent
-        bool parentProcessed = parentBlockInfo is { WasProcessed: true } || _processStateless;
+        // when stateless processing enabled we don't need processed parent
+        bool parentProcessed = parentBlockInfo is { WasProcessed: true };
+        // TODO: add more conditions here so that we can avoid the parent not present things
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
         // We want to force process the whole branch then, but not longer than few blocks.
@@ -277,7 +291,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             processingOptions &= ~ProcessingOptions.IgnoreParentNotOnMainChain;
         }
 
-        return parentProcessed || processTerminalBlock;
+        // if general non-stateless conditions are true, just process the blocks in normal fashion
+        if (parentProcessed || processTerminalBlock) return true;
+        processingOptions |= ProcessingOptions.StatelessProcessing | ProcessingOptions.ForceProcessing;
+
+        return _processStateless;
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
@@ -350,13 +368,15 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         try
         {
             var timeoutTask = Task.Delay(_timeout);
-
-            BlockTreeSuggestOptions suggestion = BlockTreeSuggestOptions.ForceDontSetAsMain;
-            if (_processStateless)
-                suggestion |= BlockTreeSuggestOptions.ShouldProcessStateless | BlockTreeSuggestOptions.ShouldProcess;
-            AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, suggestion)
-                .AsTask().TimeoutOn(timeoutTask);
+            AddBlockResult addResult = AddBlockResult.UnknownParent;
+            bool processStateless = processingOptions.ContainsFlag(ProcessingOptions.StatelessProcessing);
+            // TODO: verify again why we need to do this?
+            if (!processStateless)
+            {
+                addResult = await _blockTree
+                    .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
+                    .AsTask().TimeoutOn(timeoutTask);
+            }
 
             result = addResult switch
             {
@@ -428,38 +448,37 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     {
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
 
-        if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
+        if (_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash())) return true;
+
+        // last block inserted is parent of current block, part of the same chain
+        Block? current = block;
+        Stack<Block> stack = new();
+        while (current is not null)
         {
-            // last block inserted is parent of current block, part of the same chain
-            Block? current = block;
-            Stack<Block> stack = new();
-            while (current is not null)
+            stack.Push(current);
+            Hash256 currentHash = current.Hash!;
+            if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
             {
-                stack.Push(current);
-                Hash256 currentHash = current.Hash!;
-                if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
-                {
-                    break;
-                }
-
-                _blockCacheService.BlockCache.TryGetValue(current.ParentHash!, out Block? parentBlock);
-                current = parentBlock;
+                break;
             }
 
-            if (current is null)
-            {
-                // block not part of beacon pivot chain, save in cache
-                _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
-                return false;
-            }
-
-            while (stack.TryPop(out Block? child))
-            {
-                _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
-            }
-
-            _beaconPivot.ProcessDestination = block.Header;
+            _blockCacheService.BlockCache.TryGetValue(current.ParentHash!, out Block? parentBlock);
+            current = parentBlock;
         }
+
+        if (current is null)
+        {
+            // block not part of beacon pivot chain, save in cache
+            _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+            return false;
+        }
+
+        while (stack.TryPop(out Block? child))
+        {
+            _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
+        }
+
+        _beaconPivot.ProcessDestination = block.Header;
 
         return true;
     }
