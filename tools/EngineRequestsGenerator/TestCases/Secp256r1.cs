@@ -58,19 +58,6 @@ public static class Secp256r1
 
         List<byte> codeToDeploy = new();
 
-        byte[] gasTarget = blockGasConsumptionTarget.ToBigEndianByteArrayWithoutLeadingZeros();
-
-        Transaction tx = Build.A.Transaction
-            .WithNonce(UInt256.Zero)
-            .WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithTo(TestItem.AddressA)
-            .WithChainId(BlockchainIds.Holesky)
-            .WithGasLimit(blockGasConsumptionTarget)
-            .SignedAndResolved(privateKey)
-            .TestObject;
-
         codeToDeploy.Add((byte)Instruction.PUSH32);
         codeToDeploy.AddRange(hash);
         codeToDeploy.Add((byte)Instruction.PUSH0);
@@ -102,6 +89,8 @@ public static class Secp256r1
 
         int jumpDestPosition = codeToDeploy.Count;
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
+
+        byte[] gasTarget = blockGasConsumptionTarget.ToBigEndianByteArrayWithoutLeadingZeros();
 
         for (int i = 0; i < 1000; i++)
         {
