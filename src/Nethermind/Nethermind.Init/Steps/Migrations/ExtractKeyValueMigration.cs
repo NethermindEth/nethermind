@@ -2,18 +2,17 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Extensions.ObjectPool;
-using Microsoft.VisualBasic;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -23,7 +22,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -59,20 +57,18 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _logIndexDb;
         private readonly IReceiptsRecovery _recovery;
 
-        private readonly string rootDirectory = @"C:\Users\merto\Programming\Nethermind\customIndexLukasczFINAL7";
-        private readonly ConcurrentDictionary<Hash256AsKey, HashSet<int>> topicDictionary = new ConcurrentDictionary<Hash256AsKey, HashSet<int>>();
-        private readonly ConcurrentDictionary<AddressAsKey, HashSet<int>> addressDictionary = new ConcurrentDictionary<AddressAsKey, HashSet<int>>();
+        static string finalFilePath = "finalizied_index.bin";
+        private static SafeFileHandle finalizedFileHandle = File.OpenHandle(finalFilePath, FileMode.OpenOrCreate);
+        static string tempFilePath = "temp_index.bin";
+        private static SafeFileHandle tempFileHandle = File.OpenHandle(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+        private FileStream finalizedFileStream = new FileStream(finalizedFileHandle, FileAccess.ReadWrite);
+        private FileStream tempFileStream = new FileStream(tempFileHandle, FileAccess.ReadWrite);
         private readonly ConcurrentDictionary<string, object> fileLocks = new ConcurrentDictionary<string, object>();
         private readonly object batchLock = new object();
-        private int blocksProccessed = 0;
+        private int blocksProcessed = 0;
         private long totalBlocks;
         private const int BatchSize = 100;
 
-        static string finalFilePath = "finalizied_index.bin"; 
-        static string tempFilePath = "temp_index.bin"; 
-        //take some number of blocks, make the internal collections as *lighweight as possible) <-- HOW???
-        //Drop concurrentDict
-        //loading of receipts is parallel!!!
 
         public ExtractKeyValueMigration(IApiWithNetwork api) : this(
             api.ReceiptStorage!,
@@ -113,21 +109,8 @@ namespace Nethermind.Init.Steps.Migrations
             _logger = logManager.GetClassLogger();
 
             _logger.Info("Initializing directories for migration.");
-            InitializeDirectories();
             _logger.Info("Finished initializing directories for migration.");
         }
-
-        private void InitializeDirectories()
-        {
-            // Create root directory if it doesn't exist
-            Directory.CreateDirectory(rootDirectory);
-
-            using FileStream fs_f = File.Create(Path.Combine(rootDirectory, finalFilePath));
-
-            using FileStream fs_t = File.Create(Path.Combine(rootDirectory, tempFilePath));
-            
-        }
-
 
         public async Task<bool> Run(long blockNumber)
         {
@@ -182,23 +165,19 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void RunMigration(CancellationToken token)
         {
-
-
             if (_logger.IsInfo) _logger.Info("KeyValueMigration started");
 
             using Timer timer = new(10000);
             timer.Enabled = true;
             timer.Elapsed += (_, _) =>
             {
-                if (_logger.IsInfo) _logger.Info($"KeyValueMigration in progress. TotalBlocks: {totalBlocks}. Synced: {blocksProccessed}. Blocks left: {totalBlocks - blocksProccessed}");
+                if (_logger.IsInfo) _logger.Info($"KeyValueMigration in progress. TotalBlocks: {totalBlocks}. Synced: {blocksProcessed}. Blocks left: {totalBlocks - blocksProcessed}");
             };
 
-            Dictionary<Hash256AsKey, WriterInfo> topicWriters = new();
-            Dictionary<AddressAsKey, WriterInfo> addressWriters = new();
-
             Span<byte> metaDataKey = Encoding.UTF8.GetBytes("Metadata_free_slots");
-            if(_logIndexDb.KeyExists(metaDataKey) == false) {
-                _logIndexDb.PutSpan(metaDataKey, []);
+            if (_logIndexDb.KeyExists(metaDataKey) == false)
+            {
+                _logIndexDb.PutSpan(metaDataKey, Array.Empty<byte>());
             }
 
             try
@@ -211,6 +190,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 int bufferSize = 4000;
                 Span<byte> buffer = stackalloc byte[bufferSize];
+                byte[] bufferForEncodedInts = new byte[bufferSize * 3];
                 Span<byte> location = stackalloc byte[18];
 
                 foreach ((long, TxReceipt[]) block in GetBlockBodiesForMigration(token)
@@ -226,129 +206,105 @@ namespace Nethermind.Init.Steps.Migrations
                             foreach (LogEntry log in receipt.Logs)
                             {
                                 AddressAsKey key = log.LoggersAddress;
-                                // First check if key, if not then create it
                                 var keyBytes = key.Value.Bytes;
                                 long position = 0;
                                 int slotSize = 0;
                                 int lastBlockNumber = blockNumber;
 
-                                // Find the offset in temp file for a given address / topic
-                                // 2-T/F  8 - position 4 - length 4 - last block number added
                                 if (_logIndexDb.GetSpan(keyBytes).Length == 0)
                                 {
                                     Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
-                                    if(freeSlots.Length < 8) {
-                                        using (var stream = new FileStream(tempFilePath, FileMode.Append))
-                                        {
-                                            position = stream.Position;
-                                            stream.Write(buffer.ToArray(), 0, buffer.Length);
-                                        }
-                                    } else {
-                                        position = BitConverter.ToInt64(freeSlots.Slice(0,8).ToArray(), 0);
+                                    if (freeSlots.Length < 8)
+                                    {
+                                        position = tempFileStream.Position;
+                                        tempFileStream.Write(buffer.ToArray(), 0, buffer.Length);
+                                    }
+                                    else
+                                    {
+                                        position = BitConverter.ToInt64(freeSlots.Slice(0, 8).ToArray(), 0);
                                         freeSlots = freeSlots.Slice(8);
                                         _logIndexDb.PutSpan(metaDataKey, freeSlots);
                                     }
-                                    using SafeFileHandle fileHandle = File.OpenHandle(Path.Combine(rootDirectory, tempFilePath), FileMode.OpenOrCreate);
-                                    RandomAccess.Write(fileHandle,blockNumber.ToBytes(), position+slotSize);
+                                    RandomAccess.Write(tempFileHandle, BitConverter.GetBytes(blockNumber), position + slotSize * 4);
 
                                     "T".ToBytes().CopyTo(location);
-                                    position.ToBytes().CopyTo(location.Slice(2));
-                                    (slotSize+1).ToBytes().CopyTo(location.Slice(10));
-                                    lastBlockNumber.ToBytes().CopyTo(location.Slice(14));
+                                    BitConverter.GetBytes(position).CopyTo(location.Slice(2));
+                                    BitConverter.GetBytes(slotSize + 1).CopyTo(location.Slice(10));
+                                    BitConverter.GetBytes(lastBlockNumber).CopyTo(location.Slice(14));
 
                                     _logIndexDb.PutSpan(keyBytes, location);
-                                } else {
+                                }
+                                else
+                                {
                                     location = _logIndexDb.GetSpan(keyBytes);
-                                    string file = location.Slice(0, 2).ToString();
+                                    string file = Encoding.UTF8.GetString(location.Slice(0, 2));
                                     position = BitConverter.ToInt64(location.Slice(2, 8).ToArray(), 0);
                                     slotSize = BitConverter.ToInt32(location.Slice(10, 4).ToArray(), 0);
                                     lastBlockNumber = BitConverter.ToInt32(location.Slice(14, 4).ToArray(), 0);
 
-                                    if(lastBlockNumber == blockNumber) {
+                                    if (lastBlockNumber == blockNumber)
+                                    {
                                         continue;
-                                    } 
+                                    }
 
                                     lastBlockNumber = blockNumber;
 
-                                    AssertionRequirement.Equals(file != "F", "Final file should not be used for writing");
-
-                                    using SafeFileHandle fileHandle = File.OpenHandle(Path.Combine(rootDirectory, tempFilePath), FileMode.OpenOrCreate);
-                                    RandomAccess.Write(fileHandle, blockNumber.ToBytes(), position+slotSize);
-                                    
-                                    // fill it till 4_000 bytes or less
-                                    if(slotSize + 1 == bufferSize) {
-                                        // if it's full, write it to the final file
-                                        // write to final the buffer is full
-
-                                        // TODO: Get all the block numbers and encode/compress them
-
-
-                                        // add to freeSlot
-                                        Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
-                                        Span<byte> newFreeSlots = new byte[freeSlots.Length + 8];
-                                        freeSlots.CopyTo(newFreeSlots);
-                                        position.ToBytes().CopyTo(newFreeSlots.Slice(freeSlots.Length));
-                                        _logIndexDb.PutSpan(metaDataKey, newFreeSlots);
-                                    } else {
-                                        // if it's not full, write it to the temp file
-                                        // write to temp
-                                        // update the slot size and last block number
-                                        "T".ToBytes().CopyTo(location);
-                                        (slotSize+1).ToBytes().CopyTo(location.Slice(10));
-                                        lastBlockNumber.ToBytes().CopyTo(location.Slice(14));
-
-                                        _logIndexDb.PutSpan(keyBytes, location);
-                                    }
-                                }
-
-
-
-
-                                
-
-                                ref WriterInfo? writer = ref CollectionsMarshal.GetValueRefOrAddDefault(addressWriters, key, out bool exists);
-
-                                if (!exists || writer is null)
-                                {
-                                    var fileStream = new FileStream(GetPath(key.Value.Bytes), FileMode.Append, FileAccess.Write, FileShare.Read);
-                                    writer = new WriterInfo(fileStream);
-                                }
-
-                                if (writer.BlockNumber < blockNumber)
-                                {
-                                    writer.Writer.Write(buffer);
-                                    writer.BlockNumber = blockNumber;
-                                }
-
-                                foreach (Hash256AsKey topic in log.Topics)
-                                {
-                                    ref WriterInfo? topicWriter = ref CollectionsMarshal.GetValueRefOrAddDefault(topicWriters, topic, out bool topicExists);
-                                    if (!topicExists || topicWriter is null)
+                                    if (file != "F")
                                     {
-                                        var fileStream = new FileStream(GetPath(topic.Value.Bytes), FileMode.Append, FileAccess.Write, FileShare.Read);
-                                        topicWriter = new WriterInfo(fileStream);
-                                    }
+                                        RandomAccess.Write(tempFileHandle, BitConverter.GetBytes(blockNumber), position + slotSize * 4);
 
-                                    if (topicWriter.BlockNumber < blockNumber)
-                                    {
-                                        topicWriter.Writer.Write(buffer);
-                                        topicWriter.BlockNumber = blockNumber;
+                                        if (slotSize + 1 == bufferSize)
+                                        {
+                                            Span<byte> blockNumbers = new byte[bufferSize];
+                                            RandomAccess.Read(tempFileHandle, blockNumbers, position);
+                                            Span<int> blockNumbersInt = MemoryMarshal.Cast<byte, int>(blockNumbers);
+
+                                            _logger.Info($"Saving block numbers to final: {string.Join(", ", blockNumbersInt.ToArray())}");
+
+                                            var encoded = TurboPFor.p4nd1enc256v32(blockNumbersInt.ToArray(), blockNumbersInt.Length, bufferForEncodedInts);
+                                            finalizedFileStream.Write(bufferForEncodedInts);
+
+                                            Span<int> decodedBlockNumbers = new int[bufferSize / 4];
+                                            TurboPFor.p4nd1dec256v32(bufferForEncodedInts, encoded, decodedBlockNumbers.ToArray());
+
+                                            _logger.Info($"Encoded data: {BitConverter.ToString(bufferForEncodedInts, 0, encoded)}");
+                                            _logger.Info($"Decoded block numbers: {string.Join(", ", decodedBlockNumbers.ToArray())}");
+
+                                            "F".ToBytes().CopyTo(location);
+                                            BitConverter.GetBytes(finalizedFileStream.Position).CopyTo(location.Slice(2));
+                                            BitConverter.GetBytes(1000).CopyTo(location.Slice(10));
+                                            BitConverter.GetBytes(lastBlockNumber).CopyTo(location.Slice(14));
+
+                                            _logIndexDb.PutSpan(keyBytes, location);
+
+                                            Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
+                                            Span<byte> newFreeSlots = new byte[freeSlots.Length + 8];
+                                            freeSlots.CopyTo(newFreeSlots);
+                                            BitConverter.GetBytes(position).CopyTo(newFreeSlots.Slice(freeSlots.Length));
+                                            _logIndexDb.PutSpan(metaDataKey, newFreeSlots);
+                                        }
+                                        else
+                                        {
+                                            "T".ToBytes().CopyTo(location);
+                                            BitConverter.GetBytes(slotSize + 1).CopyTo(location.Slice(10));
+                                            BitConverter.GetBytes(lastBlockNumber).CopyTo(location.Slice(14));
+
+                                            _logIndexDb.PutSpan(keyBytes, location);
+                                        }
                                     }
                                 }
-                            }
-
-                            if (topicDictionary.Count + addressDictionary.Count > 10_000)
-                            {
-                                CloseFiles(topicWriters, addressWriters);
                             }
                         }
                     }
-                    blocksProccessed++;
+                    blocksProcessed++;
                 }
             }
             finally
             {
-                CloseFiles(topicWriters, addressWriters);
+                tempFileHandle.Dispose();
+                finalizedFileHandle.Dispose();
+                finalizedFileStream.Dispose();
+                tempFileStream.Dispose();
                 _progress.MarkEnd();
                 _stopwatch?.Stop();
                 timer.Stop();
@@ -358,120 +314,6 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_logger.IsInfo) _logger.Info("KeyValueMigration finished");
             }
-        }
-
-        private void CloseFiles(
-            Dictionary<Hash256AsKey, WriterInfo> topicWriters,
-            Dictionary<AddressAsKey, WriterInfo> addressWriters)
-        {
-            _logger.Info("Disposing & Closing Files");
-            Parallel.ForEach(topicWriters.Values, info => info.Writer.Dispose());
-            Parallel.ForEach(addressWriters.Values, info => info.Writer.Dispose());
-            topicWriters.Clear();
-            addressWriters.Clear();
-        }
-
-        private class WriterInfo(Stream writer)
-        {
-            public Stream Writer { get; } = writer;
-            public int BlockNumber { get; set; }
-        }
-
-        private void ExtractKeyValuePairs(Block block)
-        {
-            TxReceipt?[] receipts = _receiptStorage.Get(block);
-            foreach (TxReceipt? receipt in receipts)
-            {
-                if (receipt != null && receipt.Logs != null)
-                {
-                    foreach (LogEntry log in receipt.Logs)
-                    {
-                        var key = log.LoggersAddress;
-                        AddToBatch(key, (int)block.Number);
-
-                        foreach (Hash256 topic in log.Topics)
-                        {
-                            AddToBatch(topic, (int)block.Number);
-                        }
-                    }
-                }
-            }
-        }
-
-        private void AddToBatch(AddressAsKey key, int blockNumber)
-        {
-            addressDictionary.AddOrUpdate(key, new HashSet<int> { blockNumber }, (k, v) =>
-            {
-                v.Add(blockNumber);
-                return v;
-            });
-
-            lock (batchLock)
-            {
-                if (addressDictionary.Count >= BatchSize)
-                {
-                    addressDictionary.Clear();
-                }
-            }
-        }
-
-        private void AddToBatch(Hash256AsKey key, int blockNumber)
-        {
-            topicDictionary.AddOrUpdate(key, new HashSet<int> { blockNumber }, (k, v) =>
-            {
-                v.Add(blockNumber);
-                return v;
-            });
-
-            lock (batchLock)
-            {
-                if (topicDictionary.Count >= BatchSize)
-                {
-                    topicDictionary.Clear();
-                }
-            }
-        }
-
-        // private void WriteBatchToFile()
-        // {
-        //     foreach (var kvp in addressDictionary)
-        //     {
-        //         var blockNumbers = kvp.Value.ToImmutableSortedSet();
-        //
-        //         var filePath = GetPath(kvp);
-        //
-        //         var fileLock = fileLocks.GetOrAdd(filePath, new object());
-        //
-        //         lock (fileLock)
-        //         {
-        //             using var fileStream = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
-        //             using var writer = new BinaryWriter(fileStream);
-        //             foreach (var blockNumber in blockNumbers)
-        //             {
-        //                 writer.Write((int)blockNumber);
-        //             }
-        //         }
-        //     }
-        // }
-
-        private string GetPath(Span<byte> key)
-        {
-            var keyAsString = key.ToHexString(false, true, false);
-
-            // Ensure the keyAsString has at least 4 characters by padding with '0' if necessary
-            if (keyAsString.Length < 4)
-            {
-                keyAsString = keyAsString.PadLeft(4, '0');
-            }
-
-            // Extract the first three characters
-            string subfolder1 = keyAsString[0].ToString();
-            string subfolder2 = keyAsString[1].ToString();
-            string subfolder3 = keyAsString[2].ToString();
-            string subfolder4 = keyAsString[3].ToString();
-
-            // Combine the root directory with the subfolders and the key string to form the full path
-            return Path.Combine(rootDirectory, subfolder1, subfolder2, subfolder3, key.ToHexString(false,false,false));
         }
 
         private IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(CancellationToken token)
@@ -550,4 +392,10 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
     }
+}
+public static class ExtensionMethods
+{
+    public static byte[] ToBytes(this string str) => Encoding.UTF8.GetBytes(str);
+    public static byte[] ToBytes(this int num) => BitConverter.GetBytes(num);
+    public static byte[] ToBytes(this long num) => BitConverter.GetBytes(num);
 }
