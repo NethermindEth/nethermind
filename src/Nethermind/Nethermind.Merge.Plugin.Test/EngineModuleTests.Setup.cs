@@ -242,7 +242,7 @@ public partial class EngineModuleTests
         protected override IBlockProcessor CreateBlockProcessor()
         {
             BlockValidator = CreateBlockValidator();
-            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            WithdrawalProcessor = new WithdrawalProcessor(LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
@@ -295,8 +295,8 @@ public partial class EngineModuleTests
         protected override IBlockProcessor CreateBlockProcessor()
         {
             BlockValidator = CreateBlockValidator();
-            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
-            IBlockProcessor processor = new StatelessBlockProcessor(
+            WithdrawalProcessor = new WithdrawalProcessor(LogManager);
+            IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
@@ -306,7 +306,8 @@ public partial class EngineModuleTests
                 NullWitnessCollector.Instance,
                 BlockTree,
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                canProcessStatelessBlocks: true);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

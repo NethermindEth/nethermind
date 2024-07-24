@@ -89,7 +89,7 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
-        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
+        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
@@ -373,7 +373,7 @@ public partial class BlockProcessor : IBlockProcessor
 
 
         ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, ExecutionTracer, spec);
+        _withdrawalProcessor.ProcessWithdrawals(block, ExecutionTracer, spec, worldState);
         ExecutionTracer.EndBlockTrace();
 
         // generate and add execution witness to the block

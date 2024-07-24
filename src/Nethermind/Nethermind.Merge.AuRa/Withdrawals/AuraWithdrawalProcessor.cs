@@ -13,6 +13,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
+using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.Withdrawals;
 
@@ -30,7 +31,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         _logger = logManager.GetClassLogger();
     }
 
-    public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec)
+    public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec, IWorldState? worldState = null)
     {
         if (!spec.WithdrawalsEnabled || block.Withdrawals is null) // The second check seems redundant
             return;
