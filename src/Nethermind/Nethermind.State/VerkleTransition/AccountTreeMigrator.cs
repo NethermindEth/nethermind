@@ -70,14 +70,18 @@ public class AccountTreeMigrator : ITreeVisitor
     public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
     {
         List<byte[]> currentPath = trieVisitContext.IsStorage ? _currentPathStorage : _currentPath;
+        while (currentPath.Count >= trieVisitContext.Level && trieVisitContext.Level > 0)
+        {
+            currentPath.RemoveAt(currentPath.Count - 1);
+        }
+        else if (currentPath.Count > 0)
+        if (trieVisitContext.BranchChildIndex.HasValue)
+        {
+            currentPath.Add(Bytes.FromHexString(trieVisitContext.BranchChildIndex.Value.ToString("x2")));
+        }
         if (node.Key is not null)
         {
             currentPath.Add(node.Key);
-        }
-        else if (currentPath.Count > 0)
-        {
-            // Pop off last value when exiting an extension node
-            currentPath.RemoveAt(currentPath.Count - 1);
         }
     }
 
@@ -104,14 +108,10 @@ public class AccountTreeMigrator : ITreeVisitor
             .ToArray();
     }
 
-    private static byte[] ConstructFullHash(int branchIndex, byte[] nodeKey, List<byte[]> currentPath)
+    private static byte[] ConstructFullHash(byte[] nodeKey, List<byte[]> currentPath, int? branchIndex)
     {
-        string branchPath = "";
-        if (!currentPath.IsNullOrEmpty())
-        {
-            branchPath = currentPath.ToArray().CombineBytes().ToHexString();
-        }
-        string branchIndexHex = branchIndex.ToString("x2");
+        string branchPath = ConstructBranchPath(currentPath);
+        string branchIndexHex = branchIndex is not null ? ((int)branchIndex).ToString("x2") : "";
         string currentKey = nodeKey.ToHexString();
         string addressHash = branchPath + branchIndexHex + currentKey;
         string unpaddedAddressHash = ConvertPaddedHexToBytes(addressHash).ToHexString();
@@ -119,18 +119,13 @@ public class AccountTreeMigrator : ITreeVisitor
         return Bytes.FromHexString(unpaddedAddressHash);
     }
 
-    private static byte[] ConstructFullHash(byte[] nodeKey, List<byte[]> currentPath)
+    private static string ConstructBranchPath(List<byte[]> currentPath)
     {
-        string branchPath = "";
-        if (!currentPath.IsNullOrEmpty())
+        if (currentPath.IsNullOrEmpty())
         {
-            branchPath = currentPath.ToArray().CombineBytes().ToHexString();
+            return "";
         }
-        string currentKey = nodeKey.ToHexString();
-        string addressHash = branchPath + currentKey;
-        string unpaddedAddressHash = ConvertPaddedHexToBytes(addressHash).ToHexString();
-
-        return Bytes.FromHexString(unpaddedAddressHash);
+        return currentPath.ToArray().CombineBytes().ToHexString();
     }
 
     public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
@@ -147,15 +142,7 @@ public class AccountTreeMigrator : ITreeVisitor
             Account account = decoder.Decode(new RlpStream(node.Value.ToArray()));
 
             // Reconstruct the full keccak hash
-            byte[] addressHash;
-            if (trieVisitContext.BranchChildIndex.HasValue)
-            {
-                addressHash = ConstructFullHash(trieVisitContext.BranchChildIndex.Value, node.Key, _currentPath);
-            }
-            else
-            {
-                addressHash = ConstructFullHash(node.Key, _currentPath);
-            }
+            byte[] addressHash = ConstructFullHash(node.Key, _currentPath, trieVisitContext.BranchChildIndex);
             byte[]? addressBytes = _preImageDb.Get(addressHash);
             if (addressBytes is not null)
             {
@@ -185,15 +172,7 @@ public class AccountTreeMigrator : ITreeVisitor
                 return;
             }
             // Reconstruct the full keccak hash
-            byte[] storageSlotHash;
-            if (trieVisitContext.BranchChildIndex.HasValue)
-            {
-                storageSlotHash = ConstructFullHash(trieVisitContext.BranchChildIndex.Value, node.Key, _currentPathStorage);
-            }
-            else
-            {
-                storageSlotHash = ConstructFullHash(node.Key, _currentPathStorage);
-            }
+            byte[] storageSlotHash = ConstructFullHash(node.Key, _currentPathStorage, trieVisitContext.BranchChildIndex);
 
             byte[]? storageSlotBytes = _preImageDb.Get(storageSlotHash);
             if (storageSlotBytes is null)
