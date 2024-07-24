@@ -59,6 +59,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             if (_state == ConnectionState.CsConnected) break;
         }
     }
+
     //Put things in a buffer and signal ReadStram to process those buffer
     public Task ReceiveMessage(UTPPacketHeader packageHeader, ReadOnlySpan<byte> data, CancellationToken token)
     {
