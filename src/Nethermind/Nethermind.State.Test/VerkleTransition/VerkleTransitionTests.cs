@@ -73,7 +73,7 @@ public class MerkleToVerkleTransitionTests
     [Test]
     public void Can_migrate_single_account()
     {
-        Account account = new Account(1).WithChangedBalance(2);
+        var account = new Account(1);
         _merkleStateTree.Set(TestItem.AddressA, account);
         _merkleStateTree.Commit(0);
         _preImageDb.Set(Keccak.Compute(TestItem.AddressA.Bytes).Bytes, TestItem.AddressA.Bytes);
@@ -94,11 +94,13 @@ public class MerkleToVerkleTransitionTests
     [Test]
     public void Can_migrate_multiple_accounts()
     {
-        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF];
+        var addresses = new Address[3001];
         for (int i = 0; i < addresses.Length; i++)
         {
-            Account account = new Account((UInt256)i).WithChangedBalance((UInt256)i + 1).WithChangedNonce((UInt256)i + 2).WithChangedCodeHash(Keccak.Compute(i.ToBigEndianByteArray()));
+            addresses[i] = Address.FromNumber((UInt256)i + 1);
+            Account account = new Account((UInt256)i + 1).WithChangedNonce((UInt256)i + 2).WithChangedCodeHash(Keccak.Compute(i.ToBigEndianByteArray()));
             _merkleStateTree.Set(addresses[i], account);
+            _merkleStateTree.Commit(0);
             _preImageDb.Set(Keccak.Compute(addresses[i].Bytes).Bytes, addresses[i].Bytes);
         }
         _merkleStateTree.Commit(0);
