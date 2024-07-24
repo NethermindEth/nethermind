@@ -241,4 +241,10 @@ public enum TestCase
 
     [TestCaseMetadata("SStore - many accounts, random storage keys, zero values", "SStore - storing zeros in random storage keys of many accounts")]
     SStoreManyAccountsRandomKeysZeroValue,
+
+    [TestCaseMetadata("Secp256r1 precompile, valid signature", "Secp256r1 precompile calculations with valid signature")]
+    Secp256r1ValidSignature,
+
+    [TestCaseMetadata("Secp256r1 precompile, invalid signature", "Secp256r1 precompile calculations with invalid signature")]
+    Secp256r1InvalidSignature,
 }
