@@ -184,6 +184,18 @@ public class VerkleSyncFeed : SyncFeed<VerkleSyncBatch?>, IDisposable
 
     public override bool IsFinished => _syncProvider.IsGetRangesFinished();
 
+    public override void Finish()
+    {
+        _syncProvider.Finish();
+        base.Finish();
+    }
+
+    public override void Activate()
+    {
+        _syncProvider.Activate();
+        base.Activate();
+    }
+
     public void Dispose()
     {
         _disposed = true;

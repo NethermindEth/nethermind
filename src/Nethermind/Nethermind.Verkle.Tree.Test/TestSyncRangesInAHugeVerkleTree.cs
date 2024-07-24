@@ -225,7 +225,7 @@ public class TestSyncRangesInAHugeVerkleTree
         var tempTree = new VerkleTree(stateStore, LimboLogs.Instance);
         bool isTrue = tempTree.CreateStatelessTreeFromRange(proof, root, startStem, endStem, range);
         Assert.IsTrue(isTrue);
-        localStore.InsertSyncBatch(0, tempTree._treeCache);
+        localStore.PersistBatchForSync(0, tempTree._treeCache);
     }
 
     [TestCase(DbMode.MemDb)]
@@ -447,7 +447,7 @@ public class TestSyncRangesInAHugeVerkleTree
         var localTree = new VerkleTree(newStore, LimboLogs.Instance);
         bool isTrue = localTree.CreateStatelessTreeFromRange(newProof, root, startingStem, endStem, newMessage.PathsWithSubTrees);
         Assert.That(isTrue, Is.True);
-        localStore.InsertSyncBatch(0, localTree._treeCache);
+        localStore.PersistBatchForSync(0, localTree._treeCache);
         localStore.InsertRootNodeAfterSyncCompletion(stateRoot.BytesToArray(), 0);
     }
 

@@ -28,7 +28,7 @@ public partial class VerkleTreeStore<TPersistence>
         _stateRootToBlocks[StateRoot] = blockNumber;
     }
 
-    public void InsertSyncBatch(long blockNumber, VerkleMemoryDb batch)
+    public void PersistBatchForSync(long blockNumber, VerkleMemoryDb batch)
     {
         batch.InternalTable.Remove(RootNodeKey.ToArray(), out _);
         PersistBlockChanges(batch.InternalTable, batch.LeafTable, Storage);

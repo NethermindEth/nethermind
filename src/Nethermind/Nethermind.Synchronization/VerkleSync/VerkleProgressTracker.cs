@@ -4,16 +4,19 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Verkle;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Synchronization.RangeSync;
 using Nethermind.Verkle.Curve;
+using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeNodes;
@@ -49,17 +52,19 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
     private ConcurrentQueue<byte[]> LeafsToRefresh { get; set; } = new();
 
 
-    private readonly RangeSync.Pivot _pivot;
+    private readonly Pivot _pivot;
     private readonly IVerkleTreeStore _verkleStore;
+    private readonly IBlockTree _blockTree;
 
     public VerkleProgressTracker(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, int subTreeRangePartitionCount = 8)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _db = dbProvider.GetColumnDb<VerkleDbColumns>(DbNames.VerkleState).GetColumnDb(VerkleDbColumns.InternalNodes) ?? throw new ArgumentNullException(nameof(dbProvider));
         _verkleStore = new VerkleTreeStore<PersistEveryBlock>(dbProvider, logManager);
-        _pivot = new RangeSync.Pivot(blockTree, logManager);
+        _pivot = new Pivot(blockTree, logManager);
+        _blockTree = blockTree;
 
-        if (subTreeRangePartitionCount < 1 || subTreeRangePartitionCount > 256)
+        if (subTreeRangePartitionCount is < 1 or > 256)
             throw new ArgumentException("SubTree range partition must be between 1 to 256.");
 
         _subTreeRangePartitionCount = subTreeRangePartitionCount;
@@ -294,8 +299,88 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
         }
     }
 
+
+    // we need updates for stateless chain, that how we store data tobe used for healing
+    public void ActivateHealingCache()
+    {
+        _blockTree.OnUpdateStatelessChain += OnNewBlock;
+        _pivot.PivotChanged += OnPivotChange;
+    }
+
+    public void DisableHealingCache()
+    {
+        _healingCache.Clear();
+        _blockTree.OnUpdateStatelessChain -= OnNewBlock;
+        _pivot.PivotChanged -= OnPivotChange;
+    }
+
+    private void OnNewBlock(object sender, BlockEventArgs blockEventArgs)
+    {
+        if(_logger.IsDebug) _logger.Debug($"Trying to add block to healing cache: {blockEventArgs.Block.Number}:{blockEventArgs.Block.Hash}");
+        AddToHealingCache(blockEventArgs.Block);
+    }
+
+    private void OnPivotChange(object sender, PivotChangedEventArgs pivotChangedEventArgs)
+    {
+        var fromBlock = pivotChangedEventArgs.FromBlock;
+        var toBlock = pivotChangedEventArgs.ToBlock;
+
+        // TODO: find a better way to do this, we can directly use the verkle stateStore and insert in that directly
+        // no need to create a tree and then insert everything?
+        var stateStore = new NullVerkleTreeStore();
+        var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
+        // we start with fromBlock+1, because we should already have the data corresponding to fromBlock
+        for (long i = fromBlock + 1; i <= toBlock; i++)
+        {
+            localTree.HealThyTree(i, _healingCache[i]);
+            _verkleStore.PersistBatchForSync(i, localTree._treeCache);
+            localTree.Reset();
+        }
+    }
+
+    private readonly Dictionary<long, VerkleMemoryDb> _healingCache = new();
+    private void AddToHealingCache(Block block)
+    {
+        SpanConcurrentDictionary<byte, byte[]?>? leafs = block.ExecutionWitness?.LeafStore;
+        // Console.WriteLine($"AddToHealingCache {block.Number} {block.Hash} {leafs?.Count}");
+        ExecutionWitness witness = block.ExecutionWitness!;
+        if (witness is null) return;
+
+        var stopwatch = Stopwatch.StartNew();
+
+        // TODO: find better way to do this?
+        var verkleStore = new NullVerkleTreeStore();
+        var tree = new VerkleTree(verkleStore, LimboLogs.Instance);
+        VerkleMemoryDb cache = tree.GetStatelessStateDiffFromExecutionWitness(witness,
+            Banderwagon.FromBytes(witness.StateRoot!.BytesToArray(), subgroupCheck: false)!.Value, leafs);
+
+        // TODO: need to debug why this is not working
+        // VerkleMemoryDb? cache = tree.GetStatelessStateDiffFromExecutionWitness(witness,
+        //     Banderwagon.FromBytes(witness.StateRoot!.BytesToArray(), subgroupCheck: false)!.Value, witness.StateDiff);
+
+
+        // Console.WriteLine($"Tree StateRoot: {tree.StateRoot} Block StateRoot: {block.StateRoot} ");
+        if (tree.StateRoot != block.StateRoot)
+        {
+            _logger.Error($"THIS IS NOT SUPPOSED TO HAPPEN: {leafs?.Count}");
+        }
+        // TODO: figure out a strategy for this
+        if (_healingCache.Count >= 256)
+        {
+            // TODO: clean the cache, there can be a case when the verkle sync is stuck for some reason, we don't want
+            // to keep growing the cache, we should define a value that should be the maximum size of the cache
+        }
+
+        _healingCache.TryAdd(block.Number, cache);
+
+        var elapsed = stopwatch.ElapsedMilliseconds;
+        stopwatch.Stop();
+        // Console.WriteLine($"AddToHealingCache: Time:{elapsed} Block:{block.Number} LT:{tree._treeCache.LeafTable.Count} IT:{tree._treeCache.InternalTable.Count} CacheCount:{_healingCache.Count}");
+    }
+
     public void Dispose()
     {
+        DisableHealingCache();
     }
 
 

@@ -14,12 +14,13 @@ public interface IVerkleSyncProvider
     bool CanSync();
 
     AddRangeResult AddSubTreeRange(SubTreeRange request, SubTreesAndProofs response);
-    AddRangeResult AddSubTreeRange(long blockNumber, Hash256 expectedRootHash, Stem startingStem, PathWithSubTree[] subTrees, byte[] proofs = null, Stem limitStem = null!);
-
     void RefreshLeafs(LeafToRefreshRequest request, byte[][] response);
 
     void RetryRequest(VerkleSyncBatch batch);
 
     bool IsGetRangesFinished();
     void UpdatePivot();
+
+    void Activate();
+    void Finish();
 }

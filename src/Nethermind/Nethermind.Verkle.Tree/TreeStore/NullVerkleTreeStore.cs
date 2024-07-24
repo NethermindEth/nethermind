@@ -35,7 +35,7 @@ public class NullVerkleTreeStore : IVerkleTreeStore
     {
     }
 
-    public void InsertSyncBatch(long blockNumber, VerkleMemoryDb batch)
+    public void PersistBatchForSync(long blockNumber, VerkleMemoryDb batch)
     {
     }
 

@@ -18,5 +18,5 @@ public interface IVerkleSyncTreeStore
         long bytes);
 
     public void InsertRootNodeAfterSyncCompletion(byte[] rootHash, long blockNumber);
-    public void InsertSyncBatch(long blockNumber, VerkleMemoryDb batch);
+    public void PersistBatchForSync(long blockNumber, VerkleMemoryDb batch);
 }

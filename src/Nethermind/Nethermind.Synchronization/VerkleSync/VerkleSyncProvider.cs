@@ -64,9 +64,10 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         return result;
     }
 
-    public AddRangeResult AddSubTreeRange(long blockNumber, Hash256 expectedRootHash, Stem startingStem,
+    private AddRangeResult AddSubTreeRange(long blockNumber, Hash256 expectedRootHash, Stem startingStem,
         PathWithSubTree[] subTrees, byte[]? proofs = null, Stem? limitStem = null)
     {
+        // if we are coming here, then we can assume subTree.Length != 0
         limitStem ??= Keccak.MaxValue.Bytes[..31].ToArray();
         Banderwagon rootPoint = Banderwagon.FromBytes(expectedRootHash.Bytes.ToArray()) ?? throw new Exception("root point invalid");
         IVerkleTreeStore store = _trieStorePool.Get();
@@ -85,18 +86,18 @@ public class VerkleSyncProvider : IVerkleSyncProvider
                         $"VERKLE_SYNC - AddSubTreeRange failed, expected {blockNumber}:{expectedRootHash}, startingHash:{startingStem} {isCorrect}");
                     return AddRangeResult.DifferentRootHash;
                 }
-                store.InsertSyncBatch(0, localTree._treeCache);
+                store.PersistBatchForSync(0, localTree._treeCache);
                 _logger.Info($"VERKLE_SYNC - AddSubTreeRange SUCCESS, expected {blockNumber}:{expectedRootHash}, startingHash:{startingStem} endingHash:{subTrees[^1].Path}");
             }
             catch (Exception e)
             {
-                _logger.Error($"AddSubTreeRange: {blockNumber} {expectedRootHash} {startingStem}");
+                _logger.Error($"AddSubTreeRange: {blockNumber} {expectedRootHash} {startingStem} {subTrees.Length}");
                 _logger.Error("something broke during sync", e);
                 throw;
             }
 
             _progressTracker.UpdateSubTreePartitionProgress(limitStem, subTrees[^1].Path,
-                startingStem == subTrees[^1].Path);
+                startingStem != subTrees[^1].Path);
             return AddRangeResult.OK;
         }
         finally
@@ -155,6 +156,16 @@ public class VerkleSyncProvider : IVerkleSyncProvider
     }
 
     public bool IsFinished(out VerkleSyncBatch? nextBatch) => _progressTracker.IsFinished(out nextBatch);
+
+    public void Activate()
+    {
+        _progressTracker.ActivateHealingCache();
+    }
+
+    public void Finish()
+    {
+        _progressTracker.DisableHealingCache();
+    }
 
     private class TrieStorePoolPolicy : IPooledObjectPolicy<IVerkleTreeStore>
     {

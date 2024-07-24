@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        public void Activate() => ChangeState(SyncFeedState.Active);
+        public virtual void Activate() => ChangeState(SyncFeedState.Active);
 
         public virtual void Finish()
         {
