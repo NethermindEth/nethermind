@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using NUnit.Framework;

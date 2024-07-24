@@ -64,12 +64,12 @@ public class MiningConfig : IMiningConfig
     {
         get
         {
-            // Lazt initalisation due to the awaiting of interface defaults application on assembly
+            // Last initialisation due to the awaiting of interface defaults application on assembly
             _blocksConfig ??= new BlocksConfig();
 
             return _blocksConfig;
         }
     }
 
-    public string Signer { get; set; }
+    public string? Signer { get; set; }
 }

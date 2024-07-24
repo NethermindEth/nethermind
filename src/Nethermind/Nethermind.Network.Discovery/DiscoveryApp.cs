@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using DotNetty.Handlers.Logging;
@@ -145,6 +146,8 @@ public class DiscoveryApp : IDiscoveryApp
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
         }
 
+        NetworkChange.NetworkAvailabilityChanged += ResetUnreachableStatus;
+
         IPAddress ip = IPAddress.Parse(_networkConfig.LocalIp!);
         _bindingTask = bootstrap.BindAsync(ip, _networkConfig.DiscoveryPort)
             .ContinueWith(
@@ -158,6 +161,19 @@ public class DiscoveryApp : IDiscoveryApp
 
                     return _channel = t.Result;
                 });
+    }
+
+    private void ResetUnreachableStatus(object? sender, NetworkAvailabilityEventArgs e)
+    {
+        if (!e.IsAvailable)
+        {
+            return;
+        }
+
+        foreach (INodeLifecycleManager unreachable in _discoveryManager.GetNodeLifecycleManagers().Where(x => x.State == NodeLifecycleState.Unreachable))
+        {
+            unreachable.ResetUnreachableStatus();
+        }
     }
 
     private Task? _bindingTask;
@@ -338,6 +354,8 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 delayCancellation.Cancel();
             }
+
+            NetworkChange.NetworkAvailabilityChanged -= ResetUnreachableStatus;
         }
         catch (Exception e)
         {
@@ -526,11 +544,6 @@ public class DiscoveryApp : IDiscoveryApp
     private void OnNodeDiscovered(object? sender, NodeEventArgs e)
     {
         NodeAdded?.Invoke(this, e);
-    }
-
-    public List<Node> LoadInitialList()
-    {
-        return new List<Node>();
     }
 
     public event EventHandler<NodeEventArgs>? NodeAdded;

@@ -141,6 +141,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
             Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
+            Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
             Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
@@ -337,6 +338,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
                 CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
                 EcotoneTimestamp = chainSpecJson.Engine.Optimism.EcotoneTimestamp,
+                FjordTimestamp = chainSpecJson.Engine.Optimism.FjordTimestamp,
+
                 L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
                 L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
                 CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,

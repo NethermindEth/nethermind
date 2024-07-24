@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
+public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
@@ -19,12 +19,6 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
     private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
-    private readonly bool _useCompactEncoding = true;
-
-    public ReceiptArrayStorageDecoder(bool compactEncoding = true)
-    {
-        _useCompactEncoding = compactEncoding;
-    }
 
     public int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
@@ -34,7 +28,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         }
 
         int bufferLength = Rlp.LengthOfSequence(GetContentLength(items, rlpBehaviors));
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             bufferLength++;
         }
@@ -43,7 +37,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 
     private int GetContentLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
@@ -86,7 +80,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
             return;
         }
 
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = GetContentLength(items, rlpBehaviors);
             stream.WriteByte(CompactEncoding);

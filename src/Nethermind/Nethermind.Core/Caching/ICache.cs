@@ -24,5 +24,6 @@ namespace Nethermind.Core.Caching
         /// <returns>True if key existed in the cache, otherwise false.</returns>
         bool Delete(TKey key);
         bool Contains(TKey key);
+        int Count { get; }
     }
 }

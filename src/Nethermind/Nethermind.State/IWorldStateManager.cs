@@ -10,12 +10,14 @@ public interface IWorldStateManager
 {
     IWorldState GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
+    IReadOnlyTrieStore TrieStore { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
+    /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState(PreBlockCaches? sharedHashes = null);
+    IWorldState CreateResettableWorldState(IWorldState? forWarmup = null);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 }
