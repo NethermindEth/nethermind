@@ -45,6 +45,7 @@ public class GoerliSpecProvider : ISpecProvider
 
     public ulong NetworkId => BlockchainIds.Goerli;
     public ulong ChainId => BlockchainIds.Goerli;
+    public string SealEngine => SealEngineType.Clique;
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;

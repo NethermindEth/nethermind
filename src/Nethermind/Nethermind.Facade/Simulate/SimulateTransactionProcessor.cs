@@ -11,22 +11,15 @@ using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateTransactionProcessor(
+public sealed class SimulateTransactionProcessor(
     ISpecProvider? specProvider,
     IWorldState? worldState,
     IVirtualMachine? virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager,
     bool validate)
-    : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
+    : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
 {
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
-    {
-        if (!validate)
-        {
-            opts |= ExecutionOptions.NoValidation;
-        }
-
-        return base.Execute(tx, in blCtx, tracer, opts);
-    }
+    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts) =>
+        base.Execute(tx, in blCtx, tracer, !validate ? opts | ExecutionOptions.NoValidation : opts);
 }

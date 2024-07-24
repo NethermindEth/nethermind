@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -112,6 +113,7 @@ namespace Nethermind.Consensus.Clique
                 scope.WorldState,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                new BeaconBlockRootHandler(scope.TransactionProcessor, getFromApi.LogManager),
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));
 

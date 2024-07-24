@@ -29,6 +29,5 @@ namespace Nethermind.Specs.Forks
         }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());
-        public override bool IsEip158IgnoredAccount(Address address) => false;
     }
 }

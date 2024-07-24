@@ -10,11 +10,9 @@ namespace Nethermind.Evm
     public static class TransactionExtensions
     {
         public static Address? GetRecipient(this Transaction tx, in UInt256 nonce) =>
-            tx.To is not null
-                ? tx.To
-                : tx.IsSystem()
-                    ? tx.SenderAddress
-                    : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce);
+            tx.To ?? (tx.IsSystem()
+                ? tx.SenderAddress
+                : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce));
 
         public static TxGasInfo GetGasInfo(this Transaction tx, bool is1559Enabled, BlockHeader header)
         {

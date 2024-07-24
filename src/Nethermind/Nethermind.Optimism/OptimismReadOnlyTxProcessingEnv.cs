@@ -27,7 +27,7 @@ public class OptimismReadOnlyTxProcessingEnv(
       worldStateToWarmUp
      )
 {
-    protected override TransactionProcessor CreateTransactionProcessor()
+    protected override ITransactionProcessor CreateTransactionProcessor()
     {
         ArgumentNullException.ThrowIfNull(LogManager);
 

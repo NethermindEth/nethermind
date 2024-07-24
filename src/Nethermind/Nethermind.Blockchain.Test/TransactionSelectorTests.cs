@@ -222,8 +222,6 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
             IReleaseSpec spec = testCase.ReleaseSpec;
-            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
-            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new(specProvider, blockTree);

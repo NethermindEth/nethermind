@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -141,6 +142,7 @@ namespace Nethermind.Clique.Test
                     stateProvider,
                     NullReceiptStorage.Instance,
                     new BlockhashStore(goerliSpecProvider, stateProvider),
+                    new BeaconBlockRootHandler(transactionProcessor, nodeLogManager),
                     nodeLogManager);
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -160,6 +162,7 @@ namespace Nethermind.Clique.Test
                     minerStateProvider,
                     NullReceiptStorage.Instance,
                     new BlockhashStore(goerliSpecProvider, minerStateProvider),
+                    new BeaconBlockRootHandler(minerTransactionProcessor, nodeLogManager),
                     nodeLogManager);
 
                 BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);

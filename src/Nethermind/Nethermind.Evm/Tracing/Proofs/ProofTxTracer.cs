@@ -80,18 +80,8 @@ namespace Nethermind.Evm.Tracing.Proofs
             Storages.Add(storageCell);
         }
 
-        private bool _wasSystemAccountAccessedOnceAlready;
-
         public override void ReportAccountRead(Address address)
         {
-            if (_treatSystemAccountDifferently && !_wasSystemAccountAccessedOnceAlready && address == Address.SystemUser)
-            {
-                // we want to ignore the system account the first time only
-                // TODO: I think this should only be done if the system account should be treated differently?
-                _wasSystemAccountAccessedOnceAlready = true;
-                return;
-            }
-
             Accounts.Add(address);
         }
 
