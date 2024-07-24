@@ -40,7 +40,7 @@ public class FixedRollingAvg
             _sum -= _rollingWindow[_tailIdx];
         }
 
-        if (_size == 0) return _defaultValue;
+        if (_size == 0) return _defaultValue << 16;
         return (_sum << 16) / _size;
     }
 
