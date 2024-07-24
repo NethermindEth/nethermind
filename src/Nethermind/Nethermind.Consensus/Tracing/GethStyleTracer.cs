@@ -59,7 +59,7 @@ public class GethStyleTracer : IGethStyleTracer
     public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-        if (block is null) throw new InvalidOperationException("Only historical blocks");
+        if (block is null) throw new InvalidOperationException($"No historical block found for {blockHash}");
 
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
@@ -110,7 +110,7 @@ public class GethStyleTracer : IGethStyleTracer
     public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        if (block is null) throw new InvalidOperationException("Only historical blocks");
+        if (block is null) throw new InvalidOperationException($"No historical block found for {blockNumber}");
 
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
@@ -120,7 +120,7 @@ public class GethStyleTracer : IGethStyleTracer
     public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        if (block is null) throw new InvalidOperationException("Only historical blocks");
+        if (block is null) throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
@@ -154,7 +154,7 @@ public class GethStyleTracer : IGethStyleTracer
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
 
-        var block = _blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException("Only historical blocks");
+        var block = _blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
 
         if (!block.IsGenesis)
         {
@@ -180,7 +180,7 @@ public class GethStyleTracer : IGethStyleTracer
             .GetAll()
             .Where(b => b.Hash == blockHash)
             .FirstOrDefault()
-            ?? throw new InvalidOperationException("Only historical blocks");
+            ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
 
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
 
