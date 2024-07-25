@@ -332,7 +332,7 @@ public class SSZGenerator : IIncrementalGenerator
     {
         var sb = new StringBuilder();
         
-        sb.Append("        public static void GenerateStart(");
+        sb.Append("        public static byte[] GenerateStart(");
 
         /*** 
         generate parameters
@@ -374,6 +374,7 @@ public class SSZGenerator : IIncrementalGenerator
         }
         sb.AppendLine("            var slicedBuffer = new ArraySegment<byte>(buffer, 0, offset).ToArray();");
         sb.AppendLine($"            Console.WriteLine(string.Join(\" \", slicedBuffer));");
+        sb.AppendLine($"            return slicedBuffer;");
         sb.AppendLine("        }");
         
         return sb.ToString();

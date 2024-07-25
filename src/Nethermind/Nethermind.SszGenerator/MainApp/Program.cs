@@ -49,7 +49,7 @@ namespace Program{
                 IdentityPreimage = new byte[] { 0x07, 0x08, 0x09 }
             };
 
-            MainAppGenerated.GenerateStart("nameIsName",23,sequencedTransaction,g1);
+            WriteLine(string.Join(" ",MainAppGenerated.GenerateStart("nameIsName",23,sequencedTransaction,g1)));
 
         }
 
