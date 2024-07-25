@@ -74,7 +74,6 @@ public class AccountTreeMigrator : ITreeVisitor
         {
             currentPath.RemoveAt(currentPath.Count - 1);
         }
-        else if (currentPath.Count > 0)
         if (trieVisitContext.BranchChildIndex.HasValue)
         {
             currentPath.Add(Bytes.FromHexString(trieVisitContext.BranchChildIndex.Value.ToString("x2")));
