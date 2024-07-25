@@ -112,8 +112,8 @@ public partial class BlockProcessor : IBlockProcessor
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
-        Hash256 previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
+        Hash256 previousBranchMerkleStateRoot = _worldStateProvider.WorldState.StateRoot;
+        Hash256 previousBranchVerkleStateRoot = _worldStateProvider.VerkleWorldState.StateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -128,36 +128,41 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                 }
 
+                _worldStateProvider.InitBranch(suggestedBlocks[i], newBranchStateRoot);
+
                 _witnessCollector.Reset();
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+                PreCommitBlock(newBranchStateRoot, suggestedBlocks[i]);
                 if (notReadOnly)
                 {
                     _witnessCollector.Persist(processedBlock.Hash!);
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
-                }
-
-                // CommitBranch in parts if we have long running branch
-                bool isFirstInBatch = i == 0;
-                bool isLastInBatch = i == blocksCount - 1;
-                bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
-                bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
-                if (isCommitPoint && notReadOnly)
-                {
+                    
+                    // CommitBranch in every block
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    previousBranchStateRoot = CreateCheckpoint();
+
+                    if (_worldStateProvider.GetWorldState(suggestedBlocks[i]) is WorldState)
+                    {
+                        previousBranchMerkleStateRoot = _worldStateProvider.WorldState.StateRoot;
+                    }
+                    else
+                    {
+                        previousBranchVerkleStateRoot = _worldStateProvider.VerkleWorldState.StateRoot;
+                    }
+
                     Hash256? newStateRoot = suggestedBlocks[i].StateRoot;
-                    InitBranch(newStateRoot, false);
+                    _worldStateProvider.InitBranch(suggestedBlocks[i], newStateRoot);
                 }
             }
 
             // TODO: temporary fix for verkle block processing
             if (options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
             {
-                RestoreBranch(previousBranchStateRoot);
+                RestoreBranch(previousBranchMerkleStateRoot, _worldStateProvider.WorldState);
+                RestoreBranch(previousBranchVerkleStateRoot, _worldStateProvider.VerkleWorldState);
             }
 
             return processedBlocks;
@@ -165,51 +170,28 @@ public partial class BlockProcessor : IBlockProcessor
         catch (Exception ex) // try to restore at all cost
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
-            RestoreBranch(previousBranchStateRoot);
+            RestoreBranch(previousBranchMerkleStateRoot, _worldStateProvider.WorldState);
+            RestoreBranch(previousBranchVerkleStateRoot, _worldStateProvider.VerkleWorldState);
             throw;
         }
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
-    // TODO: move to branch processor
-    protected virtual void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
-    {
-        /* Please note that we do not reset the state if branch state root is null.
-           That said, I do not remember in what cases we receive null here.*/
-        if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
-        {
-            /* Discarding the other branch data - chain reorganization.
-               We cannot use cached values any more because they may have been written
-               by blocks that are being reorganized out.*/
-
-            if (incrementReorgMetric)
-                Metrics.Reorganizations++;
-            _stateProvider.Reset();
-            _stateProvider.StateRoot = branchStateRoot;
-        }
-    }
-
-    // TODO: move to branch processor
-    private Hash256 CreateCheckpoint()
-    {
-        return _stateProvider.StateRoot;
-    }
-
     // TODO: move to block processing pipeline
-    private void PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
+    private void PreCommitBlock(Hash256 newBranchStateRoot, Block block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
-        _stateProvider.CommitTree(blockNumber);
+        _worldStateProvider.GetWorldState(block).CommitTree(block.Number);
     }
 
     // TODO: move to branch processor
-    private void RestoreBranch(Hash256 branchingPointStateRoot)
+    private void RestoreBranch(Hash256 branchingPointStateRoot, IWorldState worldState)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _stateProvider.Reset();
-        _stateProvider.StateRoot = branchingPointStateRoot;
-        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
+        worldState.Reset();
+        worldState.StateRoot = branchingPointStateRoot;
+        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {worldState.StateRoot}");
     }
 
     // TODO: block processor pipeline
