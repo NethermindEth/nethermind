@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.Peers;
@@ -97,9 +100,36 @@ namespace Nethermind.Synchronization.Test
         public void Can_allocate()
         {
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.IsAllocated(_contexts).Should().BeFalse();
+            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
             peerInfo.TryAllocate(_contexts);
-            peerInfo.IsAllocated(_contexts).Should().BeTrue();
+            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
+            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
+        }
+
+        [Test]
+        public void Can_allocate_multiple()
+        {
+            if (!PeerInfo.IsOnlyOneContext(_contexts)) return;
+
+            Dictionary<AllocationContexts, int> newAllowances = PeerInfo.DefaultAllowances.ToDictionary();
+            newAllowances[_contexts] = 5;
+
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>(), newAllowances.ToFrozenDictionary());
+
+            for (int i = 0; i < 5; i++)
+            {
+                peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
+                peerInfo.TryAllocate(_contexts);
+            }
+            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
+            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
+
+            // Partial free
+            peerInfo.Free(_contexts);
+            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
+            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
+            peerInfo.TryAllocate(_contexts);
+            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
             peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
         }
 
@@ -107,11 +137,11 @@ namespace Nethermind.Synchronization.Test
         public void Can_free()
         {
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.IsAllocated(_contexts).Should().BeFalse();
+            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
             peerInfo.TryAllocate(_contexts);
-            peerInfo.IsAllocated(_contexts).Should().BeTrue();
+            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
             peerInfo.Free(_contexts);
-            peerInfo.IsAllocated(_contexts).Should().BeFalse();
+            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
             peerInfo.CanBeAllocated(_contexts).Should().BeTrue();
         }
 
@@ -120,16 +150,16 @@ namespace Nethermind.Synchronization.Test
         {
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             peerInfo.TryAllocate(AllocationContexts.Blocks);
-            peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
-            peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
-            peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeTrue();
+            peerInfo.IsAllocationFull(AllocationContexts.Bodies).Should().BeTrue();
+            peerInfo.IsAllocationFull(AllocationContexts.Headers).Should().BeTrue();
+            peerInfo.IsAllocationFull(AllocationContexts.Receipts).Should().BeTrue();
             peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
             peerInfo.CanBeAllocated(AllocationContexts.Headers).Should().BeFalse();
             peerInfo.CanBeAllocated(AllocationContexts.Receipts).Should().BeFalse();
 
             peerInfo.Free(AllocationContexts.Receipts);
-            peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeFalse();
-            peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
+            peerInfo.IsAllocationFull(AllocationContexts.Receipts).Should().BeFalse();
+            peerInfo.IsAllocationFull(AllocationContexts.Bodies).Should().BeTrue();
         }
 
         [Test]
