@@ -152,7 +152,7 @@ public enum TestCase
     [TestCaseMetadata("Modexp min gas, base heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 192 and exponent equal 3 (0b11 - 2x 1s in binary)")]
     ModexpMinGasBaseHeavy,
 
-    [TestCaseMetadata("Modexp min gas, exp heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 8 and exponent equal (603x 1s in binary)")]
+    [TestCaseMetadata("Modexp min gas, exp heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 8 and exponent equal 2^603 - 1 (603x 1s in binary)")]
     ModexpMinGasExpHeavy,
 
     [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 40 and exponent equal 2^25 - 1 (25x 1s in binary)")]
@@ -179,7 +179,7 @@ public enum TestCase
     [TestCaseMetadata("EcMul with (1, 2) and scalar 2", "EcMul precompile with initial point x = 1, y = 2 and scalar equal 2")]
     EcMul122,
 
-    [TestCaseMetadata("EcMul with (1, 2) and 32-byte scalar", "EcMul precompile with initial point x = 1, y = 2 scalar as 32-byte values")]
+    [TestCaseMetadata("EcMul with (1, 2) and 32-byte scalar", "EcMul precompile with initial point x = 1, y = 2 and scalar as 32-byte values")]
     EcMul12And32ByteScalar,
 
     [TestCaseMetadata("EcMul with 32-byte coordinates and scalar 2", "EcMul precompile with initial point with x and y as 32-byte values and scalar equal 2")]
