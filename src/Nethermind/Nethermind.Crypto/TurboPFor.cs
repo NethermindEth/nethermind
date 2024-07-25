@@ -209,7 +209,7 @@ public static class TurboPFor
     public extern unsafe static int bitd132(int[] @in, int n, int start);
 
 
-    private static nint OnResolvingUnmanagedDll(Assembly context, string name)
+    private static IntPtr OnResolvingUnmanagedDll(Assembly context, string name)
     {
         if (_libraryFallbackPath is null)
         {

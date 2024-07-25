@@ -209,17 +209,20 @@ namespace Nethermind.Init.Steps.Migrations
                     parallelism = Environment.ProcessorCount;
                 }
 
-                int bufferSize = 4000;
+                int bufferSize = 4096; //use arrayPool 
                 Span<byte> buffer = stackalloc byte[bufferSize];
-                byte[] bufferForEncodedInts = new byte[bufferSize * 3];
+                Span<byte> bufferForBlockNum = stackalloc byte[4];
+                byte[] bufferForEncodedInts = new byte[bufferSize * 3]; //ArrayPool OR ArrayPoolList
                 Span<byte> location = stackalloc byte[18];
 
                 foreach ((long, TxReceipt[]) block in GetBlockBodiesForMigration(token)
                              .Select(i => _blockTree.FindBlock(i.Item2, BlockTreeLookupOptions.None) ?? GetMissingBlock(i.Item1, i.Item2))
                              .Select(b => (b.Number, _receiptStorage.Get(b, false))).AsParallel().AsOrdered())
                 {
+                    //TODO: Move stuff to LogIndexStorage for reusability
+
                     int blockNumber = (int)block.Item1;
-                    BinaryPrimitives.WriteInt32LittleEndian(buffer, blockNumber);
+                    BinaryPrimitives.WriteInt32LittleEndian(bufferForBlockNum, blockNumber);
                     foreach (TxReceipt? receipt in block.Item2)
                     {
                         if (receipt is { Logs: not null })
@@ -236,28 +239,32 @@ namespace Nethermind.Init.Steps.Migrations
                                 // if there exists then add to the position with the given offset
                                 var lastEntryForAddress = GetKeyValuePairsWithPrefix(_logIndexDb, keyBytes).LastOrDefault();
                                 // if (_logIndexDb.GetSpan(keyBytes).Length == 0)
-                                if(lastEntryForAddress == default || Encoding.UTF8.GetString(lastEntryForAddress.Value.Slice(0,2)) == "F")
+                                //TODO: use bit for flagging if Its final or not
+                                if (lastEntryForAddress == default || Encoding.UTF8.GetString(lastEntryForAddress.Value.Slice(0,2)) == "F")
                                 {
                                     // no index found for the address
                                     Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
                                     if (freeSlots.Length < 8)
                                     {
                                         position = tempFileStream.Position;
-                                        tempFileStream.Write(buffer.ToArray());
+                                        tempFileStream.Write(buffer);
                                     }
                                     else
                                     {
+                                        // TODO: Use Bytes.ReadEthUInt64
                                         position = BitConverter.ToInt64(freeSlots.Slice(0, 8).ToArray(), 0);
                                         freeSlots = freeSlots.Slice(8);
                                         _logIndexDb.PutSpan(metaDataKey, freeSlots);
                                     }
-                                    RandomAccess.Write(tempFileHandle, BitConverter.GetBytes(blockNumber), position + slotSize * 4);
+                                    RandomAccess.Write(tempFileHandle, bufferForBlockNum, position + slotSize * 4);
 
+                                    //TODO: Use Flag not String
                                     "T".ToBytes().CopyTo(location);
                                     BitConverter.GetBytes(position).CopyTo(location.Slice(2));
                                     BitConverter.GetBytes(slotSize + 1).CopyTo(location.Slice(10));
                                     BitConverter.GetBytes(lastBlockNumber).CopyTo(location.Slice(14));
 
+                                    //TODO: stackalloc the buffer for the whole key and then slice it to keybytes and blocknumber bytes.
                                     // creating a new index for the address
                                     _logIndexDb.PutSpan(AppendArrays(keyBytes, blockNumber.ToBytes()), location);
                                 }
@@ -265,6 +272,9 @@ namespace Nethermind.Init.Steps.Migrations
                                 {
                                     // if a temp file alr exists
                                     location = lastEntryForAddress.Value;
+
+                                    //TODO: change file to byte flag
+                                    //TODO: use BinaryBrimitieves or Bytes (if we have it there)
                                     string file = Encoding.UTF8.GetString(location.Slice(0, 2));
                                     position = BitConverter.ToInt64(location.Slice(2, 8).ToArray(), 0);
                                     slotSize = BitConverter.ToInt32(location.Slice(10, 4).ToArray(), 0);
@@ -279,13 +289,15 @@ namespace Nethermind.Init.Steps.Migrations
 
                                     RandomAccess.Write(tempFileHandle, BitConverter.GetBytes(blockNumber), position + slotSize * 4);
 
+                                    //TODO make a more readable stuff to check if we have reached the max slot size for tempfile
                                     if (slotSize + 1 == bufferSize / 4)
                                     {
+
+                                        //TODO: ArrayPool?
                                         Span<byte> blockNumbers = new byte[bufferSize];
                                         RandomAccess.Read(tempFileHandle, blockNumbers, position);
                                         Span<int> blockNumbersInt = MemoryMarshal.Cast<byte, int>(blockNumbers);
 
-                                        _logger.Info($"Saving block numbers to final: {string.Join(", ", blockNumbersInt.ToArray())}");
 
                                         TurboPFor.p4ndenc128v32(blockNumbersInt.ToArray(), blockNumbersInt.Length, bufferForEncodedInts);
                                         finalizedFileStream.Write(bufferForEncodedInts);
@@ -293,16 +305,19 @@ namespace Nethermind.Init.Steps.Migrations
                                         int[] decodedBlockNumbers = new int[bufferSize / 4];
                                         TurboPFor.p4nddec128v32(bufferForEncodedInts, 1000, decodedBlockNumbers);
 
-                                        _logger.Info($"Encoded data: {BitConverter.ToString(bufferForEncodedInts, 0, bufferForEncodedInts.Length)}");
-                                        _logger.Info($"Decoded block numbers: {string.Join(", ", decodedBlockNumbers)}");
 
+                                        //TODO: use byte flag
                                         "F".ToBytes().CopyTo(location);
+                                        //TODO: check if we should get the position before writing
                                         BitConverter.GetBytes(finalizedFileStream.Position).CopyTo(location.Slice(2));
+                                        //TODO: check if we should get the length of the encoded integer bytes
                                         BitConverter.GetBytes(1000).CopyTo(location.Slice(10));
                                         BitConverter.GetBytes(lastBlockNumber).CopyTo(location.Slice(14));
 
                                         _logIndexDb.PutSpan(lastEntryForAddress.Key, location);
 
+
+                                        //TODO: avoid allocation newFreeSlots with ArrayBoolList
                                         Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
                                         Span<byte> newFreeSlots = new byte[freeSlots.Length + 8];
                                         freeSlots.CopyTo(newFreeSlots);
@@ -311,6 +326,7 @@ namespace Nethermind.Init.Steps.Migrations
                                     }
                                     else
                                     {
+                                        //maybe a method to build location?
                                         "T".ToBytes().CopyTo(location);
                                         BitConverter.GetBytes(slotSize + 1).CopyTo(location.Slice(10));
                                         BitConverter.GetBytes(lastBlockNumber).CopyTo(location.Slice(14));

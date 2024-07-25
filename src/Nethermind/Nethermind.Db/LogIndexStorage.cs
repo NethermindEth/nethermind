@@ -16,6 +16,9 @@ namespace Nethermind.Db
         private Dictionary<AddressAsKey, int[]> _addressToBlocks = new Dictionary<AddressAsKey, int[]>();
         private Dictionary<Hash256, int[]> _topicsToBlocks = new Dictionary<Hash256, int[]>();
 
+        //TODO: Add Methods AddReceipts
+        //TODO: Add Methods for Filter
+
         public void LoadFile(Address address, string path)
         {
             const int maxLineLength = 1024;
