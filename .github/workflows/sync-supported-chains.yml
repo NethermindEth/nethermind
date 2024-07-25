@@ -1,4 +1,4 @@
-name: Sync Testnets
+name: Sync Supported Chains
 
 on:
   workflow_run:
@@ -7,37 +7,73 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      nethermind_image:
+        description: "Docker image to be used by action"
+        default: "nethermindeth/nethermind:master"
+        required: false
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
 jobs:
-  testnet-sync:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: nethermind
+      - name: Set Matrix
+        id: set-matrix
+        run: echo "matrix=$(jq -c . nethermind/scripts/workflow_config/sync_testnets_matrix.json)" >> $GITHUB_OUTPUT
+
+  create_a_runner:
+    needs: [setup-matrix]
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - network: "holesky"
-            checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
-            cl-client: "prysm:prysmaticlabs/prysm-beacon-chain:stable"
-            el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-80gb
-          - network: "chiado"
-            checkpoint-sync-url: "http://139.144.26.89:4000/"
-            cl-client: "lodestar:chainsafe/lodestar:latest"
-            el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-80gb
-          - network: "sepolia"
-            checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
-            cl-client: "prysm:prysmaticlabs/prysm-beacon-chain:stable"
-            el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-160gb
-    name: "Run sync of ${{ matrix.network }} testnet"
-    runs-on: ${{ matrix.agent }}
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    runs-on: ubuntu-latest
+    outputs:
+      runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
+      machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+        
+      - name: Create a Runner
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "create"
+          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          machine_type: "${{ matrix.config.agent }}"
+          image: "linode/ubuntu24.04"
+          tags: "core, self-hosted, dynamic"
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+  
+  sync-chain:
+    needs: [setup-matrix, create_a_runner]
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        
+    name: "Run sync of ${{ matrix.config.network }} chain"
+    runs-on: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+    timeout-minutes: ${{ matrix.config.timeout }}
+    
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           clean: true
 
@@ -65,20 +101,22 @@ jobs:
       - name: Run Sedge
         working-directory: sedge
         run: |
+          docker_image=${{inputs.nethermind_image || 'nethermindeth/nethermind:master'}}
+          
           echo 'Generating sedge docker...'
           ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
-          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.network }} \
-          -c ${{ matrix.cl-client }} -e ${{ matrix.el-client }} \
+          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.config.network }} \
+          -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} -e nethermind:$docker_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --el-extra-flag Sync.SnapSync=true \
-          --checkpoint-sync-url=${{ matrix.checkpoint-sync-url }}
+          --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
-      - name: Wait for ${{ matrix.network }} to sync
+      - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         timeout-minutes: 180
         run: |
@@ -149,12 +187,24 @@ jobs:
         run: |
           docker logs sedge-consensus-client      
 
-      - name: Clean Up
-        if: always()
-        run: |
-          cd sedge
-          docker compose stop
-          cd ..
-          sudo rm -rf sedge
-          sudo rm -rf $GITHUB_WORKSPACE/sedge
-          docker system prune -a -f --volumes
+  destroy_runner:
+    needs: [setup-matrix, create_a_runner, sync-chain]
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    runs-on: ubuntu-latest
+    steps:    
+      - name: Destroy a Runner
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy"
+          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          search_phrase: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
