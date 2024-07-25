@@ -2,21 +2,21 @@ using System;
 
 
 [AttributeUsage(AttributeTargets.Class)]
-sealed class ClassAttribute : Attribute
+sealed class SSZClassAttribute : Attribute
 {
 }
 
 [AttributeUsage(AttributeTargets.Field)]
-sealed class FieldAttribute : Attribute
+sealed class SSZFieldAttribute : Attribute
 {
 }
 
 [AttributeUsage(AttributeTargets.Method)]
-sealed class FunctionAttribute : Attribute
+sealed class SSZFunctionAttribute : Attribute
 {
 }
 
 [AttributeUsage(AttributeTargets.Struct)]
-sealed class FieldStructAttribute : Attribute
+sealed class SSZStructAttribute : Attribute
 {
 }

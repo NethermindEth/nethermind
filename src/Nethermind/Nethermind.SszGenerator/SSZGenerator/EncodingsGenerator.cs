@@ -116,7 +116,7 @@ public class SSZGenerator : IIncrementalGenerator
             {
                 var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
                 if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-                    methodSymbol.ContainingType.Name == "ClassAttribute")
+                    methodSymbol.ContainingType.Name == "SSZClassAttribute")
                 {
                     return classDeclaration;
                 }
@@ -134,7 +134,7 @@ public class SSZGenerator : IIncrementalGenerator
             {
                 var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
                 if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-                    methodSymbol.ContainingType.Name == "FunctionAttribute")
+                    methodSymbol.ContainingType.Name == "SSZFunctionAttribute")
                 {
                     return methodDeclaration;
                 }
@@ -152,7 +152,7 @@ public class SSZGenerator : IIncrementalGenerator
             {
                 var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
                 if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-                    methodSymbol.ContainingType.Name == "FieldAttribute")
+                    methodSymbol.ContainingType.Name == "SSZFieldAttribute")
                 {
                     return fieldDeclaration;
                 }
@@ -170,7 +170,7 @@ public class SSZGenerator : IIncrementalGenerator
             {
                 var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
                 if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-                    methodSymbol.ContainingType.Name == "FieldStructAttribute")
+                    methodSymbol.ContainingType.Name == "SSZStructAttribute")
                 {
                     return structDeclaration;
                 }
@@ -230,6 +230,10 @@ public class SSZGenerator : IIncrementalGenerator
             ";
     }
 
+    struct FieldInfo {
+        public string FieldType {get;set;}
+        public string FieldName {get;set;}
+    }
     //generate structs and fields together in a file
     private static string GenerateCombinedCode(
         string namespaceName,
@@ -239,13 +243,17 @@ public class SSZGenerator : IIncrementalGenerator
     {
         var sb = new StringBuilder();
         sb.AppendLine($"using Nethermind.Serialization.Ssz;");
+        sb.AppendLine($"using System;");
+        sb.AppendLine($"using System.Text;");
         sb.AppendLine();
         sb.AppendLine($"namespace {namespaceName}");
         sb.AppendLine("{");
         sb.AppendLine($"    public partial class {className}Generated");
         sb.AppendLine("    {");
 
+
         // Generate fields
+        List<FieldInfo> fieldList = new List<FieldInfo>();
         foreach (var field in fields)
         {
             if (field != null)  // Add this null check
@@ -256,14 +264,15 @@ public class SSZGenerator : IIncrementalGenerator
                     var modifiers = field.Modifiers.ToFullString();
                     var fieldName = variable.Identifier.Text;
                     var fieldType = field.Declaration.Type.ToString();
+                    fieldList.Add(new FieldInfo{FieldType=fieldType, FieldName=fieldName});
                     var fieldInitializer = variable.Initializer?.ToFullString() ?? string.Empty;
                     sb.AppendLine($"{modifiers}{fieldType} {fieldName} {fieldInitializer};");
                 }
             }
         }
 
-        List<string> structNames = new List<string>();
         // Generate structs
+        List<string> structNames = new List<string>();
         foreach (var structDecl in structs)
         {
             if (structDecl != null)  // Add this null check
@@ -301,49 +310,104 @@ public class SSZGenerator : IIncrementalGenerator
             }
         }
 
-        sb.AppendLine(GenerateMainFunction(structNames));
-        
+        sb.Append(GenerateMainFunction(fieldList, structNames));
+
+        //generate 1 encoding function for all the fields
+        sb.Append(GenerateFieldsEncodingFunctions(fieldList));
         foreach (var structDecl in structs)
-        {
-            sb.Append(GenerateSerializingStruct(structDecl));
+            sb.Append(GenerateStructsEncodingFunctions(structDecl));
 
-        }
+        sb.Append(GenerateStringToByteArrayConversion());
 
-        sb.AppendLine("    }");
+        sb.AppendLine("}");
         sb.AppendLine("}");
 
         return sb.ToString();
     }
 
-private static string GenerateMainFunction(List<string> structNames){
-    var sb = new StringBuilder();
 
-    sb.AppendLine("        public static void GenerateStart(");
-    foreach(var structName in structNames){
-        char[] varNameChar = structName.ToCharArray();
-        varNameChar[0] = char.ToLower(varNameChar[0]);
-        string structVarName = new string(varNameChar);
-        sb.AppendLine($"            {structName} {structVarName},");
+    //generate the very first function for developers to call, which takes in instances of the data structure as parameters
+    //and calls the Encode functions generated for each data structure
+    private static string GenerateMainFunction(List<FieldInfo> fieldList, List<string> structNames)
+    {
+        var sb = new StringBuilder();
+        
+        sb.Append("        public static void GenerateStart(");
+
+        /*** 
+        generate parameters
+        each parameter followed by a comma ","
+        except for the last one
+        */
+        for(int i=0; i < fieldList.Count;i++){ //generate field parameters
+            string fieldName = char.ToLower(fieldList[i].FieldName[0]) + fieldList[i].FieldName.Substring(1);
+            sb.Append($"{fieldList[i].FieldType} {fieldName}{(i+1==fieldList.Count && structNames.Count == 0 ? "" : ",")} ");
+        }
+        for(int i=0;i<structNames.Count;i++){ //generate struct parameters
+            char[] varNameChar = structNames[i].ToCharArray();
+            varNameChar[0] = char.ToLower(varNameChar[0]);
+            string structVarName = new string(varNameChar);
+            sb.Append($"{structNames[i]} {structVarName}{(i+1==structNames.Count ? "" : ",")} ");
+        }
+        sb.AppendLine(")");
+        sb.AppendLine("        {");
+
+
+        /*** generate contents */
+        sb.AppendLine("            var buffer = new byte[100];");
+        sb.AppendLine("            int offset = 0;");
+
+        //this for-loop passes all the fields parameter into EncodeAllFields() function.
+        for(int i=0; i < fieldList.Count;i++){
+            if(i==0)
+                sb.Append($"            EncodeAllFields(buffer, ref offset, ");
+            string fieldName = char.ToLower(fieldList[i].FieldName[0]) + fieldList[i].FieldName.Substring(1);
+            sb.Append($" {fieldName} {(i+1 == fieldList.Count ? ");" : ",")}");
+        }
+        sb.AppendLine();
+        //this for-loop calls on different Encode function for each struct
+        foreach(var structName in structNames){
+            char[] varNameChar = structName.ToCharArray();
+            varNameChar[0] = char.ToLower(varNameChar[0]);
+            string structVarName = new string(varNameChar);
+            sb.AppendLine($"            Encode(buffer, {structVarName}, ref offset);");
+        }
+        sb.AppendLine("            var slicedBuffer = new ArraySegment<byte>(buffer, 0, offset).ToArray();");
+        sb.AppendLine($"            Console.WriteLine(string.Join(\" \", slicedBuffer));");
+        sb.AppendLine("        }");
+        
+        return sb.ToString();
     }
-    sb.AppendLine("        )");
-    sb.AppendLine("        {");
-    sb.AppendLine("            var buffer = new byte[100];");
-    sb.AppendLine("            int offset = 0;");
-    foreach(var structName in structNames){
-        char[] varNameChar = structName.ToCharArray();
-        varNameChar[0] = char.ToLower(varNameChar[0]);
-        string structVarName = new string(varNameChar);
-        sb.AppendLine($"            Encode(buffer, {structVarName}, ref offset);");
+
+    //generate 1 large Encode function for all the fields
+    private static string GenerateFieldsEncodingFunctions(List<FieldInfo> fieldList)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"        public static void EncodeAllFields(Span<byte> span, ref int offset{(fieldList.Count>0 ? ",": "")}");
+        for(int i=0;i<fieldList.Count;i++){
+            string fieldName = char.ToLower(fieldList[i].FieldName[0]) + fieldList[i].FieldName.Substring(1);
+            sb.Append($" {fieldList[i].FieldType} {fieldName} {(i+1==fieldList.Count ? ")" : ",")}");
+        }
+        sb.AppendLine();
+        sb.AppendLine("        {");
+        for(int i=0;i<fieldList.Count;i++){
+            string fieldName = char.ToLower(fieldList[i].FieldName[0]) + fieldList[i].FieldName.Substring(1);
+
+            //if the type is string, need to convert to byte[], as SSZ library doesn't support string
+            if(fieldList[i].FieldType == "string")
+                sb.AppendLine($"            Ssz.Encode(span, ConvertStringIntoByteArray({fieldName}), ref offset);");
+            else if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_OFFSET.Contains(fieldList[i].FieldType))
+                sb.AppendLine($"            Ssz.Encode(span, {fieldName}, ref offset);");
+            else if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_NOOFFSET.Contains(fieldList[i].FieldType))
+                sb.AppendLine($"            Ssz.Encode(span, {fieldName});");
+        }
+        sb.AppendLine("        }");
+
+        return sb.ToString();
     }
-    sb.AppendLine("            var slicedBuffer = new ArraySegment<byte>(buffer, 0, offset).ToArray();");
-    sb.AppendLine($"            Console.WriteLine(string.Join(\" \", slicedBuffer));");
-    sb.AppendLine("         }");
-    
-    return sb.ToString();
-}
 
-
-private static string GenerateSerializingStruct(StructDeclarationSyntax structDecl)
+    //generate Encode functions for each every struct
+    private static string GenerateStructsEncodingFunctions(StructDeclarationSyntax structDecl)
     {
         var sb = new StringBuilder();
         string structName = structDecl.Identifier.Text;
@@ -361,7 +425,11 @@ private static string GenerateSerializingStruct(StructDeclarationSyntax structDe
                     if(member is PropertyDeclarationSyntax propertyDecl){
                         var name = propertyDecl.Identifier.Text;
                         var type = propertyDecl.Type.ToString();
-                        if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_OFFSET.Contains(type))
+
+                        //if the type is string, need to convert to byte[], as SSZ library doesn't support string
+                        if(type == "string")
+                            sb.AppendLine($"            Ssz.Encode(span, ConvertStringIntoByteArray({structVarName}.{name}), ref offset);");
+                        else if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_OFFSET.Contains(type))
                             sb.AppendLine($"            Ssz.Encode(span, {structVarName}.{name}, ref offset);");
                         else if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_NOOFFSET.Contains(type))
                             sb.AppendLine($"            Ssz.Encode(span, {structVarName}.{name});");
@@ -375,7 +443,11 @@ private static string GenerateSerializingStruct(StructDeclarationSyntax structDe
                         {
                             var name = variable.Identifier.Text;
                             var type = fieldDecl.Declaration.Type.ToString();
-                            if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_OFFSET.Contains(type))
+                            
+                            //if the type is string, need to convert to byte[], as SSZ library doesn't support string
+                            if(type == "string")
+                                sb.AppendLine($"            Ssz.Encode(span, ConvertStringIntoByteArray({structVarName}.{name}), ref offset);");
+                            else if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_OFFSET.Contains(type))
                                 sb.AppendLine($"            Ssz.Encode(span, {structVarName}.{name}, ref offset);");
                             else if(SSZ_LIB_SUPPORTED_ENCODING_TYPES_NOOFFSET.Contains(type))
                                 sb.AppendLine($"            Ssz.Encode(span, {structVarName}.{name});");
@@ -390,6 +462,15 @@ private static string GenerateSerializingStruct(StructDeclarationSyntax structDe
         sb.AppendLine("        }");
 
         return sb.ToString();
+    }
+
+
+    public static string GenerateStringToByteArrayConversion(){
+        return @"
+        public static byte[] ConvertStringIntoByteArray(string stringToConvert){
+            return Encoding.UTF8.GetBytes(stringToConvert);
+        }
+        ";
     }
 
 
