@@ -58,12 +58,6 @@ namespace Program{
                 ProductName = "AA",
                 ProductPrice = 40
             };
-
-            Product.ProductInfo prodInfo = new Product.ProductInfo
-            {
-                ProductName = "AA",
-                ProductPrice = 40
-            };
             
             WriteLine(string.Join(" ",ProductGenerated.GenerateStart(0,prod)));
         }
