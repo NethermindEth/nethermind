@@ -15,17 +15,30 @@ public class SSZGenerator : IIncrementalGenerator
     private static readonly string[] SSZ_LIB_SUPPORTED_ENCODING_TYPES_NOOFFSET={
         "ushort", "UInt258", "UInt256[]", "UInt258[]"
     };
+    private string[] primitiveTypes = new string[]
+        {
+            "byte",
+            "sbyte",
+            "short",
+            "ushort",
+            "int",
+            "uint",
+            "long",
+            "ulong",
+            "float",
+            "double",
+            "decimal",
+            "char",
+            "bool",
+            "object",
+            "string",
+        };
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var classDeclarations = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (syntaxNode, _) => IsClassWithAttribute(syntaxNode),
                 transform: (context, _) => GetClassWithAttribute(context))
             .Where(classNode => classNode is not null);
-
-        var methodDeclarations = context.SyntaxProvider.CreateSyntaxProvider(
-                predicate: (syntaxNode, _) => IsMethodWithAttribute(syntaxNode),
-                transform: (context, _) => GetMethodWithAttribute(context))
-            .Where(methodNode => methodNode is not null);
 
         var fieldDeclarations = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (syntaxNode, _) => IsFieldWithAttribute(syntaxNode),
@@ -37,30 +50,6 @@ public class SSZGenerator : IIncrementalGenerator
                 transform: (context, _) => GetStructWithAttribute(context))
             .Where(structNode => structNode is not null);
 
-        context.RegisterSourceOutput(classDeclarations, (spc, classNode) =>
-        {
-            if (classNode is ClassDeclarationSyntax classDeclaration)
-            {
-                var className = classDeclaration.Identifier.Text;
-                var namespaceName = GetNamespace(classDeclaration);
-                var generatedCode = GenerateClassCode(namespaceName, className);
-                spc.AddSource($"{className}_class_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
-            }
-        });
-
-        context.RegisterSourceOutput(methodDeclarations, (spc, methodNode) =>
-        {
-            if (methodNode is MethodDeclarationSyntax methodDeclaration)
-            {
-                var methodName = methodDeclaration.Identifier.Text;
-                var classDeclaration = methodDeclaration.Parent as ClassDeclarationSyntax;
-                var className = classDeclaration?.Identifier.Text ?? "DefaultMethod";
-                var namespaceName = GetNamespace(methodDeclaration);
-                var generatedCode = GenerateMethodCode(namespaceName, className, methodName);
-                spc.AddSource($"{className}_{methodName}_method_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
-            }
-        });
-
         var combinedDeclarations = fieldDeclarations.Collect()
             .Combine(structDeclarations.Collect())
             .Combine(classDeclarations.Collect());
@@ -68,16 +57,17 @@ public class SSZGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(combinedDeclarations, (spc, combined) =>
         {
             var ((fields, structs), classes) = combined;
-            foreach (var classDeclaration in classes)
+            var sb = new StringBuilder();
+            foreach (var classDecl in classes)
             {
-                if (classDeclaration != null)
+                if (classDecl != null)
                 {
-                    var className = classDeclaration.Identifier.Text;
-                    var namespaceName = GetNamespace(classDeclaration);
-                    var nonNullFields = fields.Where(f => f != null).Cast<FieldDeclarationSyntax>().ToImmutableArray();
-                    var nonNullStructs = structs.Where(s => s != null).Cast<StructDeclarationSyntax>().ToImmutableArray();
+                    var className = classDecl.Identifier.Text;
+                    var namespaceName = GetNamespace(classDecl);
+                    var nonNullFields = fields.Where(f => f != null && className == GetClassNameOfFieldAndStruct(f)).Cast<FieldDeclarationSyntax>().ToImmutableArray();
+                    var nonNullStructs = structs.Where(s => s != null && className == GetClassNameOfFieldAndStruct(s) ).Cast<StructDeclarationSyntax>().ToImmutableArray();
                     var generatedCode = GenerateCombinedCode(namespaceName, className, nonNullFields, nonNullStructs);
-                    spc.AddSource($"{className}_Combined_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
+                    spc.AddSource($"{className}_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
                 }
             }
         });
@@ -87,12 +77,6 @@ public class SSZGenerator : IIncrementalGenerator
     {
         return syntaxNode is ClassDeclarationSyntax classDeclaration &&
                classDeclaration.AttributeLists.Any();
-    }
-
-    private static bool IsMethodWithAttribute(SyntaxNode syntaxNode)
-    {
-        return syntaxNode is MethodDeclarationSyntax methodDeclaration &&
-               methodDeclaration.AttributeLists.Any();
     }
 
     private static bool IsFieldWithAttribute(SyntaxNode syntaxNode)
@@ -119,24 +103,6 @@ public class SSZGenerator : IIncrementalGenerator
                     methodSymbol.ContainingType.Name == "SSZClassAttribute")
                 {
                     return classDeclaration;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static MethodDeclarationSyntax? GetMethodWithAttribute(GeneratorSyntaxContext context)
-    {
-        var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-        foreach (var attributeList in methodDeclaration.AttributeLists)
-        {
-            foreach (var attribute in attributeList.Attributes)
-            {
-                var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
-                if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-                    methodSymbol.ContainingType.Name == "SSZFunctionAttribute")
-                {
-                    return methodDeclaration;
                 }
             }
         }
@@ -185,51 +151,6 @@ public class SSZGenerator : IIncrementalGenerator
         return namespaceDeclaration?.Name.ToString() ?? "GlobalNamespace";
     }
 
-    private static string GenerateClassCode(string namespaceName, string className)
-    {
-        return $@"
-            using Nethermind.Serialization.Ssz;
-
-            namespace {namespaceName}
-            {{
-                public partial class {className}
-                {{
-                    public string GetClassName()
-                    {{
-                        return ""{className}"";
-                    }}
-
-                    public byte[] GenerateBasicType()
-                    {{
-                        byte[] buffer = new byte[100];
-                        Span<byte> span = buffer;
-
-                        Ssz.Encode(span, 1);
-                        Console.WriteLine(string.Join("", "", buffer));
-
-                        return buffer;
-                    }}
-                }}
-            }}
-            ";
-    }
-
-    private static string GenerateMethodCode(string namespaceName, string className, string methodName)
-    {
-        return $@"
-            namespace {namespaceName}
-            {{
-                public partial class {className}
-                {{
-                    public string GetMethodName()
-                    {{
-                        return ""{methodName}"";
-                    }}
-                }}
-            }}
-            ";
-    }
-
     struct FieldInfo {
         public string FieldType {get;set;}
         public string FieldName {get;set;}
@@ -266,7 +187,7 @@ public class SSZGenerator : IIncrementalGenerator
                     var fieldType = field.Declaration.Type.ToString();
                     fieldList.Add(new FieldInfo{FieldType=fieldType, FieldName=fieldName});
                     var fieldInitializer = variable.Initializer?.ToFullString() ?? string.Empty;
-                    sb.AppendLine($"{modifiers}{fieldType} {fieldName} {fieldInitializer};");
+                    sb.AppendLine($"{modifiers}{fieldType} {fieldName} {fieldInitializer}; {(fieldType!="dynamic" ? "// fixed type" : "//dynamic type")}");
                 }
             }
         }
@@ -286,23 +207,23 @@ public class SSZGenerator : IIncrementalGenerator
                 {
                     if(member is PropertyDeclarationSyntax propertyDecl){
                         var modifiers = propertyDecl.Modifiers.ToString();
-                        var type = propertyDecl.Type.ToString();
+                        var propertyType = propertyDecl.Type.ToString();
                         var name = propertyDecl.Identifier.Text;
                         var accessors = propertyDecl.AccessorList != null ? propertyDecl.AccessorList.ToString() : string.Empty;
 
-                        sb.AppendLine($"            {modifiers} {type} {name} {accessors}");
+                        sb.AppendLine($"            {modifiers} {propertyType} {name} {accessors} {(propertyType!="dynamic" ? "// fixed type" : "//dynamic type")}");
 
                     }
                     else if (member is FieldDeclarationSyntax fieldDecl)
                     {
                         var modifiers = fieldDecl.Modifiers.ToString();
-                        var type = fieldDecl.Declaration.Type.ToString();
+                        var fieldType = fieldDecl.Declaration.Type.ToString();
                         var variable = fieldDecl.Declaration.Variables.FirstOrDefault();
                         if (variable != null)
                         {
                             var fieldName = variable.Identifier.Text;
                             var fieldInitializer = variable.Initializer?.ToFullString() ?? string.Empty;
-                            sb.AppendLine($"            {modifiers} {type} {fieldName} {fieldInitializer};");
+                            sb.AppendLine($"            {modifiers} {fieldType} {fieldName} {fieldInitializer}; {(fieldType!="dynamic" ? "// fixed type" : "//dynamic type")}");
                         }
                     }
                 }
@@ -318,6 +239,8 @@ public class SSZGenerator : IIncrementalGenerator
             sb.Append(GenerateStructsEncodingFunctions(structDecl));
 
         sb.Append(GenerateStringToByteArrayConversion());
+        sb.AppendLine();
+        sb.Append(GenerateGetByteSizeFunction());
 
         sb.AppendLine("}");
         sb.AppendLine("}");
@@ -373,7 +296,7 @@ public class SSZGenerator : IIncrementalGenerator
             sb.AppendLine($"            Encode(buffer, {structVarName}, ref offset);");
         }
         sb.AppendLine("            var slicedBuffer = new ArraySegment<byte>(buffer, 0, offset).ToArray();");
-        sb.AppendLine($"            Console.WriteLine(string.Join(\" \", slicedBuffer));");
+        // sb.AppendLine($"            Console.WriteLine(string.Join(\" \", slicedBuffer));");
         sb.AppendLine($"            return slicedBuffer;");
         sb.AppendLine("        }");
         
@@ -387,9 +310,9 @@ public class SSZGenerator : IIncrementalGenerator
         sb.Append($"        public static void EncodeAllFields(Span<byte> span, ref int offset{(fieldList.Count>0 ? ",": "")}");
         for(int i=0;i<fieldList.Count;i++){
             string fieldName = char.ToLower(fieldList[i].FieldName[0]) + fieldList[i].FieldName.Substring(1);
-            sb.Append($" {fieldList[i].FieldType} {fieldName} {(i+1==fieldList.Count ? ")" : ",")}");
+            sb.Append($" {fieldList[i].FieldType} {fieldName} {(i+1==fieldList.Count ? "" : ",")}");
         }
-        sb.AppendLine();
+        sb.AppendLine(")");
         sb.AppendLine("        {");
         for(int i=0;i<fieldList.Count;i++){
             string fieldName = char.ToLower(fieldList[i].FieldName[0]) + fieldList[i].FieldName.Substring(1);
@@ -466,7 +389,7 @@ public class SSZGenerator : IIncrementalGenerator
     }
 
 
-    public static string GenerateStringToByteArrayConversion(){
+    private static string GenerateStringToByteArrayConversion(){
         return @"
         public static byte[] ConvertStringIntoByteArray(string stringToConvert){
             return Encoding.UTF8.GetBytes(stringToConvert);
@@ -475,6 +398,101 @@ public class SSZGenerator : IIncrementalGenerator
     }
 
 
+    private static string GetClassNameOfFieldAndStruct(SyntaxNode node){
+        return node.Ancestors().OfType<ClassDeclarationSyntax>().FirstOrDefault()?.Identifier.Text ?? "";
+    }
+
+    private static string GenerateGetByteSizeFunction(){
+        
+        string byteSizeFunction = @"
+             public static int CalculateByteSize(object obj)
+    {
+        if (obj == null) return 0;
+        Type type = obj.GetType();
+        int totalSize = 0;
+
+        //since string is a special type, it will not go through checks like other types will
+        if(type == typeof(string))
+            return Encoding.UTF8.GetByteCount((string)obj);
+        
+        foreach (var field in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+        {
+            if(field!=null){
+                object? fieldValue = field.GetValue(obj);
+                totalSize += CalculateFieldSize(field.FieldType, fieldValue??0);
+            }
+        }
+        
+        return totalSize;
+    }
+
+
+    //calculates primitive types, arrays and enums
+    private static int CalculateFieldSize(Type fieldType, object fieldValue)
+    {
+        if (fieldValue == null) return 0;
+
+        if (fieldType == typeof(byte) || fieldType == typeof(sbyte))
+            return sizeof(byte);
+
+        if (fieldType == typeof(bool))
+            return sizeof(bool);
+
+        if (fieldType == typeof(short) || fieldType == typeof(ushort))
+            return sizeof(short);
+
+        if (fieldType == typeof(int) || fieldType == typeof(uint))
+            return sizeof(int);
+
+        if (fieldType == typeof(long) || fieldType == typeof(ulong))
+            return sizeof(long);
+
+        if (fieldType == typeof(float))
+            return sizeof(float);
+
+        if (fieldType == typeof(double))
+            return sizeof(double);
+
+        if (fieldType == typeof(char))
+            return sizeof(char);
+
+        if (fieldType == typeof(decimal))
+            return sizeof(decimal);
+
+        if (fieldType == typeof(string))
+            return Encoding.UTF8.GetByteCount((string)fieldValue);
+
+        if (fieldType.IsArray)
+        {
+            Array array = (Array)fieldValue;
+            int arraySize = 0;
+            foreach (var element in array)
+            {
+                arraySize += CalculateFieldSize(element.GetType(), element);
+            }
+            return arraySize;
+        }
+
+        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(fieldType))
+        {
+            int enumerableSize = 0;
+            foreach (var element in (System.Collections.IEnumerable)fieldValue)
+            {
+                enumerableSize += CalculateFieldSize(element.GetType(), element);
+            }
+            return enumerableSize;
+        }
+
+        /***
+        If type is custom defined struct / type, calls CalculateByteSize()
+        This creates a recursive function calling
+        */
+        return CalculateByteSize(fieldValue);
+    }
+    ";
+
+    return byteSizeFunction;
+    }
 
 }
 // 
