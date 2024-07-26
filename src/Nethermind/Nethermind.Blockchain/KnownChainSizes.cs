@@ -23,19 +23,13 @@ namespace Nethermind.Blockchain
             public static readonly IChainEstimations Instance = new UnknownChain();
         }
 
-        private class ChainEstimations : IChainEstimations
+        private class ChainEstimations(
+            LinearExtrapolation? stateSizeEstimator = null,
+            LinearExtrapolation? prunedStateEstimator = null)
+            : IChainEstimations
         {
-            private readonly LinearExtrapolation? _stateSizeEstimator;
-            private readonly LinearExtrapolation? _prunedStateEstimator;
-
-            public ChainEstimations(LinearExtrapolation? stateSizeEstimator = null, LinearExtrapolation? prunedStateEstimator = null)
-            {
-                _stateSizeEstimator = stateSizeEstimator;
-                _prunedStateEstimator = prunedStateEstimator;
-            }
-
-            public long? StateSize => _stateSizeEstimator?.Estimate;
-            public long? PruningSize => _prunedStateEstimator?.Estimate;
+            public long? StateSize => stateSizeEstimator?.Estimate;
+            public long? PruningSize => prunedStateEstimator?.Estimate;
         }
 
         private class LinearExtrapolation
