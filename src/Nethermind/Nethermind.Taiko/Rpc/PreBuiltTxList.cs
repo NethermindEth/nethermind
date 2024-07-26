@@ -8,6 +8,8 @@ namespace Nethermind.Taiko.Rpc;
 public class PreBuiltTxList(TransactionForRpc[] transactions, ulong estimatedGasUsed, long bytesLength)
 {
     public TransactionForRpc[] Transactions { get; set; } = transactions;
-    public ulong EstimatedGasUsed { get; set; } = estimatedGasUsed;
-    public long BytesLength { get; set; } = bytesLength;
+
+    public string EstimatedGasUsed { get; set; } = estimatedGasUsed.ToString();
+
+    public string BytesLength { get; set; } = bytesLength.ToString();
 }
