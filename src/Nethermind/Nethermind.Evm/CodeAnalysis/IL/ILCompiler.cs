@@ -1260,6 +1260,85 @@ internal class ILCompiler
                     method.LoadLocalAddress(localSpan);
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                     break;
+                case Instruction.LOG0:
+                case Instruction.LOG1:
+                case Instruction.LOG2:
+                case Instruction.LOG3:
+                case Instruction.LOG4:
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackPop(head, 2);
+
+                   //topics count
+                    var topicsCount = method.DeclareLocal<long>();
+                    method.LoadConstant((long)op.Operation);
+                    method.LoadConstant((long)Instruction.LOG0);
+                    method.Subtract();
+                    method.StoreLocal(topicsCount);
+
+                    // UpdateMemoryCost
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256B);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    // update gas
+                    method.LoadLocal(gasAvailable);
+                    method.LoadLocal(topicsCount);
+                    method.LoadConstant(GasCostOf.LogTopic);
+                    method.Multiply();
+                    method.LoadConstant(GasCostOf.Log);
+                    method.Add();
+                    method.LoadLocal(uint256B);
+                    method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+                    method.LoadConstant(GasCostOf.LogData);
+                    method.Multiply();
+                    method.Add();
+                    method.Duplicate();
+                    method.LoadLocalAddress(gasAvailable);
+                    method.CompareGreaterThan(); //  gasCost > gasAvailable
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);// gasAvailable -= gasCost
+
+                    // Executing account
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+
+                    // memory load
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256B);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
+                    //bug
+                    method.Call(typeof(ReadOnlyMemory<byte>).GetMethod(nameof(ReadOnlyMemory<byte>.ToArray)));
+
+                    //topics
+                    method.LoadLocal(topicsCount);
+                    method.NewArray<Hash256>();
+                    method.ForBranch(topicsCount,
+                            (il, idx) =>
+                            {
+                                method.Duplicate(); //arr
+                                method.LoadLocal(idx); // index to modify
+                                method.StackLoadPrevious(stack, head, 1); // value to set
+                                method.Call(Word.GetSpan); // value to set
+                                method.StackPop(head); // value to set
+                                method.Call(typeof(Hash256).GetConstructor(new[] { typeof(ReadOnlySpan<byte>) })); //value to set
+                                method.StoreElement<Hash256>(); //set value of array at index
+                            });
+
+                    method.Call(typeof(LogEntry).GetConstructor(new[] { typeof(Address), typeof(byte[]), typeof(Hash256[])})); //vakue to set
+                    break;
                 default:
                     throw new NotSupportedException();
             }
