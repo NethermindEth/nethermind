@@ -12,6 +12,7 @@ using Lantern.Discv5.WireProtocol.Messages.Responses;
 using Lantern.Discv5.WireProtocol.Packet;
 using Lantern.Discv5.WireProtocol.Table;
 using Microsoft.ClearScript.Util.Web;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -35,7 +36,7 @@ public class LanternAdapter: ILanternAdapter
     private readonly IRoutingTable _routingTable;
 
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
-    private readonly Dictionary<byte[], IKademlia<IEnr>> _kademliaOverlays = new();
+    private readonly SpanDictionary<byte, IKademlia<IEnr>> _kademliaOverlays = new(Bytes.SpanEqualityComparer);
 
     public LanternAdapter (
         IDiscv5Protocol discv5,
