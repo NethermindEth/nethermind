@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using NonBlocking;
 using NUnit.Framework;
@@ -137,6 +138,14 @@ public class KademliaSimulation
         }
     }
 
+    class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256>
+    {
+        public ValueHash256 GetHash(ValueHash256 node)
+        {
+            return node;
+        }
+    }
+
     private class TestFabricMessageSender(int kSize = 20, int alpha = 3)
     {
         internal long PingCount = 0;
@@ -144,7 +153,7 @@ public class KademliaSimulation
         internal long FindNeighbourCount = 0;
 
         private ConcurrentDictionary<ValueHash256, IKademlia<ValueHash256, ValueHash256>> _nodes = new();
-        readonly IDistanceCalculator<ValueHash256> _distanceCalculator = new Hash256DistanceCalculator();
+        readonly INodeHashProvider<ValueHash256> _nodeHashProvider = new ValueHashNodeHashProvider();
 
         private bool TryGetReceiver(ValueHash256 receiverHash, out IKademlia<ValueHash256, ValueHash256> messageReceiver)
         {
@@ -154,9 +163,10 @@ public class KademliaSimulation
         public Kademlia<ValueHash256, ValueHash256> CreateNode(ValueHash256 nodeID)
         {
             var kad = new Kademlia<ValueHash256, ValueHash256>(
-                _distanceCalculator,
+                _nodeHashProvider,
                 new OnlySelfIStore(nodeID),
                 new SenderForNode(nodeID, this),
+                LimboLogs.Instance,
                 nodeID,
                 kSize,
                 alpha,

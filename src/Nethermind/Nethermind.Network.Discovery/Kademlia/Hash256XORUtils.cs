@@ -8,9 +8,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class Hash256DistanceCalculator: IDistanceCalculator<ValueHash256>
+public static class Hash256XORUtils
 {
-    public int CalculateDistance(ValueHash256 h1, ValueHash256 h2)
+    public static int CalculateDistance(ValueHash256 h1, ValueHash256 h2)
     {
         int zeros = 0;
         for (int i = 0; i < 32; i+=1)
@@ -37,9 +37,9 @@ public class Hash256DistanceCalculator: IDistanceCalculator<ValueHash256>
         return MaxDistance - zeros;
     }
 
-    public int MaxDistance => 256;
+    public static int MaxDistance => 256;
 
-    public ValueHash256 RandomizeHashAtDistance(ValueHash256 currentHash, int distance)
+    public static ValueHash256 RandomizeHashAtDistance(ValueHash256 currentHash, int distance)
     {
         // TODO: Just add a min/max range per bucket and randomized between them.
         if (distance == MaxDistance)
@@ -51,7 +51,7 @@ public class Hash256DistanceCalculator: IDistanceCalculator<ValueHash256>
         return CopyForRandom(currentHash, randomized, distance);
     }
 
-    public int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
+    public static int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
     {
         ValueHash256 ac = new ValueHash256();
         (new Vector<byte>(a.BytesAsSpan) ^ new Vector<byte>(c.BytesAsSpan)).CopyTo(ac.BytesAsSpan);

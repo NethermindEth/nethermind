@@ -12,6 +12,7 @@ using Lantern.Discv5.WireProtocol.Messages.Responses;
 using Lantern.Discv5.WireProtocol.Packet;
 using Lantern.Discv5.WireProtocol.Table;
 using Microsoft.ClearScript.Util.Web;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
@@ -26,7 +27,7 @@ public class LanternAdapter: ILanternAdapter
 
     private readonly IDiscv5Protocol _discv5;
     private readonly ILogger _logger;
-    private readonly IEnrDistanceCalculator _distanceCalculator = new IEnrDistanceCalculator();
+    private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
     private readonly IPacketManager _packetManager;
     private readonly IMessageDecoder _messageDecoder;
     private readonly IIdentityVerifier _identityVerifier;
@@ -88,7 +89,7 @@ public class LanternAdapter: ILanternAdapter
             // This is weird. For some reason, discv5/overlay network uses distance instead of target node like
             // with Kademlia/discv4. It also makes it more implementation specific.
             // fortunately, its basically the same as randomizing hash at a specific distance.
-            IEnr theHash = _distanceCalculator.RandomizeHashAtDistance(_discv5.SelfEnr, nodes.Distances[0]);
+            ValueHash256 theHash = Hash256XORUtils.RandomizeHashAtDistance(_nodeHashProvider.GetHash(_discv5.SelfEnr), nodes.Distances[0]);
             var neighbours = await kad.FindNeighbours(sender, theHash, CancellationToken.None);
             var neighboursAsBytes = neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
 
@@ -104,7 +105,8 @@ public class LanternAdapter: ILanternAdapter
         }
         else if (message.FindContent is { } findContent)
         {
-            IEnr enrValue = new ContentEnr(findContent.ContentKey);
+            // TODO: Straight up wrong
+            ValueHash256 enrValue = new ValueHash256(findContent.ContentKey);
             var findValueResult = await kad.FindValue(sender, enrValue, CancellationToken.None);
             if (findValueResult.hasValue)
             {
@@ -251,14 +253,14 @@ public class LanternAdapter: ILanternAdapter
             await manager.CallAndWaitForResponse(receiver, protocol, pingBytes, token);
         }
 
-        public async Task<IEnr[]> FindNeighbours(IEnr receiver, IEnr hash, CancellationToken token)
+        public async Task<IEnr[]> FindNeighbours(IEnr receiver, ValueHash256 hash, CancellationToken token)
         {
             // For some reason, the protocol uses the distance instead of the standard kademlia RPC
             // which checks for the k-nearest nodes and just let the implementation decide how to implement it.
             // With the most basic implementation, this is the same as returning the bucket of the distance between
             // the target and current node. But more sophisticated routing table can do more if just query with
             // nodeid.
-            ushort theDistance = (ushort)manager._distanceCalculator.CalculateDistance(receiver, hash);
+            ushort theDistance = (ushort)Hash256XORUtils.CalculateDistance(manager._nodeHashProvider.GetHash(receiver), hash);
 
             // To simulate a neighbour query to a particular hash with distance, we also query for neighbouring
             // bucket in the order as if we are running a query to a particular hash
@@ -306,13 +308,13 @@ public class LanternAdapter: ILanternAdapter
             return enrs;
         }
 
-        public async Task<FindValueResponse<IEnr, byte[]>> FindValue(IEnr receiver, IEnr hash, CancellationToken token)
+        public async Task<FindValueResponse<IEnr, byte[]>> FindValue(IEnr receiver, ValueHash256 hash, CancellationToken token)
         {
             byte[] findContentBytes = SlowSSZ.Serialize(new MessageUnion()
             {
                 FindContent = new FindContent()
                 {
-                    ContentKey = hash.NodeId
+                    ContentKey = hash.BytesAsSpan.ToArray()
                 }
             });
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
 using System.Diagnostics;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -18,64 +17,67 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// limit) which makes the lookup even more accurate.
 ///
 /// TODO: Switch to tree based kademlia implementation.
-public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : notnull
+public class Kademlia<TNode, TValue> : IKademlia<TNode, TValue> where TNode : notnull
 {
-    private IKademlia<THash, TValue>.IStore _store;
-    private readonly IDistanceCalculator<THash> _distanceCalculator;
+    private IKademlia<TNode, TValue>.IStore _store;
     private readonly static TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
+    private readonly INodeHashProvider<TNode> _nodeHashProvider;
 
-    private readonly KBucket<THash, TValue>[] _buckets;
-    private readonly THash _currentNodeId;
+
+    private readonly KBucket<TNode, TValue>[] _buckets;
+    private readonly TNode _currentNodeId;
+    private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
     private readonly int _alpha;
-    private readonly IMessageSender<THash, TValue> _messageSender;
-    private readonly LruCache<THash, int> _peerFailures;
+    private readonly IMessageSender<TNode, TValue> _messageSender;
+    private readonly LruCache<TNode, int> _peerFailures;
     private readonly TimeSpan _refreshInterval;
     private readonly ILogger _logger;
 
     public Kademlia(
-        IDistanceCalculator<THash> distanceCalculator,
-        IKademlia<THash, TValue>.IStore store,
-        IMessageSender<THash, TValue> sender,
+        INodeHashProvider<TNode> nodeHashProvider,
+        IKademlia<TNode, TValue>.IStore store,
+        IMessageSender<TNode, TValue> sender,
         ILogManager logManager,
-        THash currentNodeId,
+        TNode currentNodeId,
         int kSize,
         int alpha,
         TimeSpan refreshInterval
     )
     {
-        _distanceCalculator = distanceCalculator;
+        _nodeHashProvider = nodeHashProvider;
         _store = store;
         _messageSender = new MessageSenderMonitor(sender, this);
-        _logger = logManager.GetClassLogger<Kademlia<THash, TValue>>();
+        _logger = logManager.GetClassLogger<Kademlia<TNode, TValue>>();
 
         _currentNodeId = currentNodeId;
+        _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
         _kSize = kSize;
         _alpha = alpha;
         _refreshInterval = refreshInterval;
 
-        _peerFailures = new LruCache<THash, int>(1024, "peer failure");
+        _peerFailures = new LruCache<TNode, int>(1024, "peer failure");
         // Note: It does not have to be this mush. In practice, only like 16 of these bucket get populated.
-        _buckets = new KBucket<THash, TValue>[distanceCalculator.MaxDistance + 1];
-        for (int i = 0; i < distanceCalculator.MaxDistance + 1; i++)
+        _buckets = new KBucket<TNode, TValue>[Hash256XORUtils.MaxDistance + 1];
+        for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
         {
-            _buckets[i] = new KBucket<THash, TValue>(kSize, sender);
+            _buckets[i] = new KBucket<TNode, TValue>(kSize, sender);
         }
     }
 
-    public void SeedNode(THash node)
+    public void SeedNode(TNode node)
     {
         if (SameAsSelf(node)) return;
         GetBucket(node).AddOrRefresh(node);
     }
 
-    private bool SameAsSelf(THash node)
+    private bool SameAsSelf(TNode node)
     {
         // TODO: Put in distance calculator.. probably
-        return EqualityComparer<THash>.Default.Equals(node, _currentNodeId);
+        return EqualityComparer<TNode>.Default.Equals(node, _currentNodeId);
     }
 
-    public async Task<TValue?> LookupValue(THash targetHash, CancellationToken token)
+    public async Task<TValue?> LookupValue(ValueHash256 targetHash, CancellationToken token)
     {
         TValue? result = default(TValue);
         bool resultWasFound = false;
@@ -88,7 +90,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
             await LookupNodesClosest(
                 targetHash, async (nextNode, token) =>
                 {
-                    FindValueResponse<THash, TValue> valueResponse = await _messageSender.FindValue(nextNode, targetHash, token);
+                    FindValueResponse<TNode, TValue> valueResponse = await _messageSender.FindValue(nextNode, targetHash, token);
                     if (valueResponse.hasValue)
                     {
                         resultWasFound = true;
@@ -109,7 +111,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         return result;
     }
 
-    private async Task<THash[]> LookupNodesClosest(THash targetHash, CancellationToken token)
+    private async Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, CancellationToken token)
     {
         return await LookupNodesClosest(
             targetHash,
@@ -128,14 +130,14 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
     /// <param name="findNeighbourOp"></param>
     /// <param name="token"></param>
     /// <returns></returns>
-    private async Task<THash[]> LookupNodesClosest(
-        THash targetHash,
-        Func<THash, CancellationToken, Task<THash[]?>> findNeighbourOp,
+    private async Task<TNode[]> LookupNodesClosest(
+        ValueHash256 targetHash,
+        Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     ) {
         _logger.Info($"Initiate lookup for hash {targetHash}");
 
-        Func<THash, Task<(THash target, THash[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
+        Func<TNode, Task<(TNode target, TNode[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             cts.CancelAfter(FindNeighbourHardTimeout);
@@ -156,21 +158,22 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
             }
         };
 
-        HashSet<THash> queried = new HashSet<THash>();
-        HashSet<THash> queriedAndResponded = new HashSet<THash>();
-        HashSet<THash> seen = new HashSet<THash>();
+        HashSet<TNode> queried = new HashSet<TNode>();
+        HashSet<TNode> queriedAndResponded = new HashSet<TNode>();
+        HashSet<TNode> seen = new HashSet<TNode>();
 
-        IComparer<THash> comparer = Comparer<THash>.Create((h1, h2) => _distanceCalculator.Compare(h1, h2, targetHash));
+        IComparer<TNode> comparer = Comparer<TNode>.Create((h1, h2) =>
+            Hash256XORUtils.Compare(_nodeHashProvider.GetHash(h1), _nodeHashProvider.GetHash(h2), targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<THash, THash> bestSeen = new PriorityQueue<THash, THash>(comparer);
+        PriorityQueue<TNode, TNode> bestSeen = new PriorityQueue<TNode, TNode>(comparer);
 
         // Ordered by lowest distance. Will not get popped for next round, but will at final collection.
-        PriorityQueue<THash, THash> bestSeenAllTime = new PriorityQueue<THash, THash>(comparer);
+        PriorityQueue<TNode, TNode> bestSeenAllTime = new PriorityQueue<TNode, TNode>(comparer);
 
-        THash closestNode = _currentNodeId;
-        THash[] roundQuery = IterateNeighbour(targetHash).Take(_alpha).ToArray();
-        foreach (THash hash in roundQuery)
+        TNode closestNode = _currentNodeId;
+        TNode[] roundQuery = IterateNeighbour(targetHash).Take(_alpha).ToArray();
+        foreach (TNode hash in roundQuery)
         {
             seen.AddRange(hash);
             bestSeen.Enqueue(hash, hash);
@@ -184,17 +187,17 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
             token.ThrowIfCancellationRequested();
 
             queried.AddRange(roundQuery);
-            (THash NodeId, THash[]? Neighbours)[] currentRoundResponse = await Task.WhenAll(roundQuery.Select(wrappedFindNeighbourHop));
+            (TNode NodeId, TNode[]? Neighbours)[] currentRoundResponse = await Task.WhenAll(roundQuery.Select(wrappedFindNeighbourHop));
 
             bool hasCloserThanClosest = false;
-            foreach ((THash NodeId, THash[]? Neighbours) response in currentRoundResponse)
+            foreach ((TNode NodeId, TNode[]? Neighbours) response in currentRoundResponse)
             {
                 if (response.Neighbours == null) continue; // Timeout or failed to get response
                 _logger.Info($"Received {response.Neighbours.Length} from {response.NodeId}");
 
                 queriedAndResponded.Add(response.NodeId);
 
-                foreach (THash neighbour in response.Neighbours)
+                foreach (TNode neighbour in response.Neighbours)
                 {
                     if (SameAsSelf(neighbour)) continue;
 
@@ -227,10 +230,10 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         PrintDebug($"first phase done");
 
         // At this point need to query for the maxNode.
-        List<THash> result = [];
+        List<TNode> result = [];
         while (result.Count < _kSize && bestSeenAllTime.Count > 0)
         {
-            THash nextLowest = bestSeenAllTime.Dequeue();
+            TNode nextLowest = bestSeenAllTime.Dequeue();
             if (queriedAndResponded.Contains(nextLowest))
             {
                 result.Add(nextLowest);
@@ -247,7 +250,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
 
             // TODO: In parallel?
             // So the paper mentioned that node that it need to query findnode for node that was not queried.
-            (_, THash[]? nextCandidate) = await wrappedFindNeighbourHop(nextLowest);
+            (_, TNode[]? nextCandidate) = await wrappedFindNeighbourHop(nextLowest);
             if (nextCandidate != null)
             {
                 result.AddRange(nextLowest);
@@ -259,7 +262,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
 
     public async Task Run(CancellationToken token)
     {
-        await LookupNodesClosest(_currentNodeId, token);
+        await LookupNodesClosest(_currentNodeIdAsHash, token);
 
         while (true)
         {
@@ -272,7 +275,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
     public async Task Bootstrap(CancellationToken token)
     {
         Stopwatch sw = Stopwatch.StartNew();
-        await LookupNodesClosest(_currentNodeId, token);
+        await LookupNodesClosest(_currentNodeIdAsHash, token);
 
         token.ThrowIfCancellationRequested();
 
@@ -284,7 +287,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
 
             if (_buckets[i].Count > 0)
             {
-                THash nodeToLookup = _distanceCalculator.RandomizeHashAtDistance(_currentNodeId, i);
+                ValueHash256 nodeToLookup = Hash256XORUtils.RandomizeHashAtDistance(_currentNodeIdAsHash, i);
                 await LookupNodesClosest(nodeToLookup, token);
             }
         }
@@ -292,12 +295,12 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         _logger.Info($"Boostrap completed. Took {sw}. Bucket sizes (from 230) {string.Join(",", _buckets[200..].Select((b) => b.Count).ToList())}");
     }
 
-    public IEnumerable<THash> IterateNeighbour(THash hash)
+    public IEnumerable<TNode> IterateNeighbour(ValueHash256 hash)
     {
-        int startingDistance = _distanceCalculator.CalculateDistance(_currentNodeId, hash);
+        int startingDistance = Hash256XORUtils.CalculateDistance(_currentNodeIdAsHash, hash);
         foreach (var bucketToGet in EnumerateBucket(startingDistance))
         {
-            foreach (THash bucketContent in _buckets[bucketToGet].GetAll())
+            foreach (TNode bucketContent in _buckets[bucketToGet].GetAll())
             {
                 yield return bucketContent;
             }
@@ -313,14 +316,14 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         yield return startingDistance;
         int left = startingDistance - 1;
         int right = startingDistance + 1;
-        while (left > 0 || right <= _distanceCalculator.MaxDistance)
+        while (left > 0 || right <= Hash256XORUtils.MaxDistance)
         {
             if (left > 0)
             {
                 yield return left;
             }
 
-            if (right <= _distanceCalculator.MaxDistance)
+            if (right <= Hash256XORUtils.MaxDistance)
             {
                 yield return right;
             }
@@ -330,19 +333,19 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         }
     }
 
-    private KBucket<THash, TValue> GetBucket(THash hash)
+    private KBucket<TNode, TValue> GetBucket(TNode node)
     {
-        int idx = _distanceCalculator.CalculateDistance(hash, _currentNodeId);
+        int idx = Hash256XORUtils.CalculateDistance(_nodeHashProvider.GetHash(node), _currentNodeIdAsHash);
         return _buckets[idx];
     }
 
-    private void OnIncomingMessageFrom(THash sender)
+    private void OnIncomingMessageFrom(TNode sender)
     {
         SeedNode(sender);
         _peerFailures.Delete(sender);
     }
 
-    private void OnRequestFailed(THash receiver)
+    private void OnRequestFailed(TNode receiver)
     {
         if (!_peerFailures.TryGet(receiver, out var currentFailure))
         {
@@ -360,28 +363,28 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         _peerFailures.Set(receiver, currentFailure + 1);
     }
 
-    public Task Ping(THash sender, CancellationToken token)
+    public Task Ping(TNode sender, CancellationToken token)
     {
         OnIncomingMessageFrom(sender);
         return Task.CompletedTask;
     }
 
-    public Task<THash[]> FindNeighbours(THash sender, THash hash, CancellationToken token)
+    public Task<TNode[]> FindNeighbours(TNode sender, ValueHash256 hash, CancellationToken token)
     {
         OnIncomingMessageFrom(sender);
         return Task.FromResult(IterateNeighbour(hash).Take(_kSize).ToArray());
     }
 
-    public Task<FindValueResponse<THash, TValue>> FindValue(THash sender, THash hash, CancellationToken token)
+    public Task<FindValueResponse<TNode, TValue>> FindValue(TNode sender, ValueHash256 hash, CancellationToken token)
     {
         OnIncomingMessageFrom(sender);
 
         if (_store.TryGetValue(hash, out TValue value))
         {
-            return Task.FromResult(new FindValueResponse<THash, TValue>(true, value, Array.Empty<THash>()));
+            return Task.FromResult(new FindValueResponse<TNode, TValue>(true, value, Array.Empty<TNode>()));
         }
 
-        return Task.FromResult(new FindValueResponse<THash, TValue>(false, default, IterateNeighbour(hash).Take(_kSize).ToArray()));
+        return Task.FromResult(new FindValueResponse<TNode, TValue>(false, default, IterateNeighbour(hash).Take(_kSize).ToArray()));
     }
 
     public bool Debug = false;
@@ -397,9 +400,9 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
     /// </summary>
     /// <param name="implementation"></param>
     /// <param name="kademlia"></param>
-    private class MessageSenderMonitor(IMessageSender<THash, TValue> implementation, Kademlia<THash, TValue> kademlia) : IMessageSender<THash, TValue>
+    private class MessageSenderMonitor(IMessageSender<TNode, TValue> implementation, Kademlia<TNode, TValue> kademlia) : IMessageSender<TNode, TValue>
     {
-        public async Task Ping(THash receiver, CancellationToken token)
+        public async Task Ping(TNode receiver, CancellationToken token)
         {
             try
             {
@@ -413,11 +416,11 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
             }
         }
 
-        public async Task<THash[]> FindNeighbours(THash receiver, THash hash, CancellationToken token)
+        public async Task<TNode[]> FindNeighbours(TNode receiver, ValueHash256 hash, CancellationToken token)
         {
             try
             {
-                THash[] res = await implementation.FindNeighbours(receiver, hash, token);
+                TNode[] res = await implementation.FindNeighbours(receiver, hash, token);
                 kademlia.OnIncomingMessageFrom(receiver);
                 return res;
             }
@@ -428,11 +431,11 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
             }
         }
 
-        public Task<FindValueResponse<THash, TValue>> FindValue(THash receiver, THash hash, CancellationToken token)
+        public Task<FindValueResponse<TNode, TValue>> FindValue(TNode receiver, ValueHash256 hash, CancellationToken token)
         {
             try
             {
-                Task<FindValueResponse<THash, TValue>> res = implementation.FindValue(receiver, hash, token);
+                Task<FindValueResponse<TNode, TValue>> res = implementation.FindValue(receiver, hash, token);
                 kademlia.OnIncomingMessageFrom(receiver);
                 return res;
             }

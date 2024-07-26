@@ -7,11 +7,10 @@ using Nethermind.Network.Discovery.Kademlia;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class NoopStore : IKademlia<IEnr, byte[]>.IStore
+public class EnrNodeHashProvider : INodeHashProvider<IEnr>
 {
-    public bool TryGetValue(ValueHash256 hash, out byte[] value)
+    public ValueHash256 GetHash(IEnr node)
     {
-        value = null!;
-        return false;
+        return new ValueHash256(node.NodeId);
     }
 }

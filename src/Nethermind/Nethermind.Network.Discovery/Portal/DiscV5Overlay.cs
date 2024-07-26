@@ -10,7 +10,7 @@ namespace Nethermind.Network.Discovery.Portal;
 public class DiscV5Overlay
 {
     private readonly IKademlia<IEnr, byte[]> _kademlia;
-    private readonly IEnrDistanceCalculator _distanceCalculator = new IEnrDistanceCalculator();
+    private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
     private readonly ILogger _logger;
     private readonly byte[] _protocol;
 
@@ -23,7 +23,7 @@ public class DiscV5Overlay
     {
         _protocol = protocol;
         _kademlia = new Kademlia<IEnr, byte[]>(
-            _distanceCalculator,
+            _nodeHashProvider,
             new NoopStore(),
             lanternAdapter.CreateMessageSenderForProtocol(_protocol),
             logManager,

@@ -9,13 +9,13 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// Does not assume any transport, need to implement `IMessageReceiver` and `IMessageSender` for that.
 /// The THash is for both node id and content id, which is probably not a good idea since the node id
 /// probably need to store the ip also.
-public interface IKademlia<THash, TValue>: IMessageReceiver<THash, TValue>
+public interface IKademlia<TNode, TValue>: IMessageReceiver<TNode, TValue>
 {
     /// Add node to the table.
-    public void SeedNode(THash node);
+    public void SeedNode(TNode node);
 
     /// Initiate a full traversal for finding the value
-    public Task<TValue?> LookupValue(THash hash, CancellationToken token);
+    public Task<TValue?> LookupValue(ValueHash256 hash, CancellationToken token);
 
     /// Start timers, refresh and such for maintenance of the table.
     public Task Run(CancellationToken token);
@@ -28,6 +28,6 @@ public interface IKademlia<THash, TValue>: IMessageReceiver<THash, TValue>
     {
         /// Used for serving transport.
         /// Note: The generic kinda breaks things
-        bool TryGetValue(THash hash, out TValue value);
+        bool TryGetValue(ValueHash256 hash, out TValue value);
     }
 }
