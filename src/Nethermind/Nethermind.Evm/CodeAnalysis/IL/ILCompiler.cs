@@ -82,6 +82,8 @@ internal class ILCompiler
         using Local byte8A = method.DeclareLocal(typeof(byte));
         using Local buffer = method.DeclareLocal(typeof(byte*));
 
+        using Local storageCell = method.DeclareLocal(typeof(StorageCell));
+
         using Local gasAvailable = method.DeclareLocal(typeof(long));
         using Local programCounter = method.DeclareLocal(typeof(ushort));
 
@@ -1262,11 +1264,57 @@ internal class ILCompiler
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                     break;
 
-                case Instruction.SLOAD:
-                    // load vmState from argument
+                case Instruction.TSTORE:
                     method.LoadArgument(0);
-                    // load storage from vmState
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                    method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), true, out _));
+                    method.BranchIfTrue(evmExceptionLabels[EvmExceptionType.StaticCallViolation]);
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetArray);
+                    method.StoreLocal(localArray);
+
+                    method.StackPop(head, 2);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.Call(GetPropertyInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount), false, out _));
+                    method.LoadLocalAddress(uint256A);
+                    method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
+                    method.StoreLocal(storageCell);
+
+                    method.LoadArgument(2);
+                    method.LoadLocalAddress(storageCell);
+                    method.LoadLocal(localArray);
+                    method.CallVirtual(typeof(StorageCell).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
+                    break;
+                case Instruction.TLOAD:
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackPop(head, 1);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.Call(GetPropertyInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount), false, out _));
+                    method.LoadLocalAddress(uint256A);
+                    method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
+                    method.StoreLocal(storageCell);
+
+                    method.LoadArgument(2);
+                    method.LoadLocalAddress(storageCell);
+                    method.CallVirtual(typeof(StorageCell).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
+                    method.StoreLocal(localReadonOnlySpan);
+
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadLocalAddress(localReadonOnlySpan);
+                    method.Call(Word.SetSpan);
+                    method.StackPush(head);
                     break;
                 default:
                     throw new NotSupportedException();
