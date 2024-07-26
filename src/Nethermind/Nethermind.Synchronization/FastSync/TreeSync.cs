@@ -565,7 +565,14 @@ namespace Nethermind.Synchronization.FastSync
                         }
                         else if (syncItem.NodeDataType == NodeDataType.Storage)
                         {
+                            Span<byte> fullPath = stackalloc byte[64];
+                            syncItem.PathNibbles.CopyTo(fullPath);
+
+                            ValueHash256 accountHash = new ValueHash256(Nibbles.ToBytes(syncItem.AccountPathNibbles));
                             
+                            using var rawState = _stateFactory.GetRaw();
+                            var hash = rawState.GetStorageHash(accountHash, Nibbles.ToBytes(fullPath), syncItem.PathNibbles.Length);
+                            keyExists = hash == syncItem.Hash;
                         }
                     }
 

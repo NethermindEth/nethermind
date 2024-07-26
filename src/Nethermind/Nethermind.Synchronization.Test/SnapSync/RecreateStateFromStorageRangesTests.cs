@@ -71,7 +71,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             rawState.Finalize(1);
             IReadOnlyState state = stateFactory.GetReadOnly(rawState.StateRoot);
-            AssertAllStorageSlots(state);
+            AssertAllStorageSlots(state, TestItem.Tree.SlotsWithPaths.Length);
         }
 
         [Test]
@@ -100,7 +100,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             rawState.Finalize(1);
             IReadOnlyState state = stateFactory.GetReadOnly(rawState.StateRoot);
-            AssertAllStorageSlots(state);
+            AssertAllStorageSlots(state, TestItem.Tree.SlotsWithPaths.Length);
         }
 
         [Test]
@@ -124,7 +124,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             rawState.Finalize(1);
             IReadOnlyState state = stateFactory.GetReadOnly(rawState.StateRoot);
-            AssertAllStorageSlots(state);
+            AssertAllStorageSlots(state, TestItem.Tree.SlotsWithPaths.Length);
         }
 
         [Test]
@@ -171,7 +171,68 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(1);
 
             IReadOnlyState state = stateFactory.GetReadOnly(rawState.StateRoot);
-            AssertAllStorageSlots(state);
+            AssertAllStorageSlots(state, 6);
+        }
+
+        [Test]
+        public void RecreateAccountStateFromMultipleRange_PivotChange()
+        {
+            Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
+
+            // output state
+            MemDb db = new();
+            IDbProvider dbProvider = new DbProvider();
+            dbProvider.RegisterDb(DbNames.State, db);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.StateDb, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider.StateDb, new NodeStorage(db), LimboLogs.Instance);
+
+            PathWithAccount pwa = TestItem.Tree.AccountsWithPaths[0];
+
+            IRawState rawState = progressTracker.GetSyncState();
+            rawState.SetAccount(pwa.Path, pwa.Account);
+            rawState.Commit(true);
+
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
+            _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
+            var proof = accountProofCollector.BuildResult();
+
+            var result1 = snapProvider.AddStorageRange(1, pwa, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+
+            _inputStorageTree.Set(TestItem.Tree.SlotsWithPaths[6].Path, TestItem.Tree.SlotsWithPaths[6].SlotRlpValue, false);
+            _inputStorageTree.Commit(1);
+            pwa.Account = pwa.Account.WithChangedStorageRoot(_inputStorageTree.RootHash);
+            _inputStateTree.Set(pwa.Path, pwa.Account);
+            _inputStateTree.Commit(1);
+            Hash256 newRootHash = _inputStorageTree.RootHash;
+
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path });
+            _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
+            proof = accountProofCollector.BuildResult();
+
+            var result2 = snapProvider.AddStorageRange(1, pwa, newRootHash, TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[2..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path });
+            _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
+            proof = accountProofCollector.BuildResult();
+
+            var result3 = snapProvider.AddStorageRange(1, pwa, newRootHash, TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { TestItem.Tree.SlotsWithPaths[6].Path});
+            _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
+            proof = accountProofCollector.BuildResult();
+
+            var result4 = snapProvider.AddStorageRange(1, pwa, newRootHash, TestItem.Tree.SlotsWithPaths[6].Path,
+                TestItem.Tree.SlotsWithPaths[6..7], proof!.StorageProofs.SelectMany(sp => sp.Proof).ToArray());
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result4, Is.EqualTo(AddRangeResult.OK));
+
+            rawState.Finalize(1);
+
+            IReadOnlyState state = stateFactory.GetReadOnly(rawState.StateRoot);
+            AssertAllStorageSlots(state, TestItem.Tree.SlotsWithPaths.Length);
         }
 
         [Test]
@@ -229,9 +290,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
             return new(progressTracker, dbProvider.CodeDb, new NodeStorage(dbProvider.StateDb), LimboLogs.Instance);
         }
 
-        private static void AssertAllStorageSlots(IReadOnlyState state)
+        private static void AssertAllStorageSlots(IReadOnlyState state, int upTo)
         {
-            foreach (var slotItem in TestItem.Tree.SlotsWithPaths)
+            foreach (var slotItem in TestItem.Tree.SlotsWithPaths[0..upTo])
             {
                 var dataAtSlot = state.GetStorageAt(TestItem.Tree.AccountAddress0, slotItem.Path);
                 var rlpContext = new Rlp.ValueDecoderContext(slotItem.SlotRlpValue);

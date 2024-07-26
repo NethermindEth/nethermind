@@ -174,7 +174,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         public void RecreateAccountStateFromOneRangeWithoutProof()
         {
             //Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
-            Hash256 rootHash = _inputTree_7.RootHash;
+            Hash256 rootHash = _inputTree_9.RootHash;
 
             MemDb db = new();
             DbProvider dbProvider = new();
@@ -191,12 +191,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(200);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths)
-            {
-                Account a = state.Get(item.Path);
-                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
-                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
-            }
+            AssertAllAccounts(state, TestItem.Tree.AccountsWithPaths.Length);
 
             //Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
             //Assert.IsFalse(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
@@ -277,12 +272,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(1);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths)
-            {
-                Account a = state.Get(item.Path);
-                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
-                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
-            }
+            AssertAllAccounts(state, 9);
         }
 
         private struct Range
@@ -330,12 +320,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(1);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
-            {
-                Account a = state.Get(item.Path);
-                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
-                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
-            }
+            AssertAllAccounts(state, 6);
         }
 
         [Test]
@@ -376,12 +361,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(1);
 
             var state = stateFactory.Get(newRootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths)
-            {
-                Account a = state.Get(item.Path);
-                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
-                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
-            }
+            AssertAllAccounts(state, 7);
         }
 
         [Test]
@@ -431,12 +411,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(1);
 
             var state = stateFactory.Get(rootHashNew);
-            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
-            {
-                Account a = state.Get(item.Path);
-                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
-                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
-            }
+            AssertAllAccounts(state, 6);
         }
 
         [Test]
@@ -478,12 +453,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(200);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
-            {
-                Account a = state.Get(item.Path);
-                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
-                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
-            }
+            AssertAllAccounts(state, 6);
         }
 
         [Test]
@@ -525,12 +495,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(200);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
-            {
-                Account a = state.Get(item.Path);
-                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
-                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
-            }
+            AssertAllAccounts(state, 6);
         }
 
         [Test]
@@ -724,6 +689,16 @@ namespace Nethermind.Synchronization.Test.SnapSync
                 dbProvider.RegisterDb(DbNames.Code, new MemDb());
             }
             return new(progressTracker, dbProvider.CodeDb, new NodeStorage(dbProvider.StateDb), LimboLogs.Instance);
+        }
+
+        private static void AssertAllAccounts(IReadOnlyState state, int upTo)
+        {
+            foreach (var item in TestItem.Tree.AccountsWithPaths[0..upTo])
+            {
+                Account a = state.Get(item.Path);
+                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
+                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
+            }
         }
     }
 }
