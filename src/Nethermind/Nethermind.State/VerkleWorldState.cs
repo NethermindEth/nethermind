@@ -97,7 +97,7 @@ public class VerkleWorldState : IWorldState
 
     public bool ValuePresentInTree(Hash256 key)
     {
-        return _tree.ContainsKey(key);
+        return _tree.HasLeaf(key);
     }
 
     public bool IsContract(Address address)
