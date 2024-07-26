@@ -68,23 +68,16 @@ namespace Nethermind.Blockchain
         {
             return chainId switch
             {
-                BlockchainIds.Mainnet => new ChainEstimations(
-                    new LinearExtrapolation(167.GB(), 70.MB(), new DateTime(2023, 07, 14)),
-                    new LinearExtrapolation(
-                        177439054863, new DateTime(2023, 06, 8, 02, 36, 0),
-                        188742060333, new DateTime(2023, 09, 26, 19, 32, 0))),
-                BlockchainIds.Gnosis => new ChainEstimations(
-                    new LinearExtrapolation(18000.MB(), 48.MB(), new DateTime(2021, 12, 7))),
-                BlockchainIds.EnergyWeb => new ChainEstimations(
-                    new LinearExtrapolation(15300.MB(), 15.MB(), new DateTime(2021, 12, 7))),
-                BlockchainIds.Volta => new ChainEstimations(
-                    new LinearExtrapolation(17500.MB(), 10.MB(), new DateTime(2021, 11, 7))),
-                BlockchainIds.PoaCore => new ChainEstimations(
-                    new LinearExtrapolation(13900.MB(), 4.MB(), new DateTime(2021, 12, 7))),
-                BlockchainIds.Sepolia => new ChainEstimations(null,
-                    new LinearExtrapolation(
-                        3699505976, new(2023, 04, 28, 20, 18, 0),
-                        5407426707, new(2023, 06, 07, 23, 10, 0))),
+                BlockchainIds.Mainnet => new ChainEstimations(new LinearExtrapolation(156.GB(), 90.MB(), new DateTime(2024, 07, 17))),
+                BlockchainIds.Sepolia => new ChainEstimations(new LinearExtrapolation(38.GB(), 90.MB(), new DateTime(2024, 07, 17))),
+                BlockchainIds.Holesky => new ChainEstimations(new LinearExtrapolation(17.GB(), 30.MB(), new DateTime(2024, 07, 17))),
+
+                BlockchainIds.Gnosis => new ChainEstimations(new LinearExtrapolation(64.GB(), 90.MB(), new DateTime(2024, 07, 17))),
+                BlockchainIds.Chiado => new ChainEstimations(new LinearExtrapolation(3.GB(), 5.MB(), new DateTime(2024, 07, 17))),
+
+                BlockchainIds.EnergyWeb => new ChainEstimations(new LinearExtrapolation(26.GB(), 10.MB(), new DateTime(2024, 07, 17))),
+                BlockchainIds.Volta => new ChainEstimations(new LinearExtrapolation(34.GB(), 10.MB(), new DateTime(2024, 07, 17))),
+
                 _ => UnknownChain.Instance
             };
         }
