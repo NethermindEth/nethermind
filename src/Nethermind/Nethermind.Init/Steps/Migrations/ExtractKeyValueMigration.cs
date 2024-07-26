@@ -298,7 +298,6 @@ namespace Nethermind.Init.Steps.Migrations
                                         RandomAccess.Read(tempFileHandle, blockNumbers, position);
                                         Span<int> blockNumbersInt = MemoryMarshal.Cast<byte, int>(blockNumbers);
 
-
                                         TurboPFor.p4ndenc128v32(blockNumbersInt.ToArray(), blockNumbersInt.Length, bufferForEncodedInts);
                                         finalizedFileStream.Write(bufferForEncodedInts);
 
