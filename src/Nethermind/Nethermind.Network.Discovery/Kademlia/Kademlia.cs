@@ -5,6 +5,8 @@ using System.Collections;
 using System.Diagnostics;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -20,6 +22,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
 {
     private IKademlia<THash, TValue>.IStore _store;
     private readonly IDistanceCalculator<THash> _distanceCalculator;
+    private readonly static TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
 
     private readonly KBucket<THash, TValue>[] _buckets;
     private readonly THash _currentNodeId;
@@ -28,11 +31,13 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
     private readonly IMessageSender<THash, TValue> _messageSender;
     private readonly LruCache<THash, int> _peerFailures;
     private readonly TimeSpan _refreshInterval;
+    private readonly ILogger _logger;
 
     public Kademlia(
         IDistanceCalculator<THash> distanceCalculator,
         IKademlia<THash, TValue>.IStore store,
         IMessageSender<THash, TValue> sender,
+        ILogManager logManager,
         THash currentNodeId,
         int kSize,
         int alpha,
@@ -42,6 +47,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         _distanceCalculator = distanceCalculator;
         _store = store;
         _messageSender = new MessageSenderMonitor(sender, this);
+        _logger = logManager.GetClassLogger<Kademlia<THash, TValue>>();
 
         _currentNodeId = currentNodeId;
         _kSize = kSize;
@@ -127,6 +133,29 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
         Func<THash, CancellationToken, Task<THash[]?>> findNeighbourOp,
         CancellationToken token
     ) {
+        _logger.Info($"Initiate lookup for hash {targetHash}");
+
+        Func<THash, Task<(THash target, THash[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cts.CancelAfter(FindNeighbourHardTimeout);
+
+            try
+            {
+                // targetHash is implied in findNeighbourOp
+                return (node, await findNeighbourOp(node, cts.Token));
+            }
+            catch (OperationCanceledException)
+            {
+                return (node, null);
+            }
+            catch (Exception e)
+            {
+                _logger.Trace($"Find neighbour op failed. {e}");
+                return (node, null);
+            }
+        };
+
         HashSet<THash> queried = new HashSet<THash>();
         HashSet<THash> queriedAndResponded = new HashSet<THash>();
         HashSet<THash> seen = new HashSet<THash>();
@@ -154,26 +183,14 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
             // for the result of previous round.
             token.ThrowIfCancellationRequested();
 
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(TimeSpan.FromMilliseconds(100));
-
             queried.AddRange(roundQuery);
-            (THash NodeId, THash[]? Neighbours)[] currentRoundResponse = await Task.WhenAll(roundQuery.Select(async (hash) =>
-            {
-                try
-                {
-                    return (hash, await findNeighbourOp(hash, cts.Token));
-                }
-                catch (OperationCanceledException)
-                {
-                    return (hash, null);
-                }
-            }));
+            (THash NodeId, THash[]? Neighbours)[] currentRoundResponse = await Task.WhenAll(roundQuery.Select(wrappedFindNeighbourHop));
 
             bool hasCloserThanClosest = false;
             foreach ((THash NodeId, THash[]? Neighbours) response in currentRoundResponse)
             {
                 if (response.Neighbours == null) continue; // Timeout or failed to get response
+                _logger.Info($"Received {response.Neighbours.Length} from {response.NodeId}");
 
                 queriedAndResponded.Add(response.NodeId);
 
@@ -230,17 +247,10 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
 
             // TODO: In parallel?
             // So the paper mentioned that node that it need to query findnode for node that was not queried.
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(TimeSpan.FromMilliseconds(100));
-            try
+            (_, THash[]? nextCandidate) = await wrappedFindNeighbourHop(nextLowest);
+            if (nextCandidate != null)
             {
-                // Yea.. it does not mention what to do about the result.
-                _ = await findNeighbourOp(nextLowest, cts.Token);
                 result.AddRange(nextLowest);
-            }
-            catch (OperationCanceledException)
-            {
-                // Do nothing
             }
         }
 
@@ -261,6 +271,7 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
 
     public async Task Bootstrap(CancellationToken token)
     {
+        Stopwatch sw = Stopwatch.StartNew();
         await LookupNodesClosest(_currentNodeId, token);
 
         token.ThrowIfCancellationRequested();
@@ -277,6 +288,8 @@ public class Kademlia<THash, TValue> : IKademlia<THash, TValue> where THash : no
                 await LookupNodesClosest(nodeToLookup, token);
             }
         }
+
+        _logger.Info($"Boostrap completed. Took {sw}. Bucket sizes (from 230) {string.Join(",", _buckets[200..].Select((b) => b.Count).ToList())}");
     }
 
     public IEnumerable<THash> IterateNeighbour(THash hash)

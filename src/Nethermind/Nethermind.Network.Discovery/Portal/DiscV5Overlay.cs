@@ -7,14 +7,14 @@ using Nethermind.Network.Discovery.Kademlia;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class MsgReqManager
+public class DiscV5Overlay
 {
     private readonly IKademlia<IEnr, byte[]> _kademlia;
     private readonly IEnrDistanceCalculator _distanceCalculator = new IEnrDistanceCalculator();
     private readonly ILogger _logger;
     private readonly byte[] _protocol;
 
-    public MsgReqManager(
+    public DiscV5Overlay(
         ILanternAdapter lanternAdapter,
         IEnr currentNodeId,
         byte[] protocol,
@@ -26,6 +26,7 @@ public class MsgReqManager
             _distanceCalculator,
             new NoopStore(),
             lanternAdapter.CreateMessageSenderForProtocol(_protocol),
+            logManager,
             currentNodeId,
             20,
             3,
@@ -33,7 +34,16 @@ public class MsgReqManager
         );
 
         lanternAdapter.RegisterKademliaOverlay(_protocol, _kademlia);
-        _logger = logManager.GetClassLogger<MsgReqManager>();
+        _logger = logManager.GetClassLogger<DiscV5Overlay>();
     }
 
+    public Task Start(CancellationToken token)
+    {
+        return _kademlia.Run(token);
+    }
+
+    public void AddSeed(IEnr node)
+    {
+        _kademlia.SeedNode(node);
+    }
 }

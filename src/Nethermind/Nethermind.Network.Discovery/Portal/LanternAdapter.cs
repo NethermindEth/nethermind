@@ -3,24 +3,26 @@
 
 using System.Buffers.Binary;
 using Lantern.Discv5.Enr;
+using Lantern.Discv5.Enr.Entries;
 using Lantern.Discv5.Enr.Identity;
 using Lantern.Discv5.WireProtocol;
 using Lantern.Discv5.WireProtocol.Messages;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Lantern.Discv5.WireProtocol.Messages.Responses;
 using Lantern.Discv5.WireProtocol.Packet;
+using Lantern.Discv5.WireProtocol.Table;
+using Microsoft.ClearScript.Util.Web;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Synchronization;
 using NonBlocking;
-using Org.BouncyCastle.Pqc.Crypto.Lms;
 
 namespace Nethermind.Network.Discovery.Portal;
 
 public class LanternAdapter: ILanternAdapter
 {
-    private readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(1);
+    private readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(2);
 
     private readonly IDiscv5Protocol _discv5;
     private readonly ILogger _logger;
@@ -29,6 +31,7 @@ public class LanternAdapter: ILanternAdapter
     private readonly IMessageDecoder _messageDecoder;
     private readonly IIdentityVerifier _identityVerifier;
     private readonly IEnrFactory _enrFactory;
+    private readonly IRoutingTable _routingTable;
 
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
     private readonly Dictionary<byte[], IKademlia<IEnr, byte[]>> _kademliaOverlays = new();
@@ -39,6 +42,7 @@ public class LanternAdapter: ILanternAdapter
         IMessageDecoder decoder,
         IIdentityVerifier identityVerifier,
         IEnrFactory enrFactory,
+        IRoutingTable routingTable,
         ILogManager logManager
     )
     {
@@ -47,21 +51,26 @@ public class LanternAdapter: ILanternAdapter
         _messageDecoder = decoder;
         _identityVerifier = identityVerifier;
         _enrFactory = enrFactory;
-        _logger = logManager.GetClassLogger<MsgReqManager>();
+        _routingTable = routingTable;
+        _logger = logManager.GetClassLogger<DiscV5Overlay>();
     }
 
-    public Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
+    public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
     {
         if (!_kademliaOverlays.TryGetValue(talkReqMessage.Protocol, out var kad))
         {
-            _logger.Debug($"Unknown protocol {talkReqMessage.Protocol.ToHexString()}");
-            return Task.FromResult<byte[]?>(null);
+            _logger.Info($"Unknown msg req for protocol {talkReqMessage.Protocol.ToHexString()}");
+            return null;
         }
 
+        _logger.Info($"Got msg req on protocol {talkReqMessage.Protocol.ToHexString()}");
         MessageUnion message = SlowSSZ.Deserialize<MessageUnion>(talkReqMessage.Request);
 
         if (message.Ping is { } ping)
         {
+            // Still need to call kad since the ping is also used to populate bucket.
+            await kad.Ping(sender, default);
+
             MessageUnion pongMessage = new MessageUnion()
             {
                 Pong = new Pong()
@@ -71,13 +80,16 @@ public class LanternAdapter: ILanternAdapter
                 }
             };
 
-            return Task.FromResult((byte[]?)SlowSSZ.Serialize(pongMessage));
+            return SlowSSZ.Serialize(pongMessage);
         }
         else if (message.FindNodes is { } nodes)
         {
-            throw new NotImplementedException("not implemented");
-            /*
-            var neighbours = await kad.FindNeighbours(sender, nodes.Distances, CancellationToken.None);
+            // So....
+            // This is weird. For some reason, discv5/overlay network uses distance instead of target node like
+            // with Kademlia/discv4. It also makes it more implementation specific.
+            // fortunately, its basically the same as randomizing hash at a specific distance.
+            IEnr theHash = _distanceCalculator.RandomizeHashAtDistance(_discv5.SelfEnr, nodes.Distances[0]);
+            var neighbours = await kad.FindNeighbours(sender, theHash, CancellationToken.None);
             var neighboursAsBytes = neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
 
             var response = new MessageUnion()
@@ -89,12 +101,9 @@ public class LanternAdapter: ILanternAdapter
             };
 
             return SlowSSZ.Serialize(response);
-            */
         }
         else if (message.FindContent is { } findContent)
         {
-            throw new NotImplementedException("not implemented");
-            /*
             IEnr enrValue = new ContentEnr(findContent.ContentKey);
             var findValueResult = await kad.FindValue(sender, enrValue, CancellationToken.None);
             if (findValueResult.hasValue)
@@ -102,7 +111,7 @@ public class LanternAdapter: ILanternAdapter
                 var value = findValueResult.value!;
                 if (value.Length > 1000)
                 {
-                    throw new Exception("large value not supported yet");
+                    throw new NotImplementedException("large value not supported yet");
                 }
 
                 return SlowSSZ.Serialize(new MessageUnion()
@@ -114,7 +123,7 @@ public class LanternAdapter: ILanternAdapter
                 });
             }
 
-            var neighboursAsBytes = neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
+            var neighboursAsBytes = findValueResult.neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
 
             var response = new MessageUnion()
             {
@@ -125,22 +134,29 @@ public class LanternAdapter: ILanternAdapter
             };
 
             return SlowSSZ.Serialize(response);
-            */
         }
 
-        return (Task<byte[]?>)Task.CompletedTask;
+        return null;
     }
 
     public void OnMsgResp(IEnr sender, TalkRespMessage message)
     {
-        ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(message.RequestId);
-        if (_requestResp.TryRemove(requestId, out TaskCompletionSource<TalkRespMessage>? resp))
+        try
         {
-            resp.TrySetResult(message);
-            return;
-        }
+            ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(message.RequestId);
+            if (_requestResp.TryRemove(requestId, out TaskCompletionSource<TalkRespMessage>? resp))
+            {
+                _logger.Info($"Msgresp {message.RequestId.ToHexString()} fulfilled");
+                resp.TrySetResult(message);
+                return;
+            }
 
-        _logger.Debug($"Unknown response for id {message.RequestId}");
+            _logger.Info($"Msgresp {message.RequestId.ToHexString()} failed no mapping");
+        }
+        catch (Exception e)
+        {
+            _logger.Error($"Msgresp {message.RequestId.ToHexString()} failed with exception", e);
+        }
     }
 
     public IMessageSender<IEnr, byte[]> CreateMessageSenderForProtocol(byte[] protocol)
@@ -153,12 +169,21 @@ public class LanternAdapter: ILanternAdapter
         _kademliaOverlays[protocol] = kademlia;
     }
 
+    public class InHandshakeException() : Exception;
+
     public async Task<byte[]> CallAndWaitForResponse(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
     {
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         cts.CancelAfter(HardTimeout);
 
-        TalkReqMessage talkReqMessage = await SentTalkReq(receiver, protocol, message);
+        TalkReqMessage? talkReqMessage = await SentTalkReq(receiver, protocol, message);
+        if (talkReqMessage == null)
+        {
+            // So what happen here is that, if the receiver does not have any session yet, lantern will create a "cached"
+            // packet which will be used as a reply to a WHOAREYOU message.
+            // BUT if the are already a "cached" request, lantern will straight up fail to send a message. (TODO: double check this)
+            throw new InHandshakeException();
+        }
 
         ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(talkReqMessage.RequestId);
 
@@ -171,7 +196,14 @@ public class LanternAdapter: ILanternAdapter
             }
 
             TalkRespMessage response = await talkReq.Task.WaitAsync(cts.Token);
+            _logger.Info($"Received TalkResp from {receiver}");
             return response.Response;
+        }
+        catch (OperationCanceledException)
+        {
+            var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
+            _logger.Warn($"TalkResp to {destIpKey} with id {requestId} timed out");
+            throw;
         }
         finally
         {
@@ -179,12 +211,25 @@ public class LanternAdapter: ILanternAdapter
         }
     }
 
-    private async Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message)
+    private async Task<TalkReqMessage?> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message)
     {
-        byte[] sentMessage = (await _packetManager.SendPacket(receiver, MessageType.TalkReq, false, protocol, message))!;
+        _routingTable.UpdateFromEnr(receiver);
+
+        var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
+        var nodeId = receiver.NodeId.ToHexString();
+        _logger.Info($"Send TalkReq to {destIpKey}, {nodeId}");
+
+        byte[]? sentMessage = (await _packetManager.SendPacket(receiver, MessageType.TalkReq, false, protocol, message))!;
+        if (sentMessage == null)
+        {
+            _logger.Warn("Talkreq does not get a response");
+            return null;
+        }
+
         // Yea... it does not return the original message, so we have to decode it to get the request id.
         // Either this or we have some more hacks.
         var talkReqMessage = (TalkReqMessage)_messageDecoder.DecodeMessage(sentMessage);
+        _logger.Info($"Send talkreq to {destIpKey}, {nodeId} with request id {talkReqMessage.RequestId.ToHexString()}");
         return talkReqMessage;
     }
 
@@ -208,24 +253,44 @@ public class LanternAdapter: ILanternAdapter
 
         public async Task<IEnr[]> FindNeighbours(IEnr receiver, IEnr hash, CancellationToken token)
         {
-            // For some reason, the protocol uses the distance instead of the standard kademlia implementation
-            // which checks for the k-nearest neighbour and just let the implementation decide how to implement it.
+            // For some reason, the protocol uses the distance instead of the standard kademlia RPC
+            // which checks for the k-nearest nodes and just let the implementation decide how to implement it.
             // With the most basic implementation, this is the same as returning the bucket of the distance between
             // the target and current node. But more sophisticated routing table can do more if just query with
             // nodeid.
-            ushort[] distances = new[]
-            {
-                (ushort)manager._distanceCalculator.CalculateDistance(receiver, manager._discv5.SelfEnr),
-            };
+            ushort theDistance = (ushort)manager._distanceCalculator.CalculateDistance(receiver, hash);
 
-            byte[] pingBytes =
-                SlowSSZ.Serialize(new MessageUnion()
+            // To simulate a neighbour query to a particular hash with distance, we also query for neighbouring
+            // bucket in the order as if we are running a query to a particular hash
+            int toAddExtra = 4;
+            ushort[] queryDistance = new ushort[1 + toAddExtra];
+            bool nowUpper = true;
+            ushort upper = theDistance;
+            ushort lower = theDistance;
+            queryDistance[0] = theDistance;
+            for (int i = 0; i < toAddExtra; i++)
+            {
+                if (nowUpper && upper < 255)
                 {
-                    FindNodes = new FindNodes()
-                    {
-                        Distances = distances
-                    }
-                });
+                    upper++;
+                    queryDistance[i+1] = upper;
+                    nowUpper = false;
+                }
+                else if (lower > 0)
+                {
+                    lower--;
+                    queryDistance[i+1] = lower;
+                    nowUpper = true;
+                }
+            }
+
+            byte[] pingBytes = SlowSSZ.Serialize(new MessageUnion()
+            {
+                FindNodes = new FindNodes()
+                {
+                    Distances = queryDistance
+                }
+            });
 
             byte[] response = await manager.CallAndWaitForResponse(receiver, protocol, pingBytes, token);
 
@@ -241,9 +306,38 @@ public class LanternAdapter: ILanternAdapter
             return enrs;
         }
 
-        public Task<FindValueResponse<IEnr, byte[]>> FindValue(IEnr receiver, IEnr hash, CancellationToken token)
+        public async Task<FindValueResponse<IEnr, byte[]>> FindValue(IEnr receiver, IEnr hash, CancellationToken token)
         {
-            throw new NotImplementedException();
+            byte[] findContentBytes = SlowSSZ.Serialize(new MessageUnion()
+            {
+                FindContent = new FindContent()
+                {
+                    ContentKey = hash.NodeId
+                }
+            });
+
+            byte[] response = await manager.CallAndWaitForResponse(receiver, protocol, findContentBytes, token);
+
+            Content message = SlowSSZ.Deserialize<MessageUnion>(response).Content!;
+
+            if (message.ConnectionId != null)
+            {
+                throw new NotImplementedException("Connection id not implemented yet");
+            }
+            else if (message.Payload != null)
+            {
+                return new FindValueResponse<IEnr, byte[]>(true, message.Payload, Array.Empty<IEnr>());
+            }
+            else
+            {
+                IEnr[] enrs = new IEnr[message.Enrs!.Length];
+                for (var i = 0; i < message.Enrs.Length; i++)
+                {
+                    enrs[i] = manager._enrFactory.CreateFromBytes(message.Enrs[i], manager._identityVerifier);
+                }
+
+                return new FindValueResponse<IEnr, byte[]>(false, null, enrs);
+            }
         }
     }
 }

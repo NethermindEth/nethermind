@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Api;
 using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Portal;
 using Nethermind.Network.Enr;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
@@ -114,6 +115,9 @@ public class DiscoveryV5App : IDiscoveryApp
             {
                 NettyDiscoveryV5Handler.Register(components);
                 services.AddSingleton<IPacketHandlerFactory, CustomPacketHandlerFactory>();
+                services.AddSingleton<IRoutingTable, TransientRoutingTable>();
+                services.AddSingleton<ILanternAdapter, LanternAdapter>();
+                services.AddSingleton<ILogManager>(logManager);
             });
 
         _discv5Protocol = discv5Builder.Build();
@@ -122,7 +126,20 @@ public class DiscoveryV5App : IDiscoveryApp
 
         _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
+
+        ILanternAdapter lanternAdapter = _serviceProvider.GetRequiredService<ILanternAdapter>();
+        overlay = new DiscV5Overlay(lanternAdapter, _discv5Protocol.SelfEnr, Bytes.FromHexString("0x500B"),
+            logManager);
+        // overlay.AddSeed(enrFactory.CreateFromString(
+            // "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+            // identityVerifier));
+        overlay.AddSeed(enrFactory.CreateFromString(
+            "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
+            identityVerifier));
+
     }
+
+    private DiscV5Overlay overlay;
 
     public class CustomPacketHandlerFactory(IServiceProvider serviceProvider) : IPacketHandlerFactory
     {
@@ -226,6 +243,20 @@ public class DiscoveryV5App : IDiscoveryApp
         var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
         channel.Pipeline.AddLast(handler);
+
+        Task.Run(async () =>
+        {
+            _logger.Info("lantern adapter registration");
+
+            try
+            {
+                await overlay.Start(default);
+            }
+            catch (Exception e)
+            {
+                _logger.Error("It crashed", e);
+            }
+        });
     }
 
     public void Start() => Task.Run(async () =>

@@ -7,6 +7,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 /// A generic kademlia implementation. As in the XOR distance table and routing algorithm.
 /// Does not assume any transport, need to implement `IMessageReceiver` and `IMessageSender` for that.
+/// The THash is for both node id and content id, which is probably not a good idea since the node id
+/// probably need to store the ip also.
 public interface IKademlia<THash, TValue>: IMessageReceiver<THash, TValue>
 {
     /// Add node to the table.
@@ -18,7 +20,8 @@ public interface IKademlia<THash, TValue>: IMessageReceiver<THash, TValue>
     /// Start timers, refresh and such for maintenance of the table.
     public Task Run(CancellationToken token);
 
-    /// Start timers, refresh and such for maintenance of the table.
+    /// Just do the bootstrap sequence, which is to initiate a lookup on current node id.
+    /// Also do a refresh on all bucket which is not part of joining strictly speaking.
     public Task Bootstrap(CancellationToken token);
 
     public interface IStore

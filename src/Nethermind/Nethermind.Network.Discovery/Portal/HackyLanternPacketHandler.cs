@@ -7,6 +7,8 @@ using Lantern.Discv5.Enr;
 using Lantern.Discv5.Rlp;
 using Lantern.Discv5.WireProtocol.Connection;
 using Lantern.Discv5.WireProtocol.Messages;
+using Lantern.Discv5.WireProtocol.Messages.Requests;
+using Lantern.Discv5.WireProtocol.Messages.Responses;
 using Lantern.Discv5.WireProtocol.Packet;
 using Lantern.Discv5.WireProtocol.Packet.Handlers;
 using Lantern.Discv5.WireProtocol.Packet.Headers;
@@ -27,6 +29,8 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
     private readonly IUdpConnection _udpConnection;
     private readonly IPacketBuilder _packetBuilder;
     private readonly IPacketProcessor _packetProcessor;
+    private readonly IMessageDecoder _messageDecoder;
+    private readonly ILanternAdapter _lanternAdapter;
 
     public HacklyLanternPacketHandler(ISessionManager sessionManager,
         IRoutingTable routingTable,
@@ -34,9 +38,10 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         IUdpConnection udpConnection,
         IPacketBuilder packetBuilder,
         IPacketProcessor packetProcessor,
+        IMessageDecoder messageDecoder,
+        ILanternAdapter lanternAdapter,
         ILoggerFactory loggerFactory) : base(sessionManager, routingTable, messageResponder, udpConnection, packetBuilder, packetProcessor, loggerFactory)
     {
-        Console.Error.WriteLine("Hacky lantern consturctor");
         _logger = loggerFactory.CreateLogger<OrdinaryPacketHandler>();
         _sessionManager = sessionManager;
         _routingTable = routingTable;
@@ -44,13 +49,15 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         _udpConnection = udpConnection;
         _packetBuilder = packetBuilder;
         _packetProcessor = packetProcessor;
+
+        _messageDecoder = messageDecoder;
+        _lanternAdapter = lanternAdapter;
     }
 
     public override PacketType PacketType => PacketType.Ordinary;
 
     public override async Task HandlePacket(UdpReceiveResult returnedResult)
     {
-        Console.Error.WriteLine("well... it works");
         _logger.LogInformation("HL Received ORDINARY packet from {Address}", returnedResult.RemoteEndPoint.Address);
 
         var staticHeader = _packetProcessor.GetStaticHeader(returnedResult.Buffer);
@@ -88,7 +95,6 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         _logger.LogDebug("Successfully decrypted ORDINARY packet");
 
         var replies = await _messageResponder.HandleMessageAsync(decryptedMessage, returnedResult.RemoteEndPoint);
-
         if (replies != null && replies.Length != 0)
         {
             foreach (var reply in replies)
@@ -97,6 +103,32 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
             }
         }
 
+        // This is actually, the only special handling needed.
+        var messageType = (MessageType)decryptedMessage[0];
+        _logger.LogInformation($"The message type is {messageType}");
+        if (messageType is MessageType.TalkReq or MessageType.TalkResp)
+        {
+            var reply = await HandleTalkReqMessage(nodeEntry.Record, decryptedMessage);
+            if (reply != null)
+            {
+                await SendResponseToOrdinaryPacketAsync(staticHeader, session, returnedResult.RemoteEndPoint, _udpConnection, reply);
+            }
+        }
+    }
+
+    private async Task<byte[]?> HandleTalkReqMessage(IEnr enr, byte[] message)
+    {
+        _logger.LogInformation("Handling talkreq from {enr}", MessageType.TalkReq);
+        var decodedMessage = _messageDecoder.DecodeMessage(message);
+        if (decodedMessage is TalkReqMessage talkReqMessage)
+        {
+            return await _lanternAdapter.OnMsgReq(enr, talkReqMessage);
+        }
+        else
+        {
+            _lanternAdapter.OnMsgResp(enr, (TalkRespMessage)decodedMessage);
+            return null;
+        }
     }
 
     private async Task SendWhoAreYouPacketWithoutEnrAsync(StaticHeader staticHeader, IPEndPoint destEndPoint, IUdpConnection connection)
