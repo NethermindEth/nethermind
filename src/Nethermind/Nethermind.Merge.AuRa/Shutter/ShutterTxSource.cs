@@ -13,6 +13,7 @@ using System;
 using Nethermind.Core.Caching;
 using Nethermind.Config;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -30,7 +31,8 @@ public class ShutterTxSource(
     private ulong _highestSlotSeen = 0;
     private ulong _extraBuildWindowMs = shutterConfig.ExtraBuildWindow
         == default ? shutterConfig.GetDefaultValue<ulong>(nameof(ShutterConfig.ExtraBuildWindow)) : shutterConfig.ExtraBuildWindow;
-    private readonly object _highestSlotSeenLock = new();
+    private readonly object _syncObject = new();
+    private static ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -40,14 +42,10 @@ public class ShutterTxSource(
             return [];
         }
 
-        (ulong buildingSlot, ushort offset) = GetBuildingSlotAndOffset();
+        ulong buildingSlot = GetBuildingSlotAndOffset(payloadAttributes);
 
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
-        if (shutterTransactions is null)
-        {
-            WaitForKeysInCurrentSlot(buildingSlot, offset).GetAwaiter().GetResult();
-            shutterTransactions = _transactionCache.Get(buildingSlot);
-        }
+
         if (shutterTransactions is null)
         {
             if (_logger.IsWarn)
@@ -62,43 +60,58 @@ public class ShutterTxSource(
 
         return [];
     }
-
-    private Task WaitForKeysInCurrentSlot(ulong buildingSlot, ushort timeLeft)
+    public Task WaitForTransactions(ulong slot)
     {
-        Task timeout = Task.Delay(timeLeft);
-        Task loopCache = Task.Run(() =>
+        lock (_syncObject)
         {
-            while (true)
+            if (_highestSlotSeen <= slot)
             {
-                if (timeout.IsCompleted || _transactionCache.Contains(buildingSlot))
-                {
-                    return;
-                }
-                Task.Delay(50).GetAwaiter().GetResult();
+                return Task.CompletedTask;
             }
-        });
-        return Task.WhenAny(loopCache, timeout);
+            return _keyWaitTasks.GetOrAdd(slot,
+               (k) =>
+               {
+                   TaskCompletionSource tcs = new();
+                   //Maximum wait allowed
+                   Task.Delay(slotLength)
+                   .ContinueWith(t =>
+                   {
+                       TaskCompletionSource? removed;
+                       _keyWaitTasks.TryRemove(slot, out removed);
+                       removed?.SetCanceled();
+                   });
+                   return tcs;
+               }).Task;
+        }
     }
 
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
-        lock (_highestSlotSeenLock)
+        lock (_syncObject)
         {
             if (_highestSlotSeen < slot)
                 _highestSlotSeen = slot;
+            TaskCompletionSource? tcs;
+            if (_keyWaitTasks.Remove(slot, out tcs))
+            {
+                tcs.SetResult();
+            }
         }
     }
 
     public ulong HighestLoadedSlot() => _highestSlotSeen;
 
-    private (ulong, ushort) GetBuildingSlotAndOffset()
+    private ulong GetBuildingSlotAndOffset(PayloadAttributes? payloadAttributes)
     {
-        ulong currentSlot;
-        ushort slotOffset;
-        ulong timeSinceGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - genesisTimestamp;
-        currentSlot = timeSinceGenesis / slotLength;
-        slotOffset = (ushort)(timeSinceGenesis % slotLength);
+        var unixTime = payloadAttributes != null ? payloadAttributes.Timestamp : (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        ulong timeSinceGenesis = unixTime - genesisTimestamp;
+        ulong currentSlot = timeSinceGenesis / slotLength;
+        if (payloadAttributes!=null)
+        {
+            return currentSlot;
+        }
+        ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
 
         // if inside the build window then building for this slot, otherwise next
         return ((slotOffset <= _extraBuildWindowMs) ? currentSlot : currentSlot + 1, slotOffset);

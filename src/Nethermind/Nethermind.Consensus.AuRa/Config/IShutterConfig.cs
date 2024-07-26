@@ -63,5 +63,5 @@ public interface IShutterConfig : IConfig
 
     [ConfigItem(Description = "Amount of milliseconds into the slot, where block building should be attempted.",
         DefaultValue = "1333")]
-    ulong ExtraBuildWindow { get; }
+    uint ExtraBuildWindow { get; }
 }
