@@ -91,42 +91,20 @@ public readonly struct AccountHeader
 
     public static Account BasicDataToAccount(in ReadOnlySpan<byte> basicData, Hash256 codeHash)
     {
-        // since values are encoded little endian - we need the full 32 bytes to decode properly
-        Span<byte> dataSpan = stackalloc byte[32];
-
         byte version = basicData[0];
-
-        basicData.Slice(NonceOffset, NonceBytesLength).CopyTo(dataSpan[..NonceBytesLength]);
-        var nonce = new UInt256(dataSpan);
-
-        dataSpan.Clear();
-        basicData.Slice(CodeSizeOffset, CodeSizeBytesLength).CopyTo(dataSpan[..CodeSizeBytesLength]);
-        var codeSize = new UInt256(dataSpan);
-
-        dataSpan.Clear();
-        basicData.Slice(BalanceOffset, BalanceBytesLength).CopyTo(dataSpan[..BalanceBytesLength]);
-        var balance = new UInt256(dataSpan);
+        var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength), true);
+        var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength), true);
+        var balance = new UInt256( basicData.Slice(BalanceOffset, BalanceBytesLength), true);
 
         return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
     }
 
     public static AccountStruct BasicDataToAccountStruct(in ReadOnlySpan<byte> basicData, ValueHash256 codeHash)
     {
-        // since values are encoded little endian - we need the full 32 bytes to decode properly
-        Span<byte> dataSpan = stackalloc byte[32];
-
         byte version = basicData[0];
-
-        basicData.Slice(NonceOffset, NonceBytesLength).CopyTo(dataSpan[..NonceBytesLength]);
-        var nonce = new UInt256(dataSpan);
-
-        dataSpan.Clear();
-        basicData.Slice(CodeSizeOffset, CodeSizeBytesLength).CopyTo(dataSpan[..CodeSizeBytesLength]);
-        var codeSize = new UInt256(dataSpan);
-
-        dataSpan.Clear();
-        basicData.Slice(BalanceOffset, BalanceBytesLength).CopyTo(dataSpan[..BalanceBytesLength]);
-        var balance = new UInt256(dataSpan);
+        var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength), true);
+        var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength), true);
+        var balance = new UInt256(basicData.Slice(BalanceOffset, BalanceBytesLength), true);
 
         return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
     }
@@ -136,22 +114,22 @@ public readonly struct AccountHeader
         byte[] basicData = new byte[32];
         Span<byte> basicDataSpan = basicData;
 
-        // TODO: should we convert balance to Uint128 and then directly decode to span
-        Span<byte> balanceBytes = stackalloc byte[32];
-        account.Balance.ToLittleEndian(balanceBytes);
-        balanceBytes[..BalanceBytesLength].CopyTo(basicDataSpan.Slice(BalanceOffset, BalanceBytesLength));
-
         // we know that version is just 1 byte
         byte version = account.Version;
         basicData[0] = version;
 
+        // TODO: should we convert balance to Uint128 and then directly decode to span
+        Span<byte> balanceBytes = stackalloc byte[32];
+        account.Balance.ToBigEndian(balanceBytes);
+        balanceBytes[(32 - BalanceBytesLength)..].CopyTo(basicDataSpan.Slice(BalanceOffset, BalanceBytesLength));
+
         // we know that nonce is just 8 bytes
         ulong nonce = account.Nonce.u0;
-        BinaryPrimitives.WriteUInt64LittleEndian(basicDataSpan.Slice(NonceOffset, NonceBytesLength), nonce);
+        BinaryPrimitives.WriteUInt64BigEndian(basicDataSpan.Slice(NonceOffset, NonceBytesLength), nonce);
 
         // we know that codeSize is just 4 bytes
         uint codeSize = (uint)account.CodeSize.u0;
-        BinaryPrimitives.WriteUInt32LittleEndian(basicDataSpan.Slice(CodeSizeOffset, CodeSizeBytesLength), codeSize);
+        BinaryPrimitives.WriteUInt32BigEndian(basicDataSpan.Slice(CodeSizeOffset, CodeSizeBytesLength), codeSize);
 
         return basicData;
     }
