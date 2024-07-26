@@ -7,7 +7,7 @@ using Nethermind.Network.Discovery.Kademlia;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class NoopStore : IKademlia<IEnr, byte[]>.IStore
+public class NoopStore : IKademlia<IEnr>.IStore
 {
     public bool TryGetValue(ValueHash256 hash, out byte[] value)
     {

@@ -35,7 +35,7 @@ public class LanternAdapter: ILanternAdapter
     private readonly IRoutingTable _routingTable;
 
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
-    private readonly Dictionary<byte[], IKademlia<IEnr, byte[]>> _kademliaOverlays = new();
+    private readonly Dictionary<byte[], IKademlia<IEnr>> _kademliaOverlays = new();
 
     public LanternAdapter (
         IDiscv5Protocol discv5,
@@ -161,12 +161,12 @@ public class LanternAdapter: ILanternAdapter
         }
     }
 
-    public IMessageSender<IEnr, byte[]> CreateMessageSenderForProtocol(byte[] protocol)
+    public IMessageSender<IEnr> CreateMessageSenderForProtocol(byte[] protocol)
     {
         return new KademliaMessageSender(protocol, this);
     }
 
-    public void RegisterKademliaOverlay(byte[] protocol, IKademlia<IEnr, byte[]> kademlia)
+    public void RegisterKademliaOverlay(byte[] protocol, IKademlia<IEnr> kademlia)
     {
         _kademliaOverlays[protocol] = kademlia;
     }
@@ -235,7 +235,7 @@ public class LanternAdapter: ILanternAdapter
         return talkReqMessage;
     }
 
-    private class KademliaMessageSender(byte[] protocol, LanternAdapter manager) : IMessageSender<IEnr, byte[]>
+    private class KademliaMessageSender(byte[] protocol, LanternAdapter manager) : IMessageSender<IEnr>
     {
         public async Task Ping(IEnr receiver, CancellationToken token)
         {
@@ -308,7 +308,7 @@ public class LanternAdapter: ILanternAdapter
             return enrs;
         }
 
-        public async Task<FindValueResponse<IEnr, byte[]>> FindValue(IEnr receiver, ValueHash256 hash, CancellationToken token)
+        public async Task<FindValueResponse<IEnr>> FindValue(IEnr receiver, ValueHash256 hash, CancellationToken token)
         {
             byte[] findContentBytes = SlowSSZ.Serialize(new MessageUnion()
             {
@@ -328,7 +328,7 @@ public class LanternAdapter: ILanternAdapter
             }
             else if (message.Payload != null)
             {
-                return new FindValueResponse<IEnr, byte[]>(true, message.Payload, Array.Empty<IEnr>());
+                return new FindValueResponse<IEnr>(true, message.Payload, Array.Empty<IEnr>());
             }
             else
             {
@@ -338,7 +338,7 @@ public class LanternAdapter: ILanternAdapter
                     enrs[i] = manager._enrFactory.CreateFromBytes(message.Enrs[i], manager._identityVerifier);
                 }
 
-                return new FindValueResponse<IEnr, byte[]>(false, null, enrs);
+                return new FindValueResponse<IEnr>(false, null, enrs);
             }
         }
     }
