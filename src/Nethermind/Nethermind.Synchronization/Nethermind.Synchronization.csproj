@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>annotations</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Contract\Nethermind.Network.Contract.csproj" />
+    <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ConcurrentHashSet" />
+    <PackageReference Include="NonBlocking" />
+  </ItemGroup>
+
+</Project>
