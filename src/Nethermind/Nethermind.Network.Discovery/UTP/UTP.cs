@@ -33,7 +33,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
     private readonly UTPSynchronizer _utpSynchronizer = new UTPSynchronizer();
     private readonly InflightDataCalculator _inflightDataCalculator = new InflightDataCalculator();
-    private readonly LedBat _trafficControl = new LedBat();
+    private readonly LEDBAT _trafficControl = new LEDBAT();
 
     // TODO: Use LRU instead. Need a special expiry handling so that the _incomingBufferSize is correct.
     private ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
