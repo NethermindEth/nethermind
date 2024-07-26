@@ -103,6 +103,10 @@ public class JsonRpcService : IJsonRpcService
                 {
                     missingParamsCount++;
                 }
+                else
+                {
+                    missingParamsCount = 0;
+                }
             }
         }
 

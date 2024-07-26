@@ -104,27 +104,31 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
     }
 
     public Task<ResultWrapper<PreBuiltTxList[]?>> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
-        ulong maxBytesPerTxList, Address[] localAccounts, int maxTransactionsLists)
+        ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists)
     {
         KeyValuePair<AddressAsKey, Queue<Transaction>>[] pendingTxs =
             _txPoolBridge.GetPendingTransactionsBySender()
                 .ToDictionary(tx => tx.Key, tx => new Queue<Transaction>(tx.Value.Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee))))
                 .ToArray();
 
-        KeyValuePair<AddressAsKey, Queue<Transaction>>[] localTxs = pendingTxs
-            .Where(txPerAddr => localAccounts.Contains(txPerAddr.Key.Value) && txPerAddr.Value.Any())
-            .ToArray();
+        if (localAccounts is not null)
+        {
+            KeyValuePair<AddressAsKey, Queue<Transaction>>[] localTxs = pendingTxs
+                .Where(txPerAddr => localAccounts.Contains(txPerAddr.Key.Value) && txPerAddr.Value.Any())
+                .ToArray();
 
-        KeyValuePair<AddressAsKey, Queue<Transaction>>[] remoteTxs = pendingTxs
-            .Where(txPerAddr => !localAccounts.Contains(txPerAddr.Key.Value) && txPerAddr.Value.Any())
-            .ToArray();
+            KeyValuePair<AddressAsKey, Queue<Transaction>>[] remoteTxs = pendingTxs
+                .Where(txPerAddr => !localAccounts.Contains(txPerAddr.Key.Value) && txPerAddr.Value.Any())
+                .ToArray();
 
-        List<KeyValuePair<AddressAsKey, Queue<Transaction>>> source = [.. localTxs, .. remoteTxs];
+            pendingTxs = [.. localTxs, .. remoteTxs];
+        }
+
 
 
         BlockHeader? head = _blockFinder.Head?.Header;
 
-        if (source.Count is 0 || head is null)
+        if (pendingTxs.Length is 0 || head is null)
         {
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
@@ -145,17 +149,17 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             BaseFeePerGas = baseFee,
             StateRoot = head.StateRoot,
             IsPostMerge = true,
-        }, source, maxTransactionsLists, maxBytesPerTxList));
+        }, pendingTxs, maxTransactionsLists, maxBytesPerTxList));
     }
 
 
     private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
 
-    public PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, List<KeyValuePair<AddressAsKey, Queue<Transaction>>> txSource, int maxBatchCount, ulong maxBytesPerTxList)
+    public PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, KeyValuePair<AddressAsKey, Queue<Transaction>>[] txSource, int maxBatchCount, ulong maxBytesPerTxList)
     {
         lock (worldState)
         {
-            if (txSource.Count is 0 || blockHeader.StateRoot is null)
+            if (txSource.Length is 0 || blockHeader.StateRoot is null)
             {
                 return [];
             }
@@ -167,7 +171,9 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             void CommitBatch()
             {
                 byte[] list = EncodeAndCompress(currentBatch.ToArray());
-                Batches.Add(new PreBuiltTxList(list, (ulong)blockHeader.GasUsed, list.Length));
+                Batches.Add(new PreBuiltTxList(currentBatch.Select(tx => new TransactionForRpc(tx)).ToArray(),
+                                               (ulong)blockHeader.GasUsed,
+                                               list.Length));
                 currentBatch = [];
                 blockHeader.GasUsed = 0;
             }
@@ -190,7 +196,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             BlockExecutionContext blkCtx = new(blockHeader);
             worldState.StateRoot = blockHeader.StateRoot;
 
-            for (int senderCounter = 0; senderCounter < txSource.Count; senderCounter++)
+            for (int senderCounter = 0; senderCounter < txSource.Length; senderCounter++)
             {
                 while (txSource[senderCounter].Value.Count != 0)
                 {
