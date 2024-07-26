@@ -130,42 +130,18 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
     {
-        if (_sequencerRpcClient is not null)
+        if (_sequencerRpcClient is null)
         {
-            Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
-            if (result is null)
-            {
-                return ResultWrapper<Hash256>.Fail("Failed to forward transaction");
-            }
-
-            return ResultWrapper<Hash256>.Success(result);
+            return await base.eth_sendRawTransaction(transaction);
         }
-        else
+
+        Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
+        if (result is null)
         {
-            try
-            {
-                Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
-
-                (Hash256 txHash, AcceptTxResult? acceptTxResult) = await _txSender.SendTransaction(tx, TxHandlingOptions.None | TxHandlingOptions.PersistentBroadcast);
-
-                return acceptTxResult.Equals(AcceptTxResult.Accepted)
-                    ? ResultWrapper<Hash256>.Success(txHash)
-                    : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
-            }
-            catch (SecurityException e)
-            {
-                return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.AccountLocked);
-            }
-            catch (RlpException)
-            {
-                return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
-                return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.TransactionRejected);
-            }
+            return ResultWrapper<Hash256>.Fail("Failed to forward transaction");
         }
+
+        return ResultWrapper<Hash256>.Success(result);
     }
 
     public new ResultWrapper<OptimismReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
