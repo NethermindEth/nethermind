@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain
                     new LinearExtrapolation(180.GB(), 95.MB(), new DateTime(2024, 07, 17))),
                 BlockchainIds.Sepolia => new ChainEstimations(new LinearExtrapolation(38.GB(), 90.MB(), new DateTime(2024, 07, 17)),
                     new LinearExtrapolation(45.GB(), 95.MB(), new DateTime(2024, 07, 17))),
-                
+
                 BlockchainIds.Holesky => new ChainEstimations(new LinearExtrapolation(17.GB(), 30.MB(), new DateTime(2024, 07, 17))),
 
                 BlockchainIds.Gnosis => new ChainEstimations(new LinearExtrapolation(64.GB(), 90.MB(), new DateTime(2024, 07, 17))),
