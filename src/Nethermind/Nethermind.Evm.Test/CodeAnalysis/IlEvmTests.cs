@@ -11,6 +11,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Sigil;
 using System;
@@ -431,7 +433,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ILEvmState iLEvmState = new ILEvmState(state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, _blockhashProvider, ctx.Data);
+            ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, _blockhashProvider, TestState, ctx.Data);
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 

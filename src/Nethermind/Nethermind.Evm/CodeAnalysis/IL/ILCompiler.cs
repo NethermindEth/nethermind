@@ -21,11 +21,12 @@ using System.Drawing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState state, ISpecProvider spec, IBlockhashProvider BlockhashProvider, byte[][] immediatesData);
+    public delegate void ExecuteSegment(ref ILEvmState vmstate, ISpecProvider spec, IBlockhashProvider blockhashProvider, IWorldState worldState, byte[][] immediatesData);
     public class SegmentExecutionCtx
     {
         public ExecuteSegment Method;
@@ -1259,6 +1260,13 @@ internal class ILCompiler
                     method.Call(typeof(MemoryExtensions).GetMethod(nameof(MemoryExtensions.AsSpan), [typeof(byte[]), typeof(int), typeof(int)]));
                     method.LoadLocalAddress(localSpan);
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
+                    break;
+
+                case Instruction.SLOAD:
+                    // load vmState from argument
+                    method.LoadArgument(0);
+                    // load storage from vmState
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
                     break;
                 default:
                     throw new NotSupportedException();
