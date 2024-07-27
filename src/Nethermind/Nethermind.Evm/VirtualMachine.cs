@@ -787,7 +787,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
     EvmState _vmState;
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(scoped ref EvmStack stack, long gasAvailable)
+    private unsafe CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(scoped ref EvmStack stack, long gasAvailable)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
@@ -834,818 +834,715 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 StartInstructionTrace(instruction, _vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
-            switch (instruction)
+
+            if (instruction == Instruction.STOP)
             {
-                case Instruction.STOP:
-                    {
-                        if (_vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+                if (_vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+                {
+                    goto InvalidInstruction;
+                }
+                goto EmptyReturn;
+            }
+            else if (instruction < Instruction.EXTCODESIZE)
+            {
+                exceptionType = CalliJmpTable[(int)instruction](this, ref stack, ref gasAvailable, ref programCounter);
+            }
+            else
+            {
+                switch (instruction)
+                {
+                    case Instruction.EXTCODESIZE:
                         {
-                            goto InvalidInstruction;
-                        }
-                        goto EmptyReturn;
-                    }
-                case Instruction.ADD:
-                    exceptionType = InstructionMath2Param<OpAdd>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MUL:
-                    exceptionType = InstructionMath2Param<OpMul>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SUB:
-                    exceptionType = InstructionMath2Param<OpSub>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.DIV:
-                    exceptionType = InstructionMath2Param<OpDiv>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SDIV:
-                    exceptionType = InstructionMath2Param<OpSDiv>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MOD:
-                    exceptionType = InstructionMath2Param<OpMod>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SMOD:
-                    exceptionType = InstructionMath2Param<OpSMod>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.ADDMOD:
-                    exceptionType = InstructionMath3Param<OpAddMod>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MULMOD:
-                    exceptionType = InstructionMath3Param<OpMulMod>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.EXP:
-                    exceptionType = InstructionExp(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SIGNEXTEND:
-                    exceptionType = InstructionSignExtend(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.LT:
-                    exceptionType = InstructionMath2Param<OpLt>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.GT:
-                    exceptionType = InstructionMath2Param<OpGt>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SLT:
-                    exceptionType = InstructionMath2Param<OpSLt>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SGT:
-                    exceptionType = InstructionMath2Param<OpSGt>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.EQ:
-                    exceptionType = InstructionBitwise<OpBitwiseEq>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.ISZERO:
-                    exceptionType = InstructionMath1Param<OpIsZero>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.AND:
-                    exceptionType = InstructionBitwise<OpBitwiseAnd>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.OR:
-                    exceptionType = InstructionBitwise<OpBitwiseOr>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.XOR:
-                    exceptionType = InstructionBitwise<OpBitwiseXor>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.NOT:
-                    exceptionType = InstructionMath1Param<OpNot>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.BYTE:
-                    exceptionType = InstructionByte(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.KECCAK256:
-                    exceptionType = InstructionKeccak256(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.ADDRESS:
-                    exceptionType = InstructionEnvBytes<OpAddress>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.BALANCE:
-                    exceptionType = InstructionBalance(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CALLER:
-                    exceptionType = InstructionEnvBytes<OpCaller>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CALLVALUE:
-                    exceptionType = InstructionEnvUInt256<OpCallValue>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.ORIGIN:
-                    exceptionType = InstructionEnvBytes<OpOrigin>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CALLDATALOAD:
-                    exceptionType = InstructionCallDataLoad(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CALLDATASIZE:
-                    exceptionType = InstructionEnvUInt256<OpCallDataSize>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CALLDATACOPY:
-                    exceptionType = InstructionCodeCopy<OpCallDataCopy>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CODESIZE:
-                    exceptionType = InstructionEnvUInt256<OpCodeSize>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CODECOPY:
-                    exceptionType = InstructionCodeCopy<OpCodeCopy>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.GASPRICE:
-                    exceptionType = InstructionEnvUInt256<OpGasPrice>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.EXTCODESIZE:
-                    {
-                        gasAvailable -= _spec.GetExtCodeCost();
+                            gasAvailable -= _spec.GetExtCodeCost();
 
-                        Address address = stack.PopAddress();
-                        if (address is null) goto StackUnderflow;
+                            Address address = stack.PopAddress();
+                            if (address is null) goto StackUnderflow;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, _vmState, address)) goto OutOfGas;
+                            if (!ChargeAccountAccessGas(ref gasAvailable, _vmState, address)) goto OutOfGas;
 
-                        if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < codeSection.Length)
-                        {
-                            bool optimizeAccess = false;
-                            Instruction nextInstruction = (Instruction)codeSection[programCounter];
-                            // code.length is zero
-                            if (nextInstruction == Instruction.ISZERO)
+                            if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < codeSection.Length)
                             {
-                                optimizeAccess = true;
-                            }
-                            // code.length > 0 || code.length == 0
-                            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
-                                    stack.PeekUInt256IsZero())
-                            {
-                                optimizeAccess = true;
-                                if (!stack.PopLimbo()) goto StackUnderflow;
-                            }
-
-                            if (optimizeAccess)
-                            {
-                                // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
-                                // In solidity 0.8.1+: `return account.code.length > 0;`
-                                // is is a common pattern to check if address is a contract
-                                // however we can just check the address's loaded CodeHash
-                                // to reduce storage access from trying to load the code
-
-                                programCounter++;
-                                // Add gas cost for ISZERO, GT, or EQ
-                                gasAvailable -= GasCostOf.VeryLow;
-
-                                // IsContract
-                                bool isCodeLengthNotZero = _state.IsContract(address);
-                                if (nextInstruction == Instruction.GT)
+                                bool optimizeAccess = false;
+                                Instruction nextInstruction = (Instruction)codeSection[programCounter];
+                                // code.length is zero
+                                if (nextInstruction == Instruction.ISZERO)
                                 {
-                                    // Invert, to IsNotContract
-                                    isCodeLengthNotZero = !isCodeLengthNotZero;
+                                    optimizeAccess = true;
+                                }
+                                // code.length > 0 || code.length == 0
+                                else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
+                                        stack.PeekUInt256IsZero())
+                                {
+                                    optimizeAccess = true;
+                                    if (!stack.PopLimbo()) goto StackUnderflow;
                                 }
 
-                                if (!isCodeLengthNotZero)
+                                if (optimizeAccess)
                                 {
-                                    stack.PushOne();
+                                    // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
+                                    // In solidity 0.8.1+: `return account.code.length > 0;`
+                                    // is is a common pattern to check if address is a contract
+                                    // however we can just check the address's loaded CodeHash
+                                    // to reduce storage access from trying to load the code
+
+                                    programCounter++;
+                                    // Add gas cost for ISZERO, GT, or EQ
+                                    gasAvailable -= GasCostOf.VeryLow;
+
+                                    // IsContract
+                                    bool isCodeLengthNotZero = _state.IsContract(address);
+                                    if (nextInstruction == Instruction.GT)
+                                    {
+                                        // Invert, to IsNotContract
+                                        isCodeLengthNotZero = !isCodeLengthNotZero;
+                                    }
+
+                                    if (!isCodeLengthNotZero)
+                                    {
+                                        stack.PushOne();
+                                    }
+                                    else
+                                    {
+                                        stack.PushZero();
+                                    }
+                                    break;
                                 }
-                                else
+                            }
+
+                            InstructionExtCodeSize(address, ref stack);
+                            break;
+                        }
+                    case Instruction.EXTCODECOPY:
+                        exceptionType = InstructionExtCodeCopy(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.RETURNDATASIZE:
+                        {
+                            if (!_spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
+
+                            gasAvailable -= GasCostOf.Base;
+
+                            result = (UInt256)_returnDataBuffer.Length;
+                            stack.PushUInt256(in result);
+                            break;
+                        }
+                    case Instruction.RETURNDATACOPY:
+                        {
+                            if (!_spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
+
+                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                            if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                            if (!stack.PopUInt256(out c)) goto StackUnderflow;
+                            gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c);
+
+
+                            if (env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out result) || result > _returnDataBuffer.Length))
+                            {
+                                goto AccessViolation;
+                            }
+
+                            if (!c.IsZero)
+                            {
+                                if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, c)) goto OutOfGas;
+
+                                slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)c);
+                                _vmState.Memory.Save(in a, in slice);
+                                if (typeof(TTracingInstructions) == typeof(IsTracing))
                                 {
-                                    stack.PushZero();
+                                    _txTracer.ReportMemoryChange((long)a, in slice);
                                 }
-                                break;
                             }
+                            break;
                         }
-
-                        InstructionExtCodeSize(address, ref stack);
+                    case Instruction.EXTCODEHASH:
+                        exceptionType = InstructionExtCodeHash(this, ref stack, ref gasAvailable, ref programCounter);
                         break;
-                    }
-                case Instruction.EXTCODECOPY:
-                    exceptionType = InstructionExtCodeCopy(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.RETURNDATASIZE:
-                    {
-                        if (!_spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.Base;
-
-                        result = (UInt256)_returnDataBuffer.Length;
-                        stack.PushUInt256(in result);
-                        break;
-                    }
-                case Instruction.RETURNDATACOPY:
-                    {
-                        if (!_spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out c)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c);
-
-
-                        if (env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out result) || result > _returnDataBuffer.Length))
+                    case Instruction.BLOCKHASH:
                         {
-                            goto AccessViolation;
-                        }
+                            Metrics.BlockhashOpcode++;
 
-                        if (!c.IsZero)
-                        {
-                            if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, c)) goto OutOfGas;
+                            gasAvailable -= GasCostOf.BlockHash;
 
-                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)c);
-                            _vmState.Memory.Save(in a, in slice);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                            long number = a > long.MaxValue ? long.MaxValue : (long)a;
+
+                            Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+
+                            stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
+
+                            if (typeof(TLogger) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, in slice);
+                                if (_txTracer.IsTracingBlockHash && blockHash is not null)
+                                {
+                                    _txTracer.ReportBlockHash(blockHash);
+                                }
                             }
+
+                            break;
                         }
+                    case Instruction.COINBASE:
+                        exceptionType = InstructionEnvBytes<OpCoinbase>(this, ref stack, ref gasAvailable, ref programCounter);
                         break;
-                    }
-                case Instruction.RETURNDATALOAD:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-
-                        slice = _returnDataBuffer.Span.SliceWithZeroPadding(a, 32);
-                        stack.PushBytes(slice);
+                    case Instruction.TIMESTAMP:
+                        exceptionType = InstructionEnvUInt256<OpTimestamp>(this, ref stack, ref gasAvailable, ref programCounter);
                         break;
-                    }
-                case Instruction.BLOCKHASH:
-                    {
-                        Metrics.BlockhashOpcode++;
-
-                        gasAvailable -= GasCostOf.BlockHash;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        long number = a > long.MaxValue ? long.MaxValue : (long)a;
-
-                        Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
-
-                        stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
-
-                        if (typeof(TLogger) == typeof(IsTracing))
+                    case Instruction.NUMBER:
+                        exceptionType = InstructionEnvUInt256<OpNumber>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.PREVRANDAO:
+                        exceptionType = InstructionPrevRandao(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.GASLIMIT:
+                        exceptionType = InstructionEnvUInt256<OpGasLimit>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.CHAINID:
+                        exceptionType = InstructionChainId(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.SELFBALANCE:
+                        exceptionType = InstructionSelfBalance(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.BASEFEE:
+                        exceptionType = InstructionEnvUInt256<OpBaseFee>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.BLOBHASH:
+                        exceptionType = InstructionBlobHash(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.BLOBBASEFEE:
+                        exceptionType = InstructionEnvUInt256<OpBlobBaseFee>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.POP:
+                        exceptionType = InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.MLOAD:
+                        exceptionType = InstructionMLoad(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.MSTORE:
+                        exceptionType = InstructionMStore(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.MSTORE8:
+                        exceptionType = InstructionMStore8(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.SLOAD:
+                        exceptionType = InstructionSLoad(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.SSTORE:
+                        exceptionType = InstructionSStore(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.JUMP:
+                        exceptionType = InstructionJump(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.JUMPI:
+                        exceptionType = InstructionJumpIf(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.PC:
+                        exceptionType = InstructionProgramCounter(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.MSIZE:
+                        exceptionType = InstructionEnvUInt256<OpMSize>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.GAS:
+                        exceptionType = InstructionGas(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.JUMPDEST:
+                        exceptionType = InstructionJumpDest(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.TLOAD:
+                        exceptionType = InstructionTLoad(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.TSTORE:
+                        exceptionType = InstructionTStore(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.MCOPY:
+                        exceptionType = InstructionMCopy(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.PUSH0:
                         {
-                            if (_txTracer.IsTracingBlockHash && blockHash is not null)
-                            {
-                                _txTracer.ReportBlockHash(blockHash);
-                            }
-                        }
+                            if (!_spec.IncludePush0Instruction) goto InvalidInstruction;
+                            gasAvailable -= GasCostOf.Base;
 
-                        break;
-                    }
-                case Instruction.COINBASE:
-                    exceptionType = InstructionEnvBytes<OpCoinbase>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.PREVRANDAO:
-                    exceptionType = InstructionPrevRandao(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.TIMESTAMP:
-                    exceptionType = InstructionEnvUInt256<OpTimestamp>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.NUMBER:
-                    exceptionType = InstructionEnvUInt256<OpNumber>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.GASLIMIT:
-                    exceptionType = InstructionEnvUInt256<OpGasLimit>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CHAINID:
-                    exceptionType = InstructionChainId(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SELFBALANCE:
-                    exceptionType = InstructionSelfBalance(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.BASEFEE:
-                    exceptionType = InstructionEnvUInt256<OpBaseFee>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.BLOBHASH:
-                    exceptionType = InstructionBlobHash(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.BLOBBASEFEE:
-                    exceptionType = InstructionEnvUInt256<OpBlobBaseFee>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.POP:
-                    exceptionType = InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MLOAD:
-                    exceptionType = InstructionMLoad(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MSTORE:
-                    exceptionType = InstructionMStore(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MSTORE8:
-                    exceptionType = InstructionMStore8(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SLOAD:
-                    exceptionType = InstructionSLoad(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SSTORE:
-                    exceptionType = InstructionSStore(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.JUMP:
-                    exceptionType = InstructionJump(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.JUMPI:
-                    exceptionType = InstructionJumpIf(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.PC:
-                    exceptionType = InstructionProgramCounter(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MSIZE:
-                    exceptionType = InstructionEnvUInt256<OpMSize>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.GAS:
-                    exceptionType = InstructionGas(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.JUMPDEST:
-                    exceptionType = InstructionJumpDest(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.PUSH0:
-                    {
-                        if (!_spec.IncludePush0Instruction) goto InvalidInstruction;
-                        gasAvailable -= GasCostOf.Base;
-
-                        stack.PushZero();
-                        break;
-                    }
-                case Instruction.PUSH1:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (programCounter >= codeSection.Length)
-                        {
                             stack.PushZero();
-                        }
-                        else
-                        {
-                            stack.PushByte(codeSection[programCounter]);
-                        }
-
-                        programCounter++;
-                        break;
-                    }
-                case Instruction.PUSH2:
-                case Instruction.PUSH3:
-                case Instruction.PUSH4:
-                case Instruction.PUSH5:
-                case Instruction.PUSH6:
-                case Instruction.PUSH7:
-                case Instruction.PUSH8:
-                case Instruction.PUSH9:
-                case Instruction.PUSH10:
-                case Instruction.PUSH11:
-                case Instruction.PUSH12:
-                case Instruction.PUSH13:
-                case Instruction.PUSH14:
-                case Instruction.PUSH15:
-                case Instruction.PUSH16:
-                case Instruction.PUSH17:
-                case Instruction.PUSH18:
-                case Instruction.PUSH19:
-                case Instruction.PUSH20:
-                case Instruction.PUSH21:
-                case Instruction.PUSH22:
-                case Instruction.PUSH23:
-                case Instruction.PUSH24:
-                case Instruction.PUSH25:
-                case Instruction.PUSH26:
-                case Instruction.PUSH27:
-                case Instruction.PUSH28:
-                case Instruction.PUSH29:
-                case Instruction.PUSH30:
-                case Instruction.PUSH31:
-                case Instruction.PUSH32:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        int length = instruction - Instruction.PUSH1 + 1;
-                        int usedFromCode = Math.Min(codeSection.Length - programCounter, length);
-                        stack.PushLeftPaddedBytes(codeSection.Slice(programCounter, usedFromCode), length);
-
-                        programCounter += length;
-                        break;
-                    }
-                case Instruction.DUP1:
-                case Instruction.DUP2:
-                case Instruction.DUP3:
-                case Instruction.DUP4:
-                case Instruction.DUP5:
-                case Instruction.DUP6:
-                case Instruction.DUP7:
-                case Instruction.DUP8:
-                case Instruction.DUP9:
-                case Instruction.DUP10:
-                case Instruction.DUP11:
-                case Instruction.DUP12:
-                case Instruction.DUP13:
-                case Instruction.DUP14:
-                case Instruction.DUP15:
-                case Instruction.DUP16:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.Dup(instruction - Instruction.DUP1 + 1)) goto StackUnderflow;
-                        break;
-                    }
-                case Instruction.DUPN:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
-                            goto OutOfGas;
-
-                        byte imm = codeSection[programCounter];
-                        stack.Dup(imm + 1);
-
-                        programCounter += 1;
-                        break;
-                    }
-                case Instruction.SWAP1:
-                case Instruction.SWAP2:
-                case Instruction.SWAP3:
-                case Instruction.SWAP4:
-                case Instruction.SWAP5:
-                case Instruction.SWAP6:
-                case Instruction.SWAP7:
-                case Instruction.SWAP8:
-                case Instruction.SWAP9:
-                case Instruction.SWAP10:
-                case Instruction.SWAP11:
-                case Instruction.SWAP12:
-                case Instruction.SWAP13:
-                case Instruction.SWAP14:
-                case Instruction.SWAP15:
-                case Instruction.SWAP16:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.Swap(instruction - Instruction.SWAP1 + 2)) goto StackUnderflow;
-                        break;
-                    }
-                case Instruction.SWAPN:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
-                            goto OutOfGas;
-
-                        int n = 1 + codeSection[programCounter];
-                        if (!stack.Swap(n + 1)) goto StackUnderflow;
-
-                        programCounter += 1;
-                        break;
-                    }
-                case Instruction.EXCHANGE:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
-                            goto OutOfGas;
-
-                        int n = 1 + (int)(codeSection[programCounter] >> 0x04);
-                        int m = 1 + (int)(codeSection[programCounter] & 0x0f);
-
-                        stack.Exchange(n + 1, m + n + 1);
-
-                        programCounter += 1;
-                        break;
-                    }
-                case Instruction.LOG0:
-                    exceptionType = InstructionLog<Op0>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.LOG1:
-                    exceptionType = InstructionLog<Op1>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.LOG2:
-                    exceptionType = InstructionLog<Op2>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.LOG3:
-                    exceptionType = InstructionLog<Op3>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.LOG4:
-                    exceptionType = InstructionLog<Op4>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.CREATE:
-                case Instruction.CREATE2:
-                    {
-                        Metrics.IncrementCreates();
-                        if (!_spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
-
-                        if (_vmState.IsStatic) goto StaticCallViolation;
-
-                        (exceptionType, returnData) = InstructionCreate(_vmState, ref stack, ref gasAvailable, instruction);
-                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                        if (returnData is null) break;
-
-                        goto DataReturnNoTrace;
-                    }
-                case Instruction.EOFCREATE:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                        {
-                            goto InvalidInstruction;
-                        }
-
-                        if (_vmState.IsStatic) goto StaticCallViolation;
-
-                        (exceptionType, returnData) = InstructionEofCreate(_vmState, ref programCounter, ref codeSection, ref stack, ref gasAvailable, instruction);
-
-                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                        if (returnData is null) break;
-
-                        goto DataReturnNoTrace;
-                    }
-                case Instruction.RETURN:
-                    {
-                        if (_vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-                        {
-                            goto InvalidInstruction;
-                        }
-                        exceptionType = InstructionReturn(_vmState, ref stack, ref gasAvailable, out returnData);
-                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                        goto DataReturn;
-                    }
-                case Instruction.CALL:
-                case Instruction.CALLCODE:
-                case Instruction.DELEGATECALL:
-                case Instruction.STATICCALL:
-                    {
-                        exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
-                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                        if (returnData is null)
-                        {
                             break;
                         }
-                        if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                    case Instruction.PUSH1:
                         {
-                            // Non contract call continue rather than constructing a new frame
-                            continue;
-                        }
+                            gasAvailable -= GasCostOf.VeryLow;
 
-                        goto DataReturn;
-                    }
-                case Instruction.REVERT:
-                    {
-                        if (!_spec.RevertOpcodeEnabled) goto InvalidInstruction;
-
-                        exceptionType = InstructionRevert(_vmState, ref stack, ref gasAvailable, out returnData);
-                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                        isRevert = true;
-                        goto DataReturn;
-                    }
-                case Instruction.INVALID:
-                    exceptionType = InstructionInvalid(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SELFDESTRUCT:
-                    exceptionType = InstructionSelfDestruct(this, ref stack, ref gasAvailable, ref programCounter);
-                    if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                    goto EmptyReturn;
-                case Instruction.SHL:
-                    exceptionType = InstructionShift<OpShl>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SHR:
-                    exceptionType = InstructionShift<OpShr>(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.SAR:
-                    exceptionType = InstructionSar(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.EXTCODEHASH:
-                    exceptionType = InstructionExtCodeHash(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.TLOAD:
-                    exceptionType = InstructionTLoad(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.TSTORE:
-                    exceptionType = InstructionTStore(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.MCOPY:
-                    exceptionType = InstructionMCopy(this, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.RJUMP:
-                    {
-                        if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
-                        {
-                            if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
-                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
-                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
-                            break;
-                        }
-                        goto InvalidInstruction;
-                    }
-                case Instruction.RJUMPI:
-                    {
-                        if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
-                        {
-                            if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
-                            Span<byte> condition = stack.PopWord256();
-                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
-                            if (!condition.SequenceEqual(BytesZero32))
+                            if (programCounter >= codeSection.Length)
                             {
-                                programCounter += offset;
+                                stack.PushZero();
                             }
+                            else
+                            {
+                                stack.PushByte(codeSection[programCounter]);
+                            }
+
+                            programCounter++;
+                            break;
+                        }
+                    case Instruction.PUSH2:
+                    case Instruction.PUSH3:
+                    case Instruction.PUSH4:
+                    case Instruction.PUSH5:
+                    case Instruction.PUSH6:
+                    case Instruction.PUSH7:
+                    case Instruction.PUSH8:
+                    case Instruction.PUSH9:
+                    case Instruction.PUSH10:
+                    case Instruction.PUSH11:
+                    case Instruction.PUSH12:
+                    case Instruction.PUSH13:
+                    case Instruction.PUSH14:
+                    case Instruction.PUSH15:
+                    case Instruction.PUSH16:
+                    case Instruction.PUSH17:
+                    case Instruction.PUSH18:
+                    case Instruction.PUSH19:
+                    case Instruction.PUSH20:
+                    case Instruction.PUSH21:
+                    case Instruction.PUSH22:
+                    case Instruction.PUSH23:
+                    case Instruction.PUSH24:
+                    case Instruction.PUSH25:
+                    case Instruction.PUSH26:
+                    case Instruction.PUSH27:
+                    case Instruction.PUSH28:
+                    case Instruction.PUSH29:
+                    case Instruction.PUSH30:
+                    case Instruction.PUSH31:
+                    case Instruction.PUSH32:
+                        {
+                            gasAvailable -= GasCostOf.VeryLow;
+
+                            int length = instruction - Instruction.PUSH1 + 1;
+                            int usedFromCode = Math.Min(codeSection.Length - programCounter, length);
+                            stack.PushLeftPaddedBytes(codeSection.Slice(programCounter, usedFromCode), length);
+
+                            programCounter += length;
+                            break;
+                        }
+                    case Instruction.DUP1:
+                    case Instruction.DUP2:
+                    case Instruction.DUP3:
+                    case Instruction.DUP4:
+                    case Instruction.DUP5:
+                    case Instruction.DUP6:
+                    case Instruction.DUP7:
+                    case Instruction.DUP8:
+                    case Instruction.DUP9:
+                    case Instruction.DUP10:
+                    case Instruction.DUP11:
+                    case Instruction.DUP12:
+                    case Instruction.DUP13:
+                    case Instruction.DUP14:
+                    case Instruction.DUP15:
+                    case Instruction.DUP16:
+                        {
+                            gasAvailable -= GasCostOf.VeryLow;
+
+                            if (!stack.Dup(instruction - Instruction.DUP1 + 1)) goto StackUnderflow;
+                            break;
+                        }
+                    case Instruction.DUPN:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            byte imm = codeSection[programCounter];
+                            stack.Dup(imm + 1);
+
+                            programCounter += 1;
+                            break;
+                        }
+                    case Instruction.SWAP1:
+                    case Instruction.SWAP2:
+                    case Instruction.SWAP3:
+                    case Instruction.SWAP4:
+                    case Instruction.SWAP5:
+                    case Instruction.SWAP6:
+                    case Instruction.SWAP7:
+                    case Instruction.SWAP8:
+                    case Instruction.SWAP9:
+                    case Instruction.SWAP10:
+                    case Instruction.SWAP11:
+                    case Instruction.SWAP12:
+                    case Instruction.SWAP13:
+                    case Instruction.SWAP14:
+                    case Instruction.SWAP15:
+                    case Instruction.SWAP16:
+                        {
+                            gasAvailable -= GasCostOf.VeryLow;
+
+                            if (!stack.Swap(instruction - Instruction.SWAP1 + 2)) goto StackUnderflow;
+                            break;
+                        }
+                    case Instruction.SWAPN:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            int n = 1 + codeSection[programCounter];
+                            if (!stack.Swap(n + 1)) goto StackUnderflow;
+
+                            programCounter += 1;
+                            break;
+                        }
+                    case Instruction.EXCHANGE:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            int n = 1 + (int)(codeSection[programCounter] >> 0x04);
+                            int m = 1 + (int)(codeSection[programCounter] & 0x0f);
+
+                            stack.Exchange(n + 1, m + n + 1);
+
+                            programCounter += 1;
+                            break;
+                        }
+                    case Instruction.LOG0:
+                        exceptionType = InstructionLog<Op0>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.LOG1:
+                        exceptionType = InstructionLog<Op1>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.LOG2:
+                        exceptionType = InstructionLog<Op2>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.LOG3:
+                        exceptionType = InstructionLog<Op3>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.LOG4:
+                        exceptionType = InstructionLog<Op4>(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.DATALOAD:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
+
+                            stack.PopUInt256(out a);
+                            ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(a, 32);
+                            stack.PushBytes(zpbytes);
+                            break;
+                        }
+                    case Instruction.DATALOADN:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
+
+                            var offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(offset, 32);
+                            stack.PushBytes(zpbytes);
+
                             programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
                             break;
                         }
-                        goto InvalidInstruction;
-                    }
-                case Instruction.RJUMPV:
-                    {
-                        if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
+                    case Instruction.DATASIZE:
                         {
-                            if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
 
-                            stack.PopUInt256(out a);
-                            var count = codeSection[programCounter] + 1;
-                            var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
-                            if (a < count)
-                            {
-                                int case_v = programCounter + EvmObjectFormat.ONE_BYTE_LENGTH + (int)a * EvmObjectFormat.TWO_BYTE_LENGTH;
-                                int offset = codeSection.Slice(case_v, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
-                                programCounter += offset;
-                            }
-                            programCounter += immediates;
+                            if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
+
+                            stack.PushUInt32(dataSection.Length);
                             break;
                         }
-                        goto InvalidInstruction;
-                    }
-                case Instruction.CALLF:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                    case Instruction.DATACOPY:
                         {
-                            goto InvalidInstruction;
-                        }
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
 
-                        if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
-                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
-                        (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
+                            stack.PopUInt256(out UInt256 memOffset);
+                            stack.PopUInt256(out UInt256 offset);
+                            stack.PopUInt256(out UInt256 size);
 
-                        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
-                        {
-                            goto StackOverflow;
-                        }
-
-                        if (_vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
-                            goto InvalidSubroutineEntry;
-
-                        _vmState.ReturnStack[_vmState.ReturnStackHead++] = new EvmState.ReturnState
-                        {
-                            Index = sectionIndex,
-                            Height = stack.Head - inputCount,
-                            Offset = programCounter + EvmObjectFormat.TWO_BYTE_LENGTH
-                        };
-
-                        sectionIndex = index;
-                        programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
-                        break;
-                    }
-
-                case Instruction.JUMPF:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                        {
-                            goto InvalidInstruction;
-                        }
-
-                        if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) goto OutOfGas;
-                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
-                        (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
-
-                        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
-                        {
-                            goto StackOverflow;
-                        }
-
-                        sectionIndex = index;
-                        programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
-                        break;
-                    }
-                case Instruction.RETF:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                        {
-                            goto InvalidInstruction;
-                        }
-
-                        if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
-                        (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
-
-                        var stackFrame = _vmState.ReturnStack[--_vmState.ReturnStackHead];
-                        sectionIndex = stackFrame.Index;
-                        programCounter = stackFrame.Offset;
-                        break;
-                    }
-                case Instruction.EXTCALL:
-                case Instruction.EXTDELEGATECALL:
-                case Instruction.EXTSTATICCALL:
-                    {
-                        exceptionType = InstructionEofCall<TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
-                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                        if (returnData is null)
-                        {
-                            break;
-                        }
-                        if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
-                        {
-                            // Result pushed to stack
-                            continue;
-                        }
-
-                        goto DataReturn;
-                    }
-                case Instruction.RETURNCONTRACT:
-                    {
-                        if (!_spec.IsEofEnabled || !_vmState.ExecutionType.IsAnyCreateEof())
-                            goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
-
-                        byte sectionIdx = codeSection[programCounter++];
-                        ReadOnlyMemory<byte> deployCode = env.CodeInfo.ContainerSection[(Range)env.CodeInfo.ContainerSectionOffset(sectionIdx)];
-                        EofCodeInfo deploycodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, _spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
-
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
-
-                        if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-
-                        int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
-                        if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
-                        {
-                            goto AccessViolation;
-                        }
-
-                        auxData = _vmState.Memory.Load(a, b);
-
-                        UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
-                        return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
-                    }
-                case Instruction.DATASIZE:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
-
-                        stack.PushUInt32(dataSection.Length);
-                        break;
-                    }
-                case Instruction.DATALOAD:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
-
-                        stack.PopUInt256(out a);
-                        ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(a, 32);
-                        stack.PushBytes(zpbytes);
-                        break;
-                    }
-                case Instruction.DATALOADN:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
-
-                        var offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
-                        ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(offset, 32);
-                        stack.PushBytes(zpbytes);
-
-                        programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
-                        break;
-                    }
-                case Instruction.DATACOPY:
-                    {
-                        if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            goto InvalidInstruction;
-
-                        stack.PopUInt256(out UInt256 memOffset);
-                        stack.PopUInt256(out UInt256 offset);
-                        stack.PopUInt256(out UInt256 size);
-
-                        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
-                            goto OutOfGas;
-
-                        if (size > UInt256.Zero)
-                        {
-                            if (!UpdateMemoryCost(_vmState, ref gasAvailable, in memOffset, size))
+                            if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
                                 goto OutOfGas;
 
-                            ZeroPaddedSpan dataSectionSlice = dataSection.SliceWithZeroPadding(offset, (int)size);
-                            _vmState.Memory.Save(in memOffset, dataSectionSlice);
-                            if (_txTracer.IsTracingInstructions)
+                            if (size > UInt256.Zero)
                             {
-                                _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
+                                if (!UpdateMemoryCost(_vmState, ref gasAvailable, in memOffset, size))
+                                    goto OutOfGas;
+
+                                ZeroPaddedSpan dataSectionSlice = dataSection.SliceWithZeroPadding(offset, (int)size);
+                                _vmState.Memory.Save(in memOffset, dataSectionSlice);
+                                if (_txTracer.IsTracingInstructions)
+                                {
+                                    _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
+                                }
                             }
+
+                            break;
+                        }
+                    case Instruction.CREATE:
+                    case Instruction.CREATE2:
+                        {
+                            Metrics.IncrementCreates();
+                            if (!_spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
+
+                            if (_vmState.IsStatic) goto StaticCallViolation;
+
+                            (exceptionType, returnData) = InstructionCreate(_vmState, ref stack, ref gasAvailable, instruction);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            if (returnData is null) break;
+
+                            goto DataReturnNoTrace;
+                        }
+                    case Instruction.EOFCREATE:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            {
+                                goto InvalidInstruction;
+                            }
+
+                            if (_vmState.IsStatic) goto StaticCallViolation;
+
+                            (exceptionType, returnData) = InstructionEofCreate(_vmState, ref programCounter, ref codeSection, ref stack, ref gasAvailable, instruction);
+
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            if (returnData is null) break;
+
+                            goto DataReturnNoTrace;
+                        }
+                    case Instruction.RETURN:
+                        {
+                            if (_vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+                            {
+                                goto InvalidInstruction;
+                            }
+                            exceptionType = InstructionReturn(_vmState, ref stack, ref gasAvailable, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            goto DataReturn;
+                        }
+                    case Instruction.CALL:
+                    case Instruction.CALLCODE:
+                    case Instruction.DELEGATECALL:
+                    case Instruction.STATICCALL:
+                        {
+                            exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            if (returnData is null)
+                            {
+                                break;
+                            }
+                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                            {
+                                // Non contract call continue rather than constructing a new frame
+                                continue;
+                            }
+
+                            goto DataReturn;
+                        }
+                    case Instruction.REVERT:
+                        {
+                            if (!_spec.RevertOpcodeEnabled) goto InvalidInstruction;
+
+                            exceptionType = InstructionRevert(_vmState, ref stack, ref gasAvailable, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            isRevert = true;
+                            goto DataReturn;
+                        }
+                    case Instruction.INVALID:
+                        exceptionType = InstructionInvalid(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.SELFDESTRUCT:
+                        exceptionType = InstructionSelfDestruct(this, ref stack, ref gasAvailable, ref programCounter);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+                        goto EmptyReturn;
+                    case Instruction.RJUMP:
+                        {
+                            if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
+                            {
+                                if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
+                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                                programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
+                                break;
+                            }
+                            goto InvalidInstruction;
+                        }
+                    case Instruction.RJUMPI:
+                        {
+                            if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
+                            {
+                                if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
+                                Span<byte> condition = stack.PopWord256();
+                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                                if (!condition.SequenceEqual(BytesZero32))
+                                {
+                                    programCounter += offset;
+                                }
+                                programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
+                                break;
+                            }
+                            goto InvalidInstruction;
+                        }
+                    case Instruction.RJUMPV:
+                        {
+                            if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
+                            {
+                                if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
+
+                                stack.PopUInt256(out a);
+                                var count = codeSection[programCounter] + 1;
+                                var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
+                                if (a < count)
+                                {
+                                    int case_v = programCounter + EvmObjectFormat.ONE_BYTE_LENGTH + (int)a * EvmObjectFormat.TWO_BYTE_LENGTH;
+                                    int offset = codeSection.Slice(case_v, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                                    programCounter += offset;
+                                }
+                                programCounter += immediates;
+                                break;
+                            }
+                            goto InvalidInstruction;
+                        }
+                    case Instruction.CALLF:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            {
+                                goto InvalidInstruction;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
+                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
+
+                            if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
+                            {
+                                goto StackOverflow;
+                            }
+
+                            if (_vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
+                                goto InvalidSubroutineEntry;
+
+                            _vmState.ReturnStack[_vmState.ReturnStackHead++] = new EvmState.ReturnState
+                            {
+                                Index = sectionIndex,
+                                Height = stack.Head - inputCount,
+                                Offset = programCounter + EvmObjectFormat.TWO_BYTE_LENGTH
+                            };
+
+                            sectionIndex = index;
+                            programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
+                            break;
                         }
 
-                        break;
-                    }
-                default:
-                    {
-                        goto InvalidInstruction;
-                    }
+                    case Instruction.JUMPF:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            {
+                                goto InvalidInstruction;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) goto OutOfGas;
+                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
+
+                            if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
+                            {
+                                goto StackOverflow;
+                            }
+
+                            sectionIndex = index;
+                            programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
+                            break;
+                        }
+                    case Instruction.RETF:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            {
+                                goto InvalidInstruction;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
+                            (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
+
+                            var stackFrame = _vmState.ReturnStack[--_vmState.ReturnStackHead];
+                            sectionIndex = stackFrame.Index;
+                            programCounter = stackFrame.Offset;
+                            break;
+                        }
+                    case Instruction.EXTCALL:
+                    case Instruction.EXTDELEGATECALL:
+                    case Instruction.EXTSTATICCALL:
+                        {
+                            exceptionType = InstructionEofCall<TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            if (returnData is null)
+                            {
+                                break;
+                            }
+                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                            {
+                                // Result pushed to stack
+                                continue;
+                            }
+
+                            goto DataReturn;
+                        }
+                    case Instruction.RETURNCONTRACT:
+                        {
+                            if (!_spec.IsEofEnabled || !_vmState.ExecutionType.IsAnyCreateEof())
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
+
+                            byte sectionIdx = codeSection[programCounter++];
+                            ReadOnlyMemory<byte> deployCode = env.CodeInfo.ContainerSection[(Range)env.CodeInfo.ContainerSectionOffset(sectionIdx)];
+                            EofCodeInfo deploycodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, _spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+
+                            stack.PopUInt256(out a);
+                            stack.PopUInt256(out b);
+                            ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
+
+                            if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, b)) goto OutOfGas;
+
+                            int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
+                            if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
+                            {
+                                goto AccessViolation;
+                            }
+
+                            auxData = _vmState.Memory.Load(a, b);
+
+                            UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
+                            return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
+                        }
+                    case Instruction.RETURNDATALOAD:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            gasAvailable -= GasCostOf.VeryLow;
+
+                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
+
+                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(a, 32);
+                            stack.PushBytes(slice);
+                            break;
+                        }
+                    default:
+                        {
+                            goto InvalidInstruction;
+                        }
+                }
             }
 
             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;

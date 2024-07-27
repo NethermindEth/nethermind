@@ -33,6 +33,22 @@ internal sealed partial class EvmInstructions
     public struct Op14 : IOpCount { public static int Count => 14; }
     public struct Op15 : IOpCount { public static int Count => 15; }
     public struct Op16 : IOpCount { public static int Count => 16; }
+    public struct Op17 : IOpCount { public static int Count => 17; }
+    public struct Op18 : IOpCount { public static int Count => 18; }
+    public struct Op19 : IOpCount { public static int Count => 19; }
+    public struct Op20 : IOpCount { public static int Count => 20; }
+    public struct Op21 : IOpCount { public static int Count => 21; }
+    public struct Op22 : IOpCount { public static int Count => 22; }
+    public struct Op23 : IOpCount { public static int Count => 23; }
+    public struct Op24 : IOpCount { public static int Count => 24; }
+    public struct Op25 : IOpCount { public static int Count => 25; }
+    public struct Op26 : IOpCount { public static int Count => 26; }
+    public struct Op27 : IOpCount { public static int Count => 27; }
+    public struct Op28 : IOpCount { public static int Count => 28; }
+    public struct Op29 : IOpCount { public static int Count => 29; }
+    public struct Op30 : IOpCount { public static int Count => 30; }
+    public struct Op31 : IOpCount { public static int Count => 31; }
+    public struct Op32 : IOpCount { public static int Count => 32; }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDup<TOpCount>(IEvm _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
@@ -54,6 +70,33 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionPush0(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        if (!vm.Spec.IncludePush0Instruction) return EvmExceptionType.BadInstruction;
+        gasAvailable -= GasCostOf.Base;
+
+        stack.PushZero();
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionPush<TOpCount>(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpCount : IOpCount
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        ReadOnlySpan<byte> code = vm.State.Env.CodeInfo.MachineCode.Span;
+
+        int length = TOpCount.Count;
+        int usedFromCode = Math.Min(code.Length - programCounter, length);
+        stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+        
+        programCounter += length;
+
+        return EvmExceptionType.None;
+    }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionLog<TOpCount>(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)

@@ -15,16 +15,205 @@ using Int256;
 
 internal sealed partial class EvmInstructions
 {
-    [SkipLocalsInit]
-    public static void InstructionPushN(ref EvmStack stack, ref long gasAvailable, ref int programCounter, Instruction instruction, ReadOnlySpan<byte> code)
+    internal static unsafe delegate*<IEvm, ref EvmStack, ref long, ref int, EvmExceptionType>[] CalliJmpTable = CreateInstructLookup();
+    private static unsafe delegate*<IEvm, ref EvmStack, ref long, ref int, EvmExceptionType>[] CreateInstructLookup()
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        var lookup = new delegate*<IEvm, ref EvmStack, ref long, ref int, EvmExceptionType>[256];
 
-        int length = instruction - Instruction.PUSH1 + 1;
-        int usedFromCode = Math.Min(code.Length - programCounter, length);
-        stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+        for (int i = 0; i < lookup.Length; i++)
+        {
+            lookup[i] = &InstructionBadInstruction;
+        }
 
-        programCounter += length;
+        lookup[(int)Instruction.ADD] = &InstructionMath2Param<OpAdd>;
+        lookup[(int)Instruction.MUL] = &InstructionMath2Param<OpMul>;
+        lookup[(int)Instruction.SUB] = &InstructionMath2Param<OpSub>;
+        lookup[(int)Instruction.DIV] = &InstructionMath2Param<OpDiv>;
+        lookup[(int)Instruction.SDIV] = &InstructionMath2Param<OpSDiv>;
+        lookup[(int)Instruction.MOD] = &InstructionMath2Param<OpMod>;
+        lookup[(int)Instruction.SMOD] = &InstructionMath2Param<OpSMod>;
+        lookup[(int)Instruction.ADDMOD] = &InstructionMath3Param<OpAddMod>;
+        lookup[(int)Instruction.MULMOD] = &InstructionMath3Param<OpMulMod>;
+        lookup[(int)Instruction.EXP] = &InstructionExp;
+        lookup[(int)Instruction.SIGNEXTEND] = &InstructionSignExtend;
+        lookup[(int)Instruction.LT] = &InstructionMath2Param<OpLt>;
+        lookup[(int)Instruction.GT] = &InstructionMath2Param<OpGt>;
+        lookup[(int)Instruction.SLT] = &InstructionMath2Param<OpSLt>;
+        lookup[(int)Instruction.SGT] = &InstructionMath2Param<OpSGt>;
+        lookup[(int)Instruction.EQ] = &InstructionBitwise<OpBitwiseEq>;
+        lookup[(int)Instruction.ISZERO] = &InstructionMath1Param<OpIsZero>;
+        lookup[(int)Instruction.AND] = &InstructionBitwise<OpBitwiseAnd>;
+        lookup[(int)Instruction.OR] = &InstructionBitwise<OpBitwiseOr>;
+        lookup[(int)Instruction.XOR] = &InstructionBitwise<OpBitwiseXor>;
+        lookup[(int)Instruction.NOT] = &InstructionMath1Param<OpNot>;
+        lookup[(int)Instruction.BYTE] = &InstructionByte;
+        lookup[(int)Instruction.SHL] = &InstructionShift<OpShl>;
+        lookup[(int)Instruction.SHR] = &InstructionShift<OpShr>;
+        lookup[(int)Instruction.SAR] = &InstructionSar;
+
+        lookup[(int)Instruction.KECCAK256] = &InstructionKeccak256;
+
+        lookup[(int)Instruction.ADDRESS] = &InstructionEnvBytes<OpAddress>;
+        lookup[(int)Instruction.BALANCE] = &InstructionBalance;
+        lookup[(int)Instruction.ORIGIN] = &InstructionEnvBytes<OpOrigin>;
+        lookup[(int)Instruction.CALLER] = &InstructionEnvBytes<OpCaller>;
+        lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<OpCallValue>;
+        lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad;
+        lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt256<OpCallDataSize>;
+        lookup[(int)Instruction.CALLDATACOPY] = &InstructionCodeCopy<OpCallDataCopy>;
+        lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt256<OpCodeSize>;
+        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<OpCodeCopy>;
+        lookup[(int)Instruction.GASPRICE] = &InstructionEnvUInt256<OpGasPrice>;
+
+        lookup[(int)Instruction.EXTCODESIZE] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy;
+
+        lookup[(int)Instruction.RETURNDATASIZE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RETURNDATACOPY] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.EXTCODEHASH] = &InstructionExtCodeHash;
+
+        lookup[(int)Instruction.BLOCKHASH] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.COINBASE] = &InstructionEnvBytes<OpCoinbase>;
+        lookup[(int)Instruction.TIMESTAMP] = &InstructionEnvUInt256<OpTimestamp>;
+        lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt256<OpNumber>;
+        lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao;
+        lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt256<OpGasLimit>;
+        lookup[(int)Instruction.CHAINID] = &InstructionChainId;
+        lookup[(int)Instruction.SELFBALANCE] = &InstructionSelfBalance;
+        lookup[(int)Instruction.BASEFEE] = &InstructionEnvUInt256<OpBaseFee>;
+        lookup[(int)Instruction.BLOBHASH] = &InstructionBlobHash;
+        lookup[(int)Instruction.BLOBBASEFEE] = &InstructionEnvUInt256<OpBlobBaseFee>;
+        // Gap: 0x4b to 0x4f
+        lookup[(int)Instruction.POP] = &InstructionPop;
+        lookup[(int)Instruction.MLOAD] = &InstructionMLoad;
+        lookup[(int)Instruction.MSTORE] = &InstructionMStore;
+        lookup[(int)Instruction.MSTORE8] = &InstructionMStore8;
+        lookup[(int)Instruction.SLOAD] = &InstructionSLoad;
+        lookup[(int)Instruction.SSTORE] = &InstructionSStore;
+        lookup[(int)Instruction.JUMP] = &InstructionJump;
+        lookup[(int)Instruction.JUMPI] = &InstructionJumpIf;
+        lookup[(int)Instruction.PC] = &InstructionProgramCounter;
+        lookup[(int)Instruction.MSIZE] = &InstructionEnvUInt256<OpMSize>;
+        lookup[(int)Instruction.GAS] = &InstructionGas;
+        lookup[(int)Instruction.JUMPDEST] = &InstructionJumpDest;
+        lookup[(int)Instruction.TLOAD] = &InstructionTLoad;
+        lookup[(int)Instruction.TSTORE] = &InstructionTStore;
+        lookup[(int)Instruction.MCOPY] = &InstructionMCopy;
+        
+        lookup[(int)Instruction.PUSH0] = &InstructionPush0;
+        lookup[(int)Instruction.PUSH1] = &InstructionPush<Op1>;
+        lookup[(int)Instruction.PUSH2] = &InstructionPush<Op2>;
+        lookup[(int)Instruction.PUSH3] = &InstructionPush<Op3>;
+        lookup[(int)Instruction.PUSH4] = &InstructionPush<Op4>;
+        lookup[(int)Instruction.PUSH5] = &InstructionPush<Op5>;
+        lookup[(int)Instruction.PUSH6] = &InstructionPush<Op6>;
+        lookup[(int)Instruction.PUSH7] = &InstructionPush<Op7>;
+        lookup[(int)Instruction.PUSH8] = &InstructionPush<Op8>;
+        lookup[(int)Instruction.PUSH9] = &InstructionPush<Op9>;
+        lookup[(int)Instruction.PUSH10] = &InstructionPush<Op10>;
+        lookup[(int)Instruction.PUSH11] = &InstructionPush<Op11>;
+        lookup[(int)Instruction.PUSH12] = &InstructionPush<Op12>;
+        lookup[(int)Instruction.PUSH13] = &InstructionPush<Op13>;
+        lookup[(int)Instruction.PUSH14] = &InstructionPush<Op14>;
+        lookup[(int)Instruction.PUSH15] = &InstructionPush<Op15>;
+        lookup[(int)Instruction.PUSH16] = &InstructionPush<Op16>;
+        lookup[(int)Instruction.PUSH17] = &InstructionPush<Op17>;
+        lookup[(int)Instruction.PUSH18] = &InstructionPush<Op18>;
+        lookup[(int)Instruction.PUSH19] = &InstructionPush<Op19>;
+        lookup[(int)Instruction.PUSH20] = &InstructionPush<Op20>;
+        lookup[(int)Instruction.PUSH21] = &InstructionPush<Op21>;
+        lookup[(int)Instruction.PUSH22] = &InstructionPush<Op22>;
+        lookup[(int)Instruction.PUSH23] = &InstructionPush<Op23>;
+        lookup[(int)Instruction.PUSH24] = &InstructionPush<Op24>;
+        lookup[(int)Instruction.PUSH25] = &InstructionPush<Op25>;
+        lookup[(int)Instruction.PUSH26] = &InstructionPush<Op26>;
+        lookup[(int)Instruction.PUSH27] = &InstructionPush<Op27>;
+        lookup[(int)Instruction.PUSH28] = &InstructionPush<Op28>;
+        lookup[(int)Instruction.PUSH29] = &InstructionPush<Op29>;
+        lookup[(int)Instruction.PUSH30] = &InstructionPush<Op30>;
+        lookup[(int)Instruction.PUSH31] = &InstructionPush<Op31>;
+        lookup[(int)Instruction.PUSH32] = &InstructionPush<Op32>;
+
+        lookup[(int)Instruction.DUP1] = &InstructionDup<Op1>;
+        lookup[(int)Instruction.DUP2] = &InstructionDup<Op2>;
+        lookup[(int)Instruction.DUP3] = &InstructionDup<Op3>;
+        lookup[(int)Instruction.DUP4] = &InstructionDup<Op4>;
+        lookup[(int)Instruction.DUP5] = &InstructionDup<Op5>;
+        lookup[(int)Instruction.DUP6] = &InstructionDup<Op6>;
+        lookup[(int)Instruction.DUP7] = &InstructionDup<Op7>;
+        lookup[(int)Instruction.DUP8] = &InstructionDup<Op8>;
+        lookup[(int)Instruction.DUP9] = &InstructionDup<Op9>;
+        lookup[(int)Instruction.DUP10] = &InstructionDup<Op10>;
+        lookup[(int)Instruction.DUP11] = &InstructionDup<Op11>;
+        lookup[(int)Instruction.DUP12] = &InstructionDup<Op12>;
+        lookup[(int)Instruction.DUP13] = &InstructionDup<Op13>;
+        lookup[(int)Instruction.DUP14] = &InstructionDup<Op14>;
+        lookup[(int)Instruction.DUP15] = &InstructionDup<Op15>;
+        lookup[(int)Instruction.DUP16] = &InstructionDup<Op16>;
+
+        lookup[(int)Instruction.SWAP1] = &InstructionSwap<Op1>;
+        lookup[(int)Instruction.SWAP2] = &InstructionSwap<Op2>;
+        lookup[(int)Instruction.SWAP3] = &InstructionSwap<Op3>;
+        lookup[(int)Instruction.SWAP4] = &InstructionSwap<Op4>;
+        lookup[(int)Instruction.SWAP5] = &InstructionSwap<Op5>;
+        lookup[(int)Instruction.SWAP6] = &InstructionSwap<Op6>;
+        lookup[(int)Instruction.SWAP7] = &InstructionSwap<Op7>;
+        lookup[(int)Instruction.SWAP8] = &InstructionSwap<Op8>;
+        lookup[(int)Instruction.SWAP9] = &InstructionSwap<Op9>;
+        lookup[(int)Instruction.SWAP10] = &InstructionSwap<Op10>;
+        lookup[(int)Instruction.SWAP11] = &InstructionSwap<Op11>;
+        lookup[(int)Instruction.SWAP12] = &InstructionSwap<Op12>;
+        lookup[(int)Instruction.SWAP13] = &InstructionSwap<Op13>;
+        lookup[(int)Instruction.SWAP14] = &InstructionSwap<Op14>;
+        lookup[(int)Instruction.SWAP15] = &InstructionSwap<Op15>;
+        lookup[(int)Instruction.SWAP16] = &InstructionSwap<Op16>;
+
+        lookup[(int)Instruction.LOG0] = &InstructionLog<Op0>;
+        lookup[(int)Instruction.LOG1] = &InstructionLog<Op1>;
+        lookup[(int)Instruction.LOG2] = &InstructionLog<Op2>;
+        lookup[(int)Instruction.LOG3] = &InstructionLog<Op3>;
+        lookup[(int)Instruction.LOG4] = &InstructionLog<Op4>;
+        
+        lookup[(int)Instruction.DATALOAD] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DATALOADN] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DATASIZE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DATACOPY] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.CREATE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.CALL] = &InstructionBadInstruction;
+        lookup[(int)Instruction.CALLCODE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RETURN] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DELEGATECALL] = &InstructionBadInstruction;
+        lookup[(int)Instruction.CREATE2] = &InstructionBadInstruction;
+        lookup[(int)Instruction.STATICCALL] = &InstructionBadInstruction;
+        lookup[(int)Instruction.REVERT] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.INVALID] = &InstructionInvalid;
+
+        lookup[(int)Instruction.SELFDESTRUCT] = &InstructionBadInstruction;
+        
+        lookup[(int)Instruction.RJUMP] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RJUMPI] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RJUMPV] = &InstructionBadInstruction;
+        lookup[(int)Instruction.CALLF] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RETF] = &InstructionBadInstruction;
+        lookup[(int)Instruction.JUMPF] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DUPN] = &InstructionBadInstruction;
+        lookup[(int)Instruction.SWAPN] = &InstructionBadInstruction;
+        lookup[(int)Instruction.EXCHANGE] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.EOFCREATE] = &InstructionBadInstruction;
+        
+        lookup[(int)Instruction.RETURNCONTRACT] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RETURNDATALOAD] = &InstructionBadInstruction;
+        lookup[(int)Instruction.EXTCALL] = &InstructionBadInstruction;
+        lookup[(int)Instruction.EXTDELEGATECALL] = &InstructionBadInstruction;
+        lookup[(int)Instruction.EXTSTATICCALL] = &InstructionBadInstruction;
+
+        return lookup;
     }
 
     [SkipLocalsInit]
