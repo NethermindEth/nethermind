@@ -35,7 +35,7 @@ internal ref struct ILEvmState
     public bool ShouldJump;
 
     // * vmState.DataStackHead :
-    public ref int StackHead;
+    public int StackHead;
     // * vmState.DataStack :
     public Span<byte> Stack;
 
@@ -53,7 +53,7 @@ internal ref struct ILEvmState
         Env = ref evmState.Env;
         TxCtx = ref evmState.Env.TxExecutionContext;
         BlkCtx = ref evmState.Env.TxExecutionContext.BlockExecutionContext;
-        StackHead = ref evmState.DataStackHead;
+        StackHead = evmState.DataStackHead;
         Stack = evmState.DataStack;
         Memory = ref evmState.Memory;
 

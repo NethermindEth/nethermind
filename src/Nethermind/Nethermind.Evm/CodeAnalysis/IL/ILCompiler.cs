@@ -260,7 +260,7 @@ internal class ILCompiler
                     method.Load(stack, head);
 
                     // we load the span of bytes
-                    method.LoadArgument(3);
+                    method.LoadArgument(4);
                     method.LoadConstant(op.Arguments.Value);
                     method.LoadElement<byte[]>();
                     method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
@@ -660,6 +660,7 @@ internal class ILCompiler
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
+                    method.LoadObject(typeof(ReadOnlyMemory<byte>));
                     method.LoadLocalAddress(uint256B);
                     method.LoadLocal(uint256C);
                     method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -688,6 +689,7 @@ internal class ILCompiler
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
+                    method.LoadObject(typeof(ReadOnlyMemory<byte>));
 
                     method.LoadLocalAddress(uint256A);
                     method.LoadConstant(Word.Size);
@@ -1267,7 +1269,7 @@ internal class ILCompiler
                 case Instruction.TSTORE:
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
-                    method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), true, out _));
+                    method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
                     method.BranchIfTrue(evmExceptionLabels[EvmExceptionType.StaticCallViolation]);
 
                     method.StackLoadPrevious(stack, head, 1);
@@ -1282,12 +1284,12 @@ internal class ILCompiler
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.Call(GetPropertyInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount), false, out _));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                     method.LoadLocalAddress(uint256A);
                     method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
                     method.StoreLocal(storageCell);
 
-                    method.LoadArgument(2);
+                    method.LoadArgument(3);
                     method.LoadLocalAddress(storageCell);
                     method.LoadLocal(localArray);
                     method.CallVirtual(typeof(StorageCell).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
@@ -1300,12 +1302,12 @@ internal class ILCompiler
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.Call(GetPropertyInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount), false, out _));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                     method.LoadLocalAddress(uint256A);
                     method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
                     method.StoreLocal(storageCell);
 
-                    method.LoadArgument(2);
+                    method.LoadArgument(3);
                     method.LoadLocalAddress(storageCell);
                     method.CallVirtual(typeof(StorageCell).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
                     method.StoreLocal(localReadonOnlySpan);

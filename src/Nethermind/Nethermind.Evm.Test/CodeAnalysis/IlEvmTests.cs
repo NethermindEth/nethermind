@@ -408,6 +408,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             yield return (Instruction.JUMP, Prepare.EvmCode
                 .JUMP(31)
                 .Done);
+
+            yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
+                .PushData(0)
+                .PushData(23)
+                .TSTORE()
+                .PushData(0)
+                .TLOAD()
+                .PushData(23)
+                .EQ()
+                .Done);
         }
 
         [Test, TestCaseSource(nameof(GetBytecodes))]
