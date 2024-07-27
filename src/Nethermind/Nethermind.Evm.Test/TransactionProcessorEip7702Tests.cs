@@ -120,9 +120,9 @@ internal class TransactionProcessorEip7702Tests
         yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyA };
     }
     [TestCaseSource(nameof(SenderSignerCases))]
-    public void Execute_SenderAndSignerIsTheSameAndNotWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer)
+    public void Execute_SenderAndSignerCombinationsWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer)
     {
-        Address codeSource = TestItem.AddressB;
+        Address codeSource = TestItem.AddressC;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
@@ -136,7 +136,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
