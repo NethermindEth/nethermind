@@ -5,5 +5,5 @@ namespace Nethermind.Network.Discovery.Portal;
 
 public class FindContent
 {
-    public ContentKey ContentKey { get; set; } = new ContentKey();
+    public byte[] ContentKey { get; set; } = Array.Empty<byte>();
 }

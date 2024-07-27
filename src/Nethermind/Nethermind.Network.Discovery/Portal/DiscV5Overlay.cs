@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.Enr;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 
@@ -37,9 +38,21 @@ public class DiscV5Overlay
         _logger = logManager.GetClassLogger<DiscV5Overlay>();
     }
 
-    public Task Start(CancellationToken token)
+    public async Task Start(CancellationToken token)
     {
-        return _kademlia.Run(token);
+        await _kademlia.Bootstrap(token);
+
+        Console.Out.WriteLine("Starting lookup");
+
+        var result = await _kademlia.LookupValue(new ContentKey()
+        {
+             HeaderKey = new ValueHash256("0xd1714277cf77b6b90f6a47eeb2476df27432d6866d2626aa3e61e86a442570f8")
+        }, token);
+
+        Console.Out.WriteLine($"got result {result}");
+        Console.Out.WriteLine($"got header {result!.Header}");
+
+        await _kademlia.Run(token);
     }
 
     public void AddSeed(IEnr node)

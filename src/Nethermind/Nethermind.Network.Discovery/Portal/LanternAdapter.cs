@@ -65,7 +65,7 @@ public class LanternAdapter: ILanternAdapter
             return null;
         }
 
-        _logger.Info($"Got msg req on protocol {talkReqMessage.Protocol.ToHexString()}");
+        _logger.Info($"Got msg req on protocol {talkReqMessage.Protocol.ToHexString()}. Byte seems to be {talkReqMessage.Request[0]}");
         MessageUnion message = SlowSSZ.Deserialize<MessageUnion>(talkReqMessage.Request);
 
         if (message.Ping is { } ping)
@@ -106,8 +106,8 @@ public class LanternAdapter: ILanternAdapter
         }
         else if (message.FindContent is { } findContent)
         {
-            // TODO: Straight up wrong
-            var findValueResult = await kad.FindValue(sender, findContent.ContentKey, CancellationToken.None);
+            ContentKey key = SlowSSZ.Deserialize<ContentKey>(findContent.ContentKey);
+            var findValueResult = await kad.FindValue(sender, key, CancellationToken.None);
             if (findValueResult.hasValue)
             {
                 byte[] thePayload = _contentEncoder.Encode(findValueResult.value!);
@@ -219,7 +219,6 @@ public class LanternAdapter: ILanternAdapter
 
         var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
         var nodeId = receiver.NodeId.ToHexString();
-        _logger.Info($"Send TalkReq to {destIpKey}, {nodeId}");
 
         byte[]? sentMessage = (await _packetManager.SendPacket(receiver, MessageType.TalkReq, false, protocol, message))!;
         if (sentMessage == null)
@@ -231,7 +230,7 @@ public class LanternAdapter: ILanternAdapter
         // Yea... it does not return the original message, so we have to decode it to get the request id.
         // Either this or we have some more hacks.
         var talkReqMessage = (TalkReqMessage)_messageDecoder.DecodeMessage(sentMessage);
-        _logger.Info($"Send talkreq to {destIpKey}, {nodeId} with request id {talkReqMessage.RequestId.ToHexString()}");
+        _logger.Info($"Sent TalkReq to {destIpKey}, {nodeId} with request id {talkReqMessage.RequestId.ToHexString()}");
         return talkReqMessage;
     }
 
@@ -314,12 +313,21 @@ public class LanternAdapter: ILanternAdapter
             {
                 FindContent = new FindContent()
                 {
-                    ContentKey = contentKey
+                    ContentKey = SlowSSZ.Serialize(contentKey)
                 }
             });
 
             byte[] response = await manager.CallAndWaitForResponse(receiver, protocol, findContentBytes, token);
-            Content message = SlowSSZ.Deserialize<MessageUnion>(response).Content!;
+            Content message;
+            try
+            {
+                message = SlowSSZ.Deserialize<MessageUnion>(response).Content!;
+            }
+            catch (Exception e)
+            {
+                manager._logger.Error($"Error deserialize {response.ToHexString()}. Request is {findContentBytes.ToHexString()}", e);
+                throw;
+            }
 
             if (message.ConnectionId == null && message.Payload == null)
             {

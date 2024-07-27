@@ -95,11 +95,13 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
                     FindValueResponse<TNode, TContent> valueResponse = await _messageSender.FindValue(nextNode, contentKey, token);
                     if (valueResponse.hasValue)
                     {
+                        _logger.Info($"Value response has value {valueResponse.value}");
                         resultWasFound = true;
                         result = valueResponse.value; // Shortcut so that once it find the value, it should stop.
                         await cts.CancelAsync();
                     }
 
+                    _logger.Info($"Value response has no value. Returning {valueResponse.neighbours.Length} neighbours");
                     return valueResponse.neighbours;
                 },
                 token
@@ -155,7 +157,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             }
             catch (Exception e)
             {
-                _logger.Trace($"Find neighbour op failed. {e}");
+                _logger.Error($"Find neighbour op failed. {e}");
                 return (node, null);
             }
         };
