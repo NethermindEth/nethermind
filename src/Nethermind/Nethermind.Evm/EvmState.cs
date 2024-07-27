@@ -294,7 +294,7 @@ namespace Nethermind.Evm
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
-            _canRestore = false; // we can't restore if we commited
+            _canRestore = false; // we can't restore if we committed
         }
 
         private void Restore()

@@ -348,7 +348,7 @@ public class DiscoveryApp : IDiscoveryApp
                     Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
             {
                 _logger.Error(
-                    $"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} miliseconds");
+                    $"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} milliseconds");
             }
             else
             {
