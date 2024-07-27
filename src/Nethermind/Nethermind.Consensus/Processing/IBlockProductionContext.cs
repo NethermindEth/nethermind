@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Merge.Plugin.BlockProduction;
+namespace Nethermind.Consensus;
 
 public interface IBlockProductionContext
 {

@@ -81,7 +81,14 @@ namespace Nethermind.Merge.AuRa
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
 
-            return base.InitBlockProducer(consensusPlugin, txSource);
+            IBlockProducer blockProducer = base.InitBlockProducer(consensusPlugin, txSource);
+
+            if (_shutterConfig!.Enabled)
+            {
+                _api.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(blockProducer, _shutterTxSource!, _shutterConfig, _api.SpecProvider!, TimeSpan.FromMilliseconds(_shutterConfig.ExtraBuildWindow));
+            }
+
+            return blockProducer;
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
@@ -92,14 +99,14 @@ namespace Nethermind.Merge.AuRa
                 _blocksConfig,
                 _api.LogManager);
 
+        ShutterTxSource? _shutterTxSource = null;
+
         protected override BlockProducerEnv CreateBlockProducerEnv()
         {
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
             Logging.ILogger logger = _api.LogManager.GetClassLogger();
-
-            ShutterTxSource? shutterTxSource = null;
 
             if (_shutterConfig!.Enabled)
             {
@@ -138,7 +145,7 @@ namespace Nethermind.Merge.AuRa
                 };
                 _api.BlockTree!.NewHeadBlock += _eonUpdateHandler;
 
-                shutterTxSource = new ShutterTxSource(new ShutterTxLoader(
+                _shutterTxSource = new ShutterTxSource(new ShutterTxLoader(
                     _api.LogFinder!,
                     _shutterConfig,
                     _api.SpecProvider!,
@@ -146,12 +153,12 @@ namespace Nethermind.Merge.AuRa
                     readOnlyBlockTree,
                     _api.LogManager), _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
-                ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, shutterTxSource, shutterEon, _api.LogManager);
+                ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, shutterEon, _api.LogManager);
                 _shutterP2P = new(shutterMessageHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses);
             }
 
-            return _api.BlockProducerEnvFactory.Create(shutterTxSource);
+            return _api.BlockProducerEnvFactory.Create(_shutterTxSource);
         }
 
         public bool ShouldRunSteps(INethermindApi api)

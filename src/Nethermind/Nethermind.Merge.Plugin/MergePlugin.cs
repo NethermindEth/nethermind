@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -294,8 +295,14 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             }
             Thread.Sleep(5000);
 
+
             IBlockImprovementContextFactory improvementContextFactory;
-            if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
+
+            if (_api.Config<IShutterConfig>().Enabled && _api.BlockImprovementContextFactory is not null)
+            {
+                improvementContextFactory = _api.BlockImprovementContextFactory;
+            }
+            else if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
             {
                 improvementContextFactory = new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
             }

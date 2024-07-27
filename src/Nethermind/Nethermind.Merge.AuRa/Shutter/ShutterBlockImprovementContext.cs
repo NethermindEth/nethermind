@@ -6,47 +6,68 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Specs;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Merge.AuRa.Shutter;
+public class ShutterBlockImprovementContextFactory(IBlockProducer blockProducer, ShutterTxSource shutterTxSource, IShutterConfig shutterConfig, ISpecProvider spec, TimeSpan timeout) : IBlockImprovementContextFactory
+{
+    private readonly ulong genesisTimestamp = 1000 * (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
+
+    public IBlockImprovementContext StartBlockImprovementContext(
+        Block currentBestBlock,
+        BlockHeader parentHeader,
+        PayloadAttributes payloadAttributes,
+        DateTimeOffset startDateTime) =>
+        new ShutterBlockImprovementContext(blockProducer, shutterTxSource, shutterConfig, currentBestBlock, parentHeader, payloadAttributes, startDateTime, timeout, genesisTimestamp, spec.SlotLength??TimeSpan.FromSeconds(5));
+}
+
 public class ShutterBlockImprovementContext : IBlockImprovementContext
 {
-    private readonly BlockHeader parentHeader;
     private CancellationTokenSource? _cancellationTokenSource;
-    private TaskCompletionSource<Block?> _result;
 
-    private readonly ulong _buildSlot;
-
-    public ShutterBlockImprovementContext(
+    internal ShutterBlockImprovementContext(
         IBlockProducer blockProducer,
-        ShutterTxSource shutterTxSource,
+        IShutterTxSignal shutterTxSignal,
         IShutterConfig shutterConfig,
         Block currentBestBlock,
-        TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
+        TimeSpan timeout,
         ulong genesisTimestamp,
-        ushort slotLength)
+        TimeSpan slotLength)
     {
+        if (slotLength == TimeSpan.Zero)
+            throw new ArgumentException("Cannot be zero.",nameof(slotLength));
+        if (payloadAttributes.Timestamp < genesisTimestamp)
+            throw new ArgumentOutOfRangeException(nameof(genesisTimestamp), genesisTimestamp, "Genesis cannot be after the payload timestamp.");
+
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
-        this.parentHeader = parentHeader;
         StartDateTime = startDateTime;
-        _buildSlot = GetBuildingSlot(payloadAttributes, genesisTimestamp, slotLength);
-        _result = new TaskCompletionSource<Block?>();
         ImprovementTask =
         Task.Run(async () =>
         {
-            Task timeout = Task.Delay((int)shutterConfig.ExtraBuildWindow);
-            Task first = await Task.WhenAny(timeout, shutterTxSource.WaitForTransactions(_buildSlot));
+            (int slot, int offset) = GetBuildingSlotAndOffset(payloadAttributes.Timestamp, genesisTimestamp, slotLength);
+            int waitTime = (int)shutterConfig.ExtraBuildWindow - offset;
+            if (waitTime < 1)
+            {
+                return currentBestBlock;
+            }
+            Task timeout = Task.Delay(waitTime, _cancellationTokenSource.Token);
+            Task first = await Task.WhenAny(timeout, shutterTxSignal.WaitForTransactions((ulong)slot));
             if (first == timeout)
-                return Task.FromResult(currentBestBlock);
-            return blockProducer.BuildBlock(parentHeader, null, payloadAttributes, );
+                return currentBestBlock;
+            Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+            if (result !=null)
+                CurrentBestBlock = result;
+            return result;
         });
     }
 
@@ -59,19 +80,18 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private static ulong GetBuildingSlot(PayloadAttributes payloadAttributes, ulong genesisTimestamp, ushort slotLength)
+    private static (int, int) GetBuildingSlotAndOffset(ulong currentTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
     {
-        var unixTime = payloadAttributes.Timestamp;
-        ulong timeSinceGenesis = unixTime - genesisTimestamp;
-        ulong currentSlot = timeSinceGenesis / slotLength;
+        double timeSinceGenesis = 1000 * ( currentTimestamp - genesisTimestamp);
+        int currentSlot = (int)(timeSinceGenesis / slotLength.TotalMilliseconds);
+        int slotOffset = (int)(timeSinceGenesis % slotLength.TotalMilliseconds);
 
-        return currentSlot;
+        return (currentSlot, slotOffset);
     }
 
     public void Dispose()
     {
         Disposed = true;
-        _result.TrySetCanceled();
         CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
     }
 }

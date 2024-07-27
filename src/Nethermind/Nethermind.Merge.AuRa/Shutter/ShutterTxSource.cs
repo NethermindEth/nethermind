@@ -11,7 +11,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using System;
 using Nethermind.Core.Caching;
-using Nethermind.Config;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 
@@ -22,15 +21,13 @@ public class ShutterTxSource(
     IShutterConfig shutterConfig,
     ISpecProvider specProvider,
     ILogManager logManager)
-    : ITxSource
+    : ITxSource, IShutterTxSignal
 {
-    private LruCache<ulong, ShutterTransactions?> _transactionCache = new (10, "Shutter tx cache");
+    private LruCache<ulong, ShutterTransactions?> _transactionCache = new(10, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong genesisTimestamp = 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
     private const ushort slotLength = 5000;
     private ulong _highestSlotSeen = 0;
-    private ulong _extraBuildWindowMs = shutterConfig.ExtraBuildWindow
-        == default ? shutterConfig.GetDefaultValue<ulong>(nameof(ShutterConfig.ExtraBuildWindow)) : shutterConfig.ExtraBuildWindow;
     private readonly object _syncObject = new();
     private static ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
 
@@ -78,7 +75,7 @@ public class ShutterTxSource(
                    {
                        TaskCompletionSource? removed;
                        _keyWaitTasks.TryRemove(slot, out removed);
-                       removed?.SetCanceled();
+                       removed?.TrySetCanceled();
                    });
                    return tcs;
                }).Task;
@@ -95,7 +92,7 @@ public class ShutterTxSource(
             TaskCompletionSource? tcs;
             if (_keyWaitTasks.Remove(slot, out tcs))
             {
-                tcs.SetResult();
+                tcs.TrySetResult();
             }
         }
     }
@@ -107,13 +104,6 @@ public class ShutterTxSource(
         var unixTime = payloadAttributes != null ? payloadAttributes.Timestamp : (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         ulong timeSinceGenesis = unixTime - genesisTimestamp;
         ulong currentSlot = timeSinceGenesis / slotLength;
-        if (payloadAttributes!=null)
-        {
-            return currentSlot;
-        }
-        ushort slotOffset = (ushort)(timeSinceGenesis % slotLength);
-
-        // if inside the build window then building for this slot, otherwise next
-        return ((slotOffset <= _extraBuildWindowMs) ? currentSlot : currentSlot + 1, slotOffset);
+        return currentSlot;
     }
 }

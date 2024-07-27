@@ -73,9 +73,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             throw new EmptyBlockProductionException("Setting state for processing block failed");
         }
 
-        protected async override Task<Block> PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
-            Block block = await base.PrepareBlock(parent, payloadAttributes);
+            Block block = base.PrepareBlock(parent, payloadAttributes);
             AmendHeader(block.Header, parent);
             return block;
         }

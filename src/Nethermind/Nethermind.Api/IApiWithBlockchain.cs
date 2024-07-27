@@ -40,6 +40,7 @@ namespace Nethermind.Api
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner? BlockProducerRunner { get; set; }
         IBlockValidator? BlockValidator { get; set; }
+        IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         IEnode? Enode { get; set; }
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
