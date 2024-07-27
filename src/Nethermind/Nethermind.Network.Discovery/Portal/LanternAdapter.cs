@@ -11,21 +11,20 @@ using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Lantern.Discv5.WireProtocol.Messages.Responses;
 using Lantern.Discv5.WireProtocol.Packet;
 using Lantern.Discv5.WireProtocol.Table;
-using Microsoft.ClearScript.Util.Web;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Synchronization;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Portal;
 
 public class LanternAdapter: ILanternAdapter
 {
-    private readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(2);
+    private const int MaxContentByteSize = 1000;
 
+    private readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(2);
     private readonly IDiscv5Protocol _discv5;
     private readonly ILogger _logger;
     private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
@@ -34,9 +33,10 @@ public class LanternAdapter: ILanternAdapter
     private readonly IIdentityVerifier _identityVerifier;
     private readonly IEnrFactory _enrFactory;
     private readonly IRoutingTable _routingTable;
+    private PortalContentEncoderDecoder _contentEncoder = new PortalContentEncoderDecoder();
 
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
-    private readonly SpanDictionary<byte, IKademlia<IEnr>> _kademliaOverlays = new(Bytes.SpanEqualityComparer);
+    private readonly SpanDictionary<byte, IKademlia<IEnr, ContentKey, ContentContent>> _kademliaOverlays = new(Bytes.SpanEqualityComparer);
 
     public LanternAdapter (
         IDiscv5Protocol discv5,
@@ -107,12 +107,11 @@ public class LanternAdapter: ILanternAdapter
         else if (message.FindContent is { } findContent)
         {
             // TODO: Straight up wrong
-            ValueHash256 enrValue = new ValueHash256(findContent.ContentKey);
-            var findValueResult = await kad.FindValue(sender, enrValue, CancellationToken.None);
+            var findValueResult = await kad.FindValue(sender, findContent.ContentKey, CancellationToken.None);
             if (findValueResult.hasValue)
             {
-                var value = findValueResult.value!;
-                if (value.Length > 1000)
+                byte[] thePayload = _contentEncoder.Encode(findValueResult.value!);
+                if (thePayload.Length > MaxContentByteSize)
                 {
                     throw new NotImplementedException("large value not supported yet");
                 }
@@ -121,7 +120,7 @@ public class LanternAdapter: ILanternAdapter
                 {
                     Content = new Content()
                     {
-                        Payload = findValueResult.value
+                        Payload = thePayload
                     }
                 });
             }
@@ -162,12 +161,12 @@ public class LanternAdapter: ILanternAdapter
         }
     }
 
-    public IMessageSender<IEnr> CreateMessageSenderForProtocol(byte[] protocol)
+    public IMessageSender<IEnr, ContentKey, ContentContent> CreateMessageSenderForProtocol(byte[] protocol)
     {
         return new KademliaMessageSender(protocol, this);
     }
 
-    public void RegisterKademliaOverlay(byte[] protocol, IKademlia<IEnr> kademlia)
+    public void RegisterKademliaOverlay(byte[] protocol, IKademlia<IEnr, ContentKey, ContentContent> kademlia)
     {
         _kademliaOverlays[protocol] = kademlia;
     }
@@ -236,7 +235,7 @@ public class LanternAdapter: ILanternAdapter
         return talkReqMessage;
     }
 
-    private class KademliaMessageSender(byte[] protocol, LanternAdapter manager) : IMessageSender<IEnr>
+    private class KademliaMessageSender(byte[] protocol, LanternAdapter manager) : IMessageSender<IEnr, ContentKey, ContentContent>
     {
         public async Task Ping(IEnr receiver, CancellationToken token)
         {
@@ -309,29 +308,20 @@ public class LanternAdapter: ILanternAdapter
             return enrs;
         }
 
-        public async Task<FindValueResponse<IEnr>> FindValue(IEnr receiver, ValueHash256 hash, CancellationToken token)
+        public async Task<FindValueResponse<IEnr, ContentContent>> FindValue(IEnr receiver, ContentKey contentKey, CancellationToken token)
         {
             byte[] findContentBytes = SlowSSZ.Serialize(new MessageUnion()
             {
                 FindContent = new FindContent()
                 {
-                    ContentKey = hash.BytesAsSpan.ToArray()
+                    ContentKey = contentKey
                 }
             });
 
             byte[] response = await manager.CallAndWaitForResponse(receiver, protocol, findContentBytes, token);
-
             Content message = SlowSSZ.Deserialize<MessageUnion>(response).Content!;
 
-            if (message.ConnectionId != null)
-            {
-                throw new NotImplementedException("Connection id not implemented yet");
-            }
-            else if (message.Payload != null)
-            {
-                return new FindValueResponse<IEnr>(true, message.Payload, Array.Empty<IEnr>());
-            }
-            else
+            if (message.ConnectionId == null && message.Payload == null)
             {
                 IEnr[] enrs = new IEnr[message.Enrs!.Length];
                 for (var i = 0; i < message.Enrs.Length; i++)
@@ -339,8 +329,20 @@ public class LanternAdapter: ILanternAdapter
                     enrs[i] = manager._enrFactory.CreateFromBytes(message.Enrs[i], manager._identityVerifier);
                 }
 
-                return new FindValueResponse<IEnr>(false, null, enrs);
+                return new FindValueResponse<IEnr, ContentContent>(false, null, enrs);
             }
+
+            byte[] payload;
+            if (message.Payload != null)
+            {
+                payload = message.Payload!;
+            }
+            else
+            {
+                throw new NotImplementedException($"UTP connection id not implemented. Got id {message.ConnectionId}");
+            }
+
+            return new FindValueResponse<IEnr, ContentContent>(true, manager._contentEncoder.Decode(contentKey, payload), Array.Empty<IEnr>());
         }
     }
 }

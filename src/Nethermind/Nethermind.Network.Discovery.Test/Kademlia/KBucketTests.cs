@@ -18,7 +18,7 @@ public class KBucketTests
     [Test]
     public void TestKBucketAdd()
     {
-        KBucket<ValueHash256> bucket = new(5, Substitute.For<IMessageSender<ValueHash256>>());
+        KBucket<ValueHash256> bucket = new(5, Substitute.For<IPingMessageSender<ValueHash256>>());
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
 
@@ -40,7 +40,7 @@ public class KBucketTests
     public async Task WhenFull_OnPingTimeout_UseReplacementCache()
     {
         TaskCompletionSource pingSource = new TaskCompletionSource();
-        IMessageSender<ValueHash256> messageSender = Substitute.For<IMessageSender<ValueHash256>>();
+        IPingMessageSender<ValueHash256> messageSender = Substitute.For<IPingMessageSender<ValueHash256>>();
         messageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);

@@ -5,5 +5,5 @@ namespace Nethermind.Network.Discovery.Portal;
 
 public class FindContent
 {
-    public byte[] ContentKey { get; set; } = null!;
+    public ContentKey ContentKey { get; set; } = new ContentKey();
 }

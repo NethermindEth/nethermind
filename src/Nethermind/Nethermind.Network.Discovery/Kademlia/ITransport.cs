@@ -5,22 +5,23 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public interface IMessageSender<TNode>
+public interface IPingMessageSender<TNode>
 {
     Task Ping(TNode receiver, CancellationToken token);
-    Task<TNode[]> FindNeighbours(TNode receiver, ValueHash256 hash, CancellationToken token);
-    Task<FindValueResponse<TNode>> FindValue(TNode receiver, ValueHash256 hash, CancellationToken token);
 }
 
-public interface IMessageReceiver<TNode>
+public interface IMessageSender<TNode, TContentKey, TContent>: IPingMessageSender<TNode>
 {
-    Task Ping(TNode sender, CancellationToken token);
-    Task<TNode[]> FindNeighbours(TNode sender, ValueHash256 hash, CancellationToken token);
-    Task<FindValueResponse<TNode>> FindValue(TNode sender, ValueHash256 hash, CancellationToken token);
+    Task<TNode[]> FindNeighbours(TNode receiver, ValueHash256 hash, CancellationToken token);
+    Task<FindValueResponse<TNode, TContent>> FindValue(TNode receiver, TContentKey contentKey, CancellationToken token);
 }
 
-public record FindValueResponse<TNode>(
+public interface IMessageReceiver<TNode, TContentKey, TContent>: IMessageSender<TNode, TContentKey, TContent>
+{
+}
+
+public record FindValueResponse<TNode, TContent>(
     bool hasValue,
-    byte[]? value, // I tried making value generic also....
+    TContent? value,
     TNode[] neighbours
 );

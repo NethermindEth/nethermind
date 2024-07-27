@@ -92,15 +92,19 @@ public class SlowSSZTests
         }
 
         {
+            // Note: not part of test vector. This is specific to history network.
             var findContentMessage = new MessageUnion()
             {
                 FindContent = new FindContent()
                 {
-                    ContentKey = Bytes.FromHexString("706f7274616c")
+                    ContentKey = new ContentKey()
+                    {
+                        HeaderKey = new ValueHash256("F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0")
+                    }
                 }
             };
 
-            yield return ("0404000000706f7274616c", findContentMessage);
+            yield return ("0400f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0", findContentMessage);
         }
 
         {

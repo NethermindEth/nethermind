@@ -31,9 +31,9 @@ public class KademliaSimulation
         ValueHash256 node2Hash = RandomKeccak(rand);
         ValueHash256 node3Hash = RandomKeccak(rand);
 
-        Kademlia<ValueHash256> node1 = fabric.CreateNode(node1Hash);
-        Kademlia<ValueHash256> node2 = fabric.CreateNode(node2Hash);
-        Kademlia<ValueHash256> node3 = fabric.CreateNode(node3Hash);
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> node1 = fabric.CreateNode(node1Hash);
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> node2 = fabric.CreateNode(node2Hash);
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> node3 = fabric.CreateNode(node3Hash);
 
         node1.SeedNode(node2Hash);
         node2.SeedNode(node3Hash);
@@ -65,8 +65,8 @@ public class KademliaSimulation
         ValueHash256 node2Hash = RandomKeccak(rand);
         ValueHash256 node3Hash = RandomKeccak(rand);
 
-        Kademlia<ValueHash256> node1 = fabric.CreateNode(node1Hash);
-        Kademlia<ValueHash256> node2 = fabric.CreateNode(node2Hash);
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> node1 = fabric.CreateNode(node1Hash);
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> node2 = fabric.CreateNode(node2Hash);
         fabric.CreateNode(node3Hash);
 
         node1.SeedNode(node2Hash);
@@ -76,8 +76,8 @@ public class KademliaSimulation
 
         Console.Out.WriteLine("Lookup =======");
 
-        (await node1.LookupValue(node2Hash, cts.Token)).Should().BeEquivalentTo(node2Hash.ToByteArray());
-        (await node1.LookupValue(node3Hash, cts.Token)).Should().BeEquivalentTo(node3Hash.ToByteArray());
+        (await node1.LookupValue(node2Hash, cts.Token)).Should().BeEquivalentTo(node2Hash);
+        (await node1.LookupValue(node3Hash, cts.Token)).Should().BeEquivalentTo(node3Hash);
     }
 
     [Test]
@@ -86,13 +86,13 @@ public class KademliaSimulation
         TestFabricMessageSender fabric = new TestFabricMessageSender(kSize: 20, alpha: 3);
         Random rand = new Random(0);
         ValueHash256 mainNodeHash = RandomKeccak(rand);
-        Kademlia<ValueHash256> mainNode = fabric.CreateNode(mainNodeHash);
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> mainNode = fabric.CreateNode(mainNodeHash);
 
         List<ValueHash256> nodeIds = new();
         for (int i = 0; i < 500; i++)
         {
             ValueHash256 nodeHash = RandomKeccak(rand);
-            Kademlia<ValueHash256> kad = fabric.CreateNode(nodeHash);
+            Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = fabric.CreateNode(nodeHash);
             kad.SeedNode(mainNodeHash);
             nodeIds.Add(nodeHash);
         }
@@ -108,7 +108,7 @@ public class KademliaSimulation
 
         foreach (ValueHash256 node in nodeIds)
         {
-            (await mainNode.LookupValue(node, cts.Token)).Should().BeEquivalentTo(node.ToByteArray());
+            (await mainNode.LookupValue(node, cts.Token)).Should().BeEquivalentTo(node);
         }
 
         Console.Error.WriteLine($"FindValue count per lookup {fabric.FindValueCount / (double)nodeIds.Count}");
@@ -121,9 +121,9 @@ public class KademliaSimulation
         return val;
     }
 
-    private class OnlySelfIStore(ValueHash256 self) : IKademlia<ValueHash256>.IStore
+    private class OnlySelfIStore(ValueHash256 self) : IKademlia<ValueHash256, ValueHash256, ValueHash256>.IStore
     {
-        public bool TryGetValue(ValueHash256 hash, out byte[]? value)
+        public bool TryGetValue(ValueHash256 hash, out ValueHash256 value)
         {
             if (hash != self)
             {
@@ -131,12 +131,12 @@ public class KademliaSimulation
                 return false;
             }
 
-            value = self.ToByteArray();
+            value = self;
             return true;
         }
     }
 
-    class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256>
+    class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {
@@ -150,17 +150,17 @@ public class KademliaSimulation
         internal long FindValueCount = 0;
         internal long FindNeighbourCount = 0;
 
-        private ConcurrentDictionary<ValueHash256, IKademlia<ValueHash256>> _nodes = new();
-        readonly INodeHashProvider<ValueHash256> _nodeHashProvider = new ValueHashNodeHashProvider();
+        private ConcurrentDictionary<ValueHash256, IKademlia<ValueHash256, ValueHash256, ValueHash256>> _nodes = new();
+        readonly INodeHashProvider<ValueHash256, ValueHash256> _nodeHashProvider = new ValueHashNodeHashProvider();
 
-        private bool TryGetReceiver(ValueHash256 receiverHash, out IKademlia<ValueHash256> messageReceiver)
+        private bool TryGetReceiver(ValueHash256 receiverHash, out IKademlia<ValueHash256, ValueHash256, ValueHash256> messageReceiver)
         {
             return _nodes.TryGetValue(receiverHash, out messageReceiver!);
         }
 
-        public Kademlia<ValueHash256> CreateNode(ValueHash256 nodeID)
+        public Kademlia<ValueHash256, ValueHash256, ValueHash256> CreateNode(ValueHash256 nodeID)
         {
-            var kad = new Kademlia<ValueHash256>(
+            var kad = new Kademlia<ValueHash256, ValueHash256, ValueHash256>(
                 _nodeHashProvider,
                 new OnlySelfIStore(nodeID),
                 new SenderForNode(nodeID, this),
@@ -176,13 +176,13 @@ public class KademliaSimulation
             return kad;
         }
 
-        private class SenderForNode(ValueHash256 sender, TestFabricMessageSender fabric) : IMessageSender<ValueHash256>
+        private class SenderForNode(ValueHash256 sender, TestFabricMessageSender fabric) : IMessageSender<ValueHash256, ValueHash256, ValueHash256>
         {
             public Task Ping(ValueHash256 receiverHash, CancellationToken token)
             {
                 Interlocked.Increment(ref fabric.PingCount);
                 fabric.Debug($"ping from {sender} to {receiverHash}");
-                if (fabric.TryGetReceiver(receiverHash, out IKademlia<ValueHash256> receiver))
+                if (fabric.TryGetReceiver(receiverHash, out IKademlia<ValueHash256, ValueHash256, ValueHash256> receiver))
                 {
                     return receiver.Ping(sender, token);
                 }
@@ -194,7 +194,7 @@ public class KademliaSimulation
             {
                 Interlocked.Increment(ref fabric.FindNeighbourCount);
                 fabric.Debug($"findn from {sender} to {receiverHash}");
-                if (fabric.TryGetReceiver(receiverHash, out IKademlia<ValueHash256> receiver))
+                if (fabric.TryGetReceiver(receiverHash, out IKademlia<ValueHash256, ValueHash256, ValueHash256> receiver))
                 {
                     return await receiver.FindNeighbours(sender, hash, token);
                 }
@@ -202,11 +202,11 @@ public class KademliaSimulation
                 throw new Exception($"unknown receiver {receiverHash}");
             }
 
-            public async Task<FindValueResponse<ValueHash256>> FindValue(ValueHash256 receiverHash, ValueHash256 hash, CancellationToken token)
+            public async Task<FindValueResponse<ValueHash256, ValueHash256>> FindValue(ValueHash256 receiverHash, ValueHash256 hash, CancellationToken token)
             {
                 Interlocked.Increment(ref fabric.FindValueCount);
                 fabric.Debug($"finv from {sender} to {receiverHash}");
-                if (fabric.TryGetReceiver(receiverHash, out IKademlia<ValueHash256> receiver))
+                if (fabric.TryGetReceiver(receiverHash, out IKademlia<ValueHash256, ValueHash256, ValueHash256> receiver))
                 {
                     var resp = await receiver.FindValue(sender, hash, token);
                     fabric.Debug($"Got {resp.hasValue} {resp.value} or {resp.neighbours.Length} next");
@@ -227,12 +227,10 @@ public class KademliaSimulation
 
         public async Task Bootstrap(CancellationToken token)
         {
-            foreach (KeyValuePair<ValueHash256, IKademlia<ValueHash256>> kv in _nodes)
+            foreach (KeyValuePair<ValueHash256, IKademlia<ValueHash256, ValueHash256, ValueHash256>> kv in _nodes)
             {
                 await kv.Value.Bootstrap(token);
             }
-            // var allNodes = _nodes.Select(kv => kv.Value).ToList();
-            // await Task.WhenAll(allNodes.Select(n => n.Bootstrap(token)));
         }
     }
 }

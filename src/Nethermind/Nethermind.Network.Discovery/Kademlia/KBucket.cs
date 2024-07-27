@@ -3,7 +3,7 @@
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucket<TNode>(int k, IMessageSender<TNode> transport) where TNode : notnull
+public class KBucket<TNode>(int k, IPingMessageSender<TNode> transport) where TNode : notnull
 {
     private DoubleEndedLru<TNode> _items = new(k);
     private DoubleEndedLru<TNode> _replacement = new(k); // Well, the replacement does not have to be k. Could be much lower.

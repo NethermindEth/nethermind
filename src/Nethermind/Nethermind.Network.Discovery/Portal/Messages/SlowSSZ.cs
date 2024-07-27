@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Reflection.Metadata;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NonBlocking;
@@ -61,6 +62,11 @@ public class SlowSSZ
         if (obj is UInt256 asUint256)
         {
             return asUint256.ToLittleEndian();
+        }
+
+        if (obj is ValueHash256 asValueHash)
+        {
+            return asValueHash.ToByteArray();
         }
 
         if (obj is byte[] asBytes)
@@ -227,6 +233,11 @@ public class SlowSSZ
         if (targetType == typeof(UInt256))
         {
             return new UInt256(span[..32]);
+        }
+
+        if (targetType == typeof(ValueHash256))
+        {
+            return new ValueHash256(span[..32]);
         }
 
         if (targetType == typeof(byte[]))
@@ -425,6 +436,11 @@ public class SlowSSZ
         }
 
         if (targetType == typeof(UInt256))
+        {
+            return 32;
+        }
+
+        if (targetType == typeof(ValueHash256))
         {
             return 32;
         }

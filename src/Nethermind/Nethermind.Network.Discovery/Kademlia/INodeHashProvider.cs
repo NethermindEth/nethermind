@@ -6,7 +6,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Network.Discovery.Kademlia;
 
 /// Note, a tree based kademlia will likely change this significantly.
-public interface INodeHashProvider<TNode>
+public interface INodeHashProvider<in TNode, in TContentKey>
 {
     ValueHash256 GetHash(TNode node);
+    ValueHash256 GetHash(TContentKey key);
 }

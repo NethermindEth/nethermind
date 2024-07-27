@@ -12,6 +12,6 @@ public interface ILanternAdapter
 {
     Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage message);
     void OnMsgResp(IEnr sender, TalkRespMessage message);
-    IMessageSender<IEnr> CreateMessageSenderForProtocol(byte[] protocol);
-    void RegisterKademliaOverlay(byte[] protocol, IKademlia<IEnr> kademlia);
+    IMessageSender<IEnr, ContentKey, ContentContent> CreateMessageSenderForProtocol(byte[] protocol);
+    void RegisterKademliaOverlay(byte[] protocol, IKademlia<IEnr, ContentKey, ContentContent> kademlia);
 }

@@ -7,11 +7,11 @@ using Nethermind.Network.Discovery.Kademlia;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class NoopStore : IKademlia<IEnr>.IStore
+public class NoopStore : IKademlia<IEnr, ContentKey, ContentContent>.IStore
 {
-    public bool TryGetValue(ValueHash256 hash, out byte[] value)
+    public bool TryGetValue(ContentKey hash, out ContentContent? value)
     {
-        value = null!;
+        value = null;
         return false;
     }
 }
