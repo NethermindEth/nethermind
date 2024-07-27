@@ -60,9 +60,11 @@ public class AuthorizationTuple(
             error = $"Authority ({Authority}) has code deployed.";
             return false;
         }
-        if (Nonce is not null && accountStateProvider.GetNonce(Authority) != Nonce)
+
+        UInt256 authNonce = accountStateProvider.GetNonce(Authority);
+        if (Nonce is not null && authNonce != Nonce)
         {
-            error = $"Skipping tuple in authorization_list because authority ({Authority}) nonce ({Nonce}) does not match.";
+            error = $"Skipping tuple in authorization_list because nonce is set to {Nonce}, but authority ({Authority}) has {authNonce}.";
             return false;
         }
         error = null;

@@ -127,12 +127,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))) return result;
-            if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
-
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
+            if (!(result = ValidateNonce(tx))) return result;
 
             ICodeInfoRepository codeInfoRepository = _codeInfoRepository;
-
             if (spec.IsEip7702Enabled)
             {
                 _authorizedCodeInfoRepository ??= new(codeInfoRepository, SpecProvider.ChainId, Logger);
@@ -144,6 +141,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     _authorizedCodeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
                 }
             }
+
+            IncrementNonce(tx, header, spec, tracer, opts);
+
+            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, codeInfoRepository);
 
@@ -400,7 +401,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+        protected virtual TransactionResult ValidateNonce(Transaction tx)
         {
             if (tx.IsSystem()) return TransactionResult.Ok;
 
@@ -409,9 +410,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
                 return "wrong transaction nonce";
             }
-
-            WorldState.IncrementNonce(tx.SenderAddress);
             return TransactionResult.Ok;
+        }
+
+        protected virtual void IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+        {
+            WorldState.IncrementNonce(tx.SenderAddress);
         }
 
         protected ExecutionEnvironment BuildExecutionEnvironment(
