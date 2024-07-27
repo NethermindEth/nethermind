@@ -1292,7 +1292,7 @@ internal class ILCompiler
                     method.LoadArgument(3);
                     method.LoadLocalAddress(storageCell);
                     method.LoadLocal(localArray);
-                    method.CallVirtual(typeof(StorageCell).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
+                    method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
                     break;
                 case Instruction.TLOAD:
                     method.StackLoadPrevious(stack, head, 1);
@@ -1309,12 +1309,12 @@ internal class ILCompiler
 
                     method.LoadArgument(3);
                     method.LoadLocalAddress(storageCell);
-                    method.CallVirtual(typeof(StorageCell).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
+                    method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
                     method.StoreLocal(localReadonOnlySpan);
 
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
-                    method.LoadLocalAddress(localReadonOnlySpan);
+                    method.LoadLocal(localReadonOnlySpan);
                     method.Call(Word.SetSpan);
                     method.StackPush(head);
                     break;

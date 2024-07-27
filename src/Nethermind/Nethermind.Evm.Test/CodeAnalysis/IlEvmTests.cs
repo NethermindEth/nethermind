@@ -410,13 +410,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done);
 
             yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
-                .PushData(0)
                 .PushData(23)
+                .PushData(7)
                 .TSTORE()
-                .PushData(0)
+                .PushData(7)
                 .TLOAD()
-                .PushData(23)
-                .EQ()
                 .Done);
         }
 
