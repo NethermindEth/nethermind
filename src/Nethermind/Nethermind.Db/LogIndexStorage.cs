@@ -40,7 +40,7 @@ namespace Nethermind.Db
                 bytes = rentedBuffer.AsSpan(0, read);
                 int[] intData = new int[read / 4];
 
-                TurboPFor.p4nddec128v32(bytes.ToArray(), read / 4, intData);
+                // TurboPFor.p4nddec128v32(bytes.ToArray(), read / 4, intData);
 
                 _addressToBlocks[address] = intData;
                 read = RandomAccess.Read(fileHandle, rentedBuffer, offset);
