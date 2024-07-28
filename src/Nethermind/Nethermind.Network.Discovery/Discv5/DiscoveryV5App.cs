@@ -38,6 +38,7 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
+    private readonly SessionOptions _sessionOptions;
 
     public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
@@ -48,7 +49,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IdentityVerifierV4 identityVerifier = new();
 
-        SessionOptions sessionOptions = new SessionOptions
+        _sessionOptions = new()
         {
             Signer = new IdentitySignerV4(privateKeyProvider.Generate().KeyBytes),
             Verifier = identityVerifier,
@@ -59,31 +60,24 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IServiceCollection services = new ServiceCollection()
            .AddSingleton<ILoggerFactory, NullLoggerFactory>()
-           .AddSingleton(sessionOptions.Verifier)
-           .AddSingleton(sessionOptions.Signer);
+           .AddSingleton(_sessionOptions.Verifier)
+           .AddSingleton(_sessionOptions.Signer);
 
         EnrFactory enrFactory = new(new EnrEntryRegistry());
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
             .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
                 .Select(e => new Enode(e))
-                .Select(e => new EnrBuilder()
-                    .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
-                    .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-                    .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(NBitcoin.Secp256k1.Context.Instance.CreatePubKey(e.PublicKey.PrefixedBytes).ToBytes(false)))
-                    .WithEntry(EnrEntryKey.Ip, new EntryIp(e.HostIp))
-                    .WithEntry(EnrEntryKey.Tcp, new EntryTcp(e.Port))
-                    .WithEntry(EnrEntryKey.Udp, new EntryUdp(e.DiscoveryPort))
-                    .Build()),
+                .Select(GetEnr),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
             // TODO: Move to routing table's UpdateFromEnr
             .. _discoveryDb.GetAllValues().Select(enr => enrFactory.CreateFromBytes(enr, identityVerifier))
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
-            .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
+            .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(sessionOptions.Signer.PublicKey))
+            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
             .WithEntry(EnrEntryKey.Ip, new EntryIp(_api.IpResolver!.ExternalIp))
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
@@ -93,7 +87,7 @@ public class DiscoveryV5App : IDiscoveryApp
             {
                 UdpPort = networkConfig.DiscoveryPort
             })
-            .WithSessionOptions(sessionOptions)
+            .WithSessionOptions(_sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
@@ -176,6 +170,15 @@ public class DiscoveryV5App : IDiscoveryApp
         node = new(key, ip.ToString(), tcpPort);
         return true;
     }
+
+    private Lantern.Discv5.Enr.Enr GetEnr(Enode node) => new EnrBuilder()
+        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
+        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
+        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
+        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
+        .Build();
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
     public event EventHandler<NodeEventArgs>? NodeRemoved;
@@ -317,7 +320,13 @@ public class DiscoveryV5App : IDiscoveryApp
         _discoveryDb.Clear();
     }
 
-    public void AddNodeToDiscovery(Node node) { }
+    public void AddNodeToDiscovery(Node node)
+    {
+        IEnr enr = GetEnr(new Enode(node.ToString(Node.Format.ENode)));
+        var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
+
+        routingTable.UpdateFromEnr(enr);
+    }
 
     class EntrySecp256K1EqualityComparer : IEqualityComparer<EntrySecp256K1>
     {
