@@ -180,6 +180,15 @@ public class DiscoveryV5App : IDiscoveryApp
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
         .Build();
 
+    private Lantern.Discv5.Enr.Enr GetEnr(Node node) => new EnrBuilder()
+        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
+        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
+        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
+        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
+        .Build();
+
     public event EventHandler<NodeEventArgs>? NodeAdded;
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
@@ -322,10 +331,8 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public void AddNodeToDiscovery(Node node)
     {
-        IEnr enr = GetEnr(new Enode(node.ToString(Node.Format.ENode)));
         var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
-
-        routingTable.UpdateFromEnr(enr);
+        routingTable.UpdateFromEnr(GetEnr(node));
     }
 
     class EntrySecp256K1EqualityComparer : IEqualityComparer<EntrySecp256K1>
