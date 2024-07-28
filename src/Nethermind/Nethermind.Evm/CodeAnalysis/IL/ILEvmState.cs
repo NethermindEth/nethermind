@@ -14,6 +14,8 @@ using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal ref struct ILEvmState
 {
+    public ulong ChainId;
+
     public ReadOnlyMemory<byte> MachineCode;
     public EvmState EvmState;
     // static arguments
@@ -45,8 +47,9 @@ internal ref struct ILEvmState
     public ref readonly ReadOnlyMemory<byte> InputBuffer;
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
-    public ILEvmState(EvmState evmState, EvmExceptionType evmException, ushort programCounter, long gasAvailable, ref ReadOnlyMemory<byte> returnBuffer)
+    public ILEvmState(ulong chainId, EvmState evmState, EvmExceptionType evmException, ushort programCounter, long gasAvailable, ref ReadOnlyMemory<byte> returnBuffer)
     {
+        ChainId = chainId;
         // locals for ease of access
         EvmState = evmState; 
         MachineCode = evmState.Env.CodeInfo.MachineCode;

@@ -476,14 +476,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         gasAvailable += refund;
     }
 
-    private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+    public static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, ITxTracer tracer, bool chargeForWarm = true)
     {
         // Console.WriteLine($"Accessing {address}");
 
         bool result = true;
         if (spec.UseHotAndColdStorage)
         {
-            if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+            if (tracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
                 vmState.WarmUp(address);
             }
@@ -728,7 +728,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while ((ilInfo?.TryExecute(vmState, ref _returnDataBuffer, _specProvider, _state, _blockhashProvider, ref programCounter, ref gasAvailable, ref stack, out shouldJump, out shouldStop, out shouldReturn, out isRevert, out returnData))
+            while ((ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, out shouldJump, out shouldStop, out shouldReturn, out isRevert, out returnData))
                    .GetValueOrDefault(false))
             {
                 if (shouldReturn || isRevert) goto DataReturn;
@@ -1172,7 +1172,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, _txTracer)) goto OutOfGas;
 
                         result = _state.GetBalance(address);
                         stack.PushUInt256(in result);
@@ -1272,13 +1272,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.EXTCODESIZE:
-                    {
+                    {   
                         gasAvailable -= spec.GetExtCodeCost();
 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, _txTracer)) goto OutOfGas;
 
                         if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
                         {
@@ -1342,7 +1342,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, _txTracer)) goto OutOfGas;
 
                         if (!result.IsZero)
                         {
@@ -1904,7 +1904,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, _txTracer)) goto OutOfGas;
 
                         if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
                         {
@@ -2081,7 +2081,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address codeSource = stack.PopAddress();
         if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, _txTracer)) return EvmExceptionType.OutOfGas;
 
         UInt256 callValue;
         switch (instruction)
@@ -2300,7 +2300,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         Address inheritor = stack.PopAddress();
         if (inheritor is null) return EvmExceptionType.StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, _txTracer, false)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.CreateList.Contains(executingAccount);

@@ -62,7 +62,7 @@ internal class IlInfo
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
     public FrozenDictionary<ushort, SegmentExecutionCtx> Segments { get; set; }
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, ref ReadOnlyMemory<byte> outputBuffer, ISpecProvider specProvider, IWorldState worldState, IBlockhashProvider blockHashProvider, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldJump, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
+    public bool TryExecute<TTracingInstructions>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldJump, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         shouldReturn = false;
@@ -82,7 +82,7 @@ internal class IlInfo
                         return false;
                     }
                     var blkCtx = vmState.Env.TxExecutionContext.BlockExecutionContext;
-                    chunk.Invoke(vmState, specProvider.GetSpec(blkCtx.Header.Number, blkCtx.Header.Timestamp), ref programCounter, ref gasAvailable, ref stack);
+                    chunk.Invoke(vmState, spec, ref programCounter, ref gasAvailable, ref stack);
                     break;
                 }
             case ILMode.SubsegmentsCompiling:
@@ -92,9 +92,9 @@ internal class IlInfo
                         return false;
                     }
 
-                    var ilvmState = new ILEvmState(vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
+                    var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
-                    ctx.Method.Invoke(ref ilvmState, specProvider, blockHashProvider, worldState, ctx.Data);
+                    ctx.Method.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
 
                     gasAvailable = ilvmState.GasAvailable;
                     programCounter = ilvmState.ProgramCounter;
