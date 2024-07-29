@@ -77,12 +77,8 @@ public class CensorshipDetector : IDisposable
             }
         }
 
-        UInt256 maxGasPriceInPool = 0;
-        IEnumerable<Transaction> poolTransactions = _txPool.GetBestTxOfEachSender();
-        foreach (Transaction tx in poolTransactions)
-        {
-            maxGasPriceInPool = UInt256.Max(tx.GasPrice, maxGasPriceInPool);
-        }
+        Transaction bestTx = _txPool.GetBestTxOfEachSender().First();
+        UInt256 maxGasPriceInPool = bestTx.Supports1559 ? bestTx.GasPrice + block.BaseFeePerGas : bestTx.GasPrice;
 
         _unconfirmedBlocksCensorshipDetector.Set(block.Number, maxGasPriceInBlock < maxGasPriceInPool);
     }
