@@ -17,6 +17,7 @@ using Lantern.Discv5.WireProtocol.Session;
 using Lantern.Discv5.WireProtocol.Table;
 using Lantern.Discv5.WireProtocol.Utility;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -107,6 +108,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         var messageType = (MessageType)decryptedMessage[0];
         if (messageType is MessageType.TalkReq or MessageType.TalkResp)
         {
+            _routingTable.MarkNodeAsLive(nodeEntry.Id);
             var reply = await HandleTalkReqMessage(nodeEntry.Record, decryptedMessage);
             if (reply != null)
             {

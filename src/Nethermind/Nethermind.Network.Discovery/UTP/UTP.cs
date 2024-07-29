@@ -46,10 +46,9 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         // resend logic
         _seq_nr = 1;
         UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StSyn);
-        _seq_nr++;
+        // _seq_nr++;
         _state = ConnectionState.CsSynSent;
         Console.Error.WriteLine("Initiate Handshake");
-
 
         while (true)
         {
@@ -58,6 +57,14 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             await _utpSynchronizer.WaitForReceiverToSync();
             if (_state == ConnectionState.CsConnected) break;
         }
+
+        // var ack = _receiverAck_nr;
+        // _receiverAck_nr = new AckInfo(_lastPacketHeaderFromPeer!.AckNumber, null);
+        // Console.Out.WriteLine($"send num {_receiverAck_nr.seq_nr}");
+        // await SendStatePacket(token);
+        // _receiverAck_nr = ack;
+
+        await SendStatePacket(token);
     }
 
     //Put things in a buffer and signal ReadStram to process those buffer
@@ -65,7 +72,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     {
         // TODO: Probably should be handled at deserializer level
         if (packageHeader.Version != 1) return Task.CompletedTask;
-       // Console.Error.WriteLine($"Packet received: {packageHeader}");
+
         // TODO: When EOF was obtained from FIN, filter out sequence higher than that.
         _lastReceivedMicrosecond = packageHeader.TimestampMicros;
         if (_lastPacketHeaderFromPeer == null ||  UTPUtil.IsLessOrEqual(_lastPacketHeaderFromPeer.AckNumber, packageHeader.AckNumber)) {
@@ -78,7 +85,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 _seq_nr = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
                 _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
                 _state = ConnectionState.CsSynRecv; // From spec: c.state
-               _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
+                _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
                 break;
 
             case UTPPacketType.StState:
@@ -124,7 +131,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 break;
         }
 
-      _utpSynchronizer.awakePeer();
+        _utpSynchronizer.awakePeer();
         // TODO: step every minute, apparently
         /**
                  * 	// this is the difference between their send time and our receive time
@@ -170,14 +177,18 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         return Task.CompletedTask;
     }
 
-    public async Task ReadStream(Stream output, CancellationToken token)
+    public async Task HandleHandshake(CancellationToken token)
     {
         await _utpSynchronizer.WaitTillSenderSendsST_SYNAndReceiverReceiveIt();
+    }
+
+    public async Task ReadStream(Stream output, CancellationToken token)
+    {
         bool finished = false;
-        Console.Error.WriteLine("Initiate reading");
-        while (!finished || _state == ConnectionState.CsEnded)
+        Console.Error.WriteLine("R Initiate reading");
+        while (!finished && _state != ConnectionState.CsEnded)
         {
-            Console.Error.WriteLine("Reading...");
+            Console.Error.WriteLine("R Read loop");
             token.ThrowIfCancellationRequested();
 
             ushort curAck = _receiverAck_nr.seq_nr;
@@ -200,15 +211,17 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
                 if (packetIngested > 4)
                 {
                     _receiverAck_nr = new AckInfo(curAck, null);
-                    //
-                    Console.Error.WriteLine("Periodically send out ack.");
+                    // Console.Error.WriteLine("R Periodically send out ack.");
                     await SendStatePacket(token);
                     packetIngested = 0;
                 }
+
+                Console.Error.WriteLine($"R Write {packetData.Value}");
                 await output.WriteAsync(packetData.Value, token);
                 _incomingBufferSize -= (ulong)packetData.Value.Length;
             }
 
+            Console.Error.WriteLine($"R Receive buffer checked");
             // Assembling ack.
             byte[]? selectiveAck = null;
             if (_receiveBuffer.Count >= 2) // If its only one, then the logic on the receiver is kinda useless
@@ -218,8 +231,10 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
             _receiverAck_nr = new AckInfo(curAck, selectiveAck);
 
-
+            Console.Error.WriteLine($"R Send state");
             await SendStatePacket(token);
+
+            Console.Error.WriteLine("R Read loop wait");
             await _utpSynchronizer.WaitForReceiverToSync();
         }
     }
@@ -537,7 +552,8 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             PacketType = type,
             Version = 1,
             ConnectionId = connectionId,
-            WindowSize = _trafficControl.WindowSize,
+            // WindowSize = _trafficControl.WindowSize,
+            WindowSize = 1_000_000,
             SeqNumber = _seq_nr,
             AckNumber = _receiverAck_nr.seq_nr,
             SelectiveAck = _receiverAck_nr.selectiveAckData,

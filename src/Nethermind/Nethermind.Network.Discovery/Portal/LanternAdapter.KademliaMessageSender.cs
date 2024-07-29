@@ -117,6 +117,8 @@ public partial class LanternAdapter
                 return new FindValueResponse<IEnr, LookupContentResult>(false, null, enrs);
             }
 
+            manager._logger.Info($"Received value from {receiver.NodeId.ToHexString()} {message.ConnectionId}");
+
             return new FindValueResponse<IEnr, LookupContentResult>(true, new LookupContentResult()
             {
                 ConnectionId = message.ConnectionId,

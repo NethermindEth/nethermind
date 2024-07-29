@@ -2,22 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Net;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Entries;
 using Lantern.Discv5.Enr.Identity;
 using Lantern.Discv5.WireProtocol;
+using Lantern.Discv5.WireProtocol.Identity;
 using Lantern.Discv5.WireProtocol.Messages;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Lantern.Discv5.WireProtocol.Messages.Responses;
 using Lantern.Discv5.WireProtocol.Packet;
+using Lantern.Discv5.WireProtocol.Session;
 using Lantern.Discv5.WireProtocol.Table;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Network.Discovery.UTP;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Portal;
@@ -25,6 +30,7 @@ namespace Nethermind.Network.Discovery.Portal;
 public partial class LanternAdapter: ILanternAdapter
 {
     private const int MaxContentByteSize = 1000;
+    private static readonly byte[] UtpProtocolByte = Bytes.FromHexString("0x757470");
 
     private readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(2);
     private readonly IDiscv5Protocol _discv5;
@@ -36,18 +42,27 @@ public partial class LanternAdapter: ILanternAdapter
     private readonly IIdentityVerifier _identityVerifier;
     private readonly IEnrFactory _enrFactory;
     private readonly IRoutingTable _routingTable;
+    private readonly IRequestManager _requestManager;
+    private readonly ISessionManager _sessionManager;
+    private readonly IIdentityManager _identityManager;
 
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
+    private readonly SpanLruCache<byte, bool> _respSilencer = new SpanLruCache<byte, bool>(10, 1, "", Bytes.SpanEqualityComparer);
+
     private readonly SpanDictionary<byte, IKademlia<IEnr, byte[], LookupContentResult>> _kademliaOverlays = new(Bytes.SpanEqualityComparer);
-    private readonly LruCache<(IEnr, ushort), UTPStream> _utpStreams = new(1024, "");
+    // TODO: Maybe use Lru?
+    private readonly ConcurrentDictionary<(IEnr, ushort), UTPStream> _utpStreams = new();
 
     public LanternAdapter (
         IDiscv5Protocol discv5,
         IPacketManager packetManager,
         IMessageDecoder decoder,
         IIdentityVerifier identityVerifier,
+        IIdentityManager identityManager,
         IEnrFactory enrFactory,
         IRoutingTable routingTable,
+        IRequestManager requestManager,
+        ISessionManager sessionManager,
         ILogManager logManager
     )
     {
@@ -57,12 +72,20 @@ public partial class LanternAdapter: ILanternAdapter
         _identityVerifier = identityVerifier;
         _enrFactory = enrFactory;
         _routingTable = routingTable;
+        _requestManager = requestManager;
+        _sessionManager = sessionManager;
+        _identityManager = identityManager;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LanternAdapter>();
     }
 
     public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
     {
+        if (Bytes.AreEqual(talkReqMessage.Protocol, UtpProtocolByte))
+        {
+            return await HandleUtpMessage(sender, talkReqMessage);
+        }
+
         if (!_kademliaOverlays.TryGetValue(talkReqMessage.Protocol, out var kad))
         {
             _logger.Info($"Unknown msg req for protocol {talkReqMessage.Protocol.ToHexString()}");
@@ -87,6 +110,20 @@ public partial class LanternAdapter: ILanternAdapter
         }
 
         return null;
+    }
+
+    private async Task<byte[]?> HandleUtpMessage(IEnr sender, TalkReqMessage talkReqMessage)
+    {
+        (UTPPacketHeader header, int headerSize) = UTPPacketHeader.DecodePacket(talkReqMessage.Request);
+        _logger.Info($"Handle utp message from {header}");
+        if (!_utpStreams.TryGetValue((sender, header.ConnectionId), out UTPStream? stream))
+        {
+            _logger.Info($"Unknown connection id {header.ConnectionId}");
+            return null;
+        }
+
+        await stream.ReceiveMessage(header, talkReqMessage.Request.AsSpan()[headerSize..], CancellationToken.None);
+        return Array.Empty<byte>();
     }
 
     private static async Task<byte[]?> HandlePing(IEnr sender, IKademlia<IEnr, byte[], LookupContentResult> kad, Ping ping)
@@ -166,6 +203,8 @@ public partial class LanternAdapter: ILanternAdapter
 
     public void OnMsgResp(IEnr sender, TalkRespMessage message)
     {
+        _requestManager.MarkRequestAsFulfilled(message.RequestId);
+
         ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(message.RequestId);
         if (_requestResp.TryRemove(requestId, out TaskCompletionSource<TalkRespMessage>? resp))
         {
@@ -174,7 +213,9 @@ public partial class LanternAdapter: ILanternAdapter
             return;
         }
 
-        if (_logger.IsTrace) _logger.Trace($"TalkResp {message.RequestId.ToHexString()} failed no mapping");
+        if (_respSilencer.TryGet(message.RequestId, out _)) return;
+
+        if (_logger.IsTrace) _logger.Trace($"TalkResp {message.RequestId.ToHexString()} failed no mapping. {message.Response.ToHexString()}");
     }
 
     public IMessageSender<IEnr, byte[], LookupContentResult> CreateMessageSenderForProtocol(byte[] protocol)
@@ -216,6 +257,7 @@ public partial class LanternAdapter: ILanternAdapter
 
     private async Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
     {
+        // Needed as its possible that the routing table does not
         _routingTable.UpdateFromEnr(receiver);
 
         var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
@@ -226,11 +268,16 @@ public partial class LanternAdapter: ILanternAdapter
         // So what happen here is that, if the receiver does not have any session yet, lantern will create a "cached"
         // packet which will be used as a reply to a WHOAREYOU message.
         // BUT if the are already a "cached" request, lantern will straight up fail to send a message and return null. (TODO: double check this)
-        while (sentMessage == null)
+        do
         {
             token.ThrowIfCancellationRequested();
-            sentMessage = (await _packetManager.SendPacket(receiver, MessageType.TalkReq, false, protocol, message))!;
-        }
+            sentMessage = (await _packetManager.SendPacket(receiver, MessageType.TalkReq, false, protocol, message));
+            if (sentMessage == null)
+            {
+                // Well.... got another idea?
+                await Task.Delay(100, token);
+            }
+        } while (sentMessage == null);
 
         // Yea... it does not return the original message, so we have to decode it to get the request id.
         // Either this or we have some more hacks.
@@ -239,9 +286,49 @@ public partial class LanternAdapter: ILanternAdapter
         return talkReqMessage;
     }
 
-    private Task<byte[]?> DownloadContentFromUtp(IEnr nodeId, ushort? connectionId, CancellationToken token)
+    private async Task<TalkReqMessage> SentTalkReqAndSilenceResp(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
     {
-        throw new NotImplementedException();
+        TalkReqMessage req = await SentTalkReq(receiver, protocol, message, token);
+        _respSilencer.Set(req.RequestId, true);
+        return req;
+    }
+
+    private async Task<byte[]?> DownloadContentFromUtp(IEnr nodeId, ushort connectionId, CancellationToken token)
+    {
+        byte[] asByte = new byte[2];
+
+        // TODO: Ah man... where did this go wrong.
+        BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
+        ushort bigEndianUshort = BinaryPrimitives.ReadUInt16BigEndian(asByte);
+
+        _logger.Info($"Downloading UTP content with connection id {connectionId}");
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), (ushort)(bigEndianUshort));
+        if (!_utpStreams.TryAdd((nodeId, (ushort)(bigEndianUshort)), stream))
+        {
+            throw new Exception("Unable to open utp stream. Connection id may already be used.");
+        }
+
+        try
+        {
+            MemoryStream outputStream = new MemoryStream();
+            await stream.InitiateHandshake(token);
+            await stream.ReadStream(outputStream, token);
+            return outputStream.ToArray();
+        }
+        finally
+        {
+            _utpStreams.Remove((nodeId, bigEndianUshort), out _);
+        }
+    }
+
+    private class UTPToMsgReqAdapter(IEnr targetNode, LanternAdapter lanternAdapter): IUTPTransfer
+    {
+        public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
+        {
+            lanternAdapter._logger.Info($"Sending utp message to {meta}. Data length {data.Length}");
+            var dataArray = UTPPacketHeader.EncodePacket(meta, data, new byte[2047]).ToArray();
+            return lanternAdapter.SentTalkReqAndSilenceResp(targetNode, UtpProtocolByte, dataArray, token);
+        }
     }
 
     private ushort? InitiateUtpStreamSender(IEnr sender, byte[] valuePayload)
@@ -251,6 +338,7 @@ public partial class LanternAdapter: ILanternAdapter
 
     public IPortalContentNetwork RegisterContentNetwork(byte[] protocol, IPortalContentNetwork.Store store)
     {
+        _logger.Warn($"self enode is {_discv5.SelfEnr.NodeId.ToHexString()}");
         var kademlia = new Kademlia<IEnr, byte[], LookupContentResult>(
             _nodeHashProvider,
             new PortalContentStoreAdapter(store),

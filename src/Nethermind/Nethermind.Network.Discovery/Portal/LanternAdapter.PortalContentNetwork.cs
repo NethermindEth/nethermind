@@ -21,7 +21,11 @@ public partial class LanternAdapter
 
         public async Task<byte[]?> LookupContent(byte[] key, CancellationToken token)
         {
-            Stopwatch sw = new Stopwatch();
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+            token = cts.Token;
+
+            Stopwatch sw = Stopwatch.StartNew();
             var result = await kademlia.LookupValue(key, token);
             logger.Info($"Lookup {key.ToHexString()} took {sw.Elapsed}");
 
@@ -33,7 +37,7 @@ public partial class LanternAdapter
 
             Debug.Assert(result.ConnectionId != null);
 
-            var asBytes = await lanternAdapter.DownloadContentFromUtp(result.NodeId, result.ConnectionId, token);
+            var asBytes = await lanternAdapter.DownloadContentFromUtp(result.NodeId, result.ConnectionId.Value, token);
             logger.Info($"UTP download for {key.ToHexString()} took {sw.Elapsed}");
             return asBytes;
         }

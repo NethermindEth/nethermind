@@ -237,6 +237,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         List<TNode> result = [];
         while (result.Count < _kSize && bestSeenAllTime.Count > 0)
         {
+            token.ThrowIfCancellationRequested();
             TNode nextLowest = bestSeenAllTime.Dequeue();
             if (queriedAndResponded.Contains(nextLowest))
             {
@@ -249,8 +250,6 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
                 // Queried but not responded
                 continue;
             }
-
-            token.ThrowIfCancellationRequested();
 
             // TODO: In parallel?
             // So the paper mentioned that node that it need to query findnode for node that was not queried.

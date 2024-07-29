@@ -98,14 +98,11 @@ public class SlowSSZTests
             {
                 FindContent = new FindContent()
                 {
-                    ContentKey = new ContentKey()
-                    {
-                        HeaderKey = new ValueHash256("F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0")
-                    }
+                    ContentKey = Bytes.FromHexString("706f7274616c")
                 }
             };
 
-            yield return ("0400f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0", findContentMessage);
+            yield return ("0404000000706f7274616c", findContentMessage);
         }
 
         {

@@ -8,7 +8,7 @@ public class UTPSynchronizer
     private TaskCompletionSource _messageTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource<UTPPacketHeader> _syncTcs = new();
 
-    const int WaitForMessageDelayMs = 10;
+    const int WaitForMessageDelayMs = 1000;
 
     public async Task<UTPPacketHeader> WaitTillSenderSendsST_SYNAndReceiverReceiveIt()
     {
@@ -16,9 +16,9 @@ public class UTPSynchronizer
     }
 
 
-    public async Task<bool> WaitForReceiverToSync()
+    public async Task<bool> WaitForReceiverToSync(int delayMs = 1000)
     {
-        var delay = Task.Delay(WaitForMessageDelayMs);
+        var delay = Task.Delay(delayMs);
         if (await Task.WhenAny(_messageTcs.Task, delay) == delay)
         {
             return false;

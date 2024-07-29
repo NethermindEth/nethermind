@@ -60,9 +60,10 @@ public class PortalHistoryNetwork
     public async Task Run(CancellationToken token)
     {
         _logger.Info("Running portal history network. Bootstrapping.");
-        await _contentNetwork.Bootstrap(token);
+        // await _contentNetwork.Bootstrap(token);
 
-        BlockBody? body = await LookupBlockBody(new ValueHash256("0x8547876c30570eac4807f8e93ff2d9b5ebb5561ba855a305293fec08da650d65"), token);
+        _logger.Info("-------------- looking up ----------------------");
+        BlockBody? body = await LookupBlockBody(new ValueHash256("0x40c91b6ef0ac682432c746ac0bbabc27c2864c5d9fb73ca663ec7acfe8033810"), token);
         _logger.Info($"Lookup body got {body}");
 
         // await _contentNetwork.Run(token);

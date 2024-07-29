@@ -22,11 +22,11 @@ public class UTPUtil
 
     public static uint GetTimestamp() {
         long ticks = Stopwatch.GetTimestamp();
-        long microseconds = (ticks * 1_000_000) / Stopwatch.Frequency;
+        long microseconds = (ticks * 1) / (Stopwatch.Frequency / 1_000_000);
         return (uint)microseconds;
     }
 
-    public static byte[] CompileSelectiveAckBitset(ushort curAck, ConcurrentDictionary<ushort, Memory<byte>?> receiveBuffer) {
+    public static byte[]? CompileSelectiveAckBitset(ushort curAck, ConcurrentDictionary<ushort, Memory<byte>?> receiveBuffer) {
         byte[] selectiveAck;
         // Fixed 64 bit.
         // TODO: use long
@@ -48,6 +48,13 @@ public class UTPUtil
                 counted++;
             }
         }
+
+        if (counted == 0)
+        {
+            Console.Error.WriteLine($"Counted zero selective ack {curAck} {string.Join(", ", receiveBuffer.Keys)}");
+            return null;
+        }
+
         return selectiveAck;
     }
 }
