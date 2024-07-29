@@ -1,8 +1,8 @@
 name: Publish packages
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [fix/ppa-1.27.1]
 
 jobs:
   publish-ppa:
@@ -13,7 +13,7 @@ jobs:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: 1.27.1
       - name: Set up GPG
         env:
           GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
@@ -32,7 +32,7 @@ jobs:
           PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
         working-directory: scripts/deployment/ppa
         run: |
-          version=${{ github.event.release.tag_name }}
+          version=1.27.1
           json=$(curl -sL ${{ github.event.release.assets_url }})
           arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-arm64"))')
           arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
@@ -74,57 +74,8 @@ jobs:
           echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
           git clone https://git.launchpad.net/ubuntu-archive-tools
           cd ubuntu-archive-tools
-          for release in "focal" "mantic" "jammy"; do
+          for release in "focal" "jammy"; do
             python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s noble --to-suite=$release nethermind
           done
           rm -f /tmp/lp_credentials
 
-  publish-winget:
-    name: Publish on Windows Package Manager
-    runs-on: windows-latest
-    if: ${{ !github.event.release.prerelease }}
-    steps:
-      - name: Submit package
-        run: |
-          $releaseInfo = curl -sL ${{ github.event.release.assets_url }} | ConvertFrom-Json
-          $releaseUrl = $releaseInfo | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
-          curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
-          ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl -t ${{ secrets.WINGET_TOKEN }}
-
-  publish-homebrew:
-    name: Publish on Homebrew
-    runs-on: ubuntu-latest
-    if: ${{ !github.event.release.prerelease }}
-    env:
-      FORMULA: nethermind.rb
-    steps:
-      - name: Check out homebrew-nethermind repository
-        uses: actions/checkout@v4
-        with:
-          repository: NethermindEth/homebrew-nethermind
-          token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-      - name: Update formula file
-        run: |
-          json=$(curl -sL ${{ github.event.release.assets_url }})
-          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-x64"))')
-          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-arm64"))')
-          arm64_hash=$(curl -sL $arm64_url | shasum -a 256 | awk '{print $1}')
-          sed -i "s/version .*/version \"${{ github.event.release.tag_name }}\"/" $FORMULA
-          awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$x64_url'\""); } 1' $FORMULA
-          awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$arm64_url'\""); } 1' $FORMULA
-          awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$x64_hash'\""); } 1' $FORMULA
-          awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$arm64_hash'\""); } 1' $FORMULA
-      - name: Submit package
-        env:
-          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-        run: |
-          head_branch=feature/v${{ github.event.release.tag_name }}-${{ github.run_number }}-${{ github.run_attempt }}
-          message="Update for v${{ github.event.release.tag_name }}"
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git checkout -b $head_branch
-          git add $FORMULA
-          git commit -am "$message"
-          git push origin $head_branch
-          gh pr create -B main -H $head_branch -t "$message" -b "Auto-updated Homebrew formula for Nethermind v${{ github.event.release.tag_name }}"
