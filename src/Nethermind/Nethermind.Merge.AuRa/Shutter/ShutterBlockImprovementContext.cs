@@ -46,7 +46,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         if (slotLength == TimeSpan.Zero)
             throw new ArgumentException("Cannot be zero.",nameof(slotLength));
         if (payloadAttributes.Timestamp < genesisTimestamp)
-            throw new ArgumentOutOfRangeException(nameof(genesisTimestamp), genesisTimestamp, "Genesis cannot be after the payload timestamp.");
+            throw new ArgumentOutOfRangeException(nameof(genesisTimestamp), genesisTimestamp, $"Genesis cannot be after the payload timestamp ({payloadAttributes.Timestamp}).");
 
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
@@ -80,9 +80,9 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private static (int, int) GetBuildingSlotAndOffset(ulong currentTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
+    private static (int, int) GetBuildingSlotAndOffset(ulong slotTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
     {
-        double timeSinceGenesis = 1000 * ( currentTimestamp - genesisTimestamp);
+        double timeSinceGenesis = 1000 * ( slotTimestamp - genesisTimestamp);
         int currentSlot = (int)(timeSinceGenesis / slotLength.TotalMilliseconds);
         int slotOffset = (int)(timeSinceGenesis % slotLength.TotalMilliseconds);
 
