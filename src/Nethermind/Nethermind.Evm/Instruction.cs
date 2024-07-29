@@ -315,11 +315,11 @@ namespace Nethermind.Evm
                 [Instruction.CODESIZE] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.CODECOPY] = new(GasCostOf.VeryLow, 0, 3, 0),
                 [Instruction.GASPRICE] = new(GasCostOf.Base, 0, 0, 1),
-                [Instruction.EXTCODESIZE] = new(GasCostOf.ExtCode, 0, 1, 1),
-                [Instruction.EXTCODECOPY] = new(GasCostOf.ExtCode, 0, 4, 0),
+                [Instruction.EXTCODESIZE] = new(0, 0, 1, 1),
+                [Instruction.EXTCODECOPY] = new(0, 0, 4, 0),
                 [Instruction.RETURNDATASIZE] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.RETURNDATACOPY] = new(GasCostOf.VeryLow, 0, 3, 0),
-                [Instruction.EXTCODEHASH] = new(GasCostOf.ExtCodeHash, 0, 1, 1),
+                [Instruction.EXTCODEHASH] = new(0, 0, 1, 1),
                 [Instruction.EXTCODECOPY] = new(GasCostOf.ExtCode, 0, 4, 0),
 
                 [Instruction.BLOCKHASH] = new(GasCostOf.BlockHash, 0, 1, 1),
@@ -383,12 +383,7 @@ namespace Nethermind.Evm
         {
             Instruction.CREATE or Instruction.CREATE2 => true,
             Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL => true,
-            Instruction.SLOAD or Instruction.SSTORE => true,
-            Instruction.TLOAD or Instruction.TSTORE => true,
-            Instruction.EXTCODESIZE or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH => true,
             Instruction.SELFDESTRUCT => true,
-            Instruction.BALANCE => true,
-            Instruction.SELFBALANCE => true,
             _ => false,
         };
 

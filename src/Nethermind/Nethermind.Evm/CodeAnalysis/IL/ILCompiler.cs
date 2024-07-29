@@ -1480,6 +1480,41 @@ internal class ILCompiler
                     method.MarkLabel(endOfOpcode);
                     method.StackPush(head);
                     break;
+                case Instruction.SELFBALANCE:
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadArgument(2);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+                    method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(head);
+                    break;
+                case Instruction.BALANCE:
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetAddress);
+                    method.StoreLocal(address);
+                    method.StackPop(head, 1);
+
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                    method.LoadLocal(address);
+                    method.LoadArgument(4);
+                    method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                    method.LoadConstant(true);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadArgument(2);
+                    method.LoadLocal(address);
+                    method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(head);
+                    break;
                 default:
                     throw new NotSupportedException();
             }

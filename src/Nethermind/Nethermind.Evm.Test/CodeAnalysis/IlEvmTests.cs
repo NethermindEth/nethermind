@@ -433,6 +433,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .PushData(0)
                 .EXTCODECOPY(Address.FromNumber(1))
                 .Done);
+
+            yield return (Instruction.BALANCE, Prepare.EvmCode
+                .BALANCE(Address.FromNumber(1))
+                .Done);
+
+            yield return (Instruction.SELFBALANCE, Prepare.EvmCode
+                .SELFBALANCE()
+                .Done);
         }
 
         [Test, TestCaseSource(nameof(GetBytecodes))]
