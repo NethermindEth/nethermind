@@ -33,7 +33,7 @@ jobs:
         working-directory: scripts/deployment/ppa
         run: |
           version=1.27.1
-          json=$(curl -sL ${{ github.event.release.assets_url }})
+          json=$(curl -sL https://api.github.com/repos/NethermindEth/nethermind/releases/166734135/assets)
           arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-arm64"))')
           arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
           x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-x64"))')
