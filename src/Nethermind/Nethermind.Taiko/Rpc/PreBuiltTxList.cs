@@ -9,7 +9,7 @@ namespace Nethermind.Taiko.Rpc;
 
 public class PreBuiltTxList(TransactionForRpc[] transactions, long estimatedGasUsed, long bytesLength)
 {
-    public TransactionForRpc[] Transactions { get; set; } = transactions;
+    public TransactionForRpc[] TxList { get; set; } = transactions;
 
     [JsonConverter(typeof(LongRawJsonConverter))]
     public long EstimatedGasUsed { get; set; } = estimatedGasUsed;
