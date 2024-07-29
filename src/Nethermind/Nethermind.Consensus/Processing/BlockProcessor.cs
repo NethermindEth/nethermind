@@ -266,7 +266,7 @@ public partial class BlockProcessor : IBlockProcessor
         if (!ShouldVerifyIncomingWitness || block.IsGenesis) return;
 
         block.Header.MaybeParent!.TryGetTarget(out BlockHeader maybeParent);
-        Banderwagon stateRoot = Banderwagon.FromBytes(maybeParent!.StateRoot!.Bytes.ToArray())!.Value;
+        byte[] stateRoot = maybeParent!.StateRoot!.Bytes.ToArray();
         try
         {
             VerkleWorldState? incomingWorldState = new(block.ExecutionWitness, stateRoot, LimboLogs.Instance);
