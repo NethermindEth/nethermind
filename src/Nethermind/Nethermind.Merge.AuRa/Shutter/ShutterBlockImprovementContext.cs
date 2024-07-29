@@ -17,7 +17,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Merge.AuRa.Shutter;
 public class ShutterBlockImprovementContextFactory(IBlockProducer blockProducer, ShutterTxSource shutterTxSource, IShutterConfig shutterConfig, ISpecProvider spec, TimeSpan timeout) : IBlockImprovementContextFactory
 {
-    private readonly ulong genesisTimestamp = 1000 * (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
+    private readonly ulong genesisTimestamp = (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
 
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
