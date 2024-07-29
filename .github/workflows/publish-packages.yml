@@ -74,7 +74,7 @@ jobs:
           echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
           git clone https://git.launchpad.net/ubuntu-archive-tools
           cd ubuntu-archive-tools
-          for release in "focal" "mantic" "jammy"; do
+          for release in "focal" "jammy"; do
             python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s noble --to-suite=$release nethermind
           done
           rm -f /tmp/lp_credentials
