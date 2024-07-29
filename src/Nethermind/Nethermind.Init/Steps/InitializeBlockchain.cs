@@ -146,7 +146,8 @@ namespace Nethermind.Init.Steps
                 txPool,
                 mainBlockProcessor,
                 _api.BlockTree!,
-                chainHeadInfoProvider.AccountStateProvider
+                chainHeadInfoProvider.AccountStateProvider,
+                _api.LogManager
             );
             setApi.CensorshipDetector = censorshipDetector;
             _api.DisposeStack.Push(censorshipDetector);

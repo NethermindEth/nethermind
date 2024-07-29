@@ -40,6 +40,7 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Hash256? hash) => false;
 
+        public IEnumerable<Transaction> GetBestTxOfEachSender() => Array.Empty<Transaction>();
         public bool IsKnown(Hash256 hash) => false;
 
         public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)

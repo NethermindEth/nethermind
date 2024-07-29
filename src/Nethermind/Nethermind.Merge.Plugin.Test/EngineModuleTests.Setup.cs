@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
@@ -46,12 +45,9 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    private INethermindApi? _api;
-
     [SetUp]
     public Task Setup()
     {
-        _api = Substitute.For<INethermindApi>();
         return KzgPolynomialCommitments.InitializeAsync();
     }
 
@@ -96,8 +92,7 @@ public partial class EngineModuleTests
             new GetPayloadV3Handler(
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
-                chain.LogManager,
-                _api!.CensorshipDetector),
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,

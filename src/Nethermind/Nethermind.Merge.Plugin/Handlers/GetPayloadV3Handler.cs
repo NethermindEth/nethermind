@@ -15,17 +15,22 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class GetPayloadV3Handler : GetPayloadHandlerBase<GetPayloadV3Result>
 {
-    private readonly CensorshipDetector _censorshipDetector;
+    private readonly CensorshipDetector? _censorshipDetector;
     public GetPayloadV3Handler(
         IPayloadPreparationService payloadPreparationService,
         ISpecProvider specProvider,
         ILogManager logManager,
-        CensorshipDetector censorshipDetector) : base(
+        CensorshipDetector? censorshipDetector = null) : base(
         3, payloadPreparationService, specProvider, logManager)
     {
         _censorshipDetector = censorshipDetector;
     }
 
-    protected override GetPayloadV3Result GetPayloadResultFromBlock(IBlockProductionContext context) =>
-        new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV1(context.CurrentBestBlock!), _censorshipDetector);
+    protected override GetPayloadV3Result GetPayloadResultFromBlock(IBlockProductionContext context)
+    {
+        return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV1(context.CurrentBestBlock!), _censorshipDetector)
+        {
+            ShouldOverrideBuilder = _censorshipDetector?.CensorshipDetected ?? false
+        };
+    }
 }

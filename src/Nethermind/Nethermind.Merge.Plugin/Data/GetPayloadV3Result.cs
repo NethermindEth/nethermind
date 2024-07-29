@@ -9,9 +9,9 @@ namespace Nethermind.Merge.Plugin.Data;
 
 public class GetPayloadV3Result : GetPayloadV2Result
 {
-    private readonly CensorshipDetector _censorshipDetector;
+    private readonly CensorshipDetector? _censorshipDetector;
 
-    public GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, CensorshipDetector censorshipDetector) : base(block, blockFees)
+    public GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, CensorshipDetector? censorshipDetector) : base(block, blockFees)
     {
         ExecutionPayload = new(block);
         BlobsBundle = blobsBundle;
@@ -22,7 +22,7 @@ public class GetPayloadV3Result : GetPayloadV2Result
 
     public override ExecutionPayloadV3 ExecutionPayload { get; }
 
-    public bool ShouldOverrideBuilder => _censorshipDetector.CensorshipDetected;
+    public bool ShouldOverrideBuilder { get; init; }
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
 }
