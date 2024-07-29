@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Facade.Eth;
+using Nethermind.Serialization.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Taiko.Rpc;
 
-public class PreBuiltTxList(TransactionForRpc[] transactions, ulong estimatedGasUsed, long bytesLength)
+public class PreBuiltTxList(TransactionForRpc[] transactions, long estimatedGasUsed, long bytesLength)
 {
     public TransactionForRpc[] Transactions { get; set; } = transactions;
 
-    public string EstimatedGasUsed { get; set; } = estimatedGasUsed.ToString();
+    [JsonConverter(typeof(LongRawJsonConverter))]
+    public long EstimatedGasUsed { get; set; } = estimatedGasUsed;
 
-    public string BytesLength { get; set; } = bytesLength.ToString();
+    [JsonConverter(typeof(LongRawJsonConverter))]
+    public long BytesLength { get; set; } = bytesLength;
 }

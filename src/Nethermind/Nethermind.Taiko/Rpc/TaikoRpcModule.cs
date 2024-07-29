@@ -172,7 +172,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             {
                 byte[] list = EncodeAndCompress(currentBatch.ToArray());
                 Batches.Add(new PreBuiltTxList(currentBatch.Select(tx => new TransactionForRpc(tx)).ToArray(),
-                                               (ulong)blockHeader.GasUsed,
+                                               blockHeader.GasUsed,
                                                list.Length));
                 currentBatch = [];
                 blockHeader.GasUsed = 0;
