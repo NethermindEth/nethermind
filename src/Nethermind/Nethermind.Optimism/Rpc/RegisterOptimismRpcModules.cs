@@ -50,14 +50,21 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
 
-        if (_config.SequencerUrl is null && _logger.IsWarn)
+        BasicJsonRpcClient? sequencerJsonRpcClient;
+        if (_config.SequencerMode)
         {
-            _logger.Warn($"SequencerUrl is not set. Nethermind will behave as a Sequencer");
+            _logger.Info("Running as Optimism Sequencer");
+            sequencerJsonRpcClient = null;
         }
-
-        BasicJsonRpcClient? sequencerJsonRpcClient = _config.SequencerUrl is null
-            ? null
-            : new(new Uri(_config.SequencerUrl), _api.EthereumJsonSerializer, _api.LogManager);
+        else
+        {
+            if (_config.SequencerUrl is null)
+            {
+                _logger.Error("Sequencer URL is not set");
+                StepDependencyException.ThrowIfNull(_config.SequencerUrl);
+            }
+            sequencerJsonRpcClient = new(new Uri(_config.SequencerUrl!), _api.EthereumJsonSerializer, _api.LogManager);
+        }
         ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
 
         ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
