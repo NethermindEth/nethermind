@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using NUnit.Framework;
 using Nethermind.Int256;
 using Nethermind.Network.Discovery.Portal;
+using Nethermind.Network.Discovery.Portal.History;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
 

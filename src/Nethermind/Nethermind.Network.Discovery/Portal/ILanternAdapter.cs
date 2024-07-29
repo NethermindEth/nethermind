@@ -4,7 +4,6 @@
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Lantern.Discv5.WireProtocol.Messages.Responses;
-using Nethermind.Network.Discovery.Kademlia;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -12,6 +11,19 @@ public interface ILanternAdapter
 {
     Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage message);
     void OnMsgResp(IEnr sender, TalkRespMessage message);
-    IMessageSender<IEnr, ContentKey, ContentContent> CreateMessageSenderForProtocol(byte[] protocol);
-    void RegisterKademliaOverlay(byte[] protocol, IKademlia<IEnr, ContentKey, ContentContent> kademlia);
+    IPortalContentNetwork RegisterContentNetwork(byte[] networkId, IPortalContentNetwork.Store store);
+}
+
+public interface IPortalContentNetwork
+{
+    public Task<byte[]?> LookupContent(byte[] contentKey, CancellationToken token);
+
+    public void AddSeed(IEnr node);
+    public Task Run(CancellationToken token);
+    public Task Bootstrap(CancellationToken token);
+
+    public interface Store
+    {
+        public byte[]? GetContent(byte[] contentKey);
+    }
 }

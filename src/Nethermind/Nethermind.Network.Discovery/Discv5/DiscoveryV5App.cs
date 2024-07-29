@@ -30,6 +30,7 @@ using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Portal;
+using Nethermind.Network.Discovery.Portal.History;
 using Nethermind.Network.Enr;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
@@ -128,18 +129,20 @@ public class DiscoveryV5App : IDiscoveryApp
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
 
         ILanternAdapter lanternAdapter = _serviceProvider.GetRequiredService<ILanternAdapter>();
-        overlay = new DiscV5Overlay(lanternAdapter, _discv5Protocol.SelfEnr, Bytes.FromHexString("0x500B"),
-            logManager);
-        // overlay.AddSeed(enrFactory.CreateFromString(
-            // "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
-            // identityVerifier));
-        overlay.AddSeed(enrFactory.CreateFromString(
-            "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
-            identityVerifier));
+
+        IEnr[] historyNetworkBootnodes =
+        [
+            enrFactory.CreateFromString(
+                "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
+                identityVerifier)
+        ];
+
+        var historyNetworkProtocolId = Bytes.FromHexString("0x500B");
+        _historyNetwork = new PortalHistoryNetwork(lanternAdapter, logManager, historyNetworkProtocolId, historyNetworkBootnodes);
 
     }
 
-    private DiscV5Overlay overlay;
+    private PortalHistoryNetwork _historyNetwork;
 
     public class CustomPacketHandlerFactory(IServiceProvider serviceProvider) : IPacketHandlerFactory
     {
@@ -248,9 +251,11 @@ public class DiscoveryV5App : IDiscoveryApp
         {
             _logger.Info("lantern adapter registration");
 
+            CancellationToken token = default;
+
             try
             {
-                await overlay.Start(default);
+                await _historyNetwork.Run(token);
             }
             catch (Exception e)
             {

@@ -79,7 +79,6 @@ public class DoubleEndedLru<THash>(int capacity) where THash : notnull
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        Console.Error.WriteLine($"Removed {hash}");
         if (_hashMapping.TryRemove(hash, out var node))
         {
             _queue.Remove(node);

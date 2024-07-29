@@ -105,7 +105,6 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
 
         // This is actually, the only special handling needed.
         var messageType = (MessageType)decryptedMessage[0];
-        _logger.LogInformation($"The message type is {messageType}");
         if (messageType is MessageType.TalkReq or MessageType.TalkResp)
         {
             var reply = await HandleTalkReqMessage(nodeEntry.Record, decryptedMessage);
@@ -118,16 +117,24 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
 
     private async Task<byte[]?> HandleTalkReqMessage(IEnr enr, byte[] message)
     {
-        _logger.LogInformation("Handling talkreq from {enr}", MessageType.TalkReq);
-        var decodedMessage = _messageDecoder.DecodeMessage(message);
-        if (decodedMessage is TalkReqMessage talkReqMessage)
+        _logger.LogInformation("Handling TalkReq from {enr}", MessageType.TalkReq);
+        try
         {
-            return await _lanternAdapter.OnMsgReq(enr, talkReqMessage);
+            var decodedMessage = _messageDecoder.DecodeMessage(message);
+            if (decodedMessage is TalkReqMessage talkReqMessage)
+            {
+                return await _lanternAdapter.OnMsgReq(enr, talkReqMessage);
+            }
+            else
+            {
+                _lanternAdapter.OnMsgResp(enr, (TalkRespMessage)decodedMessage);
+                return null;
+            }
         }
-        else
+        catch (Exception e)
         {
-            _lanternAdapter.OnMsgResp(enr, (TalkRespMessage)decodedMessage);
-            return null;
+            _logger.LogWarning("Handling TalkReq from {enr} failed. {error}", MessageType.TalkReq, e);
+            throw;
         }
     }
 
