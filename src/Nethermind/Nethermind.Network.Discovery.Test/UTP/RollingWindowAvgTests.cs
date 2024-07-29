@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Tests;
@@ -22,8 +23,18 @@ public class RollingWindowAvgTests
     [Test]
     public void TestDefault()
     {
-        FixedRollingAvg avg = new FixedRollingAvg(5, 99, 100);
-        avg.GetAvg(99);
+         var avg = new FixedRollingAvg(5, 99, 100);
+         Assert.That(avg.GetAvg(99), Is.EqualTo(99));
+    }
+
+    [Test]
+    public void GetAvgFixed16PrecisionDefaultValueWithRandomInput()
+    {
+
+        var rollingAvg  = new FixedRollingAvg(5, 100, 1000);
+        int avg = rollingAvg.GetAvg((uint)Random.Shared.Next());
+
+        Assert.That(avg, Is.EqualTo(100));
     }
 
     [Test]
@@ -35,6 +46,42 @@ public class RollingWindowAvgTests
         avg.AdjustMin(50, 1);
         Assert.That(avg.GetAvg(1), Is.EqualTo(50));
     }
+
+    [Test]
+    public void testDelayExceedsExpiry()
+    {
+        var rollingAvg  = new FixedRollingAvg(5, 100, 1000);
+        uint now = 0;
+        rollingAvg.Observe(500, now);
+        now += 2000;
+        int avg = rollingAvg.GetAvg(now);
+
+        Assert.That(avg, Is.EqualTo(100));
+
+    }
+    [Test]
+    public void Observe_MoreThanCapacity_GetAvg_ReturnsCorrectAverage()
+    {
+        var rollingAvg  = new FixedRollingAvg(5, 100, 1000);
+        uint now = 0;
+
+        // Observe more than capacity
+        rollingAvg.Observe(1000, now);
+        rollingAvg.Observe(1500, now);
+        rollingAvg.Observe(2000, now);
+        rollingAvg.Observe(2500, now);
+        rollingAvg.Observe(3000, now);
+        rollingAvg.Observe(3500, now);
+
+        // Act
+        int avg = rollingAvg.GetAvg(now);
+
+        // Assert
+        Assert.That(avg, Is.EqualTo(2500));
+    }
+
+
+
 
     [Test]
     public void TestExpiry()
@@ -55,4 +102,5 @@ public class RollingWindowAvgTests
         avg.Observe(10, 2);
         Assert.That(avg.GetAvg(2), Is.EqualTo(10));
     }
+
 }
