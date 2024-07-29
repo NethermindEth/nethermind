@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -200,4 +201,14 @@ internal struct Word
 
     public static readonly MethodInfo GetSpan = typeof(Word).GetProperty(nameof(Span))!.GetMethod;
     public static readonly MethodInfo SetSpan = typeof(Word).GetProperty(nameof(Span))!.SetMethod;
+
+    public static explicit operator Word(Span<byte> span)
+    {
+        unsafe
+        {
+            var result = new Word();
+            result.Span = span;
+            return result;
+        }
+    }
 }

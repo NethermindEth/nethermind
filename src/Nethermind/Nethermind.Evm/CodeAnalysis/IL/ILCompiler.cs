@@ -21,11 +21,13 @@ using System.Drawing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState state, ISpecProvider spec, IBlockhashProvider BlockhashProvider, byte[][] immediatesData);
+    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, byte[][] immediatesData);
     public class SegmentExecutionCtx
     {
         public ExecuteSegment Method;
@@ -70,9 +72,11 @@ internal class ILCompiler
         using Local uint256C = method.DeclareLocal(typeof(UInt256));
         using Local uint256R = method.DeclareLocal(typeof(UInt256));
 
+        using Local localReadOnlyMemory = method.DeclareLocal(typeof(ReadOnlyMemory<byte>));
         using Local localReadonOnlySpan = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
         using Local localZeroPaddedSpan = method.DeclareLocal(typeof(ZeroPaddedSpan));
         using Local localSpan = method.DeclareLocal(typeof(Span<byte>));
+        using Local localMemory = method.DeclareLocal(typeof(Memory<byte>));
         using Local localArray = method.DeclareLocal(typeof(byte[]));
         using Local uint64A = method.DeclareLocal(typeof(ulong));
 
@@ -80,6 +84,8 @@ internal class ILCompiler
         using Local int64A = method.DeclareLocal(typeof(long));
         using Local byte8A = method.DeclareLocal(typeof(byte));
         using Local buffer = method.DeclareLocal(typeof(byte*));
+
+        using Local storageCell = method.DeclareLocal(typeof(StorageCell));
 
         using Local gasAvailable = method.DeclareLocal(typeof(long));
         using Local programCounter = method.DeclareLocal(typeof(ushort));
@@ -173,8 +179,8 @@ internal class ILCompiler
                 case Instruction.CHAINID:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
-                    method.LoadArgument(1);
-                    method.CallVirtual(GetPropertyInfo(typeof(ISpecProvider), nameof(ISpecProvider.ChainId), false, out _));
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ChainId)));
                     method.StoreField(Word.Ulong0Field);
                     method.StackPush(head);
                     break;
@@ -257,7 +263,7 @@ internal class ILCompiler
                     method.Load(stack, head);
 
                     // we load the span of bytes
-                    method.LoadArgument(3);
+                    method.LoadArgument(5);
                     method.LoadConstant(op.Arguments.Value);
                     method.LoadElement<byte[]>();
                     method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
@@ -657,6 +663,7 @@ internal class ILCompiler
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
+                    method.LoadObject(typeof(ReadOnlyMemory<byte>));
                     method.LoadLocalAddress(uint256B);
                     method.LoadLocal(uint256C);
                     method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -685,6 +692,7 @@ internal class ILCompiler
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
+                    method.LoadObject(typeof(ReadOnlyMemory<byte>));
 
                     method.LoadLocalAddress(uint256A);
                     method.LoadConstant(Word.Size);
@@ -1188,7 +1196,7 @@ internal class ILCompiler
                     method.Call(typeof(Math).GetMethod(nameof(Math.Min), [typeof(long), typeof(long)]));
                     method.StoreLocal(int64A);
 
-                    method.LoadArgument(2);
+                    method.LoadArgument(1);
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
@@ -1338,6 +1346,252 @@ internal class ILCompiler
                             });
 
                     method.Call(typeof(LogEntry).GetConstructor(new[] { typeof(Address), typeof(byte[]), typeof(Hash256[])})); //vakue to set
+                    break;
+                case Instruction.TSTORE:
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                    method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
+                    method.BranchIfTrue(evmExceptionLabels[EvmExceptionType.StaticCallViolation]);
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetArray);
+                    method.StoreLocal(localArray);
+
+                    method.StackPop(head, 2);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+                    method.LoadLocalAddress(uint256A);
+                    method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
+                    method.StoreLocal(storageCell);
+
+                    method.LoadArgument(2);
+                    method.LoadLocalAddress(storageCell);
+                    method.LoadLocal(localArray);
+                    method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
+                    break;
+                case Instruction.TLOAD:
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackPop(head, 1);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+                    method.LoadLocalAddress(uint256A);
+                    method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
+                    method.StoreLocal(storageCell);
+
+                    method.LoadArgument(2);
+                    method.LoadLocalAddress(storageCell);
+                    method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
+                    method.StoreLocal(localReadonOnlySpan);
+
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadLocal(localReadonOnlySpan);
+                    method.Call(Word.SetSpan);
+                    method.StackPush(head);
+                    break;
+                case Instruction.EXTCODESIZE:
+                    method.LoadLocal(gasAvailable);
+                    method.LoadArgument(4);
+                    method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetAddress);
+                    method.StoreLocal(address);
+                    method.StackPop(head, 1);
+
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                    method.LoadLocal(address);
+                    method.LoadArgument(4);
+                    method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                    method.LoadConstant(true);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+
+                    method.LoadArgument(3);
+                    method.LoadArgument(2);
+                    method.LoadLocal(address);
+                    method.LoadArgument(4);
+                    method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetCachedCodeInfo), [typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+                    method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
+                    method.StoreLocal(localReadOnlyMemory);
+                    method.LoadLocalAddress(localReadOnlyMemory);
+                    method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
+
+                    method.StoreField(Word.Int0Field);
+                    method.StackPush(head);
+                    break;
+
+                case Instruction.EXTCODECOPY:
+                    endOfOpcode = method.DefineLabel();
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadArgument(4);
+                    method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetAddress);
+                    method.StoreLocal(address);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 3);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackLoadPrevious(stack, head, 4);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256C);
+                    method.StackPop(head, 4);
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling)));
+                    method.LoadConstant(GasCostOf.Memory);
+                    method.Multiply();
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                    method.LoadLocal(address);
+                    method.LoadArgument(4);
+                    method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                    method.LoadConstant(true);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
+                    method.BranchIfTrue(endOfOpcode);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256C);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadArgument(3);
+                    method.LoadArgument(2);
+                    method.LoadLocal(address);
+                    method.LoadArgument(4);
+                    method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetCachedCodeInfo), [typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+                    method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
+
+                    method.LoadLocalAddress(uint256B);
+                    method.LoadLocal(uint256C);
+                    method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+                    method.Convert<int>();
+                    method.LoadConstant((int)PadDirection.Right);
+                    method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
+                    method.StoreLocal(localZeroPaddedSpan);
+
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(localZeroPaddedSpan);
+                    method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
+
+                    method.MarkLabel(endOfOpcode);
+                    break;
+                case Instruction.EXTCODEHASH:
+                    endOfOpcode = method.DefineLabel();
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadArgument(4);
+                    method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeHashCost)));
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetAddress);
+                    method.StoreLocal(address);
+                    method.StackPop(head, 1);
+
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                    method.LoadLocal(address);
+                    method.LoadArgument(4);
+                    method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                    method.LoadConstant(true);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadArgument(2);
+                    method.LoadLocal(address);
+                    method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IWorldState.AccountExists)));
+                    method.LoadConstant(false);
+                    method.CompareEqual();
+                    method.LoadArgument(2);
+                    method.LoadLocal(address);
+                    method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IWorldState.IsDeadAccount)));
+                    method.Or();
+                    method.BranchIfTrue(endOfOpcode);
+
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadArgument(2);
+                    method.LoadLocal(address);
+                    method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetCodeHash)));
+                    method.Call(Word.SetKeccak);
+                    method.MarkLabel(endOfOpcode);
+                    method.StackPush(head);
+                    break;
+                case Instruction.SELFBALANCE:
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadArgument(2);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
+                    method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(head);
+                    break;
+                case Instruction.BALANCE:
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetAddress);
+                    method.StoreLocal(address);
+                    method.StackPop(head, 1);
+
+                    method.LoadLocalAddress(gasAvailable);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                    method.LoadLocal(address);
+                    method.LoadArgument(4);
+                    method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                    method.LoadConstant(true);
+                    method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                    method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadArgument(2);
+                    method.LoadLocal(address);
+                    method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(head);
                     break;
                 default:
                     throw new NotSupportedException();

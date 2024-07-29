@@ -10,12 +10,16 @@ using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Sigil;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 
@@ -406,6 +410,37 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             yield return (Instruction.JUMP, Prepare.EvmCode
                 .JUMP(31)
                 .Done);
+
+            yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .TSTORE()
+                .PushData(7)
+                .TLOAD()
+                .Done);
+
+            yield return (Instruction.EXTCODESIZE, Prepare.EvmCode
+                .EXTCODESIZE(Address.FromNumber(1))
+                .Done);
+
+            yield return (Instruction.EXTCODEHASH, Prepare.EvmCode
+                .EXTCODEHASH(Address.FromNumber(1))
+                .Done);
+
+            yield return (Instruction.EXTCODECOPY, Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .EXTCODECOPY(Address.FromNumber(1))
+                .Done);
+
+            yield return (Instruction.BALANCE, Prepare.EvmCode
+                .BALANCE(Address.FromNumber(1))
+                .Done);
+
+            yield return (Instruction.SELFBALANCE, Prepare.EvmCode
+                .SELFBALANCE()
+                .Done);
         }
 
         [Test, TestCaseSource(nameof(GetBytecodes))]
@@ -418,6 +453,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var inputBuffer = envExCtx.InputData;
             var returnBuffer = ReadOnlyMemory<byte>.Empty;
 
+            TestState.CreateAccount(Address.FromNumber(1), 1000000);
+            TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
+
             var state = new EvmState(
                 1_000_000,
                 new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
@@ -426,12 +464,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 Snapshot.Empty,
                 isContinuation: false);
 
+            IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
+            ICodeInfoRepository codeInfoRepository = typeof(VirtualMachine<VirtualMachine.IsTracing>).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(evm) as ICodeInfoRepository;
+
             state.InitStacks();
 
-            ILEvmState iLEvmState = new ILEvmState(state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
+            ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.Method(ref iLEvmState, MainnetSpecProvider.Instance, _blockhashProvider, ctx.Data);
+            ctx.Method(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance , ctx.Data);
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 
