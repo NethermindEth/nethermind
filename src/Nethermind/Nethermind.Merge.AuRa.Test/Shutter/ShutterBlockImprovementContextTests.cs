@@ -29,7 +29,7 @@ public class ShutterBlockImprovementContextTests
         ShutterConfig shutterConfig = new ShutterConfig();
         shutterConfig.ExtraBuildWindow = 3000;
         var payloadAttributes = new Consensus.Producers.PayloadAttributes();
-        payloadAttributes.Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        payloadAttributes.Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5;
         ShutterBlockImprovementContext sut = new ShutterBlockImprovementContext(
             Substitute.For<IBlockProducer>(),
             Substitute.For<IShutterTxSignal>(),
@@ -38,7 +38,6 @@ public class ShutterBlockImprovementContextTests
             Build.A.BlockHeader.TestObject,
             payloadAttributes,
             DateTimeOffset.UtcNow,
-            TimeSpan.FromDays(1),
             GnosisSpecProvider.BeaconChainGenesisTimestamp,
             TimeSpan.FromSeconds(5));
 

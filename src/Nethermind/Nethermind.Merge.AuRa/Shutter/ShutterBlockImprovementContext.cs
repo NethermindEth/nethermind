@@ -15,7 +15,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Merge.AuRa.Shutter;
-public class ShutterBlockImprovementContextFactory(IBlockProducer blockProducer, ShutterTxSource shutterTxSource, IShutterConfig shutterConfig, ISpecProvider spec, TimeSpan timeout) : IBlockImprovementContextFactory
+public class ShutterBlockImprovementContextFactory(
+    IBlockProducer blockProducer,
+    ShutterTxSource shutterTxSource,
+    IShutterConfig shutterConfig,
+    ISpecProvider spec) : IBlockImprovementContextFactory
 {
     private readonly ulong genesisTimestamp = (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
 
@@ -24,7 +28,15 @@ public class ShutterBlockImprovementContextFactory(IBlockProducer blockProducer,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime) =>
-        new ShutterBlockImprovementContext(blockProducer, shutterTxSource, shutterConfig, currentBestBlock, parentHeader, payloadAttributes, startDateTime, timeout, genesisTimestamp, spec.SlotLength??TimeSpan.FromSeconds(5));
+        new ShutterBlockImprovementContext(blockProducer,
+                                           shutterTxSource,
+                                           shutterConfig,
+                                           currentBestBlock,
+                                           parentHeader,
+                                           payloadAttributes,
+                                           startDateTime,
+                                           genesisTimestamp,
+                                           spec.SlotLength ?? TimeSpan.FromSeconds(5));
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
@@ -39,7 +51,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        TimeSpan timeout,
         ulong genesisTimestamp,
         TimeSpan slotLength)
     {
@@ -47,15 +58,22 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             throw new ArgumentException("Cannot be zero.",nameof(slotLength));
         if (payloadAttributes.Timestamp < genesisTimestamp)
             throw new ArgumentOutOfRangeException(nameof(genesisTimestamp), genesisTimestamp, $"Genesis cannot be after the payload timestamp ({payloadAttributes.Timestamp}).");
-
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        _cancellationTokenSource = new CancellationTokenSource();
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask =
         Task.Run(async () =>
         {
             (long slot, long offset) = GetBuildingSlotAndOffset(payloadAttributes.Timestamp, genesisTimestamp, slotLength);
-            long waitTime = (long)shutterConfig.ExtraBuildWindow - offset;
+            long waitTime;
+            if (offset <= 0)
+            {
+                waitTime = Math.Abs(offset) + shutterConfig.ExtraBuildWindow;
+            }
+            else
+            {
+                waitTime = (long)shutterConfig.ExtraBuildWindow - offset;
+            }
             if (waitTime < 1)
             {
                 return currentBestBlock;
@@ -80,14 +98,14 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private static (long, long) GetBuildingSlotAndOffset(ulong slotTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
+    private static (long slot, long slotOffset) GetBuildingSlotAndOffset(ulong slotTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
     {
         ulong slotTimeSinceGenesis = slotTimestamp - genesisTimestamp;
         int buildingSlot = (int)(slotTimeSinceGenesis / slotLength.TotalSeconds);
 
         double slotStartTimeMs = genesisTimestamp * 1000 + (buildingSlot * slotLength.TotalMilliseconds);
 
-        double msIntoSlot = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - slotStartTimeMs;
+        double msIntoSlot = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - slotStartTimeMs;
 
         return (buildingSlot, (long)msIntoSlot);
     }

@@ -85,7 +85,7 @@ namespace Nethermind.Merge.AuRa
 
             if (_shutterConfig!.Enabled)
             {
-                _api.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(blockProducer, _shutterTxSource!, _shutterConfig, _api.SpecProvider!, TimeSpan.FromMilliseconds(_shutterConfig.ExtraBuildWindow));
+                _api.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(blockProducer, _shutterTxSource!, _shutterConfig, _api.SpecProvider!);
             }
 
             return blockProducer;
