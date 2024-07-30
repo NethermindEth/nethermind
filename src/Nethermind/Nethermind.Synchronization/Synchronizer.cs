@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
             SnapProvider = new SnapProvider(_snapProgressTracker, dbProvider.CodeDb, nodeStorage, logManager);
-            _verkleProgressTracker= new VerkleProgressTracker(
+            _verkleProgressTracker = new VerkleProgressTracker(
                 blockTree,
                 dbProvider,
                 logManager,

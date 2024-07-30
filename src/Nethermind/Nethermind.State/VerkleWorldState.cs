@@ -95,6 +95,11 @@ public class VerkleWorldState : IWorldState
         _storageProvider = new VerkleStorageProvider(_tree, logManager);
     }
 
+    public bool ValuePresentInTree(Hash256 key)
+    {
+        return _tree.HasLeaf(key);
+    }
+
     public bool IsContract(Address address)
     {
         Account? account = GetThroughCache(address);
@@ -545,23 +550,7 @@ public class VerkleWorldState : IWorldState
     protected Account? GetState(Address address)
     {
         Db.Metrics.StateTreeReads++;
-        byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
-        headerTreeKey[31] = AccountHeader.Version;
-        IEnumerable<byte>? versionVal = _tree.Get(headerTreeKey);
-        // here we have a assumption that the version value will always be set if the account is not null
-        // so we can just use the version information to decide if the account exists or not
-        if (versionVal is null) return null;
-        UInt256 version = new((versionVal).ToArray());
-        headerTreeKey[31] = AccountHeader.Balance;
-        UInt256 balance = new((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
-        headerTreeKey[31] = AccountHeader.Nonce;
-        UInt256 nonce = new((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
-        headerTreeKey[31] = AccountHeader.CodeHash;
-        byte[]? codeHash = (_tree.Get(headerTreeKey) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
-        headerTreeKey[31] = AccountHeader.CodeSize;
-        UInt256 codeSize = new((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
-
-        return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
+        return _tree.Get(address);
     }
 
     protected void BulkSet(Dictionary<Address, Account> accountChange)

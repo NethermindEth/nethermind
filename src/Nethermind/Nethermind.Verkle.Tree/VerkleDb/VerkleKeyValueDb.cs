@@ -69,6 +69,11 @@ public class VerkleKeyValueDb(IColumnsDb<VerkleDbColumns> columns) : IVerkleDb, 
         return value is not null;
     }
 
+    public bool HasLeaf(ReadOnlySpan<byte> key)
+    {
+        return LeafDb.KeyExists(key);
+    }
+
     public void SetLeaf(ReadOnlySpan<byte> leafKey, byte[] leafValue)
     {
         LeafDb[leafKey] = leafValue;

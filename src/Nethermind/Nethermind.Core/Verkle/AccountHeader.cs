@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -9,11 +10,18 @@ namespace Nethermind.Core.Verkle;
 
 public readonly struct AccountHeader
 {
-    public const int Version = 0;
-    public const int Balance = 1;
-    public const int Nonce = 2;
-    public const int CodeHash = 3;
-    public const int CodeSize = 4;
+    public const int BasicDataLeafKey = 0;
+    public const int CodeHash = 1;
+
+    public const int VersionOffset = 0;
+    public const int NonceOffset = 4;
+    public const int CodeSizeOffset = 12;
+    public const int BalanceOffset = 16;
+
+    public const int VersionBytesLength = 1;
+    public const int NonceBytesLength = 8;
+    public const int CodeSizeBytesLength = 4;
+    public const int BalanceBytesLength = 16;
 
     private const int MainStorageOffsetExponent = 8 * 31;
     private const int MainStorageOffsetBase = 1;
@@ -79,5 +87,50 @@ public readonly struct AccountHeader
         treeIndex = chunkOffset / VerkleNodeWidth;
         UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
         subIndex.ToBigEndian(subIndexBytes);
+    }
+
+    public static Account BasicDataToAccount(in ReadOnlySpan<byte> basicData, Hash256 codeHash)
+    {
+        byte version = basicData[0];
+        var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength), true);
+        var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength), true);
+        var balance = new UInt256( basicData.Slice(BalanceOffset, BalanceBytesLength), true);
+
+        return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
+    }
+
+    public static AccountStruct BasicDataToAccountStruct(in ReadOnlySpan<byte> basicData, ValueHash256 codeHash)
+    {
+        byte version = basicData[0];
+        var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength), true);
+        var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength), true);
+        var balance = new UInt256(basicData.Slice(BalanceOffset, BalanceBytesLength), true);
+
+        return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
+    }
+
+    public static byte[] AccountToBasicData(Account account)
+    {
+        byte[] basicData = new byte[32];
+        Span<byte> basicDataSpan = basicData;
+
+        // we know that version is just 1 byte
+        byte version = account.Version;
+        basicData[0] = version;
+
+        // TODO: should we convert balance to Uint128 and then directly decode to span
+        Span<byte> balanceBytes = stackalloc byte[32];
+        account.Balance.ToBigEndian(balanceBytes);
+        balanceBytes[(32 - BalanceBytesLength)..].CopyTo(basicDataSpan.Slice(BalanceOffset, BalanceBytesLength));
+
+        // we know that nonce is just 8 bytes
+        ulong nonce = account.Nonce.u0;
+        BinaryPrimitives.WriteUInt64BigEndian(basicDataSpan.Slice(NonceOffset, NonceBytesLength), nonce);
+
+        // we know that codeSize is just 4 bytes
+        uint codeSize = (uint)account.CodeSize.u0;
+        BinaryPrimitives.WriteUInt32BigEndian(basicDataSpan.Slice(CodeSizeOffset, CodeSizeBytesLength), codeSize);
+
+        return basicData;
     }
 }

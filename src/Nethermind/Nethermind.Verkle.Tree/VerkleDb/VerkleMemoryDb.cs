@@ -33,6 +33,11 @@ public class VerkleMemoryDb(LeafStore leafTable, InternalStore internalTable) : 
         return InternalTable.TryGetValue(key, out value);
     }
 
+    public bool HasLeaf(ReadOnlySpan<byte> key)
+    {
+        return LeafTable.ContainsKey(key);
+    }
+
     public void SetLeaf(ReadOnlySpan<byte> leafKey, byte[] leafValue)
     {
         LeafTable[leafKey] = leafValue;

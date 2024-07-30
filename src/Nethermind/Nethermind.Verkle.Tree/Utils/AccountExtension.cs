@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Verkle;
 using Nethermind.Verkle.Tree.Sync;
 
 namespace Nethermind.Verkle.Tree.Utils;
@@ -15,14 +15,10 @@ public static class AccountExtension
     {
         List<LeafInSubTree> subTree =
         [
-            new LeafInSubTree(0, account.Version.ToLittleEndian()),
-            new LeafInSubTree(1, account.Balance.ToLittleEndian()),
-            new LeafInSubTree(2, account.Nonce.ToLittleEndian()),
-            new LeafInSubTree(3, account.CodeHash.Bytes.ToArray())
+            new LeafInSubTree(AccountHeader.BasicDataLeafKey, AccountHeader.AccountToBasicData(account)),
+            new LeafInSubTree(AccountHeader.CodeHash, account.CodeHash.Bytes.ToArray())
         ];
 
-        if (!account.CodeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-            subTree.Add(new LeafInSubTree(4, account.CodeSize.ToLittleEndian()));
         return subTree.ToArray();
     }
 }
