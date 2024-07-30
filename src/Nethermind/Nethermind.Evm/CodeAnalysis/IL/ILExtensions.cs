@@ -98,34 +98,46 @@ static class EmitExtensions
     /// <summary>
     /// Advances the stack one word up.
     /// </summary>
-    public static void StackPush<T>(this Emit<T> il, Local idx, int count = 1)
+    public static void StackPush<T>(this Emit<T> il, Local idx, Sigil.Label stackOverflowLabel, int count = 1)
     {
         il.LoadLocal(idx);
         il.LoadConstant(count);
         il.Add();
         il.StoreLocal(idx);
+
+        il.LoadLocal(idx);
+        il.LoadConstant(1024);
+        il.BranchIfGreater(stackOverflowLabel);
     }
 
     /// <summary>
     /// Moves the stack <paramref name="count"/> words down.
     /// </summary>
-    public static void StackPop<T>(this Emit<T> il, Local idx, int count = 1)
+    public static void StackPop<T>(this Emit<T> il, Local idx, Sigil.Label stackUnderflowLabel, int count = 1)
     {
         il.LoadLocal(idx);
         il.LoadConstant(count);
         il.Subtract();
         il.StoreLocal(idx);
+
+        il.LoadLocal(idx);
+        il.LoadConstant(0);
+        il.BranchIfLess(stackUnderflowLabel);
     }
 
     /// <summary>
     /// Moves the stack <paramref name="count"/> words down.
     /// </summary>
-    public static void StackPop<T>(this Emit<T> il, Local local, Local count)
+    public static void StackPop<T>(this Emit<T> il, Local local, Sigil.Label stackUnderflowLabel, Local count)
     {
         il.LoadLocal(local);
         il.LoadLocal(count);
         il.Subtract();
         il.StoreLocal(local);
+
+        il.LoadLocal(local);
+        il.LoadConstant(0);
+        il.BranchIfLess(stackUnderflowLabel);
     }
 
     public static void WhileBranch<T>(this Emit<T> il, Local cond, Action<Emit<T>, Local> action)
