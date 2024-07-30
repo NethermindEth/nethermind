@@ -14,7 +14,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Evm;
-using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {

@@ -5,7 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus;
+namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public interface IBlockImprovementContext : IBlockProductionContext, IDisposable
 {

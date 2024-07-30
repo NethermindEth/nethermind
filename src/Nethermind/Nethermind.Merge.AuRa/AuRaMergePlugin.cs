@@ -26,6 +26,15 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Facade.Proxy;
+using Nethermind.HealthChecks;
+using Nethermind.Merge.Plugin.BlockProduction.Boost;
+using Nethermind.Merge.Plugin.GC;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Synchronization;
+using System.Net.Http;
+using System.Threading;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -83,12 +92,18 @@ namespace Nethermind.Merge.AuRa
 
             IBlockProducer blockProducer = base.InitBlockProducer(consensusPlugin, txSource);
 
+            return blockProducer;
+        }
+
+        public new Task InitRpcModules()
+        {
+            IBlockImprovementContextFactory? blockImprovementContextFactory = null;
             if (_shutterConfig!.Enabled)
             {
-                _api.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(blockProducer, _shutterTxSource!, _shutterConfig, _api.SpecProvider!);
+                blockImprovementContextFactory = new ShutterBlockImprovementContextFactory(_api.BlockProducer!, _shutterTxSource!, _shutterConfig, _api.SpecProvider!);
             }
-
-            return blockProducer;
+            base.InitRpcModulesInternal(blockImprovementContextFactory);
+            return Task.CompletedTask;
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()

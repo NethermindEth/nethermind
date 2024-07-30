@@ -272,6 +272,11 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     public Task InitRpcModules()
     {
+        return InitRpcModulesInternal(null);
+    }
+
+    protected Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory)
+    {
         if (MergeEnabled)
         {
             if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
@@ -295,23 +300,19 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             }
             Thread.Sleep(5000);
 
-
-            IBlockImprovementContextFactory improvementContextFactory;
-
-            if (_api.Config<IShutterConfig>().Enabled && _api.BlockImprovementContextFactory is not null)
+            if (improvementContextFactory is null)
             {
-                improvementContextFactory = _api.BlockImprovementContextFactory;
-            }
-            else if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
-            {
-                improvementContextFactory = new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
-            }
-            else
-            {
-                DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
-                IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
-                BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
-                improvementContextFactory = boostBlockImprovementContextFactory;
+                if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
+                {
+                    improvementContextFactory = new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+                }
+                else
+                {
+                    DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
+                    IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
+                    BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                    improvementContextFactory = boostBlockImprovementContextFactory;
+                }
             }
 
             PayloadPreparationService payloadPreparationService = new(
@@ -369,7 +370,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
-
         return Task.CompletedTask;
     }
 

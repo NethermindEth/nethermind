@@ -5,7 +5,7 @@ using System;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus;
+namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public interface IBlockImprovementContextFactory
 {

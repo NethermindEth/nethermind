@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -13,7 +12,7 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    protected class StoringBlockImprovementContextFactory : IBlockImprovementContextFactory
+    private class StoringBlockImprovementContextFactory : IBlockImprovementContextFactory
     {
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         public IList<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
@@ -34,7 +33,7 @@ public partial class EngineModuleTests
         }
     }
 
-    protected class ImprovementStartedEventArgs : EventArgs
+    private class ImprovementStartedEventArgs : EventArgs
     {
         public IBlockImprovementContext BlockImprovementContext { get; }
 
