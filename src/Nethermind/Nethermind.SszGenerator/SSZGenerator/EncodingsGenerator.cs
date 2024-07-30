@@ -10,7 +10,7 @@ using System.Text;
 public class SSZGenerator : IIncrementalGenerator
 {
     private static readonly string[] SSZ_LIB_SUPPORTED_ENCODING_TYPES_OFFSET={
-        "string", "byte[]", "int", "uint", "ulong", "UInt256", "bool", "byte", "ushort", "UInt258"
+        "string", "byte[]", "int", "uint", "ulong", "UInt256", "bool", "byte", "ushort", "UInt258","BitArray"
     };
     private static readonly string[] SSZ_LIB_SUPPORTED_ENCODING_TYPES_NOOFFSET={
         "ushort", "UInt258", "UInt256[]", "UInt258[]"
