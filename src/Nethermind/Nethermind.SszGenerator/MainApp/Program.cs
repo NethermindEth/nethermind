@@ -3,6 +3,7 @@ using static System.Console;
 using Nethermind.Serialization.Ssz;
 using System.Text;
 using System;
+using SSZAttribute;
 
 namespace Program{
     [SSZClass]

@@ -187,7 +187,8 @@ public class SSZGenerator : IIncrementalGenerator
                     var fieldType = field.Declaration.Type.ToString();
                     fieldList.Add(new FieldInfo{FieldType=fieldType, FieldName=fieldName});
                     var fieldInitializer = variable.Initializer?.ToFullString() ?? string.Empty;
-                    sb.AppendLine($"{modifiers}{fieldType} {fieldName} {fieldInitializer}; {(fieldType!="dynamic" ? "// fixed type" : "//dynamic type")}");
+                    sb.AppendLine($"{modifiers}{fieldType} {fieldName} {fieldInitializer};");
+                    // sb.AppendLine($"{modifiers}{fieldType} {fieldName} {fieldInitializer}; {(fieldType!="dynamic" ? "// fixed type" : "//dynamic type")}");
                 }
             }
         }
@@ -211,7 +212,8 @@ public class SSZGenerator : IIncrementalGenerator
                         var name = propertyDecl.Identifier.Text;
                         var accessors = propertyDecl.AccessorList != null ? propertyDecl.AccessorList.ToString() : string.Empty;
 
-                        sb.AppendLine($"            {modifiers} {propertyType} {name} {accessors} {(propertyType!="dynamic" ? "// fixed type" : "//dynamic type")}");
+                        sb.AppendLine($"            {modifiers} {propertyType} {name} {accessors}");
+                        // sb.AppendLine($"            {modifiers} {propertyType} {name} {accessors} {(propertyType!="dynamic" ? "// fixed type" : "//dynamic type")}");
 
                     }
                     else if (member is FieldDeclarationSyntax fieldDecl)
@@ -223,7 +225,8 @@ public class SSZGenerator : IIncrementalGenerator
                         {
                             var fieldName = variable.Identifier.Text;
                             var fieldInitializer = variable.Initializer?.ToFullString() ?? string.Empty;
-                            sb.AppendLine($"            {modifiers} {fieldType} {fieldName} {fieldInitializer}; {(fieldType!="dynamic" ? "// fixed type" : "//dynamic type")}");
+                            sb.AppendLine($"            {modifiers} {fieldType} {fieldName} {fieldInitializer};");
+                            // sb.AppendLine($"            {modifiers} {fieldType} {fieldName} {fieldInitializer}; {(fieldType!="dynamic" ? "// fixed type" : "//dynamic type")}");
                         }
                     }
                 }

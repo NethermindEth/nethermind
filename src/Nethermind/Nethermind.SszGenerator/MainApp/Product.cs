@@ -1,6 +1,7 @@
 using System.Reflection;
 using static System.Console;
 using Nethermind.Serialization.Ssz;
+using SSZAttribute;
 
 namespace Program{
     [SSZClass]
