@@ -29,6 +29,8 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     private readonly VerkleWorldState _verkleWorldState =
         verkleWorldState ?? throw new ArgumentNullException(nameof(verkleWorldState));
 
+    public bool ChargeFillCost { get; set; } = false;
+
     public bool AccessForContractCreationInit(Address contractAddress, ref long gasAvailable)
     {
         return AccessBasicData(contractAddress, ref gasAvailable, true);
@@ -253,7 +255,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         {
             requiredGas += GasCostOf.WitnessChunkWrite;
             // if key is already in `_modifiedLeaves`, then we should not check if key is present in the tree
-            if (!_verkleWorldState.ValuePresentInTree(key))
+            if (ChargeFillCost && !_verkleWorldState.ValuePresentInTree(key))
             {
                 requiredGas += GasCostOf.WitnessChunkFill;
             }
