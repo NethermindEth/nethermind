@@ -9,7 +9,4 @@ public interface IOptimismConfig : IConfig
 {
     [ConfigItem(Description = "Sequencer address", DefaultValue = "null")]
     string? SequencerUrl { get; set; }
-
-    [ConfigItem(Description = "Run as Optimism Sequencer", DefaultValue = "false", HiddenFromDocs = true)]
-    bool SequencerMode { get; set; }
 }
