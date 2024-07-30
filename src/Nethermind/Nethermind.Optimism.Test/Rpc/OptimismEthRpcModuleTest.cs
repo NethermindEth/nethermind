@@ -36,14 +36,14 @@ public class OptimismEthRpcModuleTest
         EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(chainId: TestBlockchainIds.ChainId, logManager: LimboLogs.Instance);
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockchainBridge(blockchainBridge: bridge)
-            .WithTxSender(txSender: txSender)
+            .WithBlockchainBridge(bridge)
+            .WithTxSender(txSender)
             .WithOptimismEthRpcModule(
                 sequencerRpcClient: null /* explicitly using null to behave as Sequencer */,
-                accountStateProvider: null!,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
                 ecdsa: new OptimismEthereumEcdsa(ethereumEcdsa),
-                sealer: null!,
-                opSpecHelper: null!)
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build();
 
         Transaction tx = Build.A.Transaction
