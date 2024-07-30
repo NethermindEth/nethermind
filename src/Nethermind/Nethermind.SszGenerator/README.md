@@ -4,7 +4,7 @@ This project is used to generate data structures and methods that the developers
 
 This Project consist of three parts:
 - MainApp is a demo project of how you can mark your classes, fields and structs with SszAttribute.
-- SszAttribute is a library that you need to import into your project to mark classes, fields and structs.
+- SSZAttribute is a library that you need to import into your project to mark classes, fields and structs.
 - SSZGenerator is a generator that will generate Simple Serialized Encoding function for marked fields and structs.
 
 
