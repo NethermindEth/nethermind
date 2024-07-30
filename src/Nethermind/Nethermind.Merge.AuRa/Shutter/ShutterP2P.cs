@@ -82,6 +82,7 @@ public class ShutterP2P(
         MyProto proto = new();
         _cancellationTokenSource = new();
         _ = _router.RunAsync(peer, proto, token: _cancellationTokenSource.Token);
+        proto.SetupFinished().GetAwaiter().GetResult();
         ConnectToPeers(proto, p2pAddresses);
 
         Task.Run(async () =>
@@ -129,10 +130,17 @@ public class ShutterP2P(
 
     internal class MyProto : IDiscoveryProtocol
     {
+        private readonly TaskCompletionSource taskCompletionSource = new();
         public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
         public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
 
-        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default) => Task.Delay(int.MaxValue, token);
+        public Task SetupFinished() => taskCompletionSource.Task;
+
+        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
+        {
+            taskCompletionSource.TrySetResult();
+            return Task.CompletedTask;
+        }
     }
 
     internal void ProcessP2PMessage(byte[] msg)
