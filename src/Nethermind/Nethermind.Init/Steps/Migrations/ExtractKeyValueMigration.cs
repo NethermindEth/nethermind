@@ -216,15 +216,13 @@ namespace Nethermind.Init.Steps.Migrations
                 Span<byte> location = stackalloc byte[17];
                 Span<byte> keyBytes = stackalloc byte[24];
                 Span<int> decodedBlockNumbers = stackalloc int[bufferSize / 4];
+                Span<byte> blockNumberBytes = stackalloc byte[4];
                 ArrayPoolList<byte> blockNumbers = new(bufferSize);
-
 
                 foreach ((long, TxReceipt[]) block in GetBlockBodiesForMigration(token)
                              .Select(i => _blockTree.FindBlock(i.Item2, BlockTreeLookupOptions.None) ?? GetMissingBlock(i.Item1, i.Item2))
                              .Select(b => (b.Number, _receiptStorage.Get(b, false))).AsParallel().AsOrdered())
                 {
-                    //TODO: Move stuff to LogIndexStorage for reusability
-
                     int blockNumber = (int)block.Item1;
                     BinaryPrimitives.WriteInt32LittleEndian(bufferForBlockNum, blockNumber);
                     foreach (TxReceipt? receipt in block.Item2)
@@ -238,48 +236,49 @@ namespace Nethermind.Init.Steps.Migrations
                                 long position = 0;
                                 int slotSize = 0;
                                 int lastBlockNumber = blockNumber;
-                                // check if theres any temp file location for the address
-                                // if none then create a new index with the block number
-                                // if there exists then add to the position with the given offset
-                                var lastEntryForAddress = GetKeyValuePairsWithPrefix(_logIndexDb, keyBytes.ToArray()).LastOrDefault();
+                                var lastEntryForAddress = GetKeyValuePairsWithPrefix(_logIndexDb, address.Value.Bytes).LastOrDefault();
 
-                                //TODO: use bit for flagging if Its final or not
                                 if (lastEntryForAddress == default || lastEntryForAddress.Value[0] == (byte)FileType.FINAL)
                                 {
-                                    // no index found for the address
                                     Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
                                     if (freeSlots.Length < 8)
                                     {
                                         position = tempFileStream.Position;
+                                        _logger.Info($"Assigning new position {position} for block {blockNumber}");
                                         tempFileStream.Write(buffer);
                                     }
                                     else
                                     {
-                                        // TODO: Use Bytes.ReadEthUInt64
-                                        position = (long)Bytes.ReadEthUInt64(freeSlots.Slice(0, 8));
+                                        position = BinaryPrimitives.ReadInt64LittleEndian(freeSlots.Slice(0, 8));
                                         freeSlots = freeSlots.Slice(8);
                                         _logIndexDb.PutSpan(metaDataKey, freeSlots);
+                                        _logger.Info($"Reusing free slot at position {position} for block {blockNumber}");
                                     }
+
+                                    if (position < 0)
+                                    {
+                                        throw new ArgumentOutOfRangeException(nameof(position), "position must be non-negative");
+                                    }
+
+                                    _logger.Info($"Writing block number {blockNumber} at position {position}.");
                                     RandomAccess.Write(tempFileHandle, bufferForBlockNum, position + slotSize * 4);
 
                                     location[0] = (byte)FileType.TEMP;
-                                    BinaryPrimitives.WriteInt64BigEndian(location.Slice(1), position);
-                                    BinaryPrimitives.WriteInt32BigEndian(location.Slice(9), slotSize + 1);
-                                    BinaryPrimitives.WriteInt32BigEndian(location.Slice(13), lastBlockNumber); ;
+                                    BinaryPrimitives.WriteInt64LittleEndian(location.Slice(1), position);
+                                    BinaryPrimitives.WriteInt32LittleEndian(location.Slice(9), slotSize + 1);
+                                    BinaryPrimitives.WriteInt32LittleEndian(location.Slice(13), lastBlockNumber);
 
-                                    // creating a new index for the address
-                                    BinaryPrimitives.WriteInt32BigEndian(keyBytes.Slice(20), blockNumber);
+                                    BinaryPrimitives.WriteInt32LittleEndian(keyBytes.Slice(20), blockNumber);
                                     _logIndexDb.PutSpan(keyBytes, location);
                                 }
                                 else
                                 {
-                                    // if a temp file alr exists
                                     location = lastEntryForAddress.Value;
 
                                     byte file = location[0];
-                                    position = BinaryPrimitives.ReadInt64BigEndian(location.Slice(1, 8));
-                                    slotSize = BinaryPrimitives.ReadInt32BigEndian(location.Slice(9, 4));
-                                    lastBlockNumber = BinaryPrimitives.ReadInt32BigEndian(location.Slice(13, 4));
+                                    position = BinaryPrimitives.ReadInt64LittleEndian(location.Slice(1, 8));
+                                    slotSize = BinaryPrimitives.ReadInt32LittleEndian(location.Slice(9, 4));
+                                    lastBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(location.Slice(13, 4));
 
                                     if (lastBlockNumber == blockNumber)
                                     {
@@ -288,19 +287,24 @@ namespace Nethermind.Init.Steps.Migrations
 
                                     lastBlockNumber = blockNumber;
 
-                                    RandomAccess.Write(tempFileHandle, BitConverter.GetBytes(blockNumber), position + slotSize * 4);
+                                    if (position < 0)
+                                    {
+                                        throw new ArgumentOutOfRangeException(nameof(position), "position must be non-negative");
+                                    }
 
-                                    //TODO make a more readable stuff to check if we have reached the max slot size for tempfile
+                                    _logger.Info($"Updating block number {blockNumber} at position {position}.");
+                                    BinaryPrimitives.WriteInt32LittleEndian(blockNumberBytes, blockNumber);
+                                    RandomAccess.Write(tempFileHandle, blockNumberBytes, position + slotSize * 4);
+
                                     if (slotSize + 1 == bufferSize / 4)
                                     {
-
                                         RandomAccess.Read(tempFileHandle, blockNumbers.AsSpan(), position);
                                         Span<int> blockNumbersInt = MemoryMarshal.Cast<byte, int>(blockNumbers.AsSpan());
 
                                         location[0] = (byte)FileType.FINAL;
-                                        BinaryPrimitives.WriteInt64BigEndian(location.Slice(1), finalizedFileStream.Position);
-                                        BinaryPrimitives.WriteInt32BigEndian(location.Slice(9), 1000);
-                                        BinaryPrimitives.WriteInt32BigEndian(location.Slice(13), lastBlockNumber);
+                                        BinaryPrimitives.WriteInt64LittleEndian(location.Slice(1), finalizedFileStream.Position);
+                                        BinaryPrimitives.WriteInt32LittleEndian(location.Slice(9), 1000);
+                                        BinaryPrimitives.WriteInt32LittleEndian(location.Slice(13), lastBlockNumber);
 
                                         _logIndexDb.PutSpan(lastEntryForAddress.Key, location);
 
@@ -314,20 +318,17 @@ namespace Nethermind.Init.Steps.Migrations
                                             TurboPFor.p4nddec128v32(@out, 1000, @out_dec);
                                         }
 
-
-                                        //TODO: avoid allocation newFreeSlots with ArrayBoolList
                                         Span<byte> freeSlots = _logIndexDb.GetSpan(metaDataKey);
                                         Span<byte> newFreeSlots = new byte[freeSlots.Length + 8];
                                         freeSlots.CopyTo(newFreeSlots);
-                                        BitConverter.GetBytes(position).CopyTo(newFreeSlots.Slice(freeSlots.Length));
+                                        BinaryPrimitives.WriteInt64LittleEndian(newFreeSlots.Slice(freeSlots.Length), position);
                                         _logIndexDb.PutSpan(metaDataKey, newFreeSlots);
                                     }
                                     else
                                     {
-                                        //maybe a method to build location?
                                         location[0] = (byte)FileType.TEMP;
-                                        BitConverter.GetBytes(slotSize + 1).CopyTo(location.Slice(9));
-                                        BitConverter.GetBytes(lastBlockNumber).CopyTo(location.Slice(13));
+                                        BinaryPrimitives.WriteInt32LittleEndian(location.Slice(9), slotSize + 1);
+                                        BinaryPrimitives.WriteInt32LittleEndian(location.Slice(13), lastBlockNumber);
 
                                         _logIndexDb.PutSpan(lastEntryForAddress.Key, location);
                                     }
