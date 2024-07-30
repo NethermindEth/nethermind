@@ -12,9 +12,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SSZGenerator\SSZGenerator.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false"/>
+    <ProjectReference Include="..\..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+    <ProjectReference Include="..\..\SszGenerated\SszGenerated.csproj" />
+    <ProjectReference Include="..\SSZGenerator\SSZGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 
   </ItemGroup>
 </Project>

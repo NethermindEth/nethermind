@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Generate for MainApp": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\MainApp\\MainApp.csproj"
+    }
+  }
+}
