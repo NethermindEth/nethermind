@@ -54,13 +54,13 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         ImprovementTask =
         Task.Run(async () =>
         {
-            (int slot, int offset) = GetBuildingSlotAndOffset(payloadAttributes.Timestamp, genesisTimestamp, slotLength);
-            int waitTime = (int)shutterConfig.ExtraBuildWindow - offset;
+            (long slot, long offset) = GetBuildingSlotAndOffset(payloadAttributes.Timestamp, genesisTimestamp, slotLength);
+            long waitTime = (long)shutterConfig.ExtraBuildWindow - offset;
             if (waitTime < 1)
             {
                 return currentBestBlock;
             }
-            Task timeout = Task.Delay(waitTime, _cancellationTokenSource.Token);
+            Task timeout = Task.Delay((int)waitTime, _cancellationTokenSource.Token);
             Task first = await Task.WhenAny(timeout, shutterTxSignal.WaitForTransactions((ulong)slot));
             if (first == timeout)
                 return currentBestBlock;
@@ -80,13 +80,16 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private static (int, int) GetBuildingSlotAndOffset(ulong slotTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
+    private static (long, long) GetBuildingSlotAndOffset(ulong slotTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
     {
-        double timeSinceGenesis = 1000 * ( slotTimestamp - genesisTimestamp);
-        int currentSlot = (int)(timeSinceGenesis / slotLength.TotalMilliseconds);
-        int slotOffset = (int)(timeSinceGenesis % slotLength.TotalMilliseconds);
+        ulong slotTimeSinceGenesis = slotTimestamp - genesisTimestamp;
+        int buildingSlot = (int)(slotTimeSinceGenesis / slotLength.TotalSeconds);
 
-        return (currentSlot, slotOffset);
+        double slotStartTimeMs = genesisTimestamp * 1000 + (buildingSlot * slotLength.TotalMilliseconds);
+
+        double msIntoSlot = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - slotStartTimeMs;
+
+        return (buildingSlot, (long)msIntoSlot);
     }
 
     public void Dispose()

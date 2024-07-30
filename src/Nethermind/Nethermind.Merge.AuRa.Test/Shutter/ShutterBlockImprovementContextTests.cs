@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Shutter;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -26,9 +27,9 @@ public class ShutterBlockImprovementContextTests
     public async Task Test()
     {
         ShutterConfig shutterConfig = new ShutterConfig();
-        shutterConfig.ExtraBuildWindow = 1000;
+        shutterConfig.ExtraBuildWindow = 3000;
         var payloadAttributes = new Consensus.Producers.PayloadAttributes();
-        payloadAttributes.Timestamp = 1_000_002;
+        payloadAttributes.Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         ShutterBlockImprovementContext sut = new ShutterBlockImprovementContext(
             Substitute.For<IBlockProducer>(),
             Substitute.For<IShutterTxSignal>(),
@@ -38,7 +39,7 @@ public class ShutterBlockImprovementContextTests
             payloadAttributes,
             DateTimeOffset.UtcNow,
             TimeSpan.FromDays(1),
-            100_000,
+            GnosisSpecProvider.BeaconChainGenesisTimestamp,
             TimeSpan.FromSeconds(5));
 
         await sut.ImprovementTask;
