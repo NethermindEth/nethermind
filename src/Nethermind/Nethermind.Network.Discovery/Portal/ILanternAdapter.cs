@@ -17,6 +17,7 @@ public interface ILanternAdapter
 public interface IPortalContentNetwork
 {
     public Task<byte[]?> LookupContent(byte[] contentKey, CancellationToken token);
+    public Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token);
 
     public void AddSeed(IEnr node);
     public Task Run(CancellationToken token);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Portal.History;
@@ -25,12 +26,13 @@ public class HistoryNetworkEncoderDecoder
         // TODO: Need to know if post or pre shanghai.
         // And for that need to get the header first.
         PortalBlockBodyPostShanghai body = SlowSSZ.Deserialize<PortalBlockBodyPostShanghai>(payload);
-        byte[][] transactionBytes = body.Transactions;
+        byte[][] transactionBytes = [body.Transactions];
         Transaction[] transactions = transactionBytes.Select((bytes) => _txDecoder.Decode(new RlpStream(bytes))!).ToArray();
-        BlockHeader[] uncles = Rlp.Decode<BlockHeader[]>(body.Uncles!);
+        // Does not work. Dont know why.
+        // BlockHeader[] uncles = Rlp.Decode<BlockHeader[]>(body.Uncles!);
 
         // TODO: Widthrawals
-        return new BlockBody(transactions, uncles);
+        return new BlockBody(transactions, Array.Empty<BlockHeader>());
     }
 
     /*

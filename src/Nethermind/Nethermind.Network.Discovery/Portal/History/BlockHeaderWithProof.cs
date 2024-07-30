@@ -11,7 +11,7 @@ public class PortalBlockHeaderWithProof
 
 public class PortalBlockBodyPostShanghai
 {
-    public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
+    public byte[] Transactions { get; set; } = Array.Empty<byte>();
     public byte[] Uncles { get; set; } = Array.Empty<byte>();
     public byte[] Withdrawals { get; set; } = Array.Empty<byte>();
 }

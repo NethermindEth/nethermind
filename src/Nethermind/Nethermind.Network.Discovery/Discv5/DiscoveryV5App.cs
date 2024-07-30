@@ -151,7 +151,12 @@ public class DiscoveryV5App : IDiscoveryApp
             // "enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o "
         ];
 
-        IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
+        IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) =>
+        {
+            var enr = enrFactory.CreateFromString(str, identityVerifier);
+            _logger.Warn($"The enr {enr.NodeId.ToHexString()}");
+            return enr;
+        }).ToArray();
 
         var historyNetworkProtocolId = Bytes.FromHexString("0x500B");
         _historyNetwork = new PortalHistoryNetwork(lanternAdapter, logManager, historyNetworkProtocolId, historyNetworkBootnodes);

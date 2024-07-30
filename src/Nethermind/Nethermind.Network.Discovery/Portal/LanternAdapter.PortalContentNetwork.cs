@@ -15,6 +15,7 @@ public partial class LanternAdapter
     private class PortalContentNetwork(
         LanternAdapter lanternAdapter,
         IKademlia<IEnr, byte[], LookupContentResult> kademlia,
+        IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
         ILogger logger)
         : IPortalContentNetwork
     {
@@ -39,6 +40,21 @@ public partial class LanternAdapter
 
             var asBytes = await lanternAdapter.DownloadContentFromUtp(result.NodeId, result.ConnectionId.Value, token);
             logger.Info($"UTP download for {key.ToHexString()} took {sw.Elapsed}");
+            return asBytes;
+        }
+
+        public async Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token)
+        {
+            var content = await messageSender.FindValue(node, contentKey, token);
+            if (!content.hasValue)
+            {
+                return null;
+            }
+
+            var value = content.value!;
+            if (value.Payload != null) return value.Payload;
+
+            var asBytes = await lanternAdapter.DownloadContentFromUtp(node, value.ConnectionId!.Value, token);
             return asBytes;
         }
 

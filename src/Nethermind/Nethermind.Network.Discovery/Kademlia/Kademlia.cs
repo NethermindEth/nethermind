@@ -5,6 +5,7 @@ using System.Diagnostics;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;

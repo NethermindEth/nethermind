@@ -115,10 +115,10 @@ public partial class LanternAdapter: ILanternAdapter
     private async Task<byte[]?> HandleUtpMessage(IEnr sender, TalkReqMessage talkReqMessage)
     {
         (UTPPacketHeader header, int headerSize) = UTPPacketHeader.DecodePacket(talkReqMessage.Request);
-        _logger.Info($"Handle utp message from {header}");
+        _logger.Info($"Handle utp message from :{header.ConnectionId} {header}");
         if (!_utpStreams.TryGetValue((sender, header.ConnectionId), out UTPStream? stream))
         {
-            _logger.Info($"Unknown connection id {header.ConnectionId}");
+            _logger.Info($"Unknown connection id");
             return null;
         }
 
@@ -301,8 +301,10 @@ public partial class LanternAdapter: ILanternAdapter
         BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
         ushort bigEndianUshort = BinaryPrimitives.ReadUInt16BigEndian(asByte);
 
-        _logger.Info($"Downloading UTP content with connection id {connectionId}");
-        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), (ushort)(bigEndianUshort));
+        _logger.Info($"Downloading UTP content from {nodeId}");
+        _logger.Info($"Downloading UTP content with connection id {connectionId} or {bigEndianUshort}");
+
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), (ushort)(bigEndianUshort+1));
         if (!_utpStreams.TryAdd((nodeId, (ushort)(bigEndianUshort)), stream))
         {
             throw new Exception("Unable to open utp stream. Connection id may already be used.");
@@ -325,8 +327,8 @@ public partial class LanternAdapter: ILanternAdapter
     {
         public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            lanternAdapter._logger.Info($"Sending utp message to {meta}. Data length {data.Length}");
             var dataArray = UTPPacketHeader.EncodePacket(meta, data, new byte[2047]).ToArray();
+            lanternAdapter._logger.Info($"Sending utp message to {meta.ConnectionId} {meta}.");
             return lanternAdapter.SentTalkReqAndSilenceResp(targetNode, UtpProtocolByte, dataArray, token);
         }
     }
@@ -339,10 +341,12 @@ public partial class LanternAdapter: ILanternAdapter
     public IPortalContentNetwork RegisterContentNetwork(byte[] protocol, IPortalContentNetwork.Store store)
     {
         _logger.Warn($"self enode is {_discv5.SelfEnr.NodeId.ToHexString()}");
+        var messageSender = CreateMessageSenderForProtocol(protocol);
+
         var kademlia = new Kademlia<IEnr, byte[], LookupContentResult>(
             _nodeHashProvider,
             new PortalContentStoreAdapter(store),
-            CreateMessageSenderForProtocol(protocol),
+            messageSender,
             _logManager,
             _discv5.SelfEnr,
             20,
@@ -351,6 +355,6 @@ public partial class LanternAdapter: ILanternAdapter
         );
         _kademliaOverlays[protocol] = kademlia;
 
-        return new PortalContentNetwork(this, kademlia, _logger);
+        return new PortalContentNetwork(this, kademlia, messageSender, _logger);
     }
 }
