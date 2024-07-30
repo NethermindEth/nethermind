@@ -172,7 +172,7 @@ public class Block
                         $"      OtherStems: {string.Join(", ", ExecutionWitness.VerkleProof.OtherStems.Select(x => x.ToString()))}");
 
                 builder.AppendLine(
-                    $"      ExtensionPresent: {string.Join(", ", ExecutionWitness.VerkleProof.CommitmentsByPath.Select(x => x.ToBytes().ToHexString()))}");
+                    $"      ExtensionPresent: {string.Join(", ", ExecutionWitness.VerkleProof.CommitmentsByPath.Select(x => x.ToHexString()))}");
             }
         }
 
