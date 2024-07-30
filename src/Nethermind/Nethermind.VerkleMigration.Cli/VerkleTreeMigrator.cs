@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -9,16 +8,13 @@ using Nethermind.Trie;
 using Nethermind.Int256;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using System.Linq;
-using System.Collections.Generic;
-using Microsoft.IdentityModel.Tokens;
-using DotNetty.Common.Utilities;
+using Nethermind.State;
 
-namespace Nethermind.State.VerkleTransition;
+namespace Nethermind.VerkleTransition.Cli;
 
-public class AccountTreeMigrator : ITreeVisitor<TreePathContext>
+public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 {
-    private readonly VerkleStateTree _verkleStateTree;
+    public readonly VerkleStateTree _verkleStateTree;
     private readonly IStateReader _stateReader;
     private readonly IDb _preImageDb;
     private Address? _lastAddress;
@@ -27,7 +23,7 @@ public class AccountTreeMigrator : ITreeVisitor<TreePathContext>
 
     private const int StateTreeCommitThreshold = 1000;
 
-    public AccountTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb preImageDb)
+    public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb preImageDb)
     {
         _verkleStateTree = verkleStateTree;
         _stateReader = stateReader;
@@ -63,34 +59,22 @@ public class AccountTreeMigrator : ITreeVisitor<TreePathContext>
 
     private readonly AccountDecoder decoder = new();
 
-    /// <summary>
-    /// Converts a 0-padded hex string to a byte array, i.e. from '050502' to '552'.
-    /// TODO: check if this is the best way to do this
-    /// </summary>
-    /// <param name="paddedHex"></param>
-    /// <returns></returns>
-    private static byte[] ConvertPaddedHexToBytes(string paddedHex)
-    {
-        // Remove the padding (leading zeros)
-        string unpadded = string.Concat(
-            paddedHex
-                .Where((c, i) => i % 2 == 1)
-                .Select(c => c.ToString())
-        );
-
-        // Convert the unpadded hex string to byte array
-        return Enumerable.Range(0, unpadded.Length / 2)
-            .Select(x => Convert.ToByte(unpadded.Substring(x * 2, 2), 16))
-            .ToArray();
-    }
-
     public void VisitLeaf(in TreePathContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
         TreePath path = nodeContext.Path.Append(node.Key);
 
         if (!trieVisitContext.IsStorage)
         {
-            Account account = decoder.Decode(new RlpStream(node.Value.ToArray()));
+            byte[]? nodeValueBytes = node.Value.ToArray();
+            if (nodeValueBytes is null)
+            {
+                return;
+            }
+            Account? account = decoder.Decode(new RlpStream(nodeValueBytes));
+            if (account is null)
+            {
+                return;
+            }
 
             // Reconstruct the full keccak hash
             byte[]? addressBytes = _preImageDb.Get(path.Path.BytesAsSpan);

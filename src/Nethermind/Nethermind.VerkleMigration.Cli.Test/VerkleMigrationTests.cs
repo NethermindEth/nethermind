@@ -15,12 +15,12 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.VerkleTransition;
 using Nethermind.Trie.Pruning;
+using Nethermind.VerkleTransition.Cli;
 using Nethermind.Verkle.Tree.TreeStore;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test;
+namespace Nethermind.VerkleTransition.Cli.Test;
 
 [TestFixture]
 public class MerkleToVerkleTransitionTests
@@ -31,8 +31,8 @@ public class MerkleToVerkleTransitionTests
     private ITrieStore _trieStore;
     private StateTree _merkleStateTree;
     private VerkleStateTree _verkleStateTree;
-    private AccountTreeMigrator _migrator;
-    private ILogManager _logManager = new NUnitLogManager(LogLevel.Warn);
+    private VerkleTreeMigrator _migrator;
+    private ILogManager _logManager = LimboLogs.Instance;
 
     [TearDown]
     public void TearDown()
@@ -60,7 +60,7 @@ public class MerkleToVerkleTransitionTests
         var verkleStore = new VerkleTreeStore<VerkleSyncCache>(_dbProvider, _logManager);
         _verkleStateTree = new VerkleStateTree(verkleStore, _logManager);
 
-        _migrator = new AccountTreeMigrator(_verkleStateTree, _stateReader, _preImageDb);
+        _migrator = new VerkleTreeMigrator(_verkleStateTree, _stateReader, _preImageDb);
     }
 
     [Test]
