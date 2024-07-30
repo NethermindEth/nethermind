@@ -88,7 +88,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
         }
     }
 
-    internal byte[] GetCode(Address address, Hash256? stateRoot = null)
+    public byte[] GetCode(Address address, Hash256? stateRoot = null)
     {
         using var codeStream = new MemoryStream();
         UInt256 chunkId = 0;
