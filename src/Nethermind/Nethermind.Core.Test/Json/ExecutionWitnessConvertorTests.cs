@@ -50,11 +50,9 @@ public class ExecutionWitnessConvertorTests
             new WitnessVerkleProofSerialized(
                 new Stem[] { Stem.MaxValue, Stem.Zero },
                 new byte[] { 1, 2 },
-                new Banderwagon[]
+                new byte[][]
                 {
-                    Banderwagon.FromBytes(
-                            Bytes.FromHexString("0x248acc46e79ce410ecd151b7c685d3b3156ca37e89015653b55cfcc133852a1f"))!
-                        .Value
+                    Bytes.FromHexString("0x248acc46e79ce410ecd151b7c685d3b3156ca37e89015653b55cfcc133852a1f")
                 },
                 Bytes.FromHexString("0x248acc46e79ce410ecd151b7c685d3b3156ca37e89015653b55cfcc133852a1f"),
                 item

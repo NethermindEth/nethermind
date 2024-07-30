@@ -55,8 +55,8 @@ public partial class VerkleTree
         var numberOfStems = verkleProof.DepthExtensionPresent.Length;
 
         // sorted commitments including root
-        var commSortedByPath = new Banderwagon[verkleProof.CommitmentsByPath.Length + 1];
-        commSortedByPath[0] = Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false);
+        var commSortedByPath = new byte[verkleProof.CommitmentsByPath.Length + 1][];
+        commSortedByPath[0] = root;
         verkleProof.CommitmentsByPath.CopyTo(commSortedByPath, 1);
 
         Stem[] stems = GetStemsFromStemStateDiff(execWitness.StateDiff);
@@ -174,7 +174,7 @@ public partial class VerkleTree
             }
         }
 
-        SpanDictionary<byte, Banderwagon> commByPath = new(Bytes.SpanEqualityComparer);
+        SpanDictionary<byte, byte[]> commByPath = new(Bytes.SpanEqualityComparer);
         int idx = 0;
         foreach (var path in allPaths) commByPath[path] = commSortedByPath[idx++];
 
@@ -194,7 +194,7 @@ public partial class VerkleTree
     public static bool VerifyVerkleProof(
         IpaProofStructSerialized ipaProof,
         byte[] d,
-        Banderwagon[] commitmentsSorted,
+        byte[][] commitmentsSorted,
         byte[] depths,
         ExtPresent[] extensionPresent,
         Stem[] differentStemNoProof,
@@ -208,7 +208,7 @@ public partial class VerkleTree
         var numberOfStems = depths.Length;
 
         // sorted commitments including root
-        List<Banderwagon> commSortedByPath = new(commitmentsSorted.Length + 1) { Banderwagon.FromBytesUncompressedUnchecked(root, isBigEndian: false) };
+        List<byte[]> commSortedByPath = new(commitmentsSorted.Length + 1) { root };
         commSortedByPath.AddRange(commitmentsSorted);
 
         Stem[] stems = GetStemsFromKeys(CollectionsMarshal.AsSpan(keys), numberOfStems);
@@ -334,8 +334,8 @@ public partial class VerkleTree
             }
         }
 
-        SpanDictionary<byte, Banderwagon> commByPath = new(Bytes.SpanEqualityComparer);
-        foreach ((byte[] path, Banderwagon comm) in allPaths.Zip(commSortedByPath)) commByPath[path] = comm;
+        SpanDictionary<byte, byte[]> commByPath = new(Bytes.SpanEqualityComparer);
+        foreach ((byte[] path, byte[] comm) in allPaths.Zip(commSortedByPath)) commByPath[path] = comm;
 
         var isTrue = VerifyVerkleProofStruct(new VerkleProofStructSerialized(ipaProof, d), allPathsAndZs, leafValuesByPathAndZ,
             commByPath);
@@ -359,9 +359,9 @@ public partial class VerkleTree
     }
 
     private static bool VerifyVerkleProofStruct(VerkleProofStructSerialized proof, SortedSet<(byte[], byte)> allPathsAndZs,
-        Dictionary<(byte[], byte), FrE> leafValuesByPathAndZ, SpanDictionary<byte, Banderwagon> commByPath)
+        Dictionary<(byte[], byte), FrE> leafValuesByPathAndZ, SpanDictionary<byte, byte[]> commByPath)
     {
-        var comms = new Banderwagon[allPathsAndZs.Count];
+        var comms = new byte[allPathsAndZs.Count][];
         var index = 0;
         foreach ((byte[] path, var z) in allPathsAndZs) comms[index++] = commByPath[path];
 
@@ -371,7 +371,7 @@ public partial class VerkleTree
             byte[] childPath = [.. path.ToArray(), z];
 
             if (!leafValuesByPathAndZ.TryGetValue((path, z), out FrE y))
-                y = !commByPath.TryGetValue(childPath, out Banderwagon yPoint) ? FrE.Zero : yPoint.MapToScalarField();
+                y = !commByPath.TryGetValue(childPath, out byte[] yPoint) ? FrE.Zero : Banderwagon.FromBytesUncompressedUnchecked(yPoint, isBigEndian: false).MapToScalarField();
             ysByPathAndZ.Add((path.ToArray(), z), y);
         }
 
@@ -384,7 +384,7 @@ public partial class VerkleTree
         for (int i = 0; i < zipped.Length; i++)
         {
             var ((y, z), comm) = zipped[i];
-            queries[i] = new VerkleVerifierQuerySerialized(comm.ToBytesUncompressedLittleEndian(), z, y.ToBytes());
+            queries[i] = new VerkleVerifierQuerySerialized(comm, z, y.ToBytes());
         }
         // Console.WriteLine("Verifier Query");
         // foreach (VerkleVerifierQuerySerialized query in queries)

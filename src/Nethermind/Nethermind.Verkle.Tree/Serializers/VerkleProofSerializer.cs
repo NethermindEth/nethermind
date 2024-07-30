@@ -28,7 +28,7 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProofSerialized>
 
         contentLength += Rlp.LengthOfSequence(verkleProofStructLength);
 
-        contentLength += Rlp.LengthOfSequence(33 * item.CommsSorted.Length);
+        contentLength += Rlp.LengthOfSequence(66 * item.CommsSorted.Length);
 
         int hintLength = 0;
         hintLength += Rlp.LengthOfSequence(item.VerifyHint.DifferentStemNoProof.Length * 32);
@@ -42,7 +42,7 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProofSerialized>
     {
         rlpStream.ReadSequenceLength();
         VerkleProofStructSerialized proofStruct = DecodeVerkleProofStruct(rlpStream);
-        Banderwagon[] comsSorted = rlpStream.DecodeArray(DecodeBanderwagon);
+        byte[][] comsSorted = rlpStream.DecodeArray(DecodeBanderwagon);
         VerificationHint hint = DecodeVerifyHint(rlpStream);
         return new VerkleProofSerialized()
         {
@@ -64,8 +64,8 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProofSerialized>
     {
         stream.ReadSequenceLength();
         byte[] a = stream.DecodeByteArray();
-        byte[][] cl = stream.DecodeArray(DecodeBanderwagonS);
-        byte[][] cr = stream.DecodeArray(DecodeBanderwagonS);
+        byte[][] cl = stream.DecodeArray(DecodeBanderwagon);
+        byte[][] cr = stream.DecodeArray(DecodeBanderwagon);
         return new IpaProofStructSerialized(cl, a, cr);
     }
 
@@ -90,12 +90,7 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProofSerialized>
         };
     }
 
-    private Banderwagon DecodeBanderwagon(RlpStream stream)
-    {
-        return Banderwagon.FromBytes(stream.DecodeByteArray(), subgroupCheck: false)!.Value;
-    }
-
-    private byte[] DecodeBanderwagonS(RlpStream stream)
+    private byte[] DecodeBanderwagon(RlpStream stream)
     {
         return stream.DecodeByteArray();
     }
@@ -127,8 +122,8 @@ public class VerkleProofSerializer : IRlpStreamDecoder<VerkleProofSerialized>
         }
         else
         {
-            stream.StartSequence(33 * item.CommsSorted.Length);
-            foreach (var data in item.CommsSorted) stream.Encode(data.ToBytes());
+            stream.StartSequence(66 * item.CommsSorted.Length);
+            foreach (var data in item.CommsSorted) stream.Encode(data);
         }
 
         int hintLength = 0;

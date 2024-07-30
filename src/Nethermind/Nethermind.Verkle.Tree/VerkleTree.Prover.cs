@@ -249,7 +249,7 @@ public partial class VerkleTree
     {
         List<VerkleProverQuerySerialized> queries = [];
         HashSet<byte[]> stemWithNoProofSet = new(Bytes.EqualityComparer);
-        List<Banderwagon> sortedCommitments = [];
+        List<byte[]> sortedCommitments = [];
 
         foreach (KeyValuePair<byte[], HashSet<byte>> elem in neededOpenings)
         {
@@ -269,8 +269,8 @@ public partial class VerkleTree
         {
             if (query.NodeCommitPoint.SequenceEqual(rootPoint)) continue;
 
-            if (sortedCommitments.Count == 0 || !sortedCommitments[^1].ToBytesUncompressedLittleEndian().SequenceEqual(query.NodeCommitPoint))
-                sortedCommitments.Add(Banderwagon.FromBytesUncompressedUnchecked(query.NodeCommitPoint, isBigEndian: false));
+            if (sortedCommitments.Count == 0 || !sortedCommitments[^1].SequenceEqual(query.NodeCommitPoint))
+                sortedCommitments.Add(query.NodeCommitPoint);
         }
 
         MultiProof proofConstructor = new(CRS.Instance, PreComputedWeights.Instance);
