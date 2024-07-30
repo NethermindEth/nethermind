@@ -101,7 +101,7 @@ public class ShutterTxSource(
 
     private ulong GetBuildingSlotAndOffset(PayloadAttributes? payloadAttributes)
     {
-        var unixTime = payloadAttributes != null ? payloadAttributes.Timestamp : (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var unixTime = payloadAttributes != null ? payloadAttributes.Timestamp * 1000 : (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         ulong timeSinceGenesis = unixTime - genesisTimestamp;
         ulong currentSlot = timeSinceGenesis / slotLength;
         return currentSlot;
