@@ -163,22 +163,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public new Task<ResultWrapper<OptimismTransactionForRpc?>> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        UInt256? baseFee = null;
-        _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction? transaction);
-        TxReceipt? receipt = null; // note that if transaction is pending then for sure no receipt is known
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
-            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
-            if (transaction is null)
-            {
-                return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(null!));
-            }
+            return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(null!));
         }
 
         RecoverTxSenderIfNeeded(transaction);
         OptimismTransactionForRpc transactionModel = new(receipt?.BlockHash, receipt as OptimismTxReceipt, transaction, baseFee);
-        if (_logger.IsTrace)
-            _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(transactionModel));
     }
 
