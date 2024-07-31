@@ -272,10 +272,10 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     public Task InitRpcModules()
     {
-        return InitRpcModulesInternal(null);
+        return InitRpcModulesInternal(null, true);
     }
 
-    protected Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory)
+    protected Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory, bool keepImproving)
     {
         if (MergeEnabled)
         {

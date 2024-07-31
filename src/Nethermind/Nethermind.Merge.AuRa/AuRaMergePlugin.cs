@@ -107,7 +107,7 @@ namespace Nethermind.Merge.AuRa
                     _api.SpecProvider!,
                     _api.LogManager);
             }
-            base.InitRpcModulesInternal(blockImprovementContextFactory);
+            base.InitRpcModulesInternal(blockImprovementContextFactory, false);
             return Task.CompletedTask;
         }
 
