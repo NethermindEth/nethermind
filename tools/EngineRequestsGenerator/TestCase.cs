@@ -247,4 +247,7 @@ public enum TestCase
 
     [TestCaseMetadata("Secp256r1 precompile, invalid signature", "Secp256r1 precompile calculations with invalid signature")]
     Secp256r1InvalidSignature,
+
+    [TestCaseMetadata("Vulnerability Guido 1", "Potential vulnerability reported by Guido, 1")]
+    VulnerabilityGuido1,
 }

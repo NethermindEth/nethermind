@@ -340,6 +340,8 @@ public class TestCaseGenerator
                 return Secp256r1.GetTxsWithValidSig(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Secp256r1InvalidSignature:
                 return Secp256r1.GetTxsWithInvalidSig(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.VulnerabilityGuido1:
+                return Vulnerabilities.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
