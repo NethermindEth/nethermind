@@ -502,25 +502,26 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return result;
     }
 
-    private enum StorageAccessType
+    internal enum StorageAccessType
     {
         SLOAD,
         SSTORE
     }
 
-    private bool ChargeStorageAccessGas(
+    static internal bool ChargeStorageAccessGas(
         ref long gasAvailable,
         EvmState vmState,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
-        IReleaseSpec spec)
+        IReleaseSpec spec,
+        ITxTracer txTracer)
     {
         // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
 
         bool result = true;
         if (spec.UseHotAndColdStorage)
         {
-            if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+            if (txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
                 vmState.WarmUp(in storageCell);
             }
@@ -1576,7 +1577,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.SSTORE:
                     {
-                        exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
+                        if(stack.PopUInt256(out result)) goto OutOfGas;
+                        ReadOnlySpan<byte> bytesSpan = stack.PopWord256();
+                        exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, _state, ref gasAvailable, ref result, ref bytesSpan, spec, _txTracer);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         break;
@@ -2523,7 +2526,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState,
             in storageCell,
             StorageAccessType.SLOAD,
-            spec)) return EvmExceptionType.OutOfGas;
+            spec,
+            _txTracer)) return EvmExceptionType.OutOfGas;
 
         ReadOnlySpan<byte> value = _state.Get(in storageCell);
         stack.PushBytes(value);
@@ -2536,7 +2540,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private EvmExceptionType InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
+    static internal EvmExceptionType InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec, ITxTracer txTracer)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
@@ -2550,12 +2554,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (spec.UseNetGasMeteringWithAStipendFix)
         {
             if (typeof(TTracingRefunds) == typeof(IsTracing))
-                _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
             if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
         }
 
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
         bool newIsZero = bytes.IsZero();
         bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
@@ -2566,9 +2568,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 vmState,
                 in storageCell,
                 StorageAccessType.SSTORE,
-                spec)) return EvmExceptionType.OutOfGas;
+                spec,
+                txTracer)) return EvmExceptionType.OutOfGas;
 
-        ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero();
 
@@ -2582,7 +2585,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 if (!newSameAsCurrent)
                 {
                     vmState.Refund += sClearRefunds;
-                    if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                    if (typeof(TTracingRefunds) == typeof(IsTracing)) txTracer.ReportRefund(sClearRefunds);
                 }
             }
             else if (currentIsZero)
@@ -2598,7 +2601,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
             else // net metered, C != N
             {
-                Span<byte> originalValue = _state.GetOriginal(in storageCell);
+                Span<byte> originalValue = state.GetOriginal(in storageCell);
                 bool originalIsZero = originalValue.IsZero();
 
                 bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
@@ -2615,7 +2618,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (newIsZero)
                         {
                             vmState.Refund += sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            if (typeof(TTracingRefunds) == typeof(IsTracing)) txTracer.ReportRefund(sClearRefunds);
                         }
                     }
                 }
@@ -2629,13 +2632,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (currentIsZero)
                         {
                             vmState.Refund -= sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(-sClearRefunds);
+                            if (typeof(TTracingRefunds) == typeof(IsTracing)) txTracer.ReportRefund(-sClearRefunds);
                         }
 
                         if (newIsZero)
                         {
                             vmState.Refund += sClearRefunds;
-                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
+                            if (typeof(TTracingRefunds) == typeof(IsTracing)) txTracer.ReportRefund(sClearRefunds);
                         }
                     }
 
@@ -2653,7 +2656,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
 
                         vmState.Refund += refundFromReversal;
-                        if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(refundFromReversal);
+                        if (typeof(TTracingRefunds) == typeof(IsTracing)) txTracer.ReportRefund(refundFromReversal);
                     }
                 }
             }
@@ -2661,7 +2664,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!newSameAsCurrent)
         {
-            _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
         }
 
         if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2669,12 +2672,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
             byte[] storageBytes = new byte[32]; // do not stackalloc here
             storageCell.Index.ToBigEndian(storageBytes);
-            _txTracer.ReportStorageChange(storageBytes, valueToStore);
+            txTracer.ReportStorageChange(storageBytes, valueToStore);
         }
 
         if (typeof(TTracingStorage) == typeof(IsTracing))
         {
-            _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
 
         return EvmExceptionType.None;

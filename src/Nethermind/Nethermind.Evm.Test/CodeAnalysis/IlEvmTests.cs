@@ -419,6 +419,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .TLOAD()
                 .Done);
 
+            yield return (Instruction.SSTORE | Instruction.SLOAD, Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .SSTORE()
+                .PushData(7)
+                .SLOAD()
+                .Done);
+
             yield return (Instruction.EXTCODESIZE, Prepare.EvmCode
                 .EXTCODESIZE(Address.FromNumber(1))
                 .Done);
