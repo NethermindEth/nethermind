@@ -94,6 +94,11 @@ public partial class LanternAdapter
                 }
             });
 
+            if (receiver.NodeId.ToHexString() == "01ead3ee2e6370d110e02840d700097d844ca4d1f62697194564f687985dfe2c1a")
+            {
+                return new FindValueResponse<IEnr, LookupContentResult>(false, null, Array.Empty<IEnr>());
+            }
+
             byte[] response = await manager.CallAndWaitForResponse(receiver, protocol, findContentBytes, token);
             Content message;
             try

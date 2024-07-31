@@ -32,7 +32,7 @@ public partial class LanternAdapter: ILanternAdapter
     private const int MaxContentByteSize = 1000;
     private static readonly byte[] UtpProtocolByte = Bytes.FromHexString("0x757470");
 
-    private readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(2);
+    private readonly TimeSpan HardTimeout = TimeSpan.FromMilliseconds(500);
     private readonly IDiscv5Protocol _discv5;
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
@@ -299,13 +299,15 @@ public partial class LanternAdapter: ILanternAdapter
 
         // TODO: Ah man... where did this go wrong.
         BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
-        ushort bigEndianUshort = BinaryPrimitives.ReadUInt16BigEndian(asByte);
+        connectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
 
-        _logger.Info($"Downloading UTP content from {nodeId}");
-        _logger.Info($"Downloading UTP content with connection id {connectionId} or {bigEndianUshort}");
+        if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {connectionId}");
 
-        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), (ushort)(bigEndianUshort+1));
-        if (!_utpStreams.TryAdd((nodeId, (ushort)(bigEndianUshort)), stream))
+        // Now, UTP have this strange connection id mechanism where the initiator will initiate with starting connection id
+        // BUT after the Syn, it send with that connection id + 1.
+        ushort otherSideConnectionId = (ushort)(connectionId + 1);
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), otherSideConnectionId, _logManager);
+        if (!_utpStreams.TryAdd((nodeId, (ushort)(connectionId)), stream))
         {
             throw new Exception("Unable to open utp stream. Connection id may already be used.");
         }
@@ -313,13 +315,13 @@ public partial class LanternAdapter: ILanternAdapter
         try
         {
             MemoryStream outputStream = new MemoryStream();
-            await stream.InitiateHandshake(token);
+            await stream.InitiateHandshake(token, synConnectionId: connectionId);
             await stream.ReadStream(outputStream, token);
             return outputStream.ToArray();
         }
         finally
         {
-            _utpStreams.Remove((nodeId, bigEndianUshort), out _);
+            _utpStreams.Remove((nodeId, connectionId), out _);
         }
     }
 

@@ -73,6 +73,8 @@ public class PortalHistoryNetwork
     public async Task Run(CancellationToken token)
     {
         _logger.Info("Running portal history network. Bootstrapping.");
+
+        // You can skip bootstrap for testing, but the lookup time is going to be less realistic.
         // await _contentNetwork.Bootstrap(token);
 
 

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using MathNet.Numerics.Random;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.UTP;
 
@@ -17,8 +18,9 @@ namespace Nethermind.Network.Discovery.UTP;
 // Not sure what to pick for the buffer size.
 // TODO: Maybe this can be dynamically adjusted?
 // TODO: Ethernet MTU is 1500
-public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
+public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logManager) : IUTPTransfer
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<UTPStream>();
     private const uint PayloadSize = 508;
     private const int MAX_PAYLOAD_SIZE = 64000;
     private const uint RECEIVE_WINDOW_SIZE = 128000;
@@ -40,13 +42,14 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     private ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
     private ulong _incomingBufferSize = 0;
 
-    public async Task InitiateHandshake(CancellationToken token)
+    public async Task InitiateHandshake(CancellationToken token, ushort? synConnectionId = null)
     {
         // TODO: MTU probe
         // TODO: in libp2p this is added to m_outbuf, and therefore part of the
         // resend logic
         _seq_nr = 1;
         UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StSyn);
+        header.ConnectionId = synConnectionId ?? connectionId;
         _seq_nr++;
         _state = ConnectionState.CsSynSent;
 
@@ -86,7 +89,11 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
                 if (_state == ConnectionState.CsSynSent)
                 {
-                    _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
+                    // The seqNumber need to Subtract 1.
+                    // This is because the first StData would have the same sequence number
+                    // And we would skip it if we don't subtract 1.
+                    // Returning this ack seems to be fine.
+                    _receiverAck_nr = new AckInfo((ushort)(packageHeader.SeqNumber - 1), null); // From spec: c.ack_nr
                     _state = ConnectionState.CsConnected;
                 }
                 break;
@@ -291,6 +298,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
         // Got previous resend data probably
         if (UTPUtil.IsLess(meta.SeqNumber, receiverAck))
         {
+            if (_logger.IsTrace) _logger.Trace($"less than ack {meta.SeqNumber}");
             return true;
         }
 
@@ -346,6 +354,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
             return true;
         }
 
+        if (_logger.IsTrace) _logger.Trace($"ok data {meta.SeqNumber}");
         return false;
     }
 
@@ -445,8 +454,6 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
 
                 curUnackedWindowHead = curUnackedWindowHead.Next;
             }
-
-            Console.Out.WriteLine($"S sel ack check done");
         }
 
         async Task<bool> MaybeRetransmit(UnackedItem unackedItem, int unackedCount)
@@ -496,17 +503,11 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId) : IUTPTransfer
     private UTPPacketHeader CreateBaseHeader(UTPPacketType type)
     {
         uint timestamp = UTPUtil.GetTimestamp();
-        ushort headerConId = connectionId;
-        if (type == UTPPacketType.StSyn)
-        {
-            headerConId--;
-        }
-
         return new UTPPacketHeader()
         {
             PacketType = type,
             Version = 1,
-            ConnectionId = headerConId,
+            ConnectionId = connectionId,
             // WindowSize = _trafficControl.WindowSize, //Otherwise its really slow
             WindowSize = 1_000_000,
             SeqNumber = _seq_nr,

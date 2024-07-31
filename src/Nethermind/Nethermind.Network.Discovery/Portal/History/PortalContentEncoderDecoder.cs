@@ -12,7 +12,7 @@ namespace Nethermind.Network.Discovery.Portal.History;
 public class HistoryNetworkEncoderDecoder
 {
     private HeaderDecoder _headerDecoder = new HeaderDecoder();
-    private TxDecoder _txDecoder = new TxDecoder();
+    private TxDecoder<Transaction> _txDecoder = new TxDecoder();
 
     public BlockHeader DecodeHeader(byte[] payload)
     {
@@ -23,10 +23,11 @@ public class HistoryNetworkEncoderDecoder
 
     public BlockBody DecodeBody(byte[] payload)
     {
+        File.WriteAllBytes("/home/amirul/thething.dat", payload);
         // TODO: Need to know if post or pre shanghai.
         // And for that need to get the header first.
         PortalBlockBodyPostShanghai body = SlowSSZ.Deserialize<PortalBlockBodyPostShanghai>(payload);
-        byte[][] transactionBytes = [body.Transactions];
+        byte[][] transactionBytes = body.Transactions;
         Transaction[] transactions = transactionBytes.Select((bytes) => _txDecoder.Decode(new RlpStream(bytes))!).ToArray();
         // Does not work. Dont know why.
         // BlockHeader[] uncles = Rlp.Decode<BlockHeader[]>(body.Uncles!);
