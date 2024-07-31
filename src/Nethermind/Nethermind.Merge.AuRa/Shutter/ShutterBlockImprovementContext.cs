@@ -73,9 +73,10 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             throw new ArgumentException("Cannot be zero.", nameof(slotLength));
         }
 
-        if (payloadAttributes.Timestamp < genesisTimestampMs)
+        ulong slotTimestampMs = payloadAttributes.Timestamp * 1000;
+        if (slotTimestampMs < genesisTimestampMs)
         {
-            throw new ArgumentOutOfRangeException(nameof(genesisTimestampMs), genesisTimestampMs, $"Genesis cannot be after the payload timestamp ({payloadAttributes.Timestamp}).");
+            throw new ArgumentOutOfRangeException(nameof(genesisTimestampMs), genesisTimestampMs, $"Genesis timestamp (ms) cannot be after the payload timestamp ({slotTimestampMs}).");
         }
 
         _cancellationTokenSource = new CancellationTokenSource();
@@ -85,7 +86,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         ImprovementTask = Task.Run(async () =>
         {
-            (ulong slot, ulong offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes.Timestamp * 1000, genesisTimestampMs, slotLength);
+            (ulong slot, ulong offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
 
             // set default block without waiting for Shutter keys
             Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
