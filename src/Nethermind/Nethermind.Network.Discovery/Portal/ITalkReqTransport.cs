@@ -25,7 +25,7 @@ public interface ITalkReqTransport: ITalkReqProtocolHandler
 public interface ITalkReqProtocolHandler
 {
     /// <summary>
-    /// For handling TalkReq. Very similar to lantern's ITalkReqAndRespHandler, ec
+    /// For handling TalkReq. Very similar to lantern's ITalkReqAndRespHandler, except it passes in sender.
     /// </summary>
     /// <param name="sender"></param>
     /// <param name="talkReqMessage"></param>

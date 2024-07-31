@@ -5,11 +5,9 @@ using Lantern.Discv5.Enr;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public interface ILanternAdapter
-{
-    IPortalContentNetwork RegisterContentNetwork(byte[] networkId, IPortalContentNetwork.Store store);
-}
-
+/// <summary>
+/// Provide a high level interface to interact with portal content network.
+/// </summary>
 public interface IPortalContentNetwork
 {
     public Task<byte[]?> LookupContent(byte[] contentKey, CancellationToken token);
@@ -19,6 +17,9 @@ public interface IPortalContentNetwork
     public Task Run(CancellationToken token);
     public Task Bootstrap(CancellationToken token);
 
+    /// <summary>
+    /// Content provider to be used when serving content to peer.
+    /// </summary>
     public interface Store
     {
         public byte[]? GetContent(byte[] contentKey);

@@ -8,6 +8,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Network.Discovery.Portal;
 
+/// <summary>
+/// So the original implementation of the session manager will have problem where the received decoded
+/// endpoint from FindNode/FindContent is decoded to ipv4 instead of ipv6 which is returned by .net stack.
+/// Hence, this class to normalize it so that the session is found.
+/// </summary>
+/// <param name="options"></param>
+/// <param name="aesCrypto"></param>
+/// <param name="sessionCrypto"></param>
+/// <param name="loggerFactory"></param>
 public class SessionManagerNormalizer(
     SessionOptions options,
     IAesCrypto aesCrypto,

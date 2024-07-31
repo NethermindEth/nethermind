@@ -40,15 +40,35 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
     public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
     {
         (UTPPacketHeader header, int headerSize) = UTPPacketHeader.DecodePacket(talkReqMessage.Request);
-        _logger.Info($"Handle utp message from :{header.ConnectionId} {header}");
+        if (_logger.IsTrace) _logger.Trace($"Received utp message from :{header.ConnectionId} {header}");
+
         if (!_utpStreams.TryGetValue((sender, header.ConnectionId), out UTPStream? stream))
         {
-            _logger.Info($"Unknown connection id");
+            if (_logger.IsDebug) _logger.Debug($"Unknown connection id :{header.ConnectionId}. Resetting...");
+            await SendReset(sender, header.ConnectionId);
             return null;
         }
 
         await stream.ReceiveMessage(header, talkReqMessage.Request.AsSpan()[headerSize..], CancellationToken.None);
         return Array.Empty<byte>();
+    }
+
+    private Task SendReset(IEnr receiver, ushort connectionId)
+    {
+        UTPPacketHeader resetHeader = new UTPPacketHeader()
+        {
+            PacketType = UTPPacketType.StReset,
+            Version = 1,
+            ConnectionId = connectionId,
+            WindowSize = 1_000_000,
+            SeqNumber = 0,
+            AckNumber = 0,
+            SelectiveAck = null,
+            TimestampMicros = 1_000_000,
+            TimestampDeltaMicros = 0
+        };
+
+        return SendUtpPacket(receiver, resetHeader, ReadOnlySpan<byte>.Empty, CancellationToken.None);
     }
 
     public async Task<byte[]?> DownloadContentFromUtp(IEnr nodeId, ushort connectionId, CancellationToken token)
@@ -64,7 +84,7 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         // Now, UTP have this strange connection id mechanism where the initiator will initiate with starting connection id
         // BUT after the Syn, it send with that connection id + 1.
         ushort otherSideConnectionId = (ushort)(connectionId + 1);
-        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, _talkReqTransport, _logger), otherSideConnectionId, _logManager);
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), otherSideConnectionId, _logManager);
         if (!_utpStreams.TryAdd((nodeId, (ushort)(connectionId)), stream))
         {
             throw new Exception("Unable to open utp stream. Connection id may already be used.");
@@ -83,17 +103,21 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         }
     }
 
-    private class UTPToMsgReqAdapter(IEnr targetNode, ITalkReqTransport talkReqTransport, ILogger logger): IUTPTransfer
+    private Task SendUtpPacket(IEnr targetNode, UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
+    {
+        if (_logger.IsTrace) _logger.Trace($"Sending utp message to {meta.ConnectionId} {meta}.");
+
+        var dataArray = UTPPacketHeader.EncodePacket(meta, data, new byte[2047]).ToArray();
+        return _talkReqTransport.SentTalkReq(targetNode, UtpProtocolByte, dataArray, token);
+    }
+
+    private class UTPToMsgReqAdapter(IEnr node, TalkReqUtpManager manager): IUTPTransfer
     {
         public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            var dataArray = UTPPacketHeader.EncodePacket(meta, data, new byte[2047]).ToArray();
-            logger.Info($"Sending utp message to {meta.ConnectionId} {meta}.");
-            return talkReqTransport.SentTalkReq(targetNode, UtpProtocolByte, dataArray, token);
+            return manager.SendUtpPacket(node, meta, data, token);
         }
     }
-
-
 }
 
 public interface IUtpManager
