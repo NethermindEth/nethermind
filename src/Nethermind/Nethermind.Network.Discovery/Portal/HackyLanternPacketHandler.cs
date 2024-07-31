@@ -31,7 +31,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
     private readonly IPacketBuilder _packetBuilder;
     private readonly IPacketProcessor _packetProcessor;
     private readonly IMessageDecoder _messageDecoder;
-    private readonly IPortalContentNetworkProvider _portalContentNetworkProvider;
+    private readonly IPortalContentNetworkFactory _portalContentNetworkFactory;
     private readonly ITalkReqTransport _talkReqTransport;
 
     public HacklyLanternPacketHandler(ISessionManager sessionManager,
@@ -41,7 +41,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         IPacketBuilder packetBuilder,
         IPacketProcessor packetProcessor,
         IMessageDecoder messageDecoder,
-        IPortalContentNetworkProvider portalContentNetworkProvider,
+        IPortalContentNetworkFactory portalContentNetworkFactory,
         ITalkReqTransport talkReqTransport,
         ILoggerFactory loggerFactory
     ) : base(sessionManager, routingTable, messageResponder, udpConnection, packetBuilder, packetProcessor, loggerFactory)
@@ -56,7 +56,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
 
         _messageDecoder = messageDecoder;
         _talkReqTransport = talkReqTransport;
-        _portalContentNetworkProvider = portalContentNetworkProvider;
+        _portalContentNetworkFactory = portalContentNetworkFactory;
     }
 
     public override PacketType PacketType => PacketType.Ordinary;

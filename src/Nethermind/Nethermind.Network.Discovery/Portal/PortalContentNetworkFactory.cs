@@ -11,16 +11,16 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class PortalContentNetworkProvider(
+public class PortalContentNetworkFactory(
     IDiscv5Protocol discv5,
     IIdentityVerifier identityVerifier,
     IEnrFactory enrFactory,
     ITalkReqTransport talkReqTransport,
     IUtpManager utpManager,
     ILogManager logManager)
-    : IPortalContentNetworkProvider
+    : IPortalContentNetworkFactory
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<PortalContentNetworkProvider>();
+    private readonly ILogger _logger = logManager.GetClassLogger<PortalContentNetworkFactory>();
     private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
 
     public IPortalContentNetwork Create(byte[] protocol, IPortalContentNetwork.Store store)

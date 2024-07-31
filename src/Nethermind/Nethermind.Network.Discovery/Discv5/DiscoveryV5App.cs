@@ -117,7 +117,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 NettyDiscoveryV5Handler.Register(components);
                 services.AddSingleton<IPacketHandlerFactory, CustomPacketHandlerFactory>();
                 services.AddSingleton<IRoutingTable, TransientRoutingTable>();
-                services.AddSingleton<IPortalContentNetworkProvider, PortalContentNetworkProvider>();
+                services.AddSingleton<IPortalContentNetworkFactory, PortalContentNetworkFactory>();
                 services.AddSingleton<ISessionManager, SessionManagerNormalizer>();
                 services.AddSingleton<IUtpManager, TalkReqUtpManager>();
                 services.AddSingleton<ITalkReqTransport, LanternTalkReqTransport>();
@@ -131,7 +131,7 @@ public class DiscoveryV5App : IDiscoveryApp
         _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
 
-        IPortalContentNetworkProvider portalContentNetworkProvider = _serviceProvider.GetRequiredService<IPortalContentNetworkProvider>();
+        IPortalContentNetworkFactory portalContentNetworkFactory = _serviceProvider.GetRequiredService<IPortalContentNetworkFactory>();
 
         string[] bootNodesStr =
         [
@@ -161,7 +161,7 @@ public class DiscoveryV5App : IDiscoveryApp
         }).ToArray();
 
         var historyNetworkProtocolId = Bytes.FromHexString("0x500B");
-        _historyNetwork = new PortalHistoryNetwork(portalContentNetworkProvider, logManager, historyNetworkProtocolId, historyNetworkBootnodes);
+        _historyNetwork = new PortalHistoryNetwork(portalContentNetworkFactory, logManager, historyNetworkProtocolId, historyNetworkBootnodes);
 
     }
 

@@ -15,9 +15,9 @@ public class PortalHistoryNetwork
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
     private readonly ILogger _logger;
 
-    public PortalHistoryNetwork(IPortalContentNetworkProvider portalContentNetworkProvider, ILogManager logManager, byte[] protocolId, IEnr[] bootNodes)
+    public PortalHistoryNetwork(IPortalContentNetworkFactory portalContentNetworkFactory, ILogManager logManager, byte[] protocolId, IEnr[] bootNodes)
     {
-        _contentNetwork = portalContentNetworkProvider.Create(protocolId, new NoopStore());
+        _contentNetwork = portalContentNetworkFactory.Create(protocolId, new NoopStore());
         foreach (IEnr bootNode in bootNodes)
         {
             _contentNetwork.AddSeed(bootNode);
