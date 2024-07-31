@@ -712,7 +712,9 @@ public class ChainSpecBasedSpecProviderTests
                 Eip3855TransitionTimestamp = 1000000012,
                 Eip3860TransitionTimestamp = 1000000012,
                 Eip1153TransitionTimestamp = 1000000024,
-                Eip2537TransitionTimestamp = 1000000024
+                Eip2537TransitionTimestamp = 1000000024,
+
+                Eip7702TransitionTimestamp = 1000000032,
             }
         };
 
@@ -792,6 +794,7 @@ public class ChainSpecBasedSpecProviderTests
             r.IsEip3860Enabled = true;
         });
         TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = r.IsEip2537Enabled = true; });
+        TestTransitions((40001L, 1000000032), r => { r.IsEip7702Enabled = true; });
     }
 
     [TestCaseSource(nameof(BlockNumbersAndTimestampsNearForkActivations))]
