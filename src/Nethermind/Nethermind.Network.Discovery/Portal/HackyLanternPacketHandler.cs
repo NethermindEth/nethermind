@@ -20,6 +20,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Network.Discovery.Portal;
 
+/// <summary>
+/// A hacky implementation of OrdinaryPacketHandler so that the sender of the TalkReq can be forwarded.
+/// </summary>
 public class HacklyLanternPacketHandler : OrdinaryPacketHandler
 {
     private readonly ILogger<OrdinaryPacketHandler> _logger;
@@ -30,7 +33,6 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
     private readonly IPacketBuilder _packetBuilder;
     private readonly IPacketProcessor _packetProcessor;
     private readonly IMessageDecoder _messageDecoder;
-    private readonly IPortalContentNetworkFactory _portalContentNetworkFactory;
     private readonly ITalkReqTransport _talkReqTransport;
 
     public HacklyLanternPacketHandler(ISessionManager sessionManager,
@@ -40,7 +42,6 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         IPacketBuilder packetBuilder,
         IPacketProcessor packetProcessor,
         IMessageDecoder messageDecoder,
-        IPortalContentNetworkFactory portalContentNetworkFactory,
         ITalkReqTransport talkReqTransport,
         ILoggerFactory loggerFactory
     ) : base(sessionManager, routingTable, messageResponder, udpConnection, packetBuilder, packetProcessor, loggerFactory)
@@ -55,7 +56,6 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
 
         _messageDecoder = messageDecoder;
         _talkReqTransport = talkReqTransport;
-        _portalContentNetworkFactory = portalContentNetworkFactory;
     }
 
     public override PacketType PacketType => PacketType.Ordinary;

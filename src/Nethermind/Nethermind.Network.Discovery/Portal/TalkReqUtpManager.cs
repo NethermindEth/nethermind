@@ -11,6 +11,9 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Portal;
 
+/// <summary>
+/// Implement UTP handling based on TalkReq via ITalkReqTransport.
+/// </summary>
 public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
 {
     private static readonly byte[] UtpProtocolByte = Bytes.FromHexString("0x757470");
@@ -118,11 +121,4 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
             return manager.SendUtpPacket(node, meta, data, token);
         }
     }
-}
-
-public interface IUtpManager
-{
-    ushort InitiateUtpStreamSender(IEnr sender, byte[] valuePayload);
-    int MaxContentByteSize { get; }
-    Task<byte[]?> DownloadContentFromUtp(IEnr node, ushort valueConnectionId, CancellationToken token);
 }

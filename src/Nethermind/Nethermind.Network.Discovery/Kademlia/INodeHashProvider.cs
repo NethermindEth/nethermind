@@ -5,7 +5,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-/// Note, a tree based kademlia will likely change this significantly.
+/// <summary>
+/// Translate the node and/or the content key into a ValueHash256 which is finally used for implementing
+/// the distance calculation.
+/// </summary>
+/// <typeparam name="TNode"></typeparam>
+/// <typeparam name="TContentKey"></typeparam>
 public interface INodeHashProvider<in TNode, in TContentKey>
 {
     ValueHash256 GetHash(TNode node);

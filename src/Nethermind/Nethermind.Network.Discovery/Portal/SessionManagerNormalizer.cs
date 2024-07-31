@@ -11,7 +11,8 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <summary>
 /// So the original implementation of the session manager will have problem where the received decoded
 /// endpoint from FindNode/FindContent is decoded to ipv4 instead of ipv6 which is returned by .net stack.
-/// Hence, this class to normalize it so that the session is found.
+/// So the IPEndPoint does not match which causes further GetSession to not work. Hence, this class to normalize
+/// it so that the session is found.
 /// </summary>
 /// <param name="options"></param>
 /// <param name="aesCrypto"></param>
@@ -36,6 +37,11 @@ public class SessionManagerNormalizer(
 
     public ISessionMain CreateSession(SessionType sessionType, byte[] nodeId, IPEndPoint endPoint)
     {
+        if (endPoint.AddressFamily == AddressFamily.InterNetwork)
+        {
+            endPoint = new IPEndPoint(endPoint.Address.MapToIPv6(), endPoint.Port);
+        }
+
         return _baseImplementation.CreateSession(sessionType, nodeId, endPoint);
     }
 

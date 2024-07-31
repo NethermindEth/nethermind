@@ -12,7 +12,8 @@ namespace Nethermind.Network.Discovery.Portal;
 
 /// <summary>
 /// So, because of how the session works, if the routing table does not record the Enr because its full,
-/// it does not store the session at all which makes TalkReq to other nodes to not work.
+/// it does not lookup the session at all which makes TalkReq to other nodes to not work.
+/// This class add a layer of LRU in case its not found.
 /// </summary>
 public class TransientRoutingTable(
     IIdentityManager identityManager,

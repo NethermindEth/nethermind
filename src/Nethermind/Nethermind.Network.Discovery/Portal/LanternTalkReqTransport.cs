@@ -16,6 +16,14 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Portal;
 
+/// <summary>
+/// Translate whatever is in Lantern into an ITalkReqTransport.
+/// </summary>
+/// <param name="routingTable"></param>
+/// <param name="packetManager"></param>
+/// <param name="messageDecoder"></param>
+/// <param name="requestManager"></param>
+/// <param name="logManager"></param>
 public class LanternTalkReqTransport(
     IRoutingTable routingTable,
     IPacketManager packetManager,
