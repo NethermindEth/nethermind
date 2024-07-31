@@ -54,7 +54,7 @@ public class ShutterTxSource(
         }
 
         int txCount = shutterTransactions.Value.Transactions.Length;
-        if (_logger.IsInfo) _logger.Info($"Can build for Shutter block slot {buildingSlot} with {txCount} transactions.");
+        if (_logger.IsInfo) _logger.Info($"Preparing Shutter block for slot {buildingSlot} with {txCount} transactions.");
         return shutterTransactions.Value.Transactions;
     }
 
@@ -74,7 +74,7 @@ public class ShutterTxSource(
                 {
                     _keyWaitTasks.TryRemove(slot, out TaskCompletionSource? removed);
                     removed?.TrySetCanceled();
-                });
+                }).Start();
 
                 return new();
             }).Task;
@@ -94,7 +94,7 @@ public class ShutterTxSource(
 
             if (_keyWaitTasks.Remove(slot, out TaskCompletionSource? tcs))
             {
-                tcs.TrySetResult();
+                tcs?.TrySetResult();
             }
         }
     }
