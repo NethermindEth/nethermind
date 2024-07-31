@@ -16,10 +16,32 @@ public interface ITalkReqTransport: ITalkReqProtocolHandler
     /// <param name="message"></param>
     void OnTalkResp(IEnr sender, TalkRespMessage message);
 
+    /// <summary>
+    /// For registering protocol. Notably, this is how a protocol receive and handle TalkReq.
+    /// </summary>
+    /// <param name="protocol"></param>
+    /// <param name="protocolHandler"></param>
     void RegisterProtocol(byte[] protocol, ITalkReqProtocolHandler protocolHandler);
 
-    Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token);
+    /// <summary>
+    /// For sending TalkReq and waiting for its corresponding TalkResp
+    /// </summary>
+    /// <param name="receiver"></param>
+    /// <param name="protocol"></param>
+    /// <param name="message"></param>
+    /// <param name="token"></param>
+    /// <returns></returns>
     Task<byte[]> CallAndWaitForResponse(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token);
+
+    /// <summary>
+    /// For sending TalkReq without waiting for response.
+    /// </summary>
+    /// <param name="receiver"></param>
+    /// <param name="protocol"></param>
+    /// <param name="message"></param>
+    /// <param name="token"></param>
+    /// <returns></returns>
+    Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token);
 }
 
 public interface ITalkReqProtocolHandler

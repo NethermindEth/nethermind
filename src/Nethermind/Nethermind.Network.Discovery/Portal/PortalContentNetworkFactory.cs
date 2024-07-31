@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Identity;
 using Lantern.Discv5.WireProtocol;
@@ -11,6 +12,18 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
 
+/// <summary>
+/// A "portal content network" is basically a kademlia network on top of discv5 subprotocol via TalkReq with the
+/// addition of using UTP (as another discv5 subprotocol) when transferring large binary.
+/// This class basically, wire all those things up into an IPortalContentNetwork.
+/// The specific interpretation of the key and content is handle at higher level, see `PortalHistoryNetwork` for history network.
+/// </summary>
+/// <param name="discv5"></param>
+/// <param name="identityVerifier"></param>
+/// <param name="enrFactory"></param>
+/// <param name="talkReqTransport"></param>
+/// <param name="utpManager"></param>
+/// <param name="logManager"></param>
 public class PortalContentNetworkFactory(
     IDiscv5Protocol discv5,
     IIdentityVerifier identityVerifier,
@@ -25,8 +38,7 @@ public class PortalContentNetworkFactory(
 
     public IPortalContentNetwork Create(byte[] protocol, IPortalContentNetwork.Store store)
     {
-        _logger.Warn($"self enode is {discv5.SelfEnr.NodeId.ToHexString()}");
-        var messageSender = new KademliaMessageSender(protocol, talkReqTransport, discv5, enrFactory,
+        var messageSender = new KademliaTalkReqMessageSender(protocol, talkReqTransport, discv5, enrFactory,
             identityVerifier, logManager);
 
         var kademlia = new Kademlia<IEnr, byte[], LookupContentResult>(
@@ -62,4 +74,67 @@ public class PortalContentNetworkFactory(
             return true;
         }
     }
+
+    private class PortalContentNetwork(
+        IUtpManager utpManager,
+        IKademlia<IEnr, byte[], LookupContentResult> kademlia,
+        IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
+        ILogger logger)
+        : IPortalContentNetwork
+    {
+
+        public async Task<byte[]?> LookupContent(byte[] key, CancellationToken token)
+        {
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+            token = cts.Token;
+
+            Stopwatch sw = Stopwatch.StartNew();
+            var result = await kademlia.LookupValue(key, token);
+            logger.Info($"Lookup {key.ToHexString()} took {sw.Elapsed}");
+
+            sw.Restart();
+
+            if (result == null) return null;
+
+            if (result.Payload != null) return result.Payload;
+
+            Debug.Assert(result.ConnectionId != null);
+
+            var asBytes = await utpManager.DownloadContentFromUtp(result.NodeId, result.ConnectionId.Value, token);
+            logger.Info($"UTP download for {key.ToHexString()} took {sw.Elapsed}");
+            return asBytes;
+        }
+
+        public async Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token)
+        {
+            var content = await messageSender.FindValue(node, contentKey, token);
+            if (!content.hasValue)
+            {
+                return null;
+            }
+
+            var value = content.value!;
+            if (value.Payload != null) return value.Payload;
+
+            var asBytes = await utpManager.DownloadContentFromUtp(node, value.ConnectionId!.Value, token);
+            return asBytes;
+        }
+
+        public async Task Run(CancellationToken token)
+        {
+            await kademlia.Run(token);
+        }
+
+        public async Task Bootstrap(CancellationToken token)
+        {
+            await kademlia.Bootstrap(token);
+        }
+
+        public void AddOrRefresh(IEnr node)
+        {
+            kademlia.AddOrRefresh(node);
+        }
+    }
+
 }

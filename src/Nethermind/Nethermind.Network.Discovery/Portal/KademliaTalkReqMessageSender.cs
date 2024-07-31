@@ -12,7 +12,16 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class KademliaMessageSender(
+/// <summary>
+/// Adapter from TalkReq/Resp to Kademlia's IMessageSender, which is its outgoing transport.
+/// </summary>
+/// <param name="protocol"></param>
+/// <param name="talkReqTransport"></param>
+/// <param name="discv5"></param>
+/// <param name="enrFactory"></param>
+/// <param name="identityVerifier"></param>
+/// <param name="logManager"></param>
+public class KademliaTalkReqMessageSender(
     byte[] protocol,
     ITalkReqTransport talkReqTransport,
     IDiscv5Protocol discv5,
@@ -22,7 +31,7 @@ public class KademliaMessageSender(
 ) : IMessageSender<IEnr, byte[], LookupContentResult>
 {
     private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
-    private ILogger _logger = logManager.GetClassLogger<KademliaMessageSender>();
+    private ILogger _logger = logManager.GetClassLogger<KademliaTalkReqMessageSender>();
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
@@ -103,11 +112,6 @@ public class KademliaMessageSender(
                 ContentKey = contentKey
             }
         });
-
-        if (receiver.NodeId.ToHexString() == "01ead3ee2e6370d110e02840d700097d844ca4d1f62697194564f687985dfe2c1a")
-        {
-            return new FindValueResponse<IEnr, LookupContentResult>(false, null, Array.Empty<IEnr>());
-        }
 
         byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, protocol, findContentBytes, token);
         Content message;

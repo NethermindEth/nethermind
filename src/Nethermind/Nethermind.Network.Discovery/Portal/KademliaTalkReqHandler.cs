@@ -9,8 +9,14 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
 
+/// <summary>
+/// Adapter from TalkReq's ITalkReqProtocolHandler to Kademlia's IMessageReceiver, which is its incoming transport interface.
+/// </summary>
+/// <param name="kad"></param>
+/// <param name="selfEnr"></param>
+/// <param name="utpManager"></param>
 public class KademliaTalkReqHandler(
-    IKademlia<IEnr, byte[], LookupContentResult> kad,
+    IMessageReceiver<IEnr, byte[], LookupContentResult> kad,
     IEnr selfEnr,
     IUtpManager utpManager
 ) : ITalkReqProtocolHandler
@@ -38,7 +44,7 @@ public class KademliaTalkReqHandler(
         return null;
     }
 
-    private static async Task<byte[]?> HandlePing(IEnr sender, IKademlia<IEnr, byte[], LookupContentResult> kad, Ping ping)
+    private static async Task<byte[]?> HandlePing(IEnr sender, IMessageReceiver<IEnr, byte[], LookupContentResult> kad, Ping ping)
     {
         // Still need to call kad since the ping is also used to populate bucket.
         await kad.Ping(sender, default);
@@ -53,7 +59,7 @@ public class KademliaTalkReqHandler(
         });
     }
 
-    private async Task<byte[]?> HandleFindNode(IEnr sender, FindNodes nodes, IKademlia<IEnr, byte[], LookupContentResult> kad)
+    private async Task<byte[]?> HandleFindNode(IEnr sender, FindNodes nodes, IMessageReceiver<IEnr, byte[], LookupContentResult> kad)
     {
         // So....
         // This is weird. For some reason, discv5/overlay network uses distance instead of target node like
@@ -76,7 +82,7 @@ public class KademliaTalkReqHandler(
         return SlowSSZ.Serialize(response);
     }
 
-    private async Task<byte[]?> HandleFindContent(IEnr sender, IKademlia<IEnr, byte[], LookupContentResult> kad, FindContent findContent)
+    private async Task<byte[]?> HandleFindContent(IEnr sender, IMessageReceiver<IEnr, byte[], LookupContentResult> kad, FindContent findContent)
     {
         var findValueResult = await kad.FindValue(sender, findContent.ContentKey, CancellationToken.None);
         if (findValueResult.hasValue)

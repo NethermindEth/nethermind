@@ -17,7 +17,6 @@ using Lantern.Discv5.WireProtocol.Session;
 using Lantern.Discv5.WireProtocol.Table;
 using Lantern.Discv5.WireProtocol.Utility;
 using Microsoft.Extensions.Logging;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Portal;
 
