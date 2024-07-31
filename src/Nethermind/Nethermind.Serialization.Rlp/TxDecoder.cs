@@ -319,7 +319,7 @@ namespace Nethermind.Serialization.Rlp
         private void DecodeAuthorizationListWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             DecodeEip1559PayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-            transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder, !rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes));
+            transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder);
         }
 
         private static void DecodeDepositPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
