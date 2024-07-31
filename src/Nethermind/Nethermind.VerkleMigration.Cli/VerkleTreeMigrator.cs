@@ -77,7 +77,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
             }
 
             // Reconstruct the full keccak hash
-            byte[]? addressBytes = _preImageDb.Get(path.Path.BytesAsSpan);
+            byte[]? addressBytes = RetrievePreimage(path.Path.BytesAsSpan);
             if (addressBytes is not null)
             {
                 var address = new Address(addressBytes);
@@ -106,7 +106,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
                 return;
             }
             // Reconstruct the full keccak hash
-            byte[]? storageSlotBytes = _preImageDb.Get(path.Path.BytesAsSpan);
+            byte[]? storageSlotBytes = RetrievePreimage(path.Path.BytesAsSpan);
             if (storageSlotBytes is null)
             {
                 Console.WriteLine($"Storage slot is null for node: {node} with key: {path.Path.BytesAsSpan.ToHexString()}");
@@ -132,6 +132,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
 
     public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
+
+    private static byte[]? RetrievePreimage(Span<byte> key)
+    {
+        // TODO: return first 20 bytes until preimage db is implemented
+        return key[..20].ToArray();
+        // return _preImageDb.Get(key);
+    }
+
 
     private void MigrateAccount(Address address, Account account)
     {

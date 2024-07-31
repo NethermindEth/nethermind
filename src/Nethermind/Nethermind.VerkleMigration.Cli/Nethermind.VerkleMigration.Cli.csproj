@@ -19,5 +19,6 @@
     <ProjectReference Include="..\Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+    <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
   </ItemGroup>
 </Project>

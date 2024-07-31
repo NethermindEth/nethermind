@@ -1,8 +1,13 @@
-﻿using Nethermind.Db;
+﻿using Nethermind.Api;
+using Nethermind.Config;
+using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Db.Rocks;
+using Nethermind.Init;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Verkle.Tree.TreeStore;
 using Nethermind.VerkleTransition.Cli;
 
@@ -11,67 +16,73 @@ namespace Nethermind.VerkleMigration.Cli
     class Program
     {
         private static ILogManager _logManager = SimpleConsoleLogManager.Instance;
-        private static readonly string dbPath = "../artifacts/bin/Nethermind.Runner/debug/nethermind_db/mainnet_archive";
+        private static readonly string _configPath = "./config.cfg";
+        private static readonly ProcessExitSource _processExitSource = new();
 
-        public static void Main(string[] args)
+
+        public static async Task Main(string[] args)
         {
-            Console.WriteLine($"Running migration tool on db path: {dbPath}");
-
-            // 1. Get db path
-            // dbPath = RequestDbPath();
-
-            // 2. Restore state from db
-            (VerkleTreeMigrator migrator, StateTree merkleTree) = RestoreState(dbPath);
-
-            // 3. Run the Verkle Tree migrator
-            merkleTree.Accept(migrator, merkleTree.RootHash);
-            migrator.FinalizeMigration(10);
-
-            Console.WriteLine($"Merkle tree root hash: {merkleTree.RootHash}");
-            Console.WriteLine($"Verkle tree root hash: {migrator._verkleStateTree.StateRoot}");
-
-        }
-
-        static string RequestDbPath()
-        {
-            Console.Write("Enter the path to the database: ");
-            string? dbPath = Console.ReadLine();
-
-            while (!Directory.Exists(dbPath))
+            // 1. Get config path
+            string configPath = _configPath;
+            if (args.Length > 0)
             {
-                Console.WriteLine("The specified path does not exist. Please enter a valid path.");
-                Console.Write("Enter the path to the database: ");
-                dbPath = Console.ReadLine();
+                configPath = args[1];
             }
 
-            return dbPath;
+            Console.WriteLine($"Running migration tool with config path: {configPath}");
+
+            // 2. Setup migrator
+            (INethermindApi api, VerkleTreeMigrator migrator) = await SetupMigrator(configPath);
+
+            // 3. Run the migrator
+            api.StateReader!.RunTreeVisitor(migrator, api.WorldState!.StateRoot);
+            migrator.FinalizeMigration(0);
+
+            Console.WriteLine($"Merkle tree root hash: {api.WorldState!.StateRoot}");
+            Console.WriteLine($"Verkle tree root hash: {migrator._verkleStateTree.StateRoot}");
         }
 
-        static (VerkleTreeMigrator migrator, StateTree merkleTree) RestoreState(string dbPath)
+        static async Task<(INethermindApi, VerkleTreeMigrator)> SetupMigrator(string configPath)
         {
-            Console.WriteLine("Restoring state...");
+            Console.WriteLine("Starting api...");
 
-            // var settings = new DbSettings("Preimages db", DbNames.Preimages);
-            // var config = new DbConfig();
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource(configPath));
+            configProvider.Initialize();
+            ApiBuilder apiBuilder = new(configProvider, _logManager);
+            INethermindApi nethermindApi = apiBuilder.Create([]);
+            nethermindApi.ProcessExit = _processExitSource;
 
-            IDbProvider dbProvider = VerkleDbFactory.InitDatabase(DbMode.PersistantDb, dbPath);
-            IDb preimagesDb = dbProvider.GetDb<IDb>(DbNames.Preimages);
-            // IDb preimagesDb = new MemDb();
+            IInitConfig config = nethermindApi.Config<IInitConfig>();
+            config.DiagnosticMode = DiagnosticMode.VerifyTrie;
 
-            // PopulatePreimagesDb(preimagesDb);
+            IDbProvider dbProvider = VerkleDbFactory.InitDatabase(DbMode.PersistantDb, config.BaseDbPath);
 
-            // initialize merkle tree
-            var trieStore = new TrieStore(dbProvider.CodeDb, _logManager);
-            var merkleStateTree = new StateTree(trieStore, _logManager);
-            IStateReader stateReader = new StateReader(trieStore, dbProvider.CodeDb, _logManager);
+            nethermindApi.DbProvider = dbProvider;
+            nethermindApi.EthereumEcdsa = new EthereumEcdsa(nethermindApi.ChainSpec.ChainId, nethermindApi.LogManager);
+
+            // setup database data
+            IStep initializer = new MigrateConfigs(nethermindApi);
+            await initializer.Execute(_processExitSource.Token);
+            initializer = new ApplyMemoryHint(nethermindApi);
+            await initializer.Execute(_processExitSource.Token);
+            initializer = new InitDatabase(nethermindApi);
+            await initializer.Execute(_processExitSource.Token);
+            initializer = new InitRlp(nethermindApi);
+            await initializer.Execute(_processExitSource.Token);
+            initializer = new InitializeBlockTree(nethermindApi);
+            await initializer.Execute(_processExitSource.Token);
+            initializer = new InitializeStateDb(nethermindApi);
+            await initializer.Execute(_processExitSource.Token);
 
             // initialize verkle tree
-            var verkleStore = new VerkleTreeStore<VerkleSyncCache>(dbProvider, _logManager);
+            var verkleStore = new VerkleTreeStore<VerkleSyncCache>(nethermindApi.DbProvider, _logManager);
             var verkleStateTree = new VerkleStateTree(verkleStore, _logManager);
+            // initialize migrator
+            IDb preimagesDb = dbProvider.GetDb<IDb>(DbNames.Preimages);
+            var migrator = new VerkleTreeMigrator(verkleStateTree, nethermindApi.StateReader!, preimagesDb);
 
-            var migrator = new VerkleTreeMigrator(verkleStateTree, stateReader, preimagesDb);
-
-            return (migrator, merkleStateTree);
+            return (nethermindApi, migrator);
         }
     }
 }
