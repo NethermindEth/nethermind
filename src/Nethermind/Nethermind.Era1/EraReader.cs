@@ -159,7 +159,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             //    throw new EraException($"Epoch {epoch} is missing.");
 
             next++;
-            yield return (file);
+            yield return file;
         }
     }
     public async Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)

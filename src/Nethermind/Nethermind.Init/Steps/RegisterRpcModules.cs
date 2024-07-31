@@ -29,6 +29,7 @@ using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.Serialization.Json;
 using Nethermind.Blockchain;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Init.Steps;
 
@@ -131,7 +132,13 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.PeerManager);
         StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
         StepDependencyException.ThrowIfNull(_api.Enode);
-
+        EraImporter eraImport = new(
+            _api.FileSystem,
+            _api.BlockTree,
+            _api.BlockValidator,
+            _api.ReceiptStorage,
+            _api.SpecProvider,
+            BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
         IEraExporter eraExporter = new EraExporter(
            _api.FileSystem,
            _api.BlockTree,
@@ -140,6 +147,7 @@ public class RegisterRpcModules : IStep
            BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
         IAdminEraService eraService = new AdminEraService(
             _api.BlockTree,
+            eraImport,
             eraExporter,
             _api.ProcessExitToken!,
             _api.FileSystem,

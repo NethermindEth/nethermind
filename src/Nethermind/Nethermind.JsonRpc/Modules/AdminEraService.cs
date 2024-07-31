@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Era1;
 using Nethermind.Logging;
+using Nethermind.Synchronization;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,20 +24,24 @@ public class AdminEraService : IAdminEraService
 {
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
+    private readonly IEraImporter _eraImporter;
     private readonly IEraExporter _eraExporter;
     private readonly IProcessExitToken _processExit;
     private readonly IFileSystem _fileSystem;
+    private int _canEnterImport = 1;
     private int _canEnterExport = 1;
     private int _canEnterVerification = 1;
 
     public AdminEraService(
         IBlockTree blockTree,
+        IEraImporter eraImporter,
         IEraExporter eraExporter,
         IProcessExitToken processExit,
         IFileSystem fileSystem,
         ILogManager logManager)
     {
         _blockTree = blockTree;
+        this._eraImporter = eraImporter;
         _eraExporter = eraExporter;
         this._processExit = processExit;
         this._fileSystem = fileSystem;
@@ -147,9 +152,9 @@ public class AdminEraService : IAdminEraService
     {
         try
         {
-            _eraExporter.VerificationProgress += LogVerificationProgress;
+            _eraImporter.VerificationProgress += LogVerificationProgress;
             if (_logger.IsInfo) _logger.Info($"Starting history verification in '{eraSource}'");
-            await _eraExporter.VerifyEraFiles(eraSource, accumulatorFile, _processExit.Token);
+            await _eraImporter.VerifyEraFiles(eraSource, accumulatorFile, _processExit.Token);
             if (_logger.IsInfo) _logger.Info($"Succesfully verified all {_eraExporter.NetworkName} archives in '{eraSource}'");
         }
         catch (EraVerificationException e)
@@ -167,7 +172,7 @@ public class AdminEraService : IAdminEraService
         }
         finally
         {
-            _eraExporter.VerificationProgress -= LogVerificationProgress;
+            _eraImporter.VerificationProgress -= LogVerificationProgress;
         }
     }
 

@@ -14,9 +14,6 @@ public interface IEraExporter
     string NetworkName { get; }
 
     event EventHandler<ExportProgressArgs> ExportProgress;
-    event EventHandler<VerificationProgressArgs> VerificationProgress;
 
     Task Export(string destinationPath, long start, long end, int size = EraWriter.MaxEra1Size, CancellationToken cancellation = default);
-    Task VerifyEraFiles(string[] eraFiles, byte[][] accumulators, CancellationToken cancellation = default);
-    Task VerifyEraFiles(string eraDirectory, string accumulatorFile, CancellationToken cancellation = default);
 }

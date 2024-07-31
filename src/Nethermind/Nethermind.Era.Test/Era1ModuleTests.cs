@@ -5,6 +5,7 @@ using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -14,6 +15,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -392,6 +394,39 @@ public class Era1ModuleTests
             specProvider,
             "abc");
         await importer.ImportAsArchiveSync("test", CancellationToken.None);
+
+        Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
+        Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
+
+        Assert.That(bestSuggestedNumber, Is.EqualTo(ChainLength - 1));
+    }
+
+    [Test]
+    public async Task EraExportAndImportWithValidation()
+    {
+        const int ChainLength = 100000;
+        var fileSystem = new MockFileSystem();
+        BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
+        await exporter.Export("test", 0, ChainLength - 1);
+    
+        BlockTree importTree = Build.A.BlockTree()
+            .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+
+        int bestSuggestedNumber = 0;
+        importTree.NewBestSuggestedBlock += (sender, args) => bestSuggestedNumber++;
+
+        EraImporter importer = new(
+            fileSystem,
+            importTree,
+            blockValidator,
+            receiptStorage,
+            specProvider,
+            "abc");
+        await importer.Import("test", 0, exportTree.Head!.Number, Path.Combine("test", "accumulators.txt"));
 
         Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
         Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));

@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Synchronization;
@@ -61,6 +62,84 @@ public class EraImporterTest
                               "abc");
 
         Assert.That(() => sut.ImportAsArchiveSync("test", CancellationToken.None), Throws.TypeOf<EraImportException>());
+    }
+
+
+    [Test]
+    public void VerifyEraFiles_FilesAndAccumulatorsAreDifferentLength_ThrowArgumentException()
+    {
+        EraImporter sut = new(Substitute.For<IFileSystem>(), Substitute.For<IBlockTree>(), Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), "abc");
+
+        Assert.That(() => sut.VerifyEraFiles(["abc", "abc"], [[0x0]]), Throws.TypeOf<ArgumentException>());
+    }
+
+    [Test]
+    public void VerifyEraFiles_AccumulatorsHaveInvalidSize_ThrowArgumentException()
+    {
+        EraImporter sut = new(Substitute.For<IFileSystem>(), Substitute.For<IBlockTree>(), Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), "abc");
+
+        Assert.That(() => sut.VerifyEraFiles(["abc"], [[0x0]]), Throws.TypeOf<ArgumentException>());
+    }
+
+    [Test]
+    public async Task VerifyEraFiles_VerifyAccumulatorsWithExpected_DoesNotThrow()
+    {
+        const int ChainLength = 128;
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
+        const string NetworkName = "test";
+        var fileSystem = new MockFileSystem();
+        EraExporter exporter = new(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), NetworkName);
+        string destinationPath = "abc";
+        await exporter.Export(destinationPath!, 0, ChainLength - 1, 16);
+        var accumulators = new List<byte[]>();
+        var eraFiles = EraReader.GetAllEraFiles(destinationPath, NetworkName, fileSystem).ToArray();
+        foreach (var file in eraFiles)
+        {
+            using var reader = await EraReader.Create(fileSystem.File.OpenRead(file));
+            accumulators.Add(await reader.ReadAccumulator());
+        }
+
+        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), NetworkName);
+
+        Assert.DoesNotThrowAsync(() => sut.VerifyEraFiles(eraFiles, accumulators.ToArray()));
+    }
+
+    [Test]
+    public async Task VerifyEraFiles_VerifyAccumulatorsithExpectedFromFileW_DoesNotThrow()
+    {
+        const int ChainLength = 128;
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
+        const string NetworkName = "test";
+        var fileSystem = new MockFileSystem();
+        EraExporter exporter = new(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), NetworkName);
+        string destinationPath = "abc";
+        await exporter.Export(destinationPath!, 0, ChainLength - 1, 16);
+        var accumulators = fileSystem.File.ReadAllLines(Path.Combine(destinationPath, EraExporter.AccumulatorFileName)).Select(s => Bytes.FromHexString(s)).ToArray();
+
+        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), NetworkName);
+
+        Assert.DoesNotThrowAsync(() => sut.VerifyEraFiles(EraReader.GetAllEraFiles(destinationPath, NetworkName, fileSystem).ToArray(), accumulators.ToArray()));
+    }
+
+    [Test]
+    public async Task VerifyEraFiles_VerifyAccumulatorsWithUnexpected_ThrowEraVerificationException()
+    {
+        const int ChainLength = 64;
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
+        const string NetworkName = "test";
+        var fileSystem = new MockFileSystem();
+        EraExporter exporter = new(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), NetworkName);
+        var destinationPath = "abc";
+        const int EpochSize = 16;
+        await exporter.Export(destinationPath!, 0, ChainLength - 1, EpochSize);
+        var accumulators = fileSystem.File.ReadAllLines(Path.Combine(destinationPath, EraExporter.AccumulatorFileName)).Select(s=> Bytes.FromHexString(s)).ToArray();
+        accumulators[accumulators.Length - 1] = new byte[32];
+
+        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), NetworkName);
+
+        Assert.That(
+            () => sut.VerifyEraFiles(EraReader.GetAllEraFiles(destinationPath, NetworkName, fileSystem).ToArray(), accumulators.ToArray()),
+            Throws.TypeOf<EraVerificationException>());
     }
 
     private async Task<IFileSystem> CreateEraFileSystem()

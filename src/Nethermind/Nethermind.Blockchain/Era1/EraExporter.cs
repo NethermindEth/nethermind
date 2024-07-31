@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Nethermind.Era1;
 using System.Linq;
 using Nethermind.Blockchain.Era1;
+using System.Collections.Generic;
 
 namespace Nethermind.Blockchain;
 public class EraExporter : IEraExporter
@@ -26,9 +27,10 @@ public class EraExporter : IEraExporter
     private readonly string _networkName;
 
     public event EventHandler<ExportProgressArgs> ExportProgress;
-    public event EventHandler<VerificationProgressArgs> VerificationProgress;
 
     public string NetworkName => _networkName;
+
+    public const string AccumulatorFileName = "accumulators.tx";
 
     public EraExporter(
         IFileSystem fileSystem,
@@ -69,6 +71,9 @@ public class EraExporter : IEraExporter
         int processedSinceLast = 0;
         int txProcessedSinceLast = 0;
 
+        List<byte[]> eraRoots = new ();
+        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
+        _fileSystem.File.Delete(accumulatorPath);
         for (long i = start; i <= end; i += size)
         {
             string filePath = Path.Combine(
@@ -77,7 +82,7 @@ public class EraExporter : IEraExporter
             using EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
 
             //TODO read directly from RocksDb with range reads
-            for (var y = i; y <= end; y++)
+            for (var y = i; y <= i + size; y++)
             {
                 Block? block = _blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
@@ -92,7 +97,7 @@ public class EraExporter : IEraExporter
                     //Can this even happen?
                     throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}");
                 }
-                if (!await builder.Add(block, receipts, cancellation) || y == end)
+                if (!await builder.Add(block, receipts, cancellation) || y == i + size || y == end)
                 {
                     byte[] root = await builder.Finalize();
                     builder.Dispose();
@@ -102,6 +107,7 @@ public class EraExporter : IEraExporter
                     _fileSystem.File.Move(
                         filePath,
                         rename, true);
+                    eraRoots.Add(root);
                     break;
                 }
                 totalProcessed++;
@@ -123,60 +129,6 @@ public class EraExporter : IEraExporter
                 }
             }
         }
-    }
-    /// <summary>
-    /// Verifies all era1 archives from a directory, with an expected accumulator list from a hex encoded file.
-    /// </summary>
-    /// <param name="eraDirectory"></param>
-    /// <param name="accumulatorFile"></param>
-    /// <param name="cancellation"></param>
-    /// <exception cref="EraVerificationException">If the verification fails.</exception>
-    public async Task VerifyEraFiles(string eraDirectory, string accumulatorFile, CancellationToken cancellation = default)
-    {
-        string[] eraFiles = EraReader.GetAllEraFiles(eraDirectory, _networkName).ToArray();
-        string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
-
-        byte[][] accumulators = lines.Select(s => Bytes.FromHexString(s)).ToArray();
-
-        await VerifyEraFiles(eraFiles, accumulators);
-    }
-    /// <summary>
-    /// Verifies all era1 files, with an expected accumulator list.
-    /// </summary>
-    /// <param name="eraFiles"></param>
-    /// <param name="expectedAccumulators"></param>
-    /// <param name="cancellation"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentNullException"></exception>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="EraVerificationException">If the verification fails.</exception>
-    public async Task VerifyEraFiles(string[] eraFiles, byte[][] expectedAccumulators, CancellationToken cancellation = default)
-    {
-        if (expectedAccumulators is null) throw new ArgumentNullException(nameof(expectedAccumulators));
-        if (eraFiles is null) throw new ArgumentNullException(nameof(eraFiles));
-        if (eraFiles.Length == 0)
-            throw new ArgumentException("Must have at least one file.", nameof(eraFiles));
-        if (eraFiles.Length != expectedAccumulators.Length)
-            throw new ArgumentException("Must have an equal amount of files and accumulators.", nameof(eraFiles));
-        if (expectedAccumulators.Any(a => a.Length != 32))
-            throw new ArgumentException("All accumulators must have a length of 32 bytes.", nameof(eraFiles));
-
-        DateTime startTime = DateTime.Now;
-        DateTime lastProgress = DateTime.Now;
-        for (int i = 0; i < eraFiles.Length; i++)
-        {
-            using EraReader reader = await EraReader.Create(_fileSystem.File.OpenRead(eraFiles[i]), cancellation);
-            if (!await reader.VerifyAccumulator(expectedAccumulators[i], _specProvider, cancellation))
-            {
-                throw new EraVerificationException($"The accumulator for the archive '{eraFiles[i]}' does not match the expected accumulator '{expectedAccumulators[i].ToHexString()}'.");
-            }
-
-            TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
-            if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
-            {
-                VerificationProgress?.Invoke(this, new VerificationProgressArgs(i, eraFiles.Length, DateTime.Now.Subtract(startTime)));
-                lastProgress = DateTime.Now;
-            }
-        }
+        _fileSystem.File.WriteAllLines(accumulatorPath, eraRoots.Select(s=>s.ToHexString(true)));
     }
 }
