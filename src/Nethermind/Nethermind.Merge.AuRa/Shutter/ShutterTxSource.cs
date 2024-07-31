@@ -23,13 +23,14 @@ public class ShutterTxSource(
     ILogManager logManager)
     : ITxSource, IShutterTxSignal
 {
-    private LruCache<ulong, ShutterTransactions?> _transactionCache = new(10, "Shutter tx cache");
+    private readonly LruCache<ulong, ShutterTransactions?> _transactionCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly ulong genesisTimestamp = 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
-    private const ushort slotLength = 5000;
-    private ulong _highestSlotSeen = 0;
+    private readonly ulong _genesisTimestampMs = 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
+    private readonly TimeSpan _slotLength = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _keyWaitTimeout = TimeSpan.FromSeconds(10);
+    private ulong _highestLoadedSlot = 0;
+    private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
     private readonly object _syncObject = new();
-    private static ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -39,71 +40,64 @@ public class ShutterTxSource(
             return [];
         }
 
-        ulong buildingSlot = GetBuildingSlot(payloadAttributes);
+        if (payloadAttributes is null)
+        {
+            if (_logger.IsError) _logger.Error($"Not building Shutter block since payload attributes was null.");
+        }
+
+        ulong buildingSlot = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs, _slotLength).slot;
 
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
-
         if (shutterTransactions is null)
         {
-            if (_logger.IsWarn)
-                _logger.Warn($"No shutter tx could be loaded for slot {buildingSlot}.");
-        }
-        else
-        {
-            int txCount = shutterTransactions.Value.Transactions.Length;
-            if (_logger.IsInfo) _logger.Info($"Can build for Shutter block slot {buildingSlot} with {txCount} transactions.");
-            return shutterTransactions.Value.Transactions;
+            return [];
         }
 
-        return [];
+        int txCount = shutterTransactions.Value.Transactions.Length;
+        if (_logger.IsInfo) _logger.Info($"Can build for Shutter block slot {buildingSlot} with {txCount} transactions.");
+        return shutterTransactions.Value.Transactions;
     }
+
     public Task WaitForTransactions(ulong slot)
     {
         lock (_syncObject)
         {
-            if (_highestSlotSeen <= slot)
+            if (_highestLoadedSlot <= slot)
             {
                 return Task.CompletedTask;
             }
-            return _keyWaitTasks.GetOrAdd(slot,
-               (k) =>
-               {
-                   TaskCompletionSource tcs = new();
-                   //Maximum wait allowed
-                   Task.Delay(slotLength * 2)
-                   .ContinueWith(t =>
-                   {
-                       TaskCompletionSource? removed;
-                       _keyWaitTasks.TryRemove(slot, out removed);
-                       removed?.TrySetCanceled();
-                   });
-                   return tcs;
-               }).Task;
+
+            return _keyWaitTasks.GetOrAdd(slot, _ =>
+            {
+                // maximum wait allowed
+                Task.Delay(_keyWaitTimeout).ContinueWith(_ =>
+                {
+                    _keyWaitTasks.TryRemove(slot, out TaskCompletionSource? removed);
+                    removed?.TrySetCanceled();
+                });
+
+                return new();
+            }).Task;
         }
     }
 
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
+
         lock (_syncObject)
         {
-            if (_highestSlotSeen < slot)
-                _highestSlotSeen = slot;
-            TaskCompletionSource? tcs;
-            if (_keyWaitTasks.Remove(slot, out tcs))
+            if (_highestLoadedSlot < slot)
+            {
+                _highestLoadedSlot = slot;
+            }
+
+            if (_keyWaitTasks.Remove(slot, out TaskCompletionSource? tcs))
             {
                 tcs.TrySetResult();
             }
         }
     }
 
-    public ulong HighestLoadedSlot() => _highestSlotSeen;
-
-    private ulong GetBuildingSlot(PayloadAttributes? payloadAttributes)
-    {
-        var unixTime = payloadAttributes != null ? payloadAttributes.Timestamp * 1000 : (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        ulong timeSinceGenesis = unixTime - genesisTimestamp;
-        ulong currentSlot = timeSinceGenesis / slotLength;
-        return currentSlot;
-    }
+    public ulong HighestLoadedSlot() => _highestLoadedSlot;
 }

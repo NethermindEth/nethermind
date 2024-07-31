@@ -23,7 +23,7 @@ public class ShutterBlockImprovementContextFactory(
     ISpecProvider spec,
     ILogManager logManager) : IBlockImprovementContextFactory
 {
-    private readonly ulong genesisTimestamp = (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
+    private readonly ulong _genesisTimestampMs = 1000 * (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
 
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
@@ -37,72 +37,13 @@ public class ShutterBlockImprovementContextFactory(
                                            parentHeader,
                                            payloadAttributes,
                                            startDateTime,
-                                           genesisTimestamp,
+                                           _genesisTimestampMs,
                                            spec.SlotLength ?? TimeSpan.FromSeconds(5),
                                            logManager);
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
 {
-    private CancellationTokenSource? _cancellationTokenSource;
-    private ILogger _logger;
-    internal ShutterBlockImprovementContext(
-        IBlockProducer blockProducer,
-        IShutterTxSignal shutterTxSignal,
-        IShutterConfig shutterConfig,
-        Block currentBestBlock,
-        BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime,
-        ulong genesisTimestamp,
-        TimeSpan slotLength,
-        ILogManager logManager)
-    {
-        if (slotLength == TimeSpan.Zero)
-            throw new ArgumentException("Cannot be zero.",nameof(slotLength));
-        if (payloadAttributes.Timestamp < genesisTimestamp)
-            throw new ArgumentOutOfRangeException(nameof(genesisTimestamp), genesisTimestamp, $"Genesis cannot be after the payload timestamp ({payloadAttributes.Timestamp}).");
-        _cancellationTokenSource = new CancellationTokenSource();
-        CurrentBestBlock = currentBestBlock;
-        StartDateTime = startDateTime;
-        _logger = logManager.GetClassLogger();
-        ImprovementTask =
-        Task.Run(async () =>
-        {
-            (long slot, long offset) = GetBuildingSlotAndOffset(payloadAttributes.Timestamp, genesisTimestamp, slotLength);
-            Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
-            if (result is not null)
-            {
-                CurrentBestBlock = result;
-            }
-            long waitTime;
-            if (offset <= 0)
-            {
-                waitTime = Math.Abs(offset) + shutterConfig.ExtraBuildWindow;
-            }
-            else
-            {
-                waitTime = (long)shutterConfig.ExtraBuildWindow - offset;
-            }
-            if (waitTime < 1)
-            {
-                return CurrentBestBlock;
-            }
-            Task timeout = Task.Delay((int)waitTime, _cancellationTokenSource.Token);
-            Task first = await Task.WhenAny(timeout, shutterTxSignal.WaitForTransactions((ulong)slot));
-            if (first == timeout)
-            {
-                if (_logger.IsWarn)
-                    _logger.Warn($"No shutter tx could be loaded for slot {slot}.");
-                return CurrentBestBlock;
-            }
-            result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
-            if (result !=null)
-                CurrentBestBlock = result;
-            return result;
-        });
-    }
-
     public Task<Block?> ImprovementTask { get; }
 
     public Block? CurrentBestBlock { get; private set; }
@@ -112,16 +53,70 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private static (long slot, long slotOffset) GetBuildingSlotAndOffset(ulong slotTimestamp, ulong genesisTimestamp, TimeSpan slotLength)
+    private CancellationTokenSource? _cancellationTokenSource;
+    private ILogger _logger;
+
+    internal ShutterBlockImprovementContext(
+        IBlockProducer blockProducer,
+        IShutterTxSignal shutterTxSignal,
+        IShutterConfig shutterConfig,
+        Block currentBestBlock,
+        BlockHeader parentHeader,
+        PayloadAttributes payloadAttributes,
+        DateTimeOffset startDateTime,
+        ulong genesisTimestampMs,
+        TimeSpan slotLength,
+        ILogManager logManager)
     {
-        ulong slotTimeSinceGenesis = slotTimestamp - genesisTimestamp;
-        int buildingSlot = (int)(slotTimeSinceGenesis / slotLength.TotalSeconds);
+        if (slotLength == TimeSpan.Zero)
+        {
+            throw new ArgumentException("Cannot be zero.", nameof(slotLength));
+        }
 
-        double slotStartTimeMs = genesisTimestamp * 1000 + (buildingSlot * slotLength.TotalMilliseconds);
+        if (payloadAttributes.Timestamp < genesisTimestampMs)
+        {
+            throw new ArgumentOutOfRangeException(nameof(genesisTimestampMs), genesisTimestampMs, $"Genesis cannot be after the payload timestamp ({payloadAttributes.Timestamp}).");
+        }
 
-        double msIntoSlot = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - slotStartTimeMs;
+        _cancellationTokenSource = new CancellationTokenSource();
+        CurrentBestBlock = currentBestBlock;
+        StartDateTime = startDateTime;
+        _logger = logManager.GetClassLogger();
 
-        return (buildingSlot, (long)msIntoSlot);
+        ImprovementTask = Task.Run(async () =>
+        {
+            (ulong slot, ulong offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes.Timestamp * 1000, genesisTimestampMs, slotLength);
+
+            // set default block without waiting for Shutter keys
+            Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+            if (result is not null)
+            {
+                CurrentBestBlock = result;
+            }
+
+            ulong waitTime = shutterConfig.ExtraBuildWindow - offset;
+            if (waitTime <= 0)
+            {
+                return CurrentBestBlock;
+            }
+
+            Task timeout = Task.Delay((int)waitTime, _cancellationTokenSource.Token);
+            Task signalOrTimeout = await Task.WhenAny(timeout, shutterTxSignal.WaitForTransactions(slot));
+
+            if (signalOrTimeout == timeout)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
+                return CurrentBestBlock;
+            }
+
+            result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+            if (result is not null)
+            {
+                CurrentBestBlock = result;
+            }
+
+            return result;
+        });
     }
 
     public void Dispose()

@@ -33,7 +33,7 @@ public class ShutterP2P(
     private PubsubRouter? _router;
     private ServiceProvider? _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
-    private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 

@@ -26,11 +26,17 @@ public class ShutterBlockImprovementContextTests
     [Test]
     public async Task Test()
     {
-        ShutterConfig shutterConfig = new ShutterConfig();
-        shutterConfig.ExtraBuildWindow = 3000;
-        var payloadAttributes = new Consensus.Producers.PayloadAttributes();
-        payloadAttributes.Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5;
-        ShutterBlockImprovementContext sut = new ShutterBlockImprovementContext(
+        ShutterConfig shutterConfig = new()
+        {
+            ExtraBuildWindow = 1666
+        };
+
+        Consensus.Producers.PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5
+        };
+
+        ShutterBlockImprovementContext improvementContext = new(
             Substitute.For<IBlockProducer>(),
             Substitute.For<IShutterTxSignal>(),
             shutterConfig,
@@ -38,11 +44,11 @@ public class ShutterBlockImprovementContextTests
             Build.A.BlockHeader.TestObject,
             payloadAttributes,
             DateTimeOffset.UtcNow,
-            GnosisSpecProvider.BeaconChainGenesisTimestamp,
+            GnosisSpecProvider.BeaconChainGenesisTimestamp * 1000,
             TimeSpan.FromSeconds(5),
-            NullLogManager.Instance);
+            LimboLogs.Instance);
 
-        await sut.ImprovementTask;
+        await improvementContext.ImprovementTask;
     }
-    
+
 }

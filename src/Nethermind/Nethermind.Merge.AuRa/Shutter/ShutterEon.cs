@@ -79,12 +79,6 @@ public class ShutterEon(
         }
     }
 
-    public readonly struct EonInfoSet
-    {
-        public Info Current { get; init; }
-        public Info Last { get; init; }
-    }
-
     public readonly struct Info
     {
         public ulong Eon { get; init; }

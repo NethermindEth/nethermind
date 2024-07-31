@@ -19,6 +19,6 @@ namespace Nethermind.Consensus.AuRa.Config
         public ulong ValidatorRegistryMessageVersion { get; set; }
         public ulong InstanceID { get; set; }
         public ulong EncryptedGasLimit { get; set; }
-        public uint ExtraBuildWindow { get; set; } = 1333;
+        public uint ExtraBuildWindow { get; set; } = 1666;
     }
 }
