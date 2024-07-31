@@ -119,6 +119,8 @@ public class DiscoveryV5App : IDiscoveryApp
                 services.AddSingleton<IRoutingTable, TransientRoutingTable>();
                 services.AddSingleton<ILanternAdapter, LanternAdapter>();
                 services.AddSingleton<ISessionManager, SessionManagerNormalizer>();
+                services.AddSingleton<IUtpManager, TalkReqUtpManager>();
+                services.AddSingleton<ITalkReqTransport, LanternTalkReqTransport>();
                 services.AddSingleton<ILogManager>(logManager);
             });
 

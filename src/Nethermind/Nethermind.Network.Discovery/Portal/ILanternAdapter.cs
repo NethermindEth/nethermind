@@ -2,15 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.Enr;
-using Lantern.Discv5.WireProtocol.Messages.Requests;
-using Lantern.Discv5.WireProtocol.Messages.Responses;
 
 namespace Nethermind.Network.Discovery.Portal;
 
 public interface ILanternAdapter
 {
-    Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage message);
-    void OnMsgResp(IEnr sender, TalkRespMessage message);
     IPortalContentNetwork RegisterContentNetwork(byte[] networkId, IPortalContentNetwork.Store store);
 }
 

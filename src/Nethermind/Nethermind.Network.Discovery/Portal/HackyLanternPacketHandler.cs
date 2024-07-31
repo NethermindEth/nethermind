@@ -32,6 +32,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
     private readonly IPacketProcessor _packetProcessor;
     private readonly IMessageDecoder _messageDecoder;
     private readonly ILanternAdapter _lanternAdapter;
+    private readonly ITalkReqTransport _talkReqTransport;
 
     public HacklyLanternPacketHandler(ISessionManager sessionManager,
         IRoutingTable routingTable,
@@ -41,7 +42,9 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         IPacketProcessor packetProcessor,
         IMessageDecoder messageDecoder,
         ILanternAdapter lanternAdapter,
-        ILoggerFactory loggerFactory) : base(sessionManager, routingTable, messageResponder, udpConnection, packetBuilder, packetProcessor, loggerFactory)
+        ITalkReqTransport talkReqTransport,
+        ILoggerFactory loggerFactory
+    ) : base(sessionManager, routingTable, messageResponder, udpConnection, packetBuilder, packetProcessor, loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<OrdinaryPacketHandler>();
         _sessionManager = sessionManager;
@@ -52,6 +55,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         _packetProcessor = packetProcessor;
 
         _messageDecoder = messageDecoder;
+        _talkReqTransport = talkReqTransport;
         _lanternAdapter = lanternAdapter;
     }
 
@@ -125,11 +129,12 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
             var decodedMessage = _messageDecoder.DecodeMessage(message);
             if (decodedMessage is TalkReqMessage talkReqMessage)
             {
-                return await _lanternAdapter.OnMsgReq(enr, talkReqMessage);
+                return await _talkReqTransport.OnMsgReq(enr, talkReqMessage);
             }
             else
             {
-                _lanternAdapter.OnMsgResp(enr, (TalkRespMessage)decodedMessage);
+                var talkResp = (TalkRespMessage) decodedMessage;
+                _talkReqTransport.OnTalkResp(enr, talkResp);
                 return null;
             }
         }
