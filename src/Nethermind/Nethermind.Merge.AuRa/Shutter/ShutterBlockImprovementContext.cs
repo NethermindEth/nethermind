@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Specs;
 using System;
@@ -19,7 +20,8 @@ public class ShutterBlockImprovementContextFactory(
     IBlockProducer blockProducer,
     ShutterTxSource shutterTxSource,
     IShutterConfig shutterConfig,
-    ISpecProvider spec) : IBlockImprovementContextFactory
+    ISpecProvider spec,
+    ILogManager logManager) : IBlockImprovementContextFactory
 {
     private readonly ulong genesisTimestamp = (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
 
@@ -36,13 +38,14 @@ public class ShutterBlockImprovementContextFactory(
                                            payloadAttributes,
                                            startDateTime,
                                            genesisTimestamp,
-                                           spec.SlotLength ?? TimeSpan.FromSeconds(5));
+                                           spec.SlotLength ?? TimeSpan.FromSeconds(5),
+                                           logManager);
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
 {
     private CancellationTokenSource? _cancellationTokenSource;
-
+    private ILogger _logger;
     internal ShutterBlockImprovementContext(
         IBlockProducer blockProducer,
         IShutterTxSignal shutterTxSignal,
@@ -52,7 +55,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         ulong genesisTimestamp,
-        TimeSpan slotLength)
+        TimeSpan slotLength,
+        ILogManager logManager)
     {
         if (slotLength == TimeSpan.Zero)
             throw new ArgumentException("Cannot be zero.",nameof(slotLength));
@@ -61,10 +65,16 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _cancellationTokenSource = new CancellationTokenSource();
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
+        _logger = logManager.GetClassLogger();
         ImprovementTask =
         Task.Run(async () =>
         {
             (long slot, long offset) = GetBuildingSlotAndOffset(payloadAttributes.Timestamp, genesisTimestamp, slotLength);
+            Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+            if (result is not null)
+            {
+                CurrentBestBlock = result;
+            }
             long waitTime;
             if (offset <= 0)
             {
@@ -76,13 +86,17 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             }
             if (waitTime < 1)
             {
-                return currentBestBlock;
+                return CurrentBestBlock;
             }
             Task timeout = Task.Delay((int)waitTime, _cancellationTokenSource.Token);
             Task first = await Task.WhenAny(timeout, shutterTxSignal.WaitForTransactions((ulong)slot));
             if (first == timeout)
-                return currentBestBlock;
-            Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"No shutter tx could be loaded for slot {slot}.");
+                return CurrentBestBlock;
+            }
+            result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
             if (result !=null)
                 CurrentBestBlock = result;
             return result;

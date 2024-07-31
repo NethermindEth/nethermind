@@ -70,7 +70,7 @@ public class ShutterTxSource(
                {
                    TaskCompletionSource tcs = new();
                    //Maximum wait allowed
-                   Task.Delay(slotLength)
+                   Task.Delay(slotLength * 2)
                    .ContinueWith(t =>
                    {
                        TaskCompletionSource? removed;

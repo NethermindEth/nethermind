@@ -39,7 +39,8 @@ public class ShutterBlockImprovementContextTests
             payloadAttributes,
             DateTimeOffset.UtcNow,
             GnosisSpecProvider.BeaconChainGenesisTimestamp,
-            TimeSpan.FromSeconds(5));
+            TimeSpan.FromSeconds(5),
+            NullLogManager.Instance);
 
         await sut.ImprovementTask;
     }

@@ -100,7 +100,12 @@ namespace Nethermind.Merge.AuRa
             IBlockImprovementContextFactory? blockImprovementContextFactory = null;
             if (_shutterConfig!.Enabled)
             {
-                blockImprovementContextFactory = new ShutterBlockImprovementContextFactory(_api.BlockProducer!, _shutterTxSource!, _shutterConfig, _api.SpecProvider!);
+                blockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
+                    _api.BlockProducer!,
+                    _shutterTxSource!,
+                    _shutterConfig,
+                    _api.SpecProvider!,
+                    _api.LogManager);
             }
             base.InitRpcModulesInternal(blockImprovementContextFactory);
             return Task.CompletedTask;
