@@ -39,7 +39,12 @@ public static class Hash256XORUtils
 
     public static int MaxDistance => 256;
 
-    public static ValueHash256 RandomizeHashAtDistance(ValueHash256 currentHash, int distance)
+    public static ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance)
+    {
+        return GetRandomHashAtDistance(currentHash, distance, Random.Shared);
+    }
+
+    public static ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance, Random random)
     {
         // TODO: Just add a min/max range per bucket and randomized between them.
         if (distance == MaxDistance)
@@ -48,7 +53,8 @@ public static class Hash256XORUtils
         }
 
         ValueHash256 randomized = new ValueHash256();
-        return CopyForRandom(currentHash, randomized, distance);
+        random.NextBytes(randomized.BytesAsSpan);
+        return CopyForRandom(currentHash, randomized, MaxDistance - distance);
     }
 
     public static int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
@@ -70,22 +76,23 @@ public static class Hash256XORUtils
 
         int remainingBit = distance % 8;
         int remainingBitByte = distance / 8;
-        byte mask = (byte)((1 << remainingBit) - 1);
+        byte mask = (byte)(~((1 << (8 - remainingBit)) - 1));
         byte randomized = randomizedHash.BytesAsSpan[remainingBitByte];
         byte original = currentHash.BytesAsSpan[remainingBitByte];
         randomizedHash.BytesAsSpan[remainingBitByte] = (byte)((original & mask) | (randomized & (~mask)));
 
-        if (distance < 255)
+        if (distance <= 255)
         {
             // So it always assume that the next bucket (the closer one) is always populated and therefore,
             // the bits here for that distance must not be the same as in currentHash.
-            int nextBit = (distance + 1) % 8;
-            int nextBitByte = (distance + 1) / 8;
-            mask = (byte)((1 << nextBit) - 1);
+            int nextBit = distance % 8;
+            int nextBitByte = distance / 8;
+            mask = (byte)(1 << (7 - nextBit));
             randomized = randomizedHash.BytesAsSpan[nextBitByte];
             byte opposite = (byte)~(currentHash.BytesAsSpan[nextBitByte]);
 
-            randomizedHash.BytesAsSpan[nextBitByte] = (byte)((opposite & mask) | (randomized & (~mask)));
+            byte final = (byte)((opposite & mask) | (randomized & ~(mask)));
+            randomizedHash.BytesAsSpan[nextBitByte] = final;
         }
 
         return randomizedHash;

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery.UTP;
 using NUnit.Framework;
 
@@ -171,8 +172,8 @@ public class UTPTests
         MemoryStream output = new MemoryStream();
 
         PeerProxy proxy = new PeerProxy();
-        UTPStream sender = new UTPStream(transferMutator.Invoke(proxy), 0);
-        UTPStream receiver = new UTPStream(transferMutator.Invoke(sender), 0);
+        UTPStream sender = new UTPStream(transferMutator.Invoke(proxy), 0, LimboLogs.Instance);
+        UTPStream receiver = new UTPStream(transferMutator.Invoke(sender), 0, LimboLogs.Instance);
         proxy._implementation = receiver;
 
         CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));

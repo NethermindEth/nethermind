@@ -35,8 +35,8 @@ public class KademliaSimulation
         Kademlia<ValueHash256, ValueHash256, ValueHash256> node2 = fabric.CreateNode(node2Hash);
         Kademlia<ValueHash256, ValueHash256, ValueHash256> node3 = fabric.CreateNode(node3Hash);
 
-        node1.SeedNode(node2Hash);
-        node2.SeedNode(node3Hash);
+        node1.AddOrRefresh(node2Hash);
+        node2.AddOrRefresh(node3Hash);
 
         node1.IterateNeighbour(Keccak.Zero).ToArray().Should().BeEquivalentTo([node2Hash]);
         node2.IterateNeighbour(Keccak.Zero).ToArray().Should().BeEquivalentTo([node3Hash]);
@@ -69,8 +69,8 @@ public class KademliaSimulation
         Kademlia<ValueHash256, ValueHash256, ValueHash256> node2 = fabric.CreateNode(node2Hash);
         fabric.CreateNode(node3Hash);
 
-        node1.SeedNode(node2Hash);
-        node2.SeedNode(node3Hash);
+        node1.AddOrRefresh(node2Hash);
+        node2.AddOrRefresh(node3Hash);
 
         await fabric.Bootstrap(cts.Token);
 
@@ -93,7 +93,7 @@ public class KademliaSimulation
         {
             ValueHash256 nodeHash = RandomKeccak(rand);
             Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = fabric.CreateNode(nodeHash);
-            kad.SeedNode(mainNodeHash);
+            kad.AddOrRefresh(mainNodeHash);
             nodeIds.Add(nodeHash);
         }
 
@@ -136,7 +136,7 @@ public class KademliaSimulation
         }
     }
 
-    class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, ValueHash256>
+    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {

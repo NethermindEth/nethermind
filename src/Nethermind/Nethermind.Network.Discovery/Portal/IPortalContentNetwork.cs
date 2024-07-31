@@ -13,7 +13,7 @@ public interface IPortalContentNetwork
     public Task<byte[]?> LookupContent(byte[] contentKey, CancellationToken token);
     public Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token);
 
-    public void AddSeed(IEnr node);
+    public void AddOrRefresh(IEnr node);
     public Task Run(CancellationToken token);
     public Task Bootstrap(CancellationToken token);
 

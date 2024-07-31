@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
+using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -23,7 +24,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private IKademlia<TNode, TContentKey, TContent>.IStore _store;
     private readonly static TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
     private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
-
+    private readonly ConcurrentDictionary<TNode, bool> _isRefreshing = new ConcurrentDictionary<TNode, bool>();
 
     private readonly KBucket<TNode>[] _buckets;
     private readonly TNode _currentNodeId;
@@ -58,18 +59,60 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _refreshInterval = refreshInterval;
 
         _peerFailures = new LruCache<TNode, int>(1024, "peer failure");
-        // Note: It does not have to be this mush. In practice, only like 16 of these bucket get populated.
+        // Note: It does not have to be this much. In practice, only like 16 of these bucket get populated.
         _buckets = new KBucket<TNode>[Hash256XORUtils.MaxDistance + 1];
         for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
         {
-            _buckets[i] = new KBucket<TNode>(kSize, sender);
+            _buckets[i] = new KBucket<TNode>(kSize);
         }
     }
 
-    public void SeedNode(TNode node)
+    public void AddOrRefresh(TNode node)
     {
         if (SameAsSelf(node)) return;
-        GetBucket(node).AddOrRefresh(node);
+
+        _isRefreshing.TryRemove(node, out _);
+
+        var bucket = GetBucket(node);
+        if (!bucket.TryAddOrRefresh(node, out TNode? toRefresh))
+        {
+            if (toRefresh != null) TryRefresh(toRefresh);
+        }
+    }
+
+    private void TryRefresh(TNode toRefresh)
+    {
+        if (_isRefreshing.TryAdd(toRefresh, true))
+        {
+            Task.Run(async () =>
+            {
+                using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+                try
+                {
+                    await _messageSender.Ping(toRefresh, cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}, {e}");
+                }
+
+                // In any case, if a pong happened, AddOrRefresh would have been called and _isRefreshing would
+                // remove the entry.
+                if (_isRefreshing.TryRemove(toRefresh, out _))
+                {
+                    // Well... basically its not responding.
+                    GetBucket(toRefresh).RemoveAndReplace(toRefresh);
+                }
+            });
+        }
+    }
+
+    public TNode[] GetAllAtDistance(int i)
+    {
+        return _buckets[i].GetAll();
     }
 
     private bool SameAsSelf(TNode node)
@@ -291,7 +334,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
             if (_buckets[i].Count > 0)
             {
-                ValueHash256 nodeToLookup = Hash256XORUtils.RandomizeHashAtDistance(_currentNodeIdAsHash, i);
+                ValueHash256 nodeToLookup = Hash256XORUtils.GetRandomHashAtDistance(_currentNodeIdAsHash, i);
                 await LookupNodesClosest(nodeToLookup, token);
             }
         }
@@ -345,7 +388,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     private void OnIncomingMessageFrom(TNode sender)
     {
-        SeedNode(sender);
+        AddOrRefresh(sender);
         _peerFailures.Delete(sender);
     }
 

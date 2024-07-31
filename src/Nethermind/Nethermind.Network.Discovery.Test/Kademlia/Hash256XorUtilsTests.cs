@@ -30,20 +30,28 @@ public class Hash256XorUtilsTests
         Hash256XORUtils.CalculateDistance(new ValueHash256(hash2), new ValueHash256(hash1)).Should().Be(expectedDistance);
     }
 
-
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", 256)]
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", 255)]
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x000000000000000000000000000000000000000000000000000000000000b30d", 240)]
-    // TODO: Fixthis
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x000000000000000000000000000000000000000000000000000000000080b30d", 239)]
-    public void TestCopyRandom(string hash1str, string expectedstr, int distance)
+    [Test]
+    public void TestGetRandomHash()
     {
-        ValueHash256 hash1 = new ValueHash256(hash1str);
-        ValueHash256 expectedHash = new ValueHash256(expectedstr);
+        Random rand = new Random(0);
         ValueHash256 randomized = new ValueHash256();
-        new Random(0).NextBytes(randomized.BytesAsSpan);
+        rand.NextBytes(randomized.BytesAsSpan);
 
-        Hash256XORUtils.CopyForRandom(hash1, randomized, distance).Should().Be(expectedHash);
+        void TestForDistance(int distance)
+        {
+            var randHash = Hash256XORUtils.GetRandomHashAtDistance(randomized, distance, rand);
+            Hash256XORUtils.CalculateDistance(randomized, randHash).Should().Be(distance);
+        }
+
+        for (int i = 1; i < 256; i++)
+        {
+            rand = new Random(0);
+            for (int j = 0; j < 10; j++)
+            {
+                TestForDistance(i);
+            }
+        }
+
     }
 
     [TestCase]

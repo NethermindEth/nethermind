@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery.UTP;
 using NUnit.Framework;
 
@@ -13,7 +14,7 @@ public class UTPConnectionTests
     [Test]
     public void  testSendingST_SYN_Packet(){
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-        var sender = new UTPStream( new ValidateST_SYNPacket(), 0);
+        var sender = new UTPStream( new ValidateST_SYNPacket(), 0, LimboLogs.Instance);
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await sender.InitiateHandshake(cts.Token));
     }
@@ -22,8 +23,8 @@ public class UTPConnectionTests
     public async Task testAnsweringST_STATE_Packet(){
         CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         var receiverPeer = new ReceiverPeer();
-        var sender = new UTPStream(receiverPeer, 0);
-        var receiver = new UTPStream(  new ValidateST_STATE_Packet(0), 0);
+        var sender = new UTPStream(receiverPeer, 0, LimboLogs.Instance);
+        var receiver = new UTPStream(  new ValidateST_STATE_Packet(0), 0, LimboLogs.Instance);
         receiverPeer._implementation = receiver;
 
         MemoryStream output = new MemoryStream();

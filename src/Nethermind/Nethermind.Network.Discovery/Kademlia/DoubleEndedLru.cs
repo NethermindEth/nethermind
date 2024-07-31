@@ -56,7 +56,6 @@ public class DoubleEndedLru<THash>(int capacity) where THash : notnull
         hash = front.Value;
         _hashMapping.TryRemove(front.Value, out front);
 
-        Console.Error.WriteLine($"pop head {hash}");
         return true;
     }
 
@@ -75,14 +74,17 @@ public class DoubleEndedLru<THash>(int capacity) where THash : notnull
         return true;
     }
 
-    public void Remove(THash hash)
+    public bool Remove(THash hash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
         if (_hashMapping.TryRemove(hash, out var node))
         {
             _queue.Remove(node);
+            return true;
         }
+
+        return false;
     }
 
     public THash[] GetAll()

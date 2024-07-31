@@ -61,7 +61,7 @@ public class KademliaTalkReqHandler(
         // fortunately, its basically the same as randomizing hash at a specific distance.
         // unfortunately, the protocol said to filter neighbour that is of incorrect distance...
         // which is another weird thing that I'm not sure how to handle.
-        ValueHash256 theHash = Hash256XORUtils.RandomizeHashAtDistance(_nodeHashProvider.GetHash(selfEnr), nodes.Distances[0]);
+        ValueHash256 theHash = Hash256XORUtils.GetRandomHashAtDistance(_nodeHashProvider.GetHash(selfEnr), nodes.Distances[0]);
         var neighbours = await kad.FindNeighbours(sender, theHash, CancellationToken.None);
         var neighboursAsBytes = neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
 

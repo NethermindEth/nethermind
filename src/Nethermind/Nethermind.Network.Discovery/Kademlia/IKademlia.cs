@@ -12,7 +12,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public interface IKademlia<TNode, TContentKey, TContent>: IMessageReceiver<TNode, TContentKey, TContent>
 {
     /// Add node to the table.
-    public void SeedNode(TNode node);
+    public void AddOrRefresh(TNode node);
 
     /// Initiate a full traversal for finding the value
     public Task<TContent?> LookupValue(TContentKey id, CancellationToken token);

@@ -66,8 +66,8 @@ public class PortalContentNetwork(
         await kademlia.Bootstrap(token);
     }
 
-    public void AddSeed(IEnr node)
+    public void AddOrRefresh(IEnr node)
     {
-        kademlia.SeedNode(node);
+        kademlia.AddOrRefresh(node);
     }
 }
