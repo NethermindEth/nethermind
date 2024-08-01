@@ -7,20 +7,23 @@ using Nethermind.Logging;
 namespace Nethermind.Merge.AuRa.Shutter;
 public static class ShutterHelpers
 {
-    public static (ulong slot, short slotOffset)? GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs, TimeSpan slotLength, ILogger logger)
+    public class ShutterSlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
+
+    public static (ulong slot, short slotOffset) GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs, TimeSpan slotLength)
     {
-        ulong slotTimeSinceGenesis = slotTimestampMs - genesisTimestampMs;
-        ulong buildingSlot = slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
+        long slotTimeSinceGenesis = (long)slotTimestampMs - (long)genesisTimestampMs;
+        if (slotTimeSinceGenesis < 0)
+        {
+            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was greater than genesis timestamp {genesisTimestampMs}ms.");
+        }
+
+        ulong buildingSlot = (ulong)slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
         long offset = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)slotTimestampMs;
-        // return Math.Abs(offset) < (long)slotLength.TotalMilliseconds ? (buildingSlot, (short)offset) : null;
-        if (Math.Abs(offset) < (long)slotLength.TotalMilliseconds)
+        if (Math.Abs(offset) >= (long)slotLength.TotalMilliseconds)
         {
-            return (buildingSlot, (short)offset);
+            throw new ShutterSlotCalulationException($"Time offset {offset}ms into building slot {buildingSlot} was out of valid range.");
         }
-        else
-        {
-            if (logger.IsWarn) logger.Warn($"Shutter offset {offset} for building slot {buildingSlot} was out of range.");
-            return null;
-        }
+
+        return (buildingSlot, (short)offset);
     }
 }

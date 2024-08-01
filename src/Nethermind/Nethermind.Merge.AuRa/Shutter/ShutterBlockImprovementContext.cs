@@ -95,18 +95,19 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
             _logger.Info($"Built default block, now will try Shutter improvement.");
 
-            (ulong slot, short offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength, _logger);
-
-
-            if (slotAndOffset is null)
+            ulong slot;
+            short offset;
+            try
             {
-                if (_logger.IsWarn) _logger.Warn("Cannot improve Shutter block for outdated slot.");
-                // building for outdated slot
+                (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
+            }
+            catch (ShutterHelpers.ShutterSlotCalulationException e)
+            {
+
+                if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
                 return CurrentBestBlock;
             }
 
-            ulong slot = slotAndOffset.Value.slot;
-            short offset = slotAndOffset.Value.offset;
             int waitTime = shutterConfig.MaxKeyDelay - offset;
             _logger.Info($"Waiting to improve Shutter block for {waitTime}ms for slot {slot}. Offset was {offset}");
             if (waitTime <= 0)

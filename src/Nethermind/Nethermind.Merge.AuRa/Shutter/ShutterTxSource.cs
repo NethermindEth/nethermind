@@ -46,20 +46,22 @@ public class ShutterTxSource(
             if (_logger.IsError) _logger.Error($"Not building Shutter block since payload attributes was null.");
         }
 
-        (ulong slot, short offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs, _slotLength, _logger);
-
-        if (slotAndOffset is null)
+        ulong buildingSlot;
+        try
         {
-            if (_logger.IsWarn) _logger.Warn("Cannot build Shutter block for outdated slot.");
-            // building for outdated slot
+            (buildingSlot, short offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs, _slotLength);
+        }
+        catch (ShutterHelpers.ShutterSlotCalulationException e)
+        {
+
+            if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             return [];
         }
-
-        ulong buildingSlot = slotAndOffset.Value.slot;
 
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
         if (shutterTransactions is null)
         {
+            if (_logger.IsInfo) _logger.Info($"No Shutter transactions currently loaded for slot {buildingSlot}.");
             return [];
         }
 
@@ -79,9 +81,11 @@ public class ShutterTxSource(
 
             return _keyWaitTasks.GetOrAdd(slot, _ =>
             {
-                cancellationToken.Register(() => {
+                cancellationToken.Register(() =>
+                {
                     _keyWaitTasks.TryRemove(slot, out TaskCompletionSource? removed);
                     removed?.TrySetCanceled();
+                    throw new OperationCanceledException();
                 });
 
                 return new();
