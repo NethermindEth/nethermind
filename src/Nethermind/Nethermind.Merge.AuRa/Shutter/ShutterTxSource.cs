@@ -62,7 +62,7 @@ public class ShutterTxSource(
     {
         lock (_syncObject)
         {
-            if (_highestLoadedSlot <= slot)
+            if (_transactionCache.Contains(slot) || _highestLoadedSlot <= slot)
             {
                 return Task.CompletedTask;
             }
