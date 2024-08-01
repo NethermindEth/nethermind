@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
     <ProjectReference Include="..\..\SszGenerated\SszGenerated.csproj" />
+    <ProjectReference Include="..\SSZAttribute\SSZAttribute.csproj" />
     <ProjectReference Include="..\SSZGenerator\SSZGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 
   </ItemGroup>
