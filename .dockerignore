@@ -1,8 +1,0 @@
-**/.idea/
-**/.vs/
-**/.vscode/
-**/artifacts/
-**/bin/
-**/obj/
-
-src/Nethermind/*.Test/
