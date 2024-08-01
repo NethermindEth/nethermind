@@ -38,14 +38,13 @@ public class ChiadoSpecProvider : ISpecProvider
 
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
-    public ulong? TimestampBeaconGenesis => BeaconChainGenesisTimestamp;
-    public TimeSpan? SlotLength => TimeSpan.FromSeconds(5);
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");
     public IReleaseSpec GenesisSpec => London.Instance;
     public long? DaoBlockNumber => null;
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;
     public ForkActivation[] TransitionActivations { get; }
+    public static TimeSpan SlotLength => TimeSpan.FromSeconds(5);
 
     public static ChiadoSpecProvider Instance { get; } = new();
 }

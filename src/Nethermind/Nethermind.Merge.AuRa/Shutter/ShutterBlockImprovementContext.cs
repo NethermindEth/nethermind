@@ -38,7 +38,7 @@ public class ShutterBlockImprovementContextFactory(
                                            payloadAttributes,
                                            startDateTime,
                                            _genesisTimestampMs,
-                                           spec.SlotLength ?? TimeSpan.FromSeconds(5),
+                                           GnosisSpecProvider.SlotLength,
                                            logManager);
 }
 
