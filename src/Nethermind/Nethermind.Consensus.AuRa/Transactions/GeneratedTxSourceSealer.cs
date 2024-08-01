@@ -19,15 +19,15 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly ITxSource _innerSource;
         private readonly ITxSealer _txSealer;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly ILogger _logger;
         private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
-        public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
+        public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IWorldStateManager worldStateManager, ILogManager logManager)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
             _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 {
                     if (tx is GeneratedTransaction)
                     {
-                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, _nonces);
+                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
                         _txSealer.Seal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
                         Metrics.SealedTransactions++;
                         if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");
@@ -56,11 +56,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        private UInt256 CalculateNonce(Address address, Hash256 stateRoot, IDictionary<Address, UInt256> nonces)
+        private UInt256 CalculateNonce(Address address, BlockHeader parent, IDictionary<Address, UInt256> nonces)
         {
             if (!nonces.TryGetValue(address, out var nonce))
             {
-                nonce = _stateReader.GetNonce(stateRoot, address);
+                // TODO: Get stateReader depending on parent?
+                nonce = _worldStateManager.GetGlobalStateReader(parent).GetNonce(parent.StateRoot, address);
             }
 
             nonces[address] = nonce + 1;

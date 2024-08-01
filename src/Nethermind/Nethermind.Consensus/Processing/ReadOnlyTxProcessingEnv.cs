@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -16,8 +17,7 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
-        public IStateReader StateReader { get; }
-        public IWorldState StateProvider { get; }
+        public IWorldStateManager WorldStateManager { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
         public IBlockhashProvider BlockhashProvider { get; }
@@ -41,16 +41,22 @@ namespace Nethermind.Consensus.Processing
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
-            StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState();
+            WorldStateManager = worldStateManager;
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Block block, Hash256 stateRoot) =>
+            new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateManager.GetGlobalWorldState(block), stateRoot);
+        
+        public IReadOnlyTransactionProcessor Build(BlockHeader header, Hash256 stateRoot) =>
+            new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateManager.GetGlobalWorldState(header), stateRoot);
+
+        public IReadOnlyTransactionProcessor Build(IWorldState worldState, Hash256 stateRoot) =>
+            new ReadOnlyTransactionProcessor(TransactionProcessor, worldState, stateRoot);
     }
 }

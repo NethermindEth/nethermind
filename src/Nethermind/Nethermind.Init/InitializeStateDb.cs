@@ -130,80 +130,65 @@ public class InitializeStateDb : IStep
         }
 
         INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy);
-        IWorldState worldState;
-        IWorldStateManager stateManager;
-        TrieStore? trieStore = null;
-        if (!getApi.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled)
-        {
-            trieStore = syncConfig.TrieHealing
-                ? new HealingTrieStore(
-                    mainNodeStorage,
-                    pruningStrategy,
-                    persistenceStrategy,
-                    getApi.LogManager)
-                : new TrieStore(
-                    mainNodeStorage,
-                    pruningStrategy,
-                    persistenceStrategy,
-                    getApi.LogManager);
 
-            // TODO: Needed by node serving. Probably should use `StateReader` instead.
-            setApi.TrieStore = trieStore;
-
-            worldState = syncConfig.TrieHealing
-                ? new HealingWorldState(
-                    trieStore,
-                    codeDb,
-                    getApi.LogManager)
-                : new WorldState(
-                    trieStore,
-                    codeDb,
-                    getApi.LogManager);
-
-            stateManager = setApi.WorldStateManager = new WorldStateManager(
-                worldState,
-                trieStore,
-                getApi.DbProvider,
+        TrieStore trieStore = syncConfig.TrieHealing
+            ? new HealingTrieStore(
+                mainNodeStorage,
+                pruningStrategy,
+                persistenceStrategy,
+                getApi.LogManager)
+            : new TrieStore(
+                mainNodeStorage,
+                pruningStrategy,
+                persistenceStrategy,
                 getApi.LogManager);
-            getApi.DisposeStack.Push(trieStore);
+
+        // TODO: Needed by node serving. Probably should use `StateReader` instead.
+        setApi.TrieStore = trieStore;
+
+        WorldState worldState = syncConfig.TrieHealing
+            ? new HealingWorldState(
+                trieStore,
+                codeDb,
+                getApi.LogManager)
+            : new WorldState(
+                trieStore,
+                codeDb,
+                getApi.LogManager);
+
+        getApi.DisposeStack.Push(trieStore);
+
+        IVerkleTreeStore verkleTreeStore;
+        if (initConfig.StatelessProcessingEnabled)
+        {
+            setApi.VerkleTreeStore = verkleTreeStore = new NullVerkleTreeStore();
         }
         else
         {
-            if (initConfig.StatelessProcessingEnabled)
-            {
-                IVerkleTreeStore verkleTreeStore;
-                setApi.VerkleTreeStore = verkleTreeStore = new NullVerkleTreeStore();
-                worldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
-                stateManager = setApi.WorldStateManager = new VerkleWorldStateManager(
-                    worldState,
-                    verkleTreeStore,
-                    getApi.DbProvider,
-                    getApi.LogManager);
-            }
-            else
-            {
-                VerkleTreeStore<VerkleSyncCache> verkleTreeStore;
-                setApi.VerkleTreeStore = verkleTreeStore = new VerkleTreeStore<VerkleSyncCache>(getApi.DbProvider, getApi.LogManager);
-                setApi.VerkleArchiveStore = new(verkleTreeStore, getApi.DbProvider, getApi.LogManager);
-                worldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
-                stateManager = setApi.WorldStateManager = new VerkleWorldStateManager(
-                    worldState,
-                    verkleTreeStore,
-                    getApi.DbProvider,
-                    getApi.LogManager);
-            }
+            setApi.VerkleTreeStore = verkleTreeStore = new VerkleTreeStore<VerkleSyncCache>(getApi.DbProvider, getApi.LogManager);
+            setApi.VerkleArchiveStore = new(verkleTreeStore, getApi.DbProvider, getApi.LogManager);
         }
+
+        VerkleWorldState verkleWorldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
+        OverlayWorldState overlayWorldState = new OverlayWorldState();
+
+        IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
+            worldState,
+            verkleWorldState,
+            overlayWorldState,
+            getApi.DbProvider,
+            getApi.DbProvider, // TODO: set Verkle DBProvider
+            trieStore,
+            verkleTreeStore,
+            getApi.LogManager);
 
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
 
 
-        setApi.WorldState = stateManager.GlobalWorldState;
-        setApi.StateReader = stateManager.GlobalStateReader;
-        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
-
-        worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+        setApi.WorldStateManager = stateManager;
+        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GetOverlayStateReader());
 
         if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
@@ -213,7 +198,8 @@ public class InitializeStateDb : IStep
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
                     Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
+                    // TODO: which tree needs to be scanned?
+                    TrieStats stats = stateManager.GetOverlayStateReader().CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                 }
                 catch (Exception ex)
@@ -226,10 +212,10 @@ public class InitializeStateDb : IStep
         // Init state if we need system calls before actual processing starts
         if (getApi.BlockTree!.Head?.StateRoot is not null)
         {
-            worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
+            stateManager.GetGlobalWorldState(getApi.BlockTree.Head).StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        if (!getApi.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled) InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore!);
+        if (!getApi.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled) InitializeFullPruning(pruningConfig, initConfig, _api, stateManager, mainNodeStorage, trieStore!);
 
         return Task.CompletedTask;
     }
@@ -243,7 +229,7 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig,
         IInitConfig initConfig,
         INethermindApi api,
-        IStateReader stateReader,
+        IWorldStateManager worldStateManager,
         INodeStorage mainNodeStorage,
         IPruningTrieStore trieStore)
     {
@@ -282,7 +268,7 @@ public class InitializeStateDb : IStep
                     api.PruningTrigger,
                     pruningConfig,
                     api.BlockTree!,
-                    stateReader,
+                    worldStateManager,
                     api.ProcessExit!,
                     ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
                     drive,

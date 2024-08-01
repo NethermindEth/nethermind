@@ -22,7 +22,6 @@ public class OptimismTransactionsExecutorFactory : IBlockTransactionsExecutorFac
     public IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
     {
         return new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv.TransactionProcessor,
-            readOnlyTxProcessingEnv.StateProvider, new OptimismBlockProductionTransactionPicker(_specProvider),
-            _logManager);
+            new OptimismBlockProductionTransactionPicker(_specProvider), _logManager);
     }
 }

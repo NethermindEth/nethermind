@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
-                producerEnv.StateProvider,
+                producerEnv.WorldStateManager,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.BlockTree,
@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.Ethash
                 readOnlyBlockTree,
                 producerProcessor,
                 getFromApi.BlockPreprocessor,
-                getFromApi.StateReader,
+                getFromApi.WorldStateManager,
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 
@@ -95,7 +95,7 @@ namespace Nethermind.Consensus.Ethash
             IBlockProducer blockProducer = new DevBlockProducer(
                 additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
                 producerChainProcessor,
-                producerEnv.StateProvider,
+                producerEnv.WorldStateManager,
                 getFromApi.BlockTree,
                 blockProductionTrigger ?? DefaultBlockProductionTrigger,
                 getFromApi.Timestamper,

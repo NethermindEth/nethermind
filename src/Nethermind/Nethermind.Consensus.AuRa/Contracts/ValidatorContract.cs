@@ -44,12 +44,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses);
 
-        void EnsureSystemAccount();
+        void EnsureSystemAccount(BlockHeader header);
     }
 
     public sealed partial class ValidatorContract : CallableContract, IValidatorContract
     {
-        private readonly IWorldState _stateProvider;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly ISigner _signer;
 
         private IConstantContract Constant { get; }
@@ -58,12 +58,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
             ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IWorldState stateProvider,
+            IWorldStateManager worldStateManager,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             ISigner signer)
             : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
@@ -76,7 +76,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _);
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(_worldStateManager.GetGlobalWorldState(blockHeader),
+            blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _);
 
         internal static readonly string GetValidatorsFunction = AbiDefinition.GetName(nameof(GetValidators));
 
@@ -121,9 +122,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (Address[])objects[0];
         }
 
-        public void EnsureSystemAccount()
+        public void EnsureSystemAccount(BlockHeader header)
         {
-            EnsureSystemAccount(_stateProvider);
+            EnsureSystemAccount(_worldStateManager.GetGlobalWorldState(header));
         }
     }
 }

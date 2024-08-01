@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 public class BoostBlockImprovementContext : IBlockImprovementContext
 {
     private readonly IBoostRelay _boostRelay;
-    private readonly IStateReader _stateReader;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly FeesTracer _feesTracer = new();
     private CancellationTokenSource? _cancellationTokenSource;
 
@@ -27,11 +27,11 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
-        IStateReader stateReader,
+        IWorldStateManager worldStateManager,
         DateTimeOffset startDateTime)
     {
         _boostRelay = boostRelay;
-        _stateReader = stateReader;
+        _worldStateManager = worldStateManager;
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
@@ -46,14 +46,14 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     {
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
+        _worldStateManager.GetGlobalStateReader(parentHeader).TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
         Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
         if (block is not null)
         {
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
-            _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out account);
+            _worldStateManager.GetGlobalStateReader(parentHeader).TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 

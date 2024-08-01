@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly ILogManager _logManager;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;
         private readonly ITxPool _txPool;
         private readonly ITxSender _txSender;
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IBlockTree blockTree,
             IJsonRpcConfig config,
             ILogManager logManager,
-            IStateReader stateReader,
+            IWorldStateManager worldStateManager,
             IBlockchainBridgeFactory blockchainBridgeFactory,
             ISpecProvider specProvider,
             IReceiptStorage receiptStorage,
@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
                 _receiptStorage,
-                _stateReader,
+                _worldStateManager,
                 _txPool,
                 _txSender,
                 _wallet,

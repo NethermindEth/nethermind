@@ -56,7 +56,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         ReadOnlyTxProcessingEnv result = new(worldStateManager,
             readOnlyBlockTree, _specProvider, _logManager);
         result.TransactionProcessor =
-            new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);
+            new OptimismTransactionProcessor(_specProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);
 
         return result;
     }
@@ -85,13 +85,13 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             blockValidator,
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-            readOnlyTxProcessingEnv.StateProvider,
+            readOnlyTxProcessingEnv.WorldStateManager,
             receiptStorage,
             NullWitnessCollector.Instance,
             _blockTree,
             logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
-            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));
+            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldStateManager, logManager)));
     }
 }

@@ -121,7 +121,7 @@ public class InitializeNetwork : IStep
             healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
         }
 
-        if (_api.WorldState is HealingWorldState healingWorldState)
+        if (_api.WorldStateManager!.GetWorldState() is HealingWorldState healingWorldState)
         {
             healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
         }
@@ -157,7 +157,7 @@ public class InitializeNetwork : IStep
                 _api.ProcessExit!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
-                _api.StateReader!,
+                _api.WorldStateManager!,
                 _api.LogManager);
         }
 

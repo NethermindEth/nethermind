@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization
         private ISyncProgressResolver? _syncProgressResolver;
         public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
             _blockTree,
-            new FullStateFinder(_blockTree, _stateReader),
+            new FullStateFinder(_blockTree, _worldStateManager),
             _syncConfig,
             HeadersSyncFeed,
             BodiesSyncFeed,
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization
             _logManager);
 
         protected ISyncModeSelector? _syncModeSelector;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
         private INodeStorage _nodeStorage;
         private readonly SnapProgressTracker _snapProgressTracker;
         private readonly VerkleProgressTracker _verkleProgressTracker;
@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization
             IProcessExitSource processExitSource,
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
-            IStateReader stateReader,
+            IWorldStateManager worldStateManager,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -140,7 +140,7 @@ namespace Nethermind.Synchronization
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(_stateReader));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 

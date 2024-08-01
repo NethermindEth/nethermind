@@ -14,6 +14,7 @@ using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

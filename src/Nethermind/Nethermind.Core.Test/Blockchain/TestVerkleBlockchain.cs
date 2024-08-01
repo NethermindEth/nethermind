@@ -70,7 +70,7 @@ public class TestVerkleBlockchain : IDisposable
 
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IWorldState State { get; set; } = null!;
+    public VerkleWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public IVerkleTreeStore TrieStore { get; set; } = null!;
@@ -184,7 +184,7 @@ public class TestVerkleBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new VerkleMemoryDb());
-        WorldStateManager = new VerkleWorldStateManager(State, TrieStore, DbProvider, SimpleConsoleLogManager.Instance);
+        WorldStateManager = new WorldStateManager(State, DbProvider, TrieStore, SimpleConsoleLogManager.Instance);
         StateReader = new VerkleStateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         BlockTree = Builders.Build.A.BlockTree()
@@ -205,7 +205,7 @@ public class TestVerkleBlockchain : IDisposable
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
@@ -228,7 +228,7 @@ public class TestVerkleBlockchain : IDisposable
         BeaconBlockRootHandler = new BeaconBlockRootHandler();
         BlockProcessor = CreateBlockProcessor();
 
-        BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
+        BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, WorldStateManager, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
         BlockchainProcessor = chainProcessor;
         BlockProcessingQueue = chainProcessor;
         chainProcessor.Start();
@@ -309,7 +309,7 @@ public class TestVerkleBlockchain : IDisposable
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
-            env.ReadOnlyStateProvider,
+            env.ReadOnlyStateManager,
             sealer,
             BlockTree,
             BlockProductionTrigger,
@@ -385,8 +385,8 @@ public class TestVerkleBlockchain : IDisposable
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-            State,
+            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
+            WorldStateManager,
             ReceiptStorage,
             NullWitnessCollector.Instance,
             BlockTree,

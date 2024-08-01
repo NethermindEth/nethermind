@@ -30,20 +30,18 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
             WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec!.AuRa, _api.AbiEncoder);
-            IWorldState worldState = _api.WorldState!;
             ITransactionProcessor transactionProcessor = _api.TransactionProcessor!;
 
             return new AuRaMergeBlockProcessor(
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor!, worldState),
-                worldState,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+                _api.WorldStateManager!,
                 _api.ReceiptStorage!,
                 _api.LogManager,
                 _api.BlockTree!,
-                new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
+                new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
                 CreateAuRaValidator(),
                 txFilter,
                 GetGasLimitCalculator(),

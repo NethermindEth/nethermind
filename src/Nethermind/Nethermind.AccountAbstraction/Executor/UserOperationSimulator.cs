@@ -39,6 +39,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IBlocksConfig _blocksConfig;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
+        private readonly ReadOnlyTxProcessingEnv _txProcessingEnv;
 
         public UserOperationSimulator(
             IUserOperationTxBuilder userOperationTxBuilder,
@@ -62,6 +63,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _timestamper = timestamper;
             _blocksConfig = blocksConfig;
             _logger = logManager.GetClassLogger<UserOperationSimulator>();
+            _txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
 
             _abiEncoder = new AbiEncoder();
         }
@@ -86,8 +88,8 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
-            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
-            ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
+            // TODO: should I get worldState using parentHeader?
+            ITransactionProcessor transactionProcessor = _txProcessingEnv.Build(parent, _stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
@@ -128,7 +130,10 @@ namespace Nethermind.AccountAbstraction.Executor
                 _logger
             );
 
-            transactionProcessor.Trace(transaction, new BlockExecutionContext(parent), txTracer);
+            // TODO: should I get worldState using parentHeader?
+            IWorldState worldState = _txProcessingEnv.WorldStateManager.GetGlobalWorldState(parent);
+
+            transactionProcessor.Trace(transaction, worldState, new BlockExecutionContext(parent), txTracer);
 
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
@@ -187,8 +192,8 @@ namespace Nethermind.AccountAbstraction.Executor
         [Todo("Refactor once BlockchainBridge is separated")]
         public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
-            using IReadOnlyTransactionProcessor transactionProcessor = txProcessingEnv.Build(header.StateRoot!);
+            IWorldState worldState = _txProcessingEnv.WorldStateManager.GetGlobalWorldState(header);
+            using IReadOnlyTransactionProcessor transactionProcessor = _txProcessingEnv.Build(worldState, header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
@@ -200,7 +205,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, GasEstimator.DefaultErrorMargin, cancellationToken);
+            long estimate = gasEstimator.Estimate(tx, worldState, header, estimateGasTracer, GasEstimator.DefaultErrorMargin, cancellationToken);
 
             return new BlockchainBridge.CallOutput
             {
@@ -259,7 +264,8 @@ namespace Nethermind.AccountAbstraction.Executor
                 : blockHeader.BaseFeePerGas;
 
             transaction.Hash = transaction.CalculateHash();
-            transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(callHeader), tracer);
+            IWorldState worldState = _txProcessingEnv.WorldStateManager.GetGlobalWorldState(callHeader);
+            transactionProcessor.CallAndRestore(transaction, worldState, new BlockExecutionContext(callHeader), tracer);
         }
     }
 }

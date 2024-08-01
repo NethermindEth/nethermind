@@ -19,25 +19,25 @@ public class FullStateFinder : IFullStateFinder
     // then we will never have to look 128 back again
     // note that we will be doing that every second or so
     private const int MaxLookupBack = 128;
-    private readonly IStateReader _stateReader;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly IBlockTree _blockTree;
 
     public FullStateFinder(
         IBlockTree blockTree,
-        IStateReader stateReader)
+        IWorldStateManager worldStateManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
     }
 
-    private bool IsFullySynced(Hash256 stateRoot)
+    private bool IsFullySynced(BlockHeader header)
     {
-        if (stateRoot == Keccak.EmptyTreeHash)
+        if (header.StateRoot == Keccak.EmptyTreeHash)
         {
             return true;
         }
 
-        return _stateReader.HasStateForRoot(stateRoot);
+        return _worldStateManager.GetGlobalStateReader(header).HasStateForRoot(header.StateRoot!);
     }
 
     public long FindBestFullState()
@@ -82,7 +82,7 @@ public class FullStateFinder : IFullStateFinder
                 break;
             }
 
-            if (IsFullySynced(startHeader.StateRoot!))
+            if (IsFullySynced(startHeader))
             {
                 bestFullState = startHeader.Number;
                 break;

@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ContractBasedValidator _contractValidator;
         private readonly long _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
-        private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly Cache _cache;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ITxSender txSender,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
-            IReadOnlyStateProvider stateProvider,
+            IWorldStateManager worldStateManager,
             Cache cache,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ValidatorContract = reportingValidatorContract ?? throw new ArgumentNullException(nameof(reportingValidatorContract));
             _posdaoTransition = posdaoTransition;
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, gasPriceOracle);
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
         {
             var transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
-            transaction.Nonce = _stateProvider.GetNonce(ValidatorContract.NodeAddress);
+            transaction.Nonce = _worldStateManager.GetGlobalWorldState(persistentReport.BlockNumber).GetNonce(ValidatorContract.NodeAddress);
             return transaction;
         }
 

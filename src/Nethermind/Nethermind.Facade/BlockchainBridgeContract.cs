@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Facade
 {

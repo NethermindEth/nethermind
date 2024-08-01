@@ -24,7 +24,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IBlockProductionTrigger blockProductionTrigger,
-            IWorldState stateProvider,
+            IWorldStateManager stateManager,
             IGasLimitCalculator gasLimitCalculator,
             ISealEngine sealEngine,
             ITimestamper timestamper,
@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 sealEngine,
                 blockTree,
                 blockProductionTrigger,
-                stateProvider,
+                stateManager,
                 gasLimitCalculator,
                 timestamper,
                 specProvider,
@@ -60,7 +60,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             {
                 try
                 {
-                    if (TrySetState(parent.StateRoot))
+                    if (TrySetState(parent))
                     {
                         return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
                     }

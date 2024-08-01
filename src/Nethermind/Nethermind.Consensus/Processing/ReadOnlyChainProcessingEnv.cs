@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
-        public IWorldState StateProvider => _txEnv.StateProvider;
+        public IWorldStateManager WorldStateManager => _txEnv.WorldStateManager;
 
         public ReadOnlyChainProcessingEnv(
             ReadOnlyTxProcessingEnv txEnv,
@@ -38,22 +38,22 @@ namespace Nethermind.Consensus.Processing
             _txEnv = txEnv;
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor);
 
             BlockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,
-                StateProvider,
+                WorldStateManager,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _txEnv.BlockTree,
                 logManager);
 
-            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.WorldStateManager, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(txEnv.StateProvider, _blockProcessingQueue);
+            ChainProcessor = new OneTimeChainProcessor(_blockProcessingQueue);
         }
 
         public void Dispose()

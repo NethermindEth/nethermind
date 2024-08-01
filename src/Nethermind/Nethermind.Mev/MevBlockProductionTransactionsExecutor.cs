@@ -24,7 +24,7 @@ namespace Nethermind.Mev
     // this looks super complex, hmm, is it needed?
     public class MevBlockProductionTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
     {
-        private readonly IWorldState _stateProvider;
+        private readonly IWorldStateManager _worldStateManager;
 
         public MevBlockProductionTransactionsExecutor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
@@ -32,7 +32,7 @@ namespace Nethermind.Mev
             ILogManager logManager) :
             this(
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
+                readOnlyTxProcessingEnv.WorldStateManager,
                 specProvider,
                 logManager)
         {
@@ -40,15 +40,15 @@ namespace Nethermind.Mev
 
         private MevBlockProductionTransactionsExecutor(
             ITransactionProcessor transactionProcessor,
-            IWorldState stateProvider,
+            IWorldStateManager worldStateManager,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(transactionProcessor, stateProvider, specProvider, logManager)
+            : base(transactionProcessor, specProvider, logManager)
         {
-            _stateProvider = stateProvider;
+            _worldStateManager = worldStateManager;
         }
 
-        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer executionTracer, IReleaseSpec spec)
+        public override TxReceipt[] ProcessTransactions(IWorldState worldState, Block block, ProcessingOptions processingOptions, BlockExecutionTracer executionTracer, IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
@@ -70,7 +70,7 @@ namespace Nethermind.Mev
                     else
                     {
                         // otherwise process transaction as usual
-                        TxAction action = ProcessTransaction(block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock);
+                        TxAction action = ProcessTransaction(worldState, block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock);
                         if (action == TxAction.Stop) break;
                     }
                 }
@@ -107,7 +107,7 @@ namespace Nethermind.Mev
                         if (action == TxAction.Stop) break;
 
                         // process normal transaction
-                        action = ProcessTransaction(block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock);
+                        action = ProcessTransaction(worldState, block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock);
                         if (action == TxAction.Stop) break;
                     }
                 }
@@ -118,7 +118,7 @@ namespace Nethermind.Mev
                 ProcessBundle(block, in blkCtx, bundleTransactions, transactionsInBlock, executionTracer, processingOptions);
             }
 
-            _stateProvider.Commit(spec, executionTracer);
+            worldState.Commit(spec, executionTracer);
 
             SetTransactions(block, transactionsInBlock);
             return executionTracer.TxReceipts.ToArray();
@@ -131,14 +131,14 @@ namespace Nethermind.Mev
             BlockExecutionTracer executionTracer,
             ProcessingOptions processingOptions)
         {
-
-            Snapshot snapshot = _stateProvider.TakeSnapshot();
+            IWorldState worldState = _worldStateManager.GetGlobalWorldState(block);
+            Snapshot snapshot = worldState.TakeSnapshot();
             int receiptSnapshot = executionTracer.TakeSnapshot();
-            UInt256 initialBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
+            UInt256 initialBalance = worldState.GetBalance(block.Header.GasBeneficiary!);
 
             bool CheckFeeNotManipulated()
             {
-                UInt256 finalBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
+                UInt256 finalBalance = worldState.GetBalance(block.Header.GasBeneficiary!);
                 UInt256 feeReceived = finalBalance - initialBalance;
                 UInt256 originalSimulatedGasPrice = bundleTransactions[0].SimulatedBundleFee / bundleTransactions[0].SimulatedBundleGasUsed;
                 UInt256 actualGasPrice = feeReceived / (UInt256)executionTracer.LastReceipt.GasUsed!;
@@ -173,7 +173,7 @@ namespace Nethermind.Mev
             }
             else
             {
-                _stateProvider.Restore(snapshot);
+                worldState.Restore(snapshot);
                 executionTracer.Restore(receiptSnapshot);
                 for (int index = 0; index < bundleTransactions.Count; index++)
                 {
@@ -195,7 +195,8 @@ namespace Nethermind.Mev
             ProcessingOptions processingOptions,
             LinkedHashSet<Transaction> transactionsInBlock)
         {
-            TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, false);
+            IWorldState worldState = _worldStateManager.GetGlobalWorldState(block);
+            TxAction action = ProcessTransaction(worldState, block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, false);
             if (action == TxAction.Add)
             {
                 string? error = executionTracer.LastReceipt.Error;

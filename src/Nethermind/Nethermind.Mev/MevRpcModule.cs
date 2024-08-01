@@ -26,7 +26,7 @@ namespace Nethermind.Mev
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
         private readonly IBlockFinder _blockFinder;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
@@ -40,7 +40,7 @@ namespace Nethermind.Mev
             IJsonRpcConfig jsonRpcConfig,
             IBundlePool bundlePool,
             IBlockFinder blockFinder,
-            IStateReader stateReader,
+            IWorldStateManager worldStateManager,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
             ISigner? signer)
@@ -48,7 +48,7 @@ namespace Nethermind.Mev
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
             _blockFinder = blockFinder;
-            _stateReader = stateReader;
+            _worldStateManager = worldStateManager;
             _tracerFactory = tracerFactory;
             _specProvider = specProvider;
             _signer = signer;
@@ -135,7 +135,7 @@ namespace Nethermind.Mev
         private bool HasStateForBlock(BlockHeader header)
         {
             if (header.StateRoot is null) return false;
-            return _stateReader.HasStateForRoot(header.StateRoot!);
+            return _worldStateManager.GetGlobalWorldState(header).HasStateForRoot(header.StateRoot!);
         }
     }
 }
