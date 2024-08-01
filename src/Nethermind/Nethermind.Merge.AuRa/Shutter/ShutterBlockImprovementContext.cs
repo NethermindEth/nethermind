@@ -109,12 +109,21 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
                 return CurrentBestBlock;
             }
 
-            Task timeout = Task.Delay(waitTime, _cancellationTokenSource.Token);
-            Task signalOrTimeout = await Task.WhenAny(timeout, shutterTxSignal.WaitForTransactions(slot));
+            using var timeoutSource = new CancellationTokenSource(waitTime);
+            using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
 
-            if (signalOrTimeout == timeout)
+            try
             {
-                if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
+                await shutterTxSignal.WaitForTransactions(slot);
+            }
+            catch (OperationCanceledException)
+            {
+
+                if (!_cancellationTokenSource.IsCancellationRequested && _logger.IsWarn)
+                {
+                    _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
+                }
+
                 return CurrentBestBlock;
             }
 
