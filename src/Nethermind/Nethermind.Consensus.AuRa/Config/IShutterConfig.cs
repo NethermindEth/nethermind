@@ -63,5 +63,5 @@ public interface IShutterConfig : IConfig
 
     [ConfigItem(Description = "Maximum amount of milliseconds into the slot to wait for Shutter keys before building block.",
         DefaultValue = "1666")]
-    uint ExtraBuildWindow { get; }
+    uint MaxKeyDelay { get; }
 }

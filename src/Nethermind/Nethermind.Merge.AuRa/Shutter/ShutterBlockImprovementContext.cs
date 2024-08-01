@@ -95,7 +95,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
                 CurrentBestBlock = result;
             }
 
-            ulong waitTime = shutterConfig.ExtraBuildWindow - offset;
+            ulong waitTime = shutterConfig.MaxKeyDelay - offset;
             if (waitTime <= 0)
             {
                 return CurrentBestBlock;

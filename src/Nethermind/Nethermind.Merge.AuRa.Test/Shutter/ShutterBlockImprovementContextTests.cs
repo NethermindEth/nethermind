@@ -28,7 +28,7 @@ public class ShutterBlockImprovementContextTests
     {
         ShutterConfig shutterConfig = new()
         {
-            ExtraBuildWindow = 1666
+            MaxKeyDelay = 1666
         };
 
         Consensus.Producers.PayloadAttributes payloadAttributes = new()
