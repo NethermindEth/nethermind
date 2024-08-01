@@ -88,7 +88,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
 
         Create2DeployerContractRewriter contractRewriter =
             new(_api.SpecHelper, _api.SpecProvider, _api.BlockTree);
@@ -97,8 +97,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-            new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState),
-            _api.WorldState,
+            new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor),
+            _api.WorldStateManager,
             _api.ReceiptStorage,
             _api.WitnessCollector,
             _api.BlockTree,

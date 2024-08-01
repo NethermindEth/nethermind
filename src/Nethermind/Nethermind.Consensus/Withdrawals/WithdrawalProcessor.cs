@@ -15,19 +15,19 @@ namespace Nethermind.Consensus.Withdrawals;
 public class WithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly ILogger _logger;
-    protected readonly WorldStateProvider _worldStateProvider;
+    protected readonly IWorldStateManager _worldStateManager;
 
-    public WithdrawalProcessor(WorldStateProvider worldStateProvider, ILogManager logManager)
+    public WithdrawalProcessor(IWorldStateManager worldStateManager, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logger = logManager.GetClassLogger();
-        _worldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
     }
 
     public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec)
     {
-        IWorldState worldState = _worldStateProvider.GetWorldState(block);
+        IWorldState worldState = _worldStateManager.GetGlobalWorldState(block);
         if (!spec.WithdrawalsEnabled)
             return;
 

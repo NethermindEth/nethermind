@@ -45,7 +45,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IBlockchainBridge _blockchainBridge;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
-    private readonly IStateReader _stateReader;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly ITxPool _txPoolBridge;
     private readonly ITxSender _txSender;
     private readonly IWallet _wallet;
@@ -57,7 +57,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IFeeHistoryOracle _feeHistoryOracle;
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        return blockchainBridge.HasStateForRoot(header.StateRoot!);
+        return blockchainBridge.HasStateForRoot(header);
     }
 
     public EthRpcModule(
@@ -65,7 +65,7 @@ public partial class EthRpcModule : IEthRpcModule
         IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
-        IStateReader stateReader,
+        IWorldStateManager worldStateManager,
         ITxPool txPool,
         ITxSender txSender,
         IWallet wallet,
@@ -80,7 +80,7 @@ public partial class EthRpcModule : IEthRpcModule
         _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
         _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
         _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
@@ -175,7 +175,7 @@ public partial class EthRpcModule : IEthRpcModule
             return Task.FromResult(GetStateFailureResult<UInt256?>(header));
         }
 
-        _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
+        _worldStateManager.GetGlobalStateReader(header).TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
         return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
     }
 
@@ -189,7 +189,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        ReadOnlySpan<byte> storage = _worldStateManager.GetGlobalStateReader(header!).GetStorage(header!.StateRoot!, address, positionIndex);
         return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
     }
 
@@ -213,7 +213,7 @@ public partial class EthRpcModule : IEthRpcModule
             return Task.FromResult(GetStateFailureResult<UInt256>(header));
         }
 
-        _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
+        _worldStateManager.GetGlobalStateReader(header).TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
         return Task.FromResult(ResultWrapper<UInt256>.Success(account.Nonce));
     }
 
@@ -263,11 +263,12 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
+        var stateReader = _worldStateManager.GetGlobalStateReader(header!);
         return !HasStateForBlock(_blockchainBridge, header!)
             ? GetStateFailureResult<byte[]>(header)
             : ResultWrapper<byte[]>.Success(
-                _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account)
-                    ? _stateReader.GetCode(account.CodeHash)
+                stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account)
+                    ? stateReader.GetCode(account.CodeHash)
                     : Array.Empty<byte>());
     }
 
@@ -339,7 +340,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
     }
 
-    public ResultWrapper<string> eth_call(IWorldState worldState, TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
@@ -672,7 +673,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
-        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!.StateRoot!);
+        _blockchainBridge.RunTreeVisitor(header, accountProofCollector, header!.StateRoot!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
     }
 
@@ -717,7 +718,7 @@ public partial class EthRpcModule : IEthRpcModule
         return !HasStateForBlock(_blockchainBridge, header!)
             ? GetStateFailureResult<AccountForRpc?>(header)
             : ResultWrapper<AccountForRpc?>.Success(
-                _stateReader.TryGetAccount(header!.StateRoot!, accountAddress, out AccountStruct account)
+                _worldStateManager.GetGlobalStateReader(header).TryGetAccount(header!.StateRoot!, accountAddress, out AccountStruct account)
                     ? new AccountForRpc(account)
                     : null);
     }

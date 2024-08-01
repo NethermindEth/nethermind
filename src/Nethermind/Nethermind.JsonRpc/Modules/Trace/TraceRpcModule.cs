@@ -43,9 +43,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly TimeSpan _cancellationTokenTimeout;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
 
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, ISpecProvider? specProvider, ILogManager? logManager, IStateReader stateReader)
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, ISpecProvider? specProvider, ILogManager? logManager, IWorldStateManager worldStateManager)
         {
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _logger = logManager.GetClassLogger();
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
@@ -86,7 +86,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(headerSearch);
             }
 
-            if (!_stateReader.HasStateForBlock(headerSearch.Object))
+            BlockHeader header = headerSearch.Object!;
+
+            if (!_worldStateManager.GetGlobalStateReader(header).HasStateForBlock(headerSearch.Object))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(headerSearch.Object);
             }
@@ -103,7 +105,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
             }
 
-            Block block = new(headerSearch.Object!, txs, Enumerable.Empty<BlockHeader>());
+            Block block = new(header, txs, Enumerable.Empty<BlockHeader>());
             IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new ParityLikeBlockTracer(traceTypeByTransaction));
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
         }
@@ -181,7 +183,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-            if (!_stateReader.HasStateForBlock(block.Header))
+            if (!_worldStateManager.GetGlobalStateReader(block).HasStateForBlock(block.Header))
             {
                 return GetStateFailureResult<ParityTxTraceFromReplay>(block.Header);
             }
@@ -203,7 +205,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            if (!_stateReader.HasStateForBlock(block.Header))
+            if (!_worldStateManager.GetGlobalStateReader(block).HasStateForBlock(block.Header))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(block.Header);
             }
@@ -233,7 +235,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
 
                 Block block = blockSearch.Object;
-                if (!_stateReader.HasStateForBlock(block.Header))
+                if (!_worldStateManager.GetGlobalStateReader(block).HasStateForBlock(block.Header))
                 {
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
                 }
@@ -258,7 +260,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            if (!_stateReader.HasStateForBlock(block.Header))
+            if (!_worldStateManager.GetGlobalStateReader(block).HasStateForBlock(block.Header))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
@@ -313,7 +315,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            if (!_stateReader.HasStateForBlock(block.Header))
+            if (!_worldStateManager.GetGlobalStateReader(block).HasStateForBlock(block.Header))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }

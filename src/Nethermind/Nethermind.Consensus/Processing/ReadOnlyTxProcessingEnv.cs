@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -16,25 +17,22 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
-        public IStateReader StateReader { get; }
-        public WorldStateProvider WorldStateProvider { get; }
+        public IWorldStateManager WorldStateManager { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
-            WorldStateProvider worldStateProvider,
             IWorldStateManager worldStateManager,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(worldStateProvider, worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
-            WorldStateProvider worldStateProvider,
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
@@ -43,8 +41,7 @@ namespace Nethermind.Consensus.Processing
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
-            StateReader = worldStateManager.GlobalStateReader;
-            WorldStateProvider = worldStateProvider;
+            WorldStateManager = worldStateManager;
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
@@ -53,6 +50,13 @@ namespace Nethermind.Consensus.Processing
             TransactionProcessor = new TransactionProcessor(specProvider, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Block block, Hash256 stateRoot) =>
+            new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateManager.GetGlobalWorldState(block), stateRoot);
+        
+        public IReadOnlyTransactionProcessor Build(BlockHeader header, Hash256 stateRoot) =>
+            new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateManager.GetGlobalWorldState(header), stateRoot);
+
+        public IReadOnlyTransactionProcessor Build(IWorldState worldState, Hash256 stateRoot) =>
+            new ReadOnlyTransactionProcessor(TransactionProcessor, worldState, stateRoot);
     }
 }

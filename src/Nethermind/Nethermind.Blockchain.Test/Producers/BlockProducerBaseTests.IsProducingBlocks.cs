@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Producers
             DevBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
-                testRpc.State,
+                testRpc.WorldStateManager,
                 testRpc.BlockTree,
                 Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper,
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
                 Substitute.For<IBlockProductionTrigger>(),
-                testRpc.State,
+                testRpc.WorldStateManager,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,

@@ -98,7 +98,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
-            chainProcessingEnv.StateProvider,
+            chainProcessingEnv.WorldStateManager,
             _receiptStorage,
             _blockTree,
             _specProvider,

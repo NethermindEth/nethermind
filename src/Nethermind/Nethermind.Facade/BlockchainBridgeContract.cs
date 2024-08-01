@@ -34,10 +34,10 @@ namespace Nethermind.Facade
                 _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             }
 
-            public override object[] Call(IWorldState worldState, CallInfo callInfo)
+            public override object[] Call(CallInfo callInfo)
             {
                 var transaction = GenerateTransaction(callInfo);
-                var result = _blockchainBridge.Call(worldState, callInfo.ParentHeader, transaction, CancellationToken.None);
+                var result = _blockchainBridge.Call(callInfo.ParentHeader, transaction, CancellationToken.None);
                 if (!string.IsNullOrEmpty(result.Error))
                 {
                     throw new AbiException(result.Error);

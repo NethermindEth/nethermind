@@ -17,7 +17,7 @@ namespace Nethermind.Mev
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
         private readonly IBlockTree _blockTree;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
@@ -26,7 +26,7 @@ namespace Nethermind.Mev
             IJsonRpcConfig jsonRpcConfig,
             IBundlePool bundlePool,
             IBlockTree blockTree,
-            IStateReader stateReader,
+            IWorldStateManager worldStateManager,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
             ISigner? signer)
@@ -34,7 +34,7 @@ namespace Nethermind.Mev
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
             _blockTree = blockTree;
-            _stateReader = stateReader;
+            _worldStateManager = worldStateManager;
             _tracerFactory = tracerFactory;
             _specProvider = specProvider;
             _signer = signer;
@@ -46,7 +46,7 @@ namespace Nethermind.Mev
                 _jsonRpcConfig,
                 _bundlePool,
                 _blockTree,
-                _stateReader,
+                _worldStateManager,
                 _tracerFactory,
                 _specProvider,
                 _signer);

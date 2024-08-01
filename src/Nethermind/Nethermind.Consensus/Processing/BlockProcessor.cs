@@ -40,7 +40,7 @@ public partial class BlockProcessor : IBlockProcessor
 {
     private readonly ILogger _logger;
     protected readonly ISpecProvider _specProvider;
-    protected readonly WorldStateProvider _worldStateProvider;
+    protected readonly IWorldStateManager _worldStateManager;
     private readonly IReceiptStorage _receiptStorage;
     protected readonly IReceiptsRootCalculator _receiptsRootCalculator;
     private readonly IWitnessCollector _witnessCollector;
@@ -68,7 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        WorldStateProvider? worldStateProvider,
+        IWorldStateManager? worldStateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         IBlockTree? blockTree,
@@ -79,7 +79,7 @@ public partial class BlockProcessor : IBlockProcessor
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-        _worldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
+        _worldStateManager = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(worldStateProvider, logManager);
@@ -112,8 +112,8 @@ public partial class BlockProcessor : IBlockProcessor
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
-        Hash256 previousBranchMerkleStateRoot = _worldStateProvider.WorldState.StateRoot;
-        Hash256 previousBranchVerkleStateRoot = _worldStateProvider.VerkleWorldState.StateRoot;
+        Hash256 previousBranchMerkleStateRoot = _worldStateManager.GetWorldState().StateRoot;
+        Hash256 previousBranchVerkleStateRoot = _worldStateManager.GetVerkleWorldState().StateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -128,7 +128,7 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                 }
 
-                _worldStateProvider.InitBranch(suggestedBlocks[i], newBranchStateRoot);
+                InitBranch(suggestedBlocks[i], newBranchStateRoot);
 
                 _witnessCollector.Reset();
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
@@ -144,25 +144,26 @@ public partial class BlockProcessor : IBlockProcessor
                     // CommitBranch in every block
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
 
-                    if (_worldStateProvider.GetWorldState(suggestedBlocks[i]) is WorldState)
+                    IWorldState worldState = _worldStateManager.GetGlobalWorldState(suggestedBlocks[i]);
+                    if (worldState is WorldState)
                     {
-                        previousBranchMerkleStateRoot = _worldStateProvider.WorldState.StateRoot;
+                        previousBranchMerkleStateRoot = worldState.StateRoot;
                     }
                     else
                     {
-                        previousBranchVerkleStateRoot = _worldStateProvider.VerkleWorldState.StateRoot;
+                        previousBranchVerkleStateRoot = worldState.StateRoot;
                     }
 
                     Hash256? newStateRoot = suggestedBlocks[i].StateRoot;
-                    _worldStateProvider.InitBranch(suggestedBlocks[i], newStateRoot);
+                    InitBranch(suggestedBlocks[i], newStateRoot);
                 }
             }
 
             // TODO: temporary fix for verkle block processing
             if (options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
             {
-                RestoreBranch(previousBranchMerkleStateRoot, _worldStateProvider.WorldState);
-                RestoreBranch(previousBranchVerkleStateRoot, _worldStateProvider.VerkleWorldState);
+                RestoreBranch(previousBranchMerkleStateRoot, _worldStateManager.GetWorldState());
+                RestoreBranch(previousBranchVerkleStateRoot, _worldStateManager.GetVerkleWorldState());
             }
 
             return processedBlocks;
@@ -170,19 +171,31 @@ public partial class BlockProcessor : IBlockProcessor
         catch (Exception ex) // try to restore at all cost
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
-            RestoreBranch(previousBranchMerkleStateRoot, _worldStateProvider.WorldState);
-            RestoreBranch(previousBranchVerkleStateRoot, _worldStateProvider.VerkleWorldState);
+            RestoreBranch(previousBranchMerkleStateRoot, _worldStateManager.GetWorldState());
+            RestoreBranch(previousBranchVerkleStateRoot, _worldStateManager.GetVerkleWorldState());
             throw;
         }
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
+    public void InitBranch(Block block, Hash256? branchStateRoot)
+    {
+        if (branchStateRoot is null) return;
+        IWorldState worldState = _worldStateManager.GetGlobalWorldState(block);
+
+        if (branchStateRoot != worldState.StateRoot)
+        {
+            worldState.Reset();
+            worldState.StateRoot = branchStateRoot;
+        }
+    }
+
     // TODO: move to block processing pipeline
     private void PreCommitBlock(Hash256 newBranchStateRoot, Block block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
-        _worldStateProvider.GetWorldState(block).CommitTree(block.Number);
+        _worldStateManager.GetGlobalWorldState(block).CommitTree(block.Number);
     }
 
     // TODO: move to branch processor
@@ -262,7 +275,7 @@ public partial class BlockProcessor : IBlockProcessor
 
     protected virtual (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
     {
-        return (_blockTransactionsExecutor, _worldStateProvider.GetWorldState(block));
+        return (_blockTransactionsExecutor, _worldStateManager.GetGlobalWorldState(block));
     }
 
     // TODO: block processor pipeline
@@ -428,7 +441,7 @@ public partial class BlockProcessor : IBlockProcessor
                 tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
                 if (txTracer.IsTracingState)
                 {
-                    _worldStateProvider.GetWorldState(block).Commit(spec, txTracer);
+                    _worldStateManager.GetGlobalWorldState(block).Commit(spec, txTracer);
                 }
             }
         }
@@ -437,7 +450,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline (only where rewards needed)
     private void ApplyMinerReward(Block block, BlockReward reward, IReleaseSpec spec)
     {
-        var worldState = _worldStateProvider.GetWorldState(block);
+        var worldState = _worldStateManager.GetGlobalWorldState(block);
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
         if (!worldState.AccountExists(reward.Address))
@@ -455,7 +468,7 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == block.Header.Number)
         {
-            var worldState = _worldStateProvider.GetWorldState(block);
+            var worldState = _worldStateManager.GetGlobalWorldState(block);
             if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
             if (!worldState.AccountExists(withdrawAccount))

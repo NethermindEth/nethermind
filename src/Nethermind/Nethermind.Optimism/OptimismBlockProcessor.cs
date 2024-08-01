@@ -26,7 +26,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
+        IWorldStateManager? worldStateManager,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         IBlockTree? blockTree,
@@ -35,16 +35,16 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, blockTree, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
+            worldStateManager, receiptStorage, witnessCollector, blockTree, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
     {
-        ArgumentNullException.ThrowIfNull(stateProvider);
+        ArgumentNullException.ThrowIfNull(worldStateManager);
         _contractRewriter = contractRewriter;
-        ExecutionTracer = new OptimismBlockReceiptTracer(opConfigHelper, stateProvider);
+        ExecutionTracer = new OptimismBlockReceiptTracer(opConfigHelper, worldStateManager);
     }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
     {
-        _contractRewriter?.RewriteContract(block.Header, _stateProvider);
+        _contractRewriter?.RewriteContract(block.Header, _worldStateManager.GetGlobalWorldState(block));
         return base.ProcessBlock(block, blockTracer, options);
     }
 }

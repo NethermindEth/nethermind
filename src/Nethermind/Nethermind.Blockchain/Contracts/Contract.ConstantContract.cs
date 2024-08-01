@@ -24,27 +24,27 @@ namespace Nethermind.Blockchain.Contracts
 
         protected interface IConstantContract
         {
-            public object[] Call(IWorldState worldState, CallInfo callInfo);
+            public object[] Call(CallInfo callInfo);
 
-            public T Call<T>(IWorldState worldState, CallInfo callInfo) => (T)Call(worldState, callInfo)[0];
+            public T Call<T>(CallInfo callInfo) => (T)Call(callInfo)[0];
 
-            public (T1, T2) Call<T1, T2>(IWorldState worldState, CallInfo callInfo)
+            public (T1, T2) Call<T1, T2>(CallInfo callInfo)
             {
-                var objects = Call(worldState, callInfo);
+                var objects = Call(callInfo);
                 return ((T1)objects[0], (T2)objects[1]);
             }
 
-            public T Call<T>(IWorldState worldState, BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
-                Call<T>(worldState, new CallInfo(parentHeader, functionName, sender, arguments));
+            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
+                Call<T>(new CallInfo(parentHeader, functionName, sender, arguments));
 
-            public (T1, T2) Call<T1, T2>(IWorldState worldState, BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
-                Call<T1, T2>(worldState, new CallInfo(parentHeader, functionName, sender, arguments));
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
+                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments));
 
-            public T Call<T>(IWorldState worldState, BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
-                Call<T>(worldState, new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
+            public T Call<T>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
+                Call<T>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
 
-            public (T1, T2) Call<T1, T2>(IWorldState worldState, BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
-                Call<T1, T2>(worldState, new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
+                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
         }
 
         protected abstract class ConstantContractBase : IConstantContract
@@ -59,12 +59,12 @@ namespace Nethermind.Blockchain.Contracts
             protected Transaction GenerateTransaction(CallInfo callInfo) =>
                 _contract.GenerateTransaction<SystemTransaction>(callInfo.ContractAddress, callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
 
-            protected byte[] CallCore(IWorldState worldState, CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
-                _contract.CallCore(readOnlyTransactionProcessor, worldState, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
+            protected byte[] CallCore(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
+                _contract.CallCore(readOnlyTransactionProcessor, readOnlyTransactionProcessor.WorldState, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
 
             protected object[] DecodeReturnData(string functionName, byte[] data) => _contract.DecodeReturnData(functionName, data);
 
-            public abstract object[] Call(IWorldState worldState, CallInfo callInfo);
+            public abstract object[] Call(CallInfo callInfo);
         }
 
         /// <summary>
@@ -80,23 +80,24 @@ namespace Nethermind.Blockchain.Contracts
                 _readOnlyTxProcessorSource = readOnlyTxProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTxProcessorSource));
             }
 
-            public override object[] Call(IWorldState worldState, CallInfo callInfo)
+            public override object[] Call(CallInfo callInfo)
             {
                 static Hash256 GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
 
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
-                    return CallRaw(worldState, callInfo, readOnlyTransactionProcessor);
+                    // TODO: should I get worldState using parentHeader?
+                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(callInfo.ParentHeader, GetState(callInfo.ParentHeader));
+                    return CallRaw(callInfo, readOnlyTransactionProcessor);
                 }
             }
 
-            protected virtual object[] CallRaw(IWorldState worldState, CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
+            protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
             {
                 var transaction = GenerateTransaction(callInfo);
-                if (_contract.ContractAddress is not null && worldState.IsContract(_contract.ContractAddress))
+                if (_contract.ContractAddress is not null && readOnlyTransactionProcessor.IsContractDeployed(_contract.ContractAddress))
                 {
-                    var result = CallCore(worldState, callInfo, readOnlyTransactionProcessor, transaction);
+                    var result = CallCore(callInfo, readOnlyTransactionProcessor, transaction);
                     return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
                 }
                 else if (callInfo.MissingContractResult is not null)

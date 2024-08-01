@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
-            IStateReader stateReader,
+            IWorldStateManager worldStateManager,
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
             IDriveInfo? driveInfo,
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger = pruningTrigger;
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
-            _stateReader = stateReader;
+            _worldStateManager = worldStateManager;
             _processExitSource = processExitSource;
             _logManager = logManager;
             _chainEstimations = chainEstimations;
@@ -186,7 +186,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
-            await CopyTrie(pruningContext, header.StateRoot!, cancellationToken);
+            await CopyTrie(pruningContext, header, cancellationToken);
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private async Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
+        private async Task CopyTrie(IPruningContext pruning, BlockHeader header, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;
@@ -261,8 +261,8 @@ namespace Nethermind.Blockchain.FullPruning
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
 
                 visitor = targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash
-                    ? CopyTree<NoopTreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
-                    : CopyTree<TreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
+                    ? CopyTree<NoopTreePathContextWithStorage>(header, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
+                    : CopyTree<TreePathContextWithStorage>(header, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
@@ -294,7 +294,7 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         private ICopyTreeVisitor CopyTree<TContext>(
-            Hash256 stateRoot,
+            BlockHeader header,
             INodeStorage targetNodeStorage,
             WriteFlags writeFlags,
             VisitingOptions visitingOptions,
@@ -302,7 +302,7 @@ namespace Nethermind.Blockchain.FullPruning
         ) where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
         {
             CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
-            _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+            _worldStateManager.GetGlobalStateReader(header).RunTreeVisitor(copyTreeVisitor, header.StateRoot!, visitingOptions);
             return copyTreeVisitor;
         }
 

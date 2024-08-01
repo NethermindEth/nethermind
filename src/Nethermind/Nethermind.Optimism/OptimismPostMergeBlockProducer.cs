@@ -27,7 +27,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         IBlockchainProcessor processor,
         IBlockTree blockTree,
         IBlockProductionTrigger blockProductionTrigger,
-        IWorldState stateProvider,
+        IWorldStateManager stateManager,
         IGasLimitCalculator gasLimitCalculator,
         ISealEngine sealEngine,
         ITimestamper timestamper,
@@ -39,7 +39,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         processor,
         blockTree,
         blockProductionTrigger,
-        stateProvider,
+        stateManager,
         gasLimitCalculator,
         sealEngine,
         timestamper,
@@ -65,7 +65,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         {
             try
             {
-                if (TrySetState(parent.StateRoot))
+                if (TrySetState(parent))
                 {
                     return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
                 }

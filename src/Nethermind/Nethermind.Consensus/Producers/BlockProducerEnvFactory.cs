@@ -82,19 +82,17 @@ namespace Nethermind.Consensus.Producers
                     readOnlyBlockTree,
                     blockProcessor,
                     _blockPreprocessorStep,
-                    txProcessingEnv.StateReader,
+                    txProcessingEnv.WorldStateManager,
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 
-            OneTimeChainProcessor chainProcessor = new(
-                txProcessingEnv.StateProvider,
-                blockchainProcessor);
+            OneTimeChainProcessor chainProcessor = new(blockchainProcessor);
 
             return new BlockProducerEnv
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = txProcessingEnv.StateProvider,
+                ReadOnlyStateManager = txProcessingEnv.WorldStateManager,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
@@ -139,12 +137,12 @@ namespace Nethermind.Consensus.Producers
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-                readOnlyTxProcessingEnv.StateProvider,
+                readOnlyTxProcessingEnv.WorldStateManager,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _blockTree,
                 logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldStateManager, logManager)));
 
     }
 }

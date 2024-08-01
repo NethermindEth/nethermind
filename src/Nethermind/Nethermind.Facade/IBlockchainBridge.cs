@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
-using Nethermind.State;
 using Nethermind.Trie;
 using Block = Nethermind.Core.Block;
 
@@ -25,9 +24,9 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash);
         (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
-        BlockchainBridge.CallOutput Call(IWorldState worldState, BlockHeader header, Transaction tx, CancellationToken cancellationToken);
-        BlockchainBridge.CallOutput EstimateGas(IWorldState worldState, BlockHeader header, Transaction tx, int errorMarginBasisPoints, CancellationToken cancellationToken);
-        BlockchainBridge.CallOutput CreateAccessList(IWorldState worldState, BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
+        BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
+        BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, CancellationToken cancellationToken);
+        BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
         ulong GetChainId();
 
         int NewBlockFilter();
@@ -47,7 +46,7 @@ namespace Nethermind.Facade
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
-        void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot);
-        bool HasStateForRoot(Hash256 stateRoot);
+        void RunTreeVisitor(BlockHeader header, ITreeVisitor treeVisitor, Hash256 stateRoot);
+        bool HasStateForRoot(BlockHeader header);
     }
 }

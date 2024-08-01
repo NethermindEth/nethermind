@@ -31,7 +31,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        WorldStateProvider? worldStateProvider,
+        IWorldStateManager? worldStateManager,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         IBlockTree? blockTree,
@@ -42,7 +42,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
             blockValidator,
             rewardCalculator,
             blockTransactionsExecutor,
-            worldStateProvider,
+            worldStateManager,
             receiptStorage,
             witnessCollector,
             blockTree,
@@ -54,11 +54,6 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         NullVerkleTreeStore stateStore = new();
         VerkleStateTree? tree = new(stateStore, logManager);
         _statelessWorldState = new VerkleWorldState(tree, new MemDb(), logManager);
-    }
-
-    protected override void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
-    {
-
     }
 
     protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
@@ -74,7 +69,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         }
         else
         {
-            worldState = _worldStateProvider.GetWorldState(block);
+            worldState = _worldStateManager.GetGlobalWorldState(block);
         }
 
         return (_blockTransactionsExecutor, worldState);

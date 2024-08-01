@@ -152,9 +152,10 @@ namespace Nethermind.Facade
             public AccessList? AccessList { get; set; }
         }
 
-        public CallOutput Call(IWorldState worldState, BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
+            IWorldState worldState = _processingEnv.WorldStateManager.GetGlobalWorldState(header);
             TransactionResult tryCallResult = TryCallAndRestore(worldState, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput
@@ -166,9 +167,11 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput EstimateGas(IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
-            using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(header.StateRoot!);
+            IWorldState worldState = _processingEnv.WorldStateManager.GetGlobalWorldState(header);
+
+            using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(worldState, header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -178,8 +181,7 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
-                _specProvider, _blocksConfig);
+            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, worldState, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, worldState, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
@@ -190,12 +192,13 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(IWorldState worldState, BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
         {
             CallOutputTracer callOutputTracer = new();
+            IWorldState worldState = _processingEnv.WorldStateManager.GetGlobalWorldState(header);
             AccessTxTracer accessTxTracer = optimize
                 ? new(tx.SenderAddress,
-                    tx.GetRecipient(tx.IsContractCreation ? _processingEnv.StateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
+                    tx.GetRecipient(tx.IsContractCreation ? worldState.GetNonce(tx.SenderAddress) : 0), header.GasBeneficiary)
                 : new(header.GasBeneficiary);
 
             TransactionResult tryCallResult = TryCallAndRestore(worldState, header, tx, false,
@@ -238,11 +241,11 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
 
             Hash256 stateRoot = blockHeader.StateRoot!;
-            using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(stateRoot);
+            using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(worldState, stateRoot);
 
             if (transaction.Nonce == 0)
             {
-                transaction.Nonce = GetNonce(stateRoot, transaction.SenderAddress);
+                transaction.Nonce = GetNonce(worldState, transaction.SenderAddress);
             }
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
@@ -288,9 +291,9 @@ namespace Nethermind.Facade
             return _processingEnv.BlockTree.ChainId;
         }
 
-        private UInt256 GetNonce(Hash256 stateRoot, Address address)
+        private UInt256 GetNonce(IWorldState worldState, Address address)
         {
-            return _processingEnv.StateReader.GetNonce(stateRoot, address);
+            return worldState.GetNonce(address);
         }
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
@@ -389,14 +392,14 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => _ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot)
+        public void RunTreeVisitor(BlockHeader header, ITreeVisitor treeVisitor, Hash256 stateRoot)
         {
-            _processingEnv.StateReader.RunTreeVisitor(treeVisitor, stateRoot);
+            _processingEnv.WorldStateManager.GetGlobalStateReader(header).RunTreeVisitor(treeVisitor, stateRoot);
         }
 
-        public bool HasStateForRoot(Hash256 stateRoot)
+        public bool HasStateForRoot(BlockHeader header)
         {
-            return _processingEnv.StateReader.HasStateForRoot(stateRoot);
+            return _processingEnv.WorldStateManager.GetGlobalStateReader(header).HasStateForRoot(header.StateRoot!);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)

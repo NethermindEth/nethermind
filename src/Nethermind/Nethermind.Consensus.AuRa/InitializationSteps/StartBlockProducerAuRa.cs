@@ -88,7 +88,7 @@ public class StartBlockProducerAuRa
             producerEnv.TxSource,
             producerEnv.ChainProcessor,
             blockProductionTrigger,
-            producerEnv.ReadOnlyStateProvider,
+            producerEnv.ReadOnlyStateManager,
             _api.Sealer,
             _api.BlockTree,
             _api.Timestamper,
@@ -120,7 +120,7 @@ public class StartBlockProducerAuRa
             new LocalTxFilter(_api.EngineSigner));
 
         _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                changeableTxProcessingEnv.StateProvider,
+                changeableTxProcessingEnv.WorldStateManager,
                 changeableTxProcessingEnv.TransactionProcessor,
                 changeableTxProcessingEnv.BlockTree,
                 _api.CreateReadOnlyTransactionProcessorSource(),
@@ -152,7 +152,7 @@ public class StartBlockProducerAuRa
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-            changeableTxProcessingEnv.StateProvider,
+            changeableTxProcessingEnv.WorldStateManager,
             _api.ReceiptStorage,
             _api.LogManager,
             changeableTxProcessingEnv.BlockTree,
@@ -204,7 +204,6 @@ public class StartBlockProducerAuRa
 
             return new TxPriorityTxSource(
                 _api.TxPool,
-                processingEnv.StateReader,
                 _api.LogManager,
                 txFilterPipeline,
                 whitelistContractDataStore,
@@ -233,19 +232,17 @@ public class StartBlockProducerAuRa
                     readOnlyBlockTree,
                     blockProcessor,
                     _api.BlockPreprocessor,
-                    txProcessingEnv.StateReader,
+                    txProcessingEnv.WorldStateManager,
                     _api.LogManager,
                     BlockchainProcessor.Options.NoReceipts);
 
-            OneTimeChainProcessor chainProcessor = new(
-                txProcessingEnv.StateProvider,
-                blockchainProcessor);
+            OneTimeChainProcessor chainProcessor = new(blockchainProcessor);
 
             return new BlockProducerEnv()
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = txProcessingEnv.StateProvider,
+                ReadOnlyStateManager = txProcessingEnv.WorldStateManager,
                 TxSource = CreateTxSourceForProducer(txProcessingEnv, additionalTxSource),
                 ReadOnlyTxProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource(),
             };
@@ -336,7 +333,7 @@ public class StartBlockProducerAuRa
         if (needSigner)
         {
             TxSealer transactionSealer = new TxSealer(_api.EngineSigner, _api.Timestamper);
-            txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _api.LogManager);
+            txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.WorldStateManager, _api.LogManager);
         }
 
         ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api);
