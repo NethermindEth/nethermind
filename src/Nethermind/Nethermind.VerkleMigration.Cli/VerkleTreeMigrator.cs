@@ -10,24 +10,40 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State;
 
-namespace Nethermind.VerkleTransition.Cli;
+namespace Nethermind.VerkleMigration.Cli;
 
 public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 {
     public readonly VerkleStateTree _verkleStateTree;
     private readonly IStateReader _stateReader;
-    private readonly IDb _preImageDb;
+    private readonly IDb? _preImageDb;
     private Address? _lastAddress;
     private Account? _lastAccount;
     private int _leafNodeCounter = 0;
 
+    private readonly byte[] _currentPrefix = [0, 0];
+    public event EventHandler<ProgressEventArgs>? _progressChanged;
+
+
+    public class ProgressEventArgs : EventArgs
+    {
+        public float Progress { get; }
+
+        public ProgressEventArgs(float progress)
+        {
+            Progress = progress;
+        }
+    }
+
+
     private const int StateTreeCommitThreshold = 1000;
 
-    public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb preImageDb)
+    public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb? preImageDb = null, EventHandler<ProgressEventArgs>? progressChanged = null)
     {
         _verkleStateTree = verkleStateTree;
         _stateReader = stateReader;
         _preImageDb = preImageDb;
+        _progressChanged = progressChanged;
     }
 
     public bool IsFullDbScan => true;
@@ -62,22 +78,30 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     public void VisitLeaf(in TreePathContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
         TreePath path = nodeContext.Path.Append(node.Key);
+        Span<byte> pathBytes = path.Path.BytesAsSpan;
+
+        if (pathBytes.Length >= 2)
+        {
+            if (_currentPrefix[0] != pathBytes[0] || _currentPrefix[1] != pathBytes[1])
+            {
+                _currentPrefix[0] = pathBytes[0];
+                _currentPrefix[1] = pathBytes[1];
+                var progress = CalculateProgress(_currentPrefix);
+                OnProgressChanged(progress);
+            }
+        }
 
         if (!trieVisitContext.IsStorage)
         {
-            byte[]? nodeValueBytes = node.Value.ToArray();
+            var nodeValueBytes = node.Value.ToArray();
             if (nodeValueBytes is null)
-            {
                 return;
-            }
             Account? account = decoder.Decode(new RlpStream(nodeValueBytes));
             if (account is null)
-            {
                 return;
-            }
 
             // Reconstruct the full keccak hash
-            byte[]? addressBytes = RetrievePreimage(path.Path.BytesAsSpan);
+            var addressBytes = RetrievePreimage(pathBytes);
             if (addressBytes is not null)
             {
                 var address = new Address(addressBytes);
@@ -85,7 +109,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
                 // Update code size if account has code
                 if (account.HasCode)
                 {
-                    byte[]? code = _stateReader.GetCode(account.CodeHash);
+                    var code = _stateReader.GetCode(account.CodeHash);
                     if (code is not null)
                     {
                         account.CodeSize = (UInt256)code.Length;
@@ -106,14 +130,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
                 return;
             }
             // Reconstruct the full keccak hash
-            byte[]? storageSlotBytes = RetrievePreimage(path.Path.BytesAsSpan);
+            var storageSlotBytes = RetrievePreimage(pathBytes);
             if (storageSlotBytes is null)
             {
-                Console.WriteLine($"Storage slot is null for node: {node} with key: {path.Path.BytesAsSpan.ToHexString()}");
+                Console.WriteLine($"Storage slot is null for node: {node} with key: {pathBytes.ToHexString()}");
                 return;
             }
             UInt256 storageSlot = new(storageSlotBytes);
-            byte[] storageValue = value.ToArray();
+            var storageValue = value.ToArray();
             MigrateAccountStorage(_lastAddress, storageSlot, storageValue);
         }
 
@@ -133,11 +157,16 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
     public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
 
-    private static byte[]? RetrievePreimage(Span<byte> key)
+    private byte[]? RetrievePreimage(Span<byte> key)
     {
-        // TODO: return first 20 bytes until preimage db is implemented
-        return key[..20].ToArray();
-        // return _preImageDb.Get(key);
+        if (_preImageDb is null)
+        {
+            return key[..20].ToArray();
+        }
+        else
+        {
+            return _preImageDb.Get(key);
+        }
     }
 
 
@@ -161,10 +190,23 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     {
         // Commit any remaining changes
         if (_leafNodeCounter > 0)
-        {
             _verkleStateTree.Commit();
-        }
         _verkleStateTree.CommitTree(blockNumber);
+
+        // Ensure we report 100% progress at the end
+        OnProgressChanged(100);
+
         Console.WriteLine($"Migration completed");
+    }
+
+    private static float CalculateProgress(byte[] prefix)
+    {
+        var prefixValue = prefix[0] << 8 | prefix[1];
+        return (float)prefixValue / 0xFFFF * 100;
+    }
+
+    protected virtual void OnProgressChanged(float progress)
+    {
+        _progressChanged?.Invoke(this, new ProgressEventArgs(progress));
     }
 }

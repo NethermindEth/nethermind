@@ -16,11 +16,11 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.VerkleTransition.Cli;
+using Nethermind.VerkleMigration.Cli;
 using Nethermind.Verkle.Tree.TreeStore;
 using NUnit.Framework;
 
-namespace Nethermind.VerkleTransition.Cli.Test;
+namespace Nethermind.VerkleMigration.Cli.Test;
 
 [TestFixture]
 public class MerkleToVerkleTransitionTests
