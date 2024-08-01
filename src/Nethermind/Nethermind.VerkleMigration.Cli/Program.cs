@@ -8,8 +8,8 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Verkle.Tree.TreeStore;
-using Nethermind.VerkleTransition.Cli;
 
 namespace Nethermind.VerkleMigration.Cli
 {
@@ -40,6 +40,15 @@ namespace Nethermind.VerkleMigration.Cli
 
             Console.WriteLine($"Merkle tree root hash: {api.WorldState!.StateRoot}");
             Console.WriteLine($"Verkle tree root hash: {migrator._verkleStateTree.StateRoot}");
+
+            TrieStats merkleTreeStats = api.StateReader.CollectStats(api.WorldState.StateRoot, api.DbProvider!.CodeDb, _logManager);
+            Console.WriteLine($"Merkle tree stats: {merkleTreeStats}");
+
+            // TrieStatsCollector collector = new(api.DbProvider!.CodeDb, _logManager);
+            // migrator._verkleStateTree.Accept(collector, migrator._verkleStateTree.StateRoot);
+            // TrieStats verkleTreeStats = collector.Stats;
+
+            // Console.WriteLine($"Verkle tree stats: {verkleTreeStats}");
         }
 
         static async Task<(INethermindApi, VerkleTreeMigrator)> SetupMigrator(string configPath)
@@ -57,7 +66,6 @@ namespace Nethermind.VerkleMigration.Cli
             config.DiagnosticMode = DiagnosticMode.VerifyTrie;
 
             IDbProvider dbProvider = VerkleDbFactory.InitDatabase(DbMode.PersistantDb, config.BaseDbPath);
-
             nethermindApi.DbProvider = dbProvider;
             nethermindApi.EthereumEcdsa = new EthereumEcdsa(nethermindApi.ChainSpec.ChainId, nethermindApi.LogManager);
 
@@ -78,11 +86,17 @@ namespace Nethermind.VerkleMigration.Cli
             // initialize verkle tree
             var verkleStore = new VerkleTreeStore<VerkleSyncCache>(nethermindApi.DbProvider, _logManager);
             var verkleStateTree = new VerkleStateTree(verkleStore, _logManager);
+
             // initialize migrator
-            IDb preimagesDb = dbProvider.GetDb<IDb>(DbNames.Preimages);
-            var migrator = new VerkleTreeMigrator(verkleStateTree, nethermindApi.StateReader!, preimagesDb);
+            var migrator = new VerkleTreeMigrator(verkleStateTree, nethermindApi.StateReader!, null, ProgressChangedHandler);
 
             return (nethermindApi, migrator);
+        }
+
+
+        static void ProgressChangedHandler(object? sender, VerkleTreeMigrator.ProgressEventArgs e)
+        {
+            Console.Write($"\rProgress: {e.Progress:F2}%");
         }
     }
 }
