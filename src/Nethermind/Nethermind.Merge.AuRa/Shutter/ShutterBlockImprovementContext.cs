@@ -114,7 +114,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
             try
             {
-                await shutterTxSignal.WaitForTransactions(slot);
+                await shutterTxSignal.WaitForTransactions(slot, source.Token);
             }
             catch (OperationCanceledException)
             {

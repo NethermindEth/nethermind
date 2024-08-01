@@ -13,6 +13,7 @@ using System;
 using Nethermind.Core.Caching;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
+using System.Threading;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -66,7 +67,7 @@ public class ShutterTxSource(
         return shutterTransactions.Value.Transactions;
     }
 
-    public Task WaitForTransactions(ulong slot)
+    public Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
     {
         lock (_syncObject)
         {
@@ -77,12 +78,10 @@ public class ShutterTxSource(
 
             return _keyWaitTasks.GetOrAdd(slot, _ =>
             {
-                // maximum wait allowed
-                Task.Delay(_keyWaitTimeout).ContinueWith(_ =>
-                {
+                cancellationToken.Register(() => {
                     _keyWaitTasks.TryRemove(slot, out TaskCompletionSource? removed);
                     removed?.TrySetCanceled();
-                }).Start();
+                });
 
                 return new();
             }).Task;
