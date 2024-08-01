@@ -86,8 +86,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         ImprovementTask = Task.Run(async () =>
         {
-            (ulong slot, ulong offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
-
             // set default block without waiting for Shutter keys
             Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
             if (result is not null)
@@ -95,13 +93,23 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
                 CurrentBestBlock = result;
             }
 
-            ulong waitTime = shutterConfig.MaxKeyDelay - offset;
+            (ulong slot, ushort offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
+
+            if (slotAndOffset is null)
+            {
+                // building for outdated slot
+                return CurrentBestBlock;
+            }
+
+            ulong slot = slotAndOffset.Value.slot;
+            ushort offset = slotAndOffset.Value.offset;
+            int waitTime = shutterConfig.MaxKeyDelay - offset;
             if (waitTime <= 0)
             {
                 return CurrentBestBlock;
             }
 
-            Task timeout = Task.Delay((int)waitTime, _cancellationTokenSource.Token);
+            Task timeout = Task.Delay(waitTime, _cancellationTokenSource.Token);
             Task signalOrTimeout = await Task.WhenAny(timeout, shutterTxSignal.WaitForTransactions(slot));
 
             if (signalOrTimeout == timeout)
