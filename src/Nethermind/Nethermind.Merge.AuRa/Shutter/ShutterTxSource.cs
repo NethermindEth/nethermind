@@ -46,10 +46,11 @@ public class ShutterTxSource(
             if (_logger.IsError) _logger.Error($"Not building Shutter block since payload attributes was null.");
         }
 
-        (ulong slot, short offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs, _slotLength);
+        (ulong slot, short offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs, _slotLength, _logger);
 
         if (slotAndOffset is null)
         {
+            if (_logger.IsWarn) _logger.Warn("Cannot build Shutter block for outdated slot.");
             // building for outdated slot
             return [];
         }

@@ -93,10 +93,14 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
                 CurrentBestBlock = result;
             }
 
-            (ulong slot, short offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
+            _logger.Info($"Built default block, now will try Shutter improvement.");
+
+            (ulong slot, short offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength, _logger);
+
 
             if (slotAndOffset is null)
             {
+                if (_logger.IsWarn) _logger.Warn("Cannot improve Shutter block for outdated slot.");
                 // building for outdated slot
                 return CurrentBestBlock;
             }
@@ -104,6 +108,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             ulong slot = slotAndOffset.Value.slot;
             short offset = slotAndOffset.Value.offset;
             int waitTime = shutterConfig.MaxKeyDelay - offset;
+            _logger.Info($"Waiting to improve Shutter block for {waitTime}ms for slot {slot}. Offset was {offset}");
             if (waitTime <= 0)
             {
                 return CurrentBestBlock;
@@ -118,6 +123,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             }
             catch (OperationCanceledException)
             {
+                _logger.Info($"Waiting for Shutter transactions was cancelled in slot {slot}.");
 
                 if (!_cancellationTokenSource.IsCancellationRequested && _logger.IsWarn)
                 {
@@ -126,6 +132,9 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
                 return CurrentBestBlock;
             }
+
+
+            _logger.Info($"Finished waiting for Shutter keys for slot {slot}.");
 
             result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
             if (result is not null)
