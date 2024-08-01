@@ -1,4 +1,4 @@
-using Nethermind.Core.Extensions;
+﻿using Nethermind.Core.Extensions;
 using Program.Generated;
 using static System.Console;
 using Nethermind.Serialization.Ssz;
