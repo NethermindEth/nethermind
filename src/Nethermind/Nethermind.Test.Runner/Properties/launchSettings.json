@@ -1,0 +1,20 @@
+{
+  "profiles": {
+    "State Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-i statetest1.json"
+    },
+    "Blockchain Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-b -i blockchainTest1.json"
+    },
+    "Regex State Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-i statetest1.json -f \"randomStatetestmartin-Wed_10_02_29-14338-([0-9]+)\""
+    },
+    "Regex Blockchain Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-b -i blockchainTest1.json -f \"GasUsedHigherThanBlockGasLimitButNotWithRefundsSuicideFirst_I([A-Za-z0-9]+)\""
+    }
+  }
+}

@@ -1,0 +1,25 @@
+name: Build solutions
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: [release, debug]
+        solution: [Nethermind, EthereumTests, Benchmarks]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: ${{ matrix.solution == 'EthereumTests' }}
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+      - name: Build ${{ matrix.solution }}.sln
+        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}

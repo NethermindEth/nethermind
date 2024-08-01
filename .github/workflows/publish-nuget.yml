@@ -1,0 +1,29 @@
+name: Publish NuGet packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Publish Nethermind.ReferenceAssemblies
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+      - name: Download Nethermind reference assemblies
+        run: |
+          json=$(curl -s ${{ github.event.release.assets_url }})
+          url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("ref-assemblies"))')
+          curl -sL $url -o refasm.zip
+          unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
+      - name: Submit package
+        working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
+        run: |
+          dotnet pack -c release
+          dotnet nuget push ../artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
