@@ -6,11 +6,11 @@ using System;
 namespace Nethermind.Merge.AuRa.Shutter;
 public static class ShutterHelpers
 {
-    public static (ulong slot, ushort slotOffset)? GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs, TimeSpan slotLength)
+    public static (ulong slot, short slotOffset)? GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs, TimeSpan slotLength)
     {
         ulong slotTimeSinceGenesis = slotTimestampMs - genesisTimestampMs;
         ulong buildingSlot = slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
-        ulong offset = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - slotTimestampMs;
-        return offset < (ulong)slotLength.TotalMilliseconds ? (buildingSlot, (ushort)offset) : null;
+        long offset = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)slotTimestampMs;
+        return Math.Abs(offset) < (long)slotLength.TotalMilliseconds ? (buildingSlot, (short)offset) : null;
     }
 }

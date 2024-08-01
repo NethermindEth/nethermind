@@ -93,7 +93,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
                 CurrentBestBlock = result;
             }
 
-            (ulong slot, ushort offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
+            (ulong slot, short offset)? slotAndOffset = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
 
             if (slotAndOffset is null)
             {
@@ -102,7 +102,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             }
 
             ulong slot = slotAndOffset.Value.slot;
-            ushort offset = slotAndOffset.Value.offset;
+            short offset = slotAndOffset.Value.offset;
             int waitTime = shutterConfig.MaxKeyDelay - offset;
             if (waitTime <= 0)
             {
