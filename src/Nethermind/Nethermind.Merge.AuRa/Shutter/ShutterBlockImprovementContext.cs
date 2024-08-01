@@ -93,8 +93,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
                 CurrentBestBlock = result;
             }
 
-            _logger.Info($"Built default block, now will try Shutter improvement.");
-
             ulong slot;
             short offset;
             try
@@ -109,7 +107,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             }
 
             int waitTime = shutterConfig.MaxKeyDelay - offset;
-            _logger.Info($"Waiting to improve Shutter block for {waitTime}ms for slot {slot}. Offset was {offset}");
+            _logger.Info($"Started Shutter block improvement for slot {slot} at offest {offset}ms. Awaiting keys for up to {waitTime}ms.");
             if (waitTime <= 0)
             {
                 return CurrentBestBlock;
