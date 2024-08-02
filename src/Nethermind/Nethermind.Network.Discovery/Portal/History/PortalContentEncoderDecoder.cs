@@ -23,7 +23,6 @@ public class HistoryNetworkEncoderDecoder
 
     public BlockBody DecodeBody(byte[] payload)
     {
-        File.WriteAllBytes("/home/amirul/thething.dat", payload);
         // TODO: Need to know if post or pre shanghai.
         // And for that need to get the header first.
         PortalBlockBodyPostShanghai body = SlowSSZ.Deserialize<PortalBlockBodyPostShanghai>(payload);
@@ -34,6 +33,28 @@ public class HistoryNetworkEncoderDecoder
 
         // TODO: Widthrawals
         return new BlockBody(transactions, Array.Empty<BlockHeader>());
+    }
+
+    public byte[]? EncodeHeader(BlockHeader header)
+    {
+        byte[]? headerBytes = _headerDecoder.Encode(header).Bytes;
+
+        // TODO: Proof
+        return SlowSSZ.Serialize(new PortalBlockHeaderWithProof()
+        {
+            Header = headerBytes
+        });
+    }
+
+    public byte[]? EncodeBlockBody(BlockBody blockBody)
+    {
+        byte[][] transactionBytes = blockBody.Transactions.Select((tx) => _txDecoder.Encode(tx).Bytes).ToArray();
+
+        // TODO: Uncles widthrawals
+        return SlowSSZ.Serialize(new PortalBlockBodyPostShanghai()
+        {
+            Transactions = transactionBytes
+        });
     }
 
     /*

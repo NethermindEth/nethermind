@@ -34,18 +34,19 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         _logManager = logManager;
     }
 
-    public ushort InitiateUtpStreamSender(IEnr sender, byte[] valuePayload)
-    {
-        throw new NotImplementedException();
-    }
-
-
     public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
     {
         (UTPPacketHeader header, int headerSize) = UTPPacketHeader.DecodePacket(talkReqMessage.Request);
         if (_logger.IsTrace) _logger.Trace($"Received utp message from :{header.ConnectionId} {header}");
 
-        if (!_utpStreams.TryGetValue((sender, header.ConnectionId), out UTPStream? stream))
+        ushort connectionId = header.ConnectionId;
+        if (header.PacketType == UTPPacketType.StSyn)
+        {
+            // Note, the StSyn is one, less than other connection id.
+            connectionId++;
+        }
+
+        if (!_utpStreams.TryGetValue((sender, connectionId), out UTPStream? stream))
         {
             if (_logger.IsDebug) _logger.Debug($"Unknown connection id :{header.ConnectionId}. Resetting...");
             await SendReset(sender, header.ConnectionId);
@@ -74,11 +75,53 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         return SendUtpPacket(receiver, resetHeader, ReadOnlySpan<byte>.Empty, CancellationToken.None);
     }
 
-    public async Task<byte[]?> DownloadContentFromUtp(IEnr nodeId, ushort connectionId, CancellationToken token)
+    public ushort InitiateUtpStreamSender(IEnr nodeId, byte[] valuePayload)
     {
-        byte[] asByte = new byte[2];
+        ushort peerConnectionId = (ushort)Random.Shared.Next();
+
+        if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {peerConnectionId}");
+
+        // This is the connection id that the other side will use to send ack to us.
+        // EXCEPT for Syn. I don't make the rules ok.
+        ushort ourConnectionId = (ushort)(peerConnectionId + 1);
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
+        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
+        {
+            throw new Exception("Unable to open utp stream. Connection id may already be used.");
+        }
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                // So we open a task that push the data.
+                // But we cancel it after 10 second.
+                // The peer will need to download it within 10 second.
+                using CancellationTokenSource cts = new CancellationTokenSource();
+                cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+                MemoryStream outputStream = new MemoryStream(valuePayload);
+                await stream.HandleHandshake(cts.Token);
+                await stream.WriteStream(outputStream, cts.Token);
+                return outputStream.ToArray();
+            }
+            finally
+            {
+                _utpStreams.Remove((nodeId, peerConnectionId), out _);
+            }
+        });
 
         // TODO: Ah man... where did this go wrong.
+        Span<byte> asByte = stackalloc byte[2];
+        BinaryPrimitives.WriteUInt16LittleEndian(asByte, peerConnectionId);
+        peerConnectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
+        return peerConnectionId;
+    }
+
+    public async Task<byte[]?> DownloadContentFromUtp(IEnr nodeId, ushort connectionId, CancellationToken token)
+    {
+        // TODO: Ah man... where did this go wrong.
+        byte[] asByte = new byte[2];
         BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
         connectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
 

@@ -2,36 +2,53 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.Enr;
-using Lantern.Discv5.Enr.Identity.V4;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
-public class PortalHistoryNetwork
+public class PortalHistoryNetwork: IPortalContentNetwork.Store
 {
     private readonly IPortalContentNetwork _contentNetwork;
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
     private readonly ILogger _logger;
+    private readonly IBlockTree _blockTree;
 
-    public PortalHistoryNetwork(IPortalContentNetworkFactory portalContentNetworkFactory, ILogManager logManager, byte[] protocolId, IEnr[] bootNodes)
+    public PortalHistoryNetwork(IPortalContentNetworkFactory portalContentNetworkFactory, IBlockTree blockTree, ILogManager logManager, byte[] protocolId, IEnr[] bootNodes)
     {
-        _contentNetwork = portalContentNetworkFactory.Create(protocolId, new NoopStore());
+        _contentNetwork = portalContentNetworkFactory.Create(protocolId, this);
         foreach (IEnr bootNode in bootNodes)
         {
             _contentNetwork.AddOrRefresh(bootNode);
         }
 
+        _blockTree = blockTree;
         _logger = logManager.GetClassLogger<PortalHistoryNetwork>();
     }
 
-    private class NoopStore : IPortalContentNetwork.Store
+    public byte[]? GetContent(byte[] contentKey)
     {
-        public byte[]? GetContent(byte[] contentKey)
+        ContentKey key = SlowSSZ.Deserialize<ContentKey>(contentKey);
+
+        if (key.HeaderKey != null)
         {
-            return null;
+            BlockHeader? header = _blockTree.FindHeader(key.HeaderKey!);
+            if (header == null) return null;
+
+            return _encoderDecoder.EncodeHeader(header!);
         }
+
+        if (key.BodyKey != null)
+        {
+            Block? block = _blockTree.FindBlock(key.BodyKey!);
+            if (block == null) return null;
+
+            return _encoderDecoder.EncodeBlockBody(block.Body!);
+        }
+
+        throw new Exception($"unsupported content {contentKey}");
     }
 
     private async Task<BlockHeader?> LookupBlockHeader(ValueHash256 hash, CancellationToken token)
