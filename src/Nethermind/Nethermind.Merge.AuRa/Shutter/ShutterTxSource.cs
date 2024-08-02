@@ -14,6 +14,7 @@ using Nethermind.Core.Caching;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -47,12 +48,11 @@ public class ShutterTxSource(
         ulong buildingSlot;
         try
         {
-            (buildingSlot, short offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs);
+            (buildingSlot, long offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs);
         }
         catch (ShutterHelpers.ShutterSlotCalulationException e)
         {
-
-            if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            if (_logger.IsDebug) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             return [];
         }
 
@@ -68,38 +68,37 @@ public class ShutterTxSource(
         return shutterTransactions.Value.Transactions;
     }
 
-    public Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
+    public async Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
     {
+        Task? waitTask = null;
         lock (_syncObject)
         {
             if (_transactionCache.Contains(slot))
             {
-                _logger.Info($"Found transactions in cache for slot {slot}.");
-                return Task.CompletedTask;
+                return;
             }
 
-            return _keyWaitTasks.GetOrAdd(slot, slot =>
-            {
-                _logger.Info($"Started wait task for slot {slot}");
-
-                cancellationToken.Register(() =>
-                {
-                    _logger.Info($"Token for slot {slot} was cancelled");
-                    _keyWaitTasks.TryRemove(slot, out TaskCompletionSource? cancelledWaitTask);
-                    cancelledWaitTask?.TrySetException(new OperationCanceledException());
-                });
-
-                return new();
-            }).Task;
+            waitTask = _keyWaitTasks.GetOrAdd(slot, slot => new()).Task;
         }
+
+        using (cancellationToken.Register(() => CancelWaitForTransactions(slot)))
+        {
+            await waitTask;
+        }
+    }
+
+    private void CancelWaitForTransactions(ulong slot)
+    {
+        _keyWaitTasks.Remove(slot, out TaskCompletionSource? cancelledWaitTask);
+        cancelledWaitTask?.TrySetException(new OperationCanceledException());
     }
 
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
-
         lock (_syncObject)
         {
+            _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
+
             if (_highestLoadedSlot < slot)
             {
                 _highestLoadedSlot = slot;

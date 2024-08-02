@@ -94,7 +94,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             }
 
             ulong slot;
-            short offset;
+            long offset;
             try
             {
                 (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs);
@@ -106,14 +106,17 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
                 return CurrentBestBlock;
             }
 
-            int waitTime = shutterConfig.MaxKeyDelay - offset;
-            _logger.Info($"Started Shutter block improvement for slot {slot} at offest {offset}ms. Awaiting keys for up to {waitTime}ms.");
+            long waitTime = (long)shutterConfig.MaxKeyDelay - offset;
             if (waitTime <= 0)
             {
+                if (_logger.IsWarn) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offest of {offset}ms is too late.");
                 return CurrentBestBlock;
             }
+            waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
 
-            using var timeoutSource = new CancellationTokenSource(waitTime);
+            _logger.Info($"Awaiting Shutter decryption keys for {slot} at offest {offset}ms. Timeout in {waitTime}ms...");
+
+            using var timeoutSource = new CancellationTokenSource((int)waitTime);
             using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
 
             try
@@ -122,8 +125,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             }
             catch (OperationCanceledException)
             {
-                _logger.Info($"Waiting for Shutter transactions was cancelled in slot {slot}.");
-
                 if (!_cancellationTokenSource.IsCancellationRequested && _logger.IsWarn)
                 {
                     _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
@@ -131,9 +132,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
                 return CurrentBestBlock;
             }
-
-
-            _logger.Info($"Finished waiting for Shutter keys for slot {slot}.");
 
             result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
             if (result is not null)

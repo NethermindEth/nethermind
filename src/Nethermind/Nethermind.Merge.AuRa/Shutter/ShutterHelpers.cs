@@ -17,17 +17,10 @@ public static class ShutterHelpers
     public static ulong GetSlotTimestampMs(ulong slot, ulong genesisTimestampMs)
         => genesisTimestampMs + (ulong)SlotLength.TotalMilliseconds * slot;
 
-    public static short GetCurrentOffsetMs(ulong slot, ulong genesisTimestampMs, ulong? slotTimestampMs = null)
-    {
-        long offset = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)(slotTimestampMs ?? GetSlotTimestampMs(slot, genesisTimestampMs));
-        if (Math.Abs(offset) >= (long)SlotLength.TotalMilliseconds)
-        {
-            throw new ShutterSlotCalulationException($"Time offset {offset}ms into building slot {slot} was out of valid range.");
-        }
-        return (short)offset;
-    }
+    public static long GetCurrentOffsetMs(ulong slot, ulong genesisTimestampMs, ulong? slotTimestampMs = null)
+        => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)(slotTimestampMs ?? GetSlotTimestampMs(slot, genesisTimestampMs));
 
-    public static (ulong slot, short slotOffset) GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs)
+    public static (ulong slot, long slotOffset) GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs)
     {
         long slotTimeSinceGenesis = (long)slotTimestampMs - (long)genesisTimestampMs;
         if (slotTimeSinceGenesis < 0)
@@ -36,7 +29,7 @@ public static class ShutterHelpers
         }
 
         ulong buildingSlot = (ulong)slotTimeSinceGenesis / (ulong)SlotLength.TotalMilliseconds;
-        short offset = GetCurrentOffsetMs(buildingSlot, genesisTimestampMs, slotTimestampMs);
+        long offset = GetCurrentOffsetMs(buildingSlot, genesisTimestampMs, slotTimestampMs);
 
         return (buildingSlot, offset);
     }
