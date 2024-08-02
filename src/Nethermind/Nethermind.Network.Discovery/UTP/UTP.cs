@@ -79,14 +79,16 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
         switch (packageHeader.PacketType)
         {
             case UTPPacketType.StSyn:
-                _seq_nr = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
-                _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
-                _state = ConnectionState.CsSynRecv; // From spec: c.state
-                _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
+                if (_state == ConnectionState.CsUnInitialized)
+                {
+                    _seq_nr = (ushort)Random.Shared.Next(); // From spec: c.seq_nr
+                    _receiverAck_nr = new AckInfo(packageHeader.SeqNumber, null); // From spec: c.ack_nr
+                    _state = ConnectionState.CsSynRecv; // From spec: c.state
+                    _utpSynchronizer.AwakeReceiverToStarSynchronization(packageHeader); //must start ReadStream loop
+                }
                 break;
 
             case UTPPacketType.StState:
-
                 if (_state == ConnectionState.CsSynSent)
                 {
                     // The seqNumber need to Subtract 1.
@@ -180,6 +182,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
     public async Task HandleHandshake(CancellationToken token)
     {
         await _utpSynchronizer.WaitTillSenderSendsST_SYNAndReceiverReceiveIt();
+        await SendStatePacket(token);
     }
 
     public async Task ReadStream(Stream output, CancellationToken token)

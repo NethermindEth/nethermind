@@ -15,7 +15,7 @@ public static class ComponentConfiguration
         services.AddSingleton<IPacketHandlerFactory, CustomPacketHandlerFactory>();
         services.AddSingleton<IRoutingTable, TransientRoutingTable>();
         services.AddSingleton<ISessionManager, SessionManagerNormalizer>();
-        services.AddSingleton<ITalkReqTransport, LanternTalkReqTransport>();
+        services.AddSingleton<IRawTalkReqSender, LanternTalkReqSender>();
         services.AddSingleton<IEnrProvider, LanternIEnrProvider>();
     }
 }

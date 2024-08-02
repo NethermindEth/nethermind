@@ -49,10 +49,12 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         if (!_utpStreams.TryGetValue((sender, connectionId), out UTPStream? stream))
         {
             if (_logger.IsDebug) _logger.Debug($"Unknown connection id :{header.ConnectionId}. Resetting...");
+            Console.Error.WriteLine($"Unknown con id {header}");
             await SendReset(sender, header.ConnectionId);
             return null;
         }
 
+        Console.Error.WriteLine($"Handle {header}");
         await stream.ReceiveMessage(header, talkReqMessage.Request.AsSpan()[headerSize..], CancellationToken.None);
         return Array.Empty<byte>();
     }

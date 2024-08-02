@@ -10,6 +10,7 @@ public class ComponentConfiguration
     public static void Configure(IServiceCollection services)
     {
         services.AddSingleton<IPortalContentNetworkFactory, PortalContentNetworkFactory>();
+        services.AddSingleton<ITalkReqTransport, TalkReqTransport>();
         services.AddSingleton<IUtpManager, TalkReqUtpManager>();
     }
 }

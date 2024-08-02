@@ -33,7 +33,8 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
     private readonly IPacketBuilder _packetBuilder;
     private readonly IPacketProcessor _packetProcessor;
     private readonly IMessageDecoder _messageDecoder;
-    private readonly ITalkReqTransport _talkReqTransport;
+    private readonly ITalkReqTransport _rawTalkReqResponder;
+    private IRequestManager _requestManager;
 
     public HacklyLanternPacketHandler(ISessionManager sessionManager,
         IRoutingTable routingTable,
@@ -43,6 +44,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         IPacketProcessor packetProcessor,
         IMessageDecoder messageDecoder,
         ITalkReqTransport talkReqTransport,
+        IRequestManager requestManager,
         ILoggerFactory loggerFactory
     ) : base(sessionManager, routingTable, messageResponder, udpConnection, packetBuilder, packetProcessor, loggerFactory)
     {
@@ -55,7 +57,8 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
         _packetProcessor = packetProcessor;
 
         _messageDecoder = messageDecoder;
-        _talkReqTransport = talkReqTransport;
+        _rawTalkReqResponder = talkReqTransport;
+        _requestManager = requestManager;
     }
 
     public override PacketType PacketType => PacketType.Ordinary;
@@ -128,12 +131,15 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
             var decodedMessage = _messageDecoder.DecodeMessage(message);
             if (decodedMessage is TalkReqMessage talkReqMessage)
             {
-                return await _talkReqTransport.OnMsgReq(enr, talkReqMessage);
+                return await _rawTalkReqResponder.OnTalkReq(enr, talkReqMessage);
             }
             else
             {
                 var talkResp = (TalkRespMessage) decodedMessage;
-                _talkReqTransport.OnTalkResp(enr, talkResp);
+                _rawTalkReqResponder.OnTalkResp(enr, talkResp);
+
+                // So that it wont disconnect the peer
+                _requestManager.MarkRequestAsFulfilled(decodedMessage.RequestId);
                 return null;
             }
         }
