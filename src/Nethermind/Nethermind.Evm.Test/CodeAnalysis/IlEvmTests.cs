@@ -411,6 +411,26 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .JUMP(31)
                 .Done);
 
+            yield return (Instruction.LOG0, Prepare.EvmCode
+                .Log(0, 0)
+                .Done);
+
+            yield return (Instruction.LOG1, Prepare.EvmCode
+                .Log(0, 0, [TestItem.KeccakA])
+                .Done);
+
+            yield return (Instruction.LOG2, Prepare.EvmCode
+                .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakB])
+                .Done);
+
+            yield return (Instruction.LOG3, Prepare.EvmCode
+                .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB])
+                .Done);
+
+            yield return (Instruction.LOG4, Prepare.EvmCode
+                .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakB])
+                .Done);
+
             yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
                 .PushData(23)
                 .PushData(7)
