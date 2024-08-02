@@ -62,12 +62,13 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _refreshInterval = refreshInterval;
 
         _peerFailures = new LruCache<TNode, int>(1024, "peer failure");
+        // Note: It does not have to be this much. In practice, only like 16 of these bucket get populated.
         _buckets = new KBucket<TNode>[Hash256XORUtils.MaxDistance + 1];
         for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
         {
             _buckets[i] = new KBucket<TNode>(kSize);
         }
-        _bucketTree = new KBucketTree<TNode, TContentKey>(kSize, 256, _nodeHashProvider);
+        _bucketTree = new KBucketTree<TNode, TContentKey>(kSize, _currentNodeIdAsHash, _nodeHashProvider);
     }
 
     public void UseTreeImplementation(bool useTree)
@@ -141,6 +142,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
                     if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}, {e}");
                 }
 
+                // In any case, if a pong happened, AddOrRefresh would have been called and _isRefreshing would
+                // remove the entry.
                 if (_isRefreshing.TryRemove(toRefresh, out _))
                 {
                     if (_useTreeImplementation)
@@ -149,6 +152,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
                     }
                     else
                     {
+                        // Well... basically its not responding.
                         GetBucket(toRefresh).RemoveAndReplace(toRefresh);
                     }
                 }
@@ -163,6 +167,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     private bool SameAsSelf(TNode node)
     {
+        // TODO: Put in distance calculator.. probably
         return EqualityComparer<TNode>.Default.Equals(node, _currentNodeId);
     }
 
@@ -360,8 +365,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         while (true)
         {
             await Bootstrap(token);
-            
-
+            // The main loop can potentially be parallelized with multiple concurrent lookups to improve efficiency.
 
             await Task.Delay(_refreshInterval, token);
         }
@@ -374,6 +378,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
         token.ThrowIfCancellationRequested();
 
+        // Refreshes all bucket. one by one. That is not empty.
+        // A refresh means to do a k-nearest node lookup for a random hash for that particular bucket.
         if (_useTreeImplementation)
         {
             for (var i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
@@ -504,7 +510,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             new FindValueResponse<TNode, TContent>(
                 false,
                 default,
-                IterateNeighbour(_nodeHashProvider.GetHash(contentKey)).Take(_kSize).ToArray()
+                IterateNeighbour(_nodeHashProvider.GetHash(contentKey)).Take(_kSize).ToArray() // TODO: pass an n so that its possible to skip creating array
             ));
     }
 
