@@ -5,7 +5,7 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://holesky.beaconstate.ethstaker.cc/",
     "timeout": 180,
-    "agent": "g6-standard-8"
+    "agent": "g6-standard-6"
   },
   {
     "network": "chiado",
@@ -37,6 +37,6 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://mainnet.checkpoint.sigp.io",
     "timeout": 180,
-    "agent": "g6-standard-8"
+    "agent": "g6-standard-16"
   }
 ]
