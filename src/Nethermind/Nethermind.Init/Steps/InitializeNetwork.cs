@@ -42,6 +42,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 using System.Linq;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Init.Steps;
 

@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using System;
 
-namespace Nethermind.Synchronization;
+namespace Nethermind.JsonRpc.Modules;
 
 public class ImportProgressChangedArgs : EventArgs
 {

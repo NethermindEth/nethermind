@@ -7,6 +7,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Synchronization;
 using NSubstitute;
 using System.IO.Abstractions;

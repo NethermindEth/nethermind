@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Era1;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Era1;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using System;
@@ -26,6 +27,7 @@ public class AdminEraService : IAdminEraService
     private readonly IBlockTree _blockTree;
     private readonly IEraImporter _eraImporter;
     private readonly IEraExporter _eraExporter;
+    private readonly IEthSyncingInfo _ethSyncingInfo;
     private readonly IProcessExitToken _processExit;
     private readonly IFileSystem _fileSystem;
     private int _canEnterImport = 1;
@@ -36,6 +38,7 @@ public class AdminEraService : IAdminEraService
         IBlockTree blockTree,
         IEraImporter eraImporter,
         IEraExporter eraExporter,
+        IEthSyncingInfo ethSyncingInfo,
         IProcessExitToken processExit,
         IFileSystem fileSystem,
         ILogManager logManager)
@@ -43,6 +46,7 @@ public class AdminEraService : IAdminEraService
         _blockTree = blockTree;
         this._eraImporter = eraImporter;
         _eraExporter = eraExporter;
+        this._ethSyncingInfo = ethSyncingInfo;
         this._processExit = processExit;
         this._fileSystem = fileSystem;
         _logger = logManager.GetClassLogger();
@@ -90,6 +94,37 @@ public class AdminEraService : IAdminEraService
             return ResultWrapper<string>.Fail("An export job is already running.");
         }
     }
+    public ResultWrapper<string> ImportHistory(string source, string accumulatorFile, int epochFrom, int epochTo)
+    {
+        //TODO sanitize destination path
+        if (epochFrom < 0 || epochTo < 0)
+            return ResultWrapper<string>.Fail("Epoch number cannot be negative.");
+        if (epochTo < epochFrom)
+            return ResultWrapper<string>.Fail($"Invalid range {epochFrom}-{epochTo}.");
+        if (!_fileSystem.Directory.Exists(source))
+            //TODO consider if this is too sensitive information
+            return ResultWrapper<string>.Fail($"The directory does not exists.");
+        if(!_fileSystem.File.Exists(accumulatorFile))
+            return ResultWrapper<string>.Fail($"The file does not exists.");
+
+        //TODO check if node is syncing
+        if (_ethSyncingInfo.IsSyncing())
+            return ResultWrapper<string>.Fail($"Import cannot be started while node is syncing.");
+
+        if (Interlocked.Exchange(ref _canEnterImport, 0) == 1)
+        {
+            StartImportTask(source, accumulatorFile, epochFrom, epochTo).ContinueWith((_) =>
+            {
+                Interlocked.Exchange(ref _canEnterImport, 1);
+            });
+            //TODO better message?
+            return ResultWrapper<string>.Success("Started export task");
+        }
+        else
+        {
+            return ResultWrapper<string>.Fail("An export job is already running.");
+        }
+    }
 
     private async Task StartExportTask(string destination, long from, long to)
     {
@@ -124,6 +159,41 @@ public class AdminEraService : IAdminEraService
             _eraExporter.ExportProgress -= LogExportProgress;
         }
     }
+
+    private async Task StartImportTask(string source, string accumulatorFile, long from, long to)
+    {
+        try
+        {
+            _eraImporter.ImportProgressChanged += LogImportProgress;
+
+            if (_logger.IsInfo) _logger.Info($"Starting history import from {from} to {to}");
+            await _eraImporter.Import(
+                source,
+                from,
+                to,
+                accumulatorFile,
+                _processExit.Token);
+            if (_logger.IsInfo) _logger.Info($"Finished history import from {from} to {to}");
+        }
+        catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
+        {
+            _logger.Error($"A running import job was cancelled. Imported archives from '{source}' might be in an incomplete state.");
+        }
+        catch (EraException e)
+        {
+            _logger.Error("Import error", e);
+        }
+        catch (Exception e)
+        {
+            _logger.Error("Import error", e);
+            throw;
+        }
+        finally
+        {
+            _eraImporter.ImportProgressChanged -= LogImportProgress;
+        }
+    }
+
 
     public ResultWrapper<string> VerifyHistory(string eraSource, string accumulatorFile)
     {
@@ -176,6 +246,11 @@ public class AdminEraService : IAdminEraService
         }
     }
 
+    private void LogImportProgress(object sender, ImportProgressChangedArgs args)
+    {
+        if (_logger.IsInfo)
+            _logger.Info($"Import progress: | {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  {args.EpochProcessed}/{args.TotalEpochs} epochs  |  elapsed {args.Elapsed:hh\\:mm\\:ss}");
+    }
     private void LogExportProgress(object sender, ExportProgressArgs args)
     {
         if (_logger.IsInfo)

@@ -19,7 +19,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Core.Extensions;
 using System.IO;
 
-namespace Nethermind.Synchronization;
+namespace Nethermind.JsonRpc.Modules;
 public class EraImporter : IEraImporter
 {
     private const int MergeBlock = 15537393;
@@ -62,26 +62,22 @@ public class EraImporter : IEraImporter
         string[] eraFiles = EraReader.GetAllEraFiles(src, _networkName, _fileSystem).ToArray();
 
         EraStore eraStore = new(eraFiles, _fileSystem);
-
-        long headNumber = _blockTree.Head.Number;
-
+        
         if (!string.IsNullOrEmpty(accumulatorFile))
         {
             await VerifyEraFiles(src, accumulatorFile, cancellation);
         }
-        await ImportInternal(src, start, true, true, false, cancellation);
+        await ImportInternal(src, start, false, cancellation);
     }
 
     public Task ImportAsArchiveSync(string src, CancellationToken cancellation)
     {
-        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, true, false, true, cancellation);
+        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, true, cancellation);
     }
 
     private async Task ImportInternal(
         string src,
         long startNumber,
-        bool insertBodies,
-        bool insertReceipts,
         bool processBlock,
         CancellationToken cancellation)
     {
@@ -121,29 +117,17 @@ public class EraImporter : IEraImporter
                     continue;
                 }
 
-                if (insertBodies)
+                if (b.IsBodyMissing)
                 {
-                    if (b.IsBodyMissing)
-                    {
-                        throw new EraImportException($"Unexpected block without a body found in '{eraStore.GetReaderPath(i)}'. Archive might be corrupted.");
-                    }
-                    string msg;
-                    if (!_blockValidator.ValidateSuggestedBlock(b, out msg))
-                    {
-                        throw new EraImportException($"Era1 archive '{eraStore.GetReaderPath(i)}' contains an invalid block {b.ToString(Block.Format.Short)}: {msg}");
-                    }
+                    throw new EraImportException($"Unexpected block without a body found in '{eraStore.GetReaderPath(i)}'. Archive might be corrupted.");
                 }
 
                 cancellation.ThrowIfCancellationRequested();
                 if (processBlock)
                     await SuggestBlock(b, r, processBlock);
                 else
-                    InsertBlock(b,r);
+                    InsertBlockAndReceipts(b,r);
 
-                if (insertReceipts)
-                {
-                    ValidateReceipts(b, r);
-                }
                 blocksProcessed++;
                 txProcessed += b.Transactions.Length;
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
@@ -158,9 +142,10 @@ public class EraImporter : IEraImporter
         ImportProgressChanged?.Invoke(this, new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
     }
 
-    private void InsertBlock(Block b, TxReceipt[] r)
+    private void InsertBlockAndReceipts(Block b, TxReceipt[] r)
     {
-        _blockTree.Insert(b, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+        _blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+        _receiptStorage.Insert(b, r);
     }
 
     private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock)

@@ -4,7 +4,7 @@
 using System;
 using System.Runtime.Serialization;
 
-namespace Nethermind.Synchronization;
+namespace Nethermind.JsonRpc.Modules;
 public class EraImportException : Exception
 {
     public EraImportException()
