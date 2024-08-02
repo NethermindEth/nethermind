@@ -74,8 +74,9 @@ public class ShutterTxSource(
     {
         lock (_syncObject)
         {
-            if (_transactionCache.Contains(slot) || _highestLoadedSlot <= slot)
+            if (_transactionCache.Contains(slot))
             {
+                _logger.Info($"Found transactions in cache for slot {slot}.");
                 return Task.CompletedTask;
             }
 
