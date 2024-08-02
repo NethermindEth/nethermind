@@ -26,9 +26,7 @@ public class ShutterTxSource(
 {
     private readonly LruCache<ulong, ShutterTransactions?> _transactionCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly ulong _genesisTimestampMs = 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
-    private readonly TimeSpan _slotLength = TimeSpan.FromSeconds(5);
-    private readonly TimeSpan _keyWaitTimeout = TimeSpan.FromSeconds(10);
+    private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private ulong _highestLoadedSlot = 0;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
     private readonly object _syncObject = new();
@@ -49,7 +47,7 @@ public class ShutterTxSource(
         ulong buildingSlot;
         try
         {
-            (buildingSlot, short offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs, _slotLength);
+            (buildingSlot, short offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs);
         }
         catch (ShutterHelpers.ShutterSlotCalulationException e)
         {

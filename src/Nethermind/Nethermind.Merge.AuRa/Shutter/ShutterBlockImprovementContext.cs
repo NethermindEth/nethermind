@@ -97,7 +97,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             short offset;
             try
             {
-                (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs, slotLength);
+                (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs);
             }
             catch (ShutterHelpers.ShutterSlotCalulationException e)
             {

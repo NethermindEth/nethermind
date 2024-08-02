@@ -19,6 +19,7 @@ using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
 using System.Runtime.CompilerServices;
+using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -38,13 +39,15 @@ public class ShutterTxLoader(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
+    private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         Block? head = readOnlyBlockTree.Head;
 
         List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot}...");
+        short offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
+        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot} at offset {offset}ms from slot start...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
