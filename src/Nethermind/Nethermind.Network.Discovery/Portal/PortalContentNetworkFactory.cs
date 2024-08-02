@@ -18,40 +18,35 @@ namespace Nethermind.Network.Discovery.Portal;
 /// This class basically, wire all those things up into an IPortalContentNetwork.
 /// The specific interpretation of the key and content is handle at higher level, see `PortalHistoryNetwork` for history network.
 /// </summary>
-/// <param name="discv5"></param>
-/// <param name="identityVerifier"></param>
-/// <param name="enrFactory"></param>
+/// <param name="enrProvider"></param>
 /// <param name="talkReqTransport"></param>
 /// <param name="utpManager"></param>
 /// <param name="logManager"></param>
 public class PortalContentNetworkFactory(
-    IDiscv5Protocol discv5,
-    IIdentityVerifier identityVerifier,
-    IEnrFactory enrFactory,
+    IEnrProvider enrProvider,
     ITalkReqTransport talkReqTransport,
     IUtpManager utpManager,
     ILogManager logManager)
     : IPortalContentNetworkFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PortalContentNetworkFactory>();
-    private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
+    private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
 
     public IPortalContentNetwork Create(byte[] protocol, IPortalContentNetwork.Store store)
     {
-        var messageSender = new KademliaTalkReqMessageSender(protocol, talkReqTransport, discv5, enrFactory,
-            identityVerifier, logManager);
+        var messageSender = new KademliaTalkReqMessageSender(protocol, talkReqTransport, enrProvider, logManager);
 
         var kademlia = new Kademlia<IEnr, byte[], LookupContentResult>(
             _nodeHashProvider,
             new PortalContentStoreAdapter(store),
             messageSender,
             logManager,
-            discv5.SelfEnr,
+            enrProvider.SelfEnr,
             20,
             3,
             TimeSpan.FromHours(1)
         );
-        talkReqTransport.RegisterProtocol(protocol, new KademliaTalkReqHandler(kademlia, discv5.SelfEnr, utpManager));
+        talkReqTransport.RegisterProtocol(protocol, new KademliaTalkReqHandler(kademlia, enrProvider.SelfEnr, utpManager));
 
         return new PortalContentNetwork(utpManager, kademlia, messageSender, _logger);
     }

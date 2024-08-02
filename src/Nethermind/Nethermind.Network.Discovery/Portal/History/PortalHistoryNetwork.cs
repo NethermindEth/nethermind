@@ -16,8 +16,13 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
 
-    public PortalHistoryNetwork(IPortalContentNetworkFactory portalContentNetworkFactory, IBlockTree blockTree, ILogManager logManager, byte[] protocolId, IEnr[] bootNodes)
-    {
+    public PortalHistoryNetwork(
+        IPortalContentNetworkFactory portalContentNetworkFactory,
+        IBlockTree blockTree,
+        ILogManager logManager,
+        byte[] protocolId,
+        IEnr[] bootNodes
+    ) {
         _contentNetwork = portalContentNetworkFactory.Create(protocolId, this);
         foreach (IEnr bootNode in bootNodes)
         {

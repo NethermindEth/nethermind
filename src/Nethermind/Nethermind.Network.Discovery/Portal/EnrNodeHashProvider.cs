@@ -10,6 +10,12 @@ namespace Nethermind.Network.Discovery.Portal;
 
 public class EnrNodeHashProvider : INodeHashProvider<IEnr, byte[]>
 {
+    public static EnrNodeHashProvider Instance = new EnrNodeHashProvider();
+
+    private EnrNodeHashProvider()
+    {
+    }
+
     public ValueHash256 GetHash(IEnr node)
     {
         return new ValueHash256(node.NodeId);

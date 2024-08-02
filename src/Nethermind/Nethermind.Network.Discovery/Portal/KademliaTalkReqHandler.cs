@@ -21,7 +21,7 @@ public class KademliaTalkReqHandler(
     IUtpManager utpManager
 ) : ITalkReqProtocolHandler
 {
-    private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
+    private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
     public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
     {
         MessageUnion message = SlowSSZ.Deserialize<MessageUnion>(talkReqMessage.Request);

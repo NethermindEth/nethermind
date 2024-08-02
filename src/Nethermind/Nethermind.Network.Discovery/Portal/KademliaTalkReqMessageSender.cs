@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.Enr;
-using Lantern.Discv5.Enr.Identity;
-using Lantern.Discv5.WireProtocol;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -17,20 +15,16 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 /// <param name="protocol"></param>
 /// <param name="talkReqTransport"></param>
-/// <param name="discv5"></param>
-/// <param name="enrFactory"></param>
-/// <param name="identityVerifier"></param>
+/// <param name="enrProvider"></param>
 /// <param name="logManager"></param>
 public class KademliaTalkReqMessageSender(
     byte[] protocol,
     ITalkReqTransport talkReqTransport,
-    IDiscv5Protocol discv5,
-    IEnrFactory enrFactory,
-    IIdentityVerifier identityVerifier,
+    IEnrProvider enrProvider,
     ILogManager logManager
 ) : IMessageSender<IEnr, byte[], LookupContentResult>
 {
-    private readonly EnrNodeHashProvider _nodeHashProvider = new EnrNodeHashProvider();
+    private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
     private ILogger _logger = logManager.GetClassLogger<KademliaTalkReqMessageSender>();
 
     public async Task Ping(IEnr receiver, CancellationToken token)
@@ -40,7 +34,7 @@ public class KademliaTalkReqMessageSender(
             {
                 Ping = new Ping()
                 {
-                    EnrSeq = discv5.SelfEnr.SequenceNumber,
+                    EnrSeq = enrProvider.SelfEnr.SequenceNumber,
                     CustomPayload = Array.Empty<byte>()
                 }
             });
@@ -97,7 +91,7 @@ public class KademliaTalkReqMessageSender(
 
         for (var i = 0; i < message.Enrs.Length; i++)
         {
-            enrs[i] = enrFactory.CreateFromBytes(message.Enrs[i], identityVerifier);
+            enrs[i] = enrProvider.Decode(message.Enrs[i]);
         }
 
         return enrs;
@@ -130,7 +124,7 @@ public class KademliaTalkReqMessageSender(
             IEnr[] enrs = new IEnr[message.Enrs!.Length];
             for (var i = 0; i < message.Enrs.Length; i++)
             {
-                enrs[i] = enrFactory.CreateFromBytes(message.Enrs[i], identityVerifier);
+                enrs[i] = enrProvider.Decode(message.Enrs[i]);
             }
 
             return new FindValueResponse<IEnr, LookupContentResult>(false, null, enrs);

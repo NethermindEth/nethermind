@@ -121,6 +121,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 services.AddSingleton<ISessionManager, SessionManagerNormalizer>();
                 services.AddSingleton<IUtpManager, TalkReqUtpManager>();
                 services.AddSingleton<ITalkReqTransport, LanternTalkReqTransport>();
+                services.AddSingleton<IEnrProvider, LanternIEnrProvider>();
                 services.AddSingleton<ILogManager>(logManager);
             });
 
@@ -161,7 +162,7 @@ public class DiscoveryV5App : IDiscoveryApp
         }).ToArray();
 
         var historyNetworkProtocolId = Bytes.FromHexString("0x500B");
-        _historyNetwork = new PortalHistoryNetwork(portalContentNetworkFactory, logManager, historyNetworkProtocolId, historyNetworkBootnodes);
+        _historyNetwork = new PortalHistoryNetwork(portalContentNetworkFactory, _api.BlockTree!, logManager, historyNetworkProtocolId, historyNetworkBootnodes);
 
     }
 
