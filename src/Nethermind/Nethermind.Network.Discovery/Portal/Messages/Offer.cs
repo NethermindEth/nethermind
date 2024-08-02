@@ -3,7 +3,7 @@
 
 namespace Nethermind.Network.Discovery.Portal.Messages;
 
-public class FindNodes
+public class Offer
 {
-    public ushort[] Distances { get; set; } = null!;
+    public byte[][] ContentKeys { get; set; } = Array.Empty<byte[]>();
 }

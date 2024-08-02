@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections;
 using System.Reflection;
-using System.Reflection.Metadata;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Ssz;
 using NonBlocking;
 
-namespace Nethermind.Network.Discovery.Portal;
+namespace Nethermind.Network.Discovery.Portal.Messages;
 
 public interface IUnion {}
 
@@ -72,6 +73,13 @@ public class SlowSSZ
         if (obj is byte[] asBytes)
         {
             return asBytes;
+        }
+
+        if (obj is BitArray asBitArray)
+        {
+            byte[] buffer = new byte[(asBitArray.Length + 8) / 8];
+            Ssz.EncodeList(buffer.AsSpan(), asBitArray);
+            return buffer;
         }
 
         if (obj is IUnion)
@@ -243,6 +251,11 @@ public class SlowSSZ
         if (targetType == typeof(byte[]))
         {
             return span.ToArray();
+        }
+
+        if (targetType == typeof(BitArray))
+        {
+            return Ssz.DecodeBitlist(span);
         }
 
         if (targetType.IsAssignableTo(typeof(IUnion)))
@@ -448,6 +461,11 @@ public class SlowSSZ
         if (targetType.IsArray)
         {
             return -1; // Well... I guess we can have some sort of attribute to specify its fixed size.
+        }
+
+        if (targetType == typeof(BitArray))
+        {
+            return -1;
         }
 
         if (_fixedSizeCache.TryGetValue(targetType, out int size))

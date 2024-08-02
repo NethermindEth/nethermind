@@ -7,7 +7,7 @@ namespace Nethermind.Network.Discovery.Portal;
 
 public interface IUtpManager
 {
-    ushort InitiateUtpStreamSender(IEnr sender, byte[] valuePayload);
     int MaxContentByteSize { get; }
-    Task<byte[]?> DownloadContentFromUtp(IEnr node, ushort valueConnectionId, CancellationToken token);
+    Task ReadContentFromUtp(IEnr nodeId, bool isInitiator, ushort connectionId, Stream output, CancellationToken token);
+    Task WriteContentToUtp(IEnr nodeId, bool isInitiator, ushort connectionId, Stream input, CancellationToken token);
 }

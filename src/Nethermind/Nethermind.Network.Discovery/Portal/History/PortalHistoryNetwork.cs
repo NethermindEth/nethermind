@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
@@ -54,6 +55,16 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
         }
 
         throw new Exception($"unsupported content {contentKey}");
+    }
+
+    public bool ShouldAcceptOffer(byte[] offerContentKey)
+    {
+        return false;
+    }
+
+    public void Store(byte[] contentKey, byte[] content)
+    {
+        throw new NotImplementedException();
     }
 
     private async Task<BlockHeader?> LookupBlockHeader(ValueHash256 hash, CancellationToken token)

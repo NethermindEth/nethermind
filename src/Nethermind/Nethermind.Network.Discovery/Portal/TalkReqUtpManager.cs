@@ -79,18 +79,7 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
 
     public ushort InitiateUtpStreamSender(IEnr nodeId, byte[] valuePayload)
     {
-        ushort peerConnectionId = (ushort)Random.Shared.Next();
-
-        if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {peerConnectionId}");
-
-        // This is the connection id that the other side will use to send ack to us.
-        // EXCEPT for Syn. I don't make the rules ok.
-        ushort ourConnectionId = (ushort)(peerConnectionId + 1);
-        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
-        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
-        {
-            throw new Exception("Unable to open utp stream. Connection id may already be used.");
-        }
+        ushort connectionId = (ushort)Random.Shared.Next();
 
         Task.Run(async () =>
         {
@@ -102,25 +91,68 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
                 using CancellationTokenSource cts = new CancellationTokenSource();
                 cts.CancelAfter(TimeSpan.FromSeconds(10));
 
-                MemoryStream outputStream = new MemoryStream(valuePayload);
-                await stream.HandleHandshake(cts.Token);
-                await stream.WriteStream(outputStream, cts.Token);
-                return outputStream.ToArray();
+                MemoryStream inputStream = new MemoryStream(valuePayload);
+                await WriteContentToUtp(nodeId, false, connectionId, inputStream, cts.Token);
             }
             finally
             {
-                _utpStreams.Remove((nodeId, peerConnectionId), out _);
+                _utpStreams.Remove((nodeId, connectionId), out _);
             }
         });
 
-        // TODO: Ah man... where did this go wrong.
         Span<byte> asByte = stackalloc byte[2];
-        BinaryPrimitives.WriteUInt16LittleEndian(asByte, peerConnectionId);
-        peerConnectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
-        return peerConnectionId;
+        BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
+        connectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
+        return connectionId;
     }
 
-    public async Task<byte[]?> DownloadContentFromUtp(IEnr nodeId, ushort connectionId, CancellationToken token)
+    public async Task WriteContentToUtp(IEnr nodeId, bool isInitiator, ushort connectionId, Stream input, CancellationToken token)
+    {
+        // TODO: Ah man... where did this go wrong.
+        byte[] asByte = new byte[2];
+        BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
+        connectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
+
+        if (_logger.IsDebug) _logger.Debug($"Listing to UTP upload request from {nodeId} with connection id {connectionId}");
+
+        ushort peerConnectionId = 0;
+        ushort ourConnectionId = 0;
+
+        if (isInitiator)
+        {
+            peerConnectionId = (ushort)(connectionId + 1);
+            ourConnectionId = connectionId;
+        }
+        else
+        {
+            peerConnectionId = connectionId;
+            ourConnectionId = (ushort)(connectionId + 1);
+        }
+
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
+        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
+        {
+            throw new Exception("Unable to open utp stream. Connection id may already be used.");
+        }
+
+        try
+        {
+            // So we open a task that push the data.
+            // But we cancel it after 10 second.
+            // The peer will need to download it within 10 second.
+            using CancellationTokenSource cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            await stream.HandleHandshake(cts.Token);
+            await stream.WriteStream(input, cts.Token);
+        }
+        finally
+        {
+            _utpStreams.Remove((nodeId, peerConnectionId), out _);
+        }
+    }
+
+    public async Task ReadContentFromUtp(IEnr nodeId, bool isInitiator, ushort connectionId, Stream output, CancellationToken token)
     {
         // TODO: Ah man... where did this go wrong.
         byte[] asByte = new byte[2];
@@ -129,25 +161,63 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
 
         if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {connectionId}");
 
-        // Now, UTP have this strange connection id mechanism where the initiator will initiate with starting connection id
-        // BUT after the Syn, it send with that connection id + 1.
-        ushort otherSideConnectionId = (ushort)(connectionId + 1);
-        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), otherSideConnectionId, _logManager);
-        if (!_utpStreams.TryAdd((nodeId, (ushort)(connectionId)), stream))
+        ushort peerConnectionId = 0;
+        ushort ourConnectionId = 0;
+
+        if (isInitiator)
+        {
+            peerConnectionId = (ushort)(connectionId + 1);
+            ourConnectionId = connectionId;
+        }
+        else
+        {
+            peerConnectionId = connectionId;
+            ourConnectionId = (ushort)(connectionId + 1);
+        }
+
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
+        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
         {
             throw new Exception("Unable to open utp stream. Connection id may already be used.");
         }
 
         try
         {
-            MemoryStream outputStream = new MemoryStream();
-            await stream.InitiateHandshake(token, synConnectionId: connectionId);
-            await stream.ReadStream(outputStream, token);
-            return outputStream.ToArray();
+            if (isInitiator)
+            {
+                await stream.InitiateHandshake(token, synConnectionId: ourConnectionId);
+            }
+            else
+            {
+                await stream.HandleHandshake(token);
+            }
+            await stream.ReadStream(output, token);
         }
         finally
         {
-            _utpStreams.Remove((nodeId, connectionId), out _);
+            _utpStreams.Remove((nodeId, peerConnectionId), out _);
+        }
+    }
+
+    public async Task AcceptContentFromUtp(IEnr nodeId, ushort peerConnectionId, Stream output, CancellationToken token)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {peerConnectionId}");
+
+        ushort ourConnectionId = (ushort)(peerConnectionId + 1);
+        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
+        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
+        {
+            throw new Exception("Unable to open utp stream. Connection id may already be used.");
+        }
+
+        try
+        {
+            await stream.HandleHandshake(token);
+            await stream.ReadStream(output, token);
+        }
+        finally
+        {
+            _utpStreams.Remove((nodeId, peerConnectionId), out _);
         }
     }
 

@@ -1,4 +1,5 @@
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 

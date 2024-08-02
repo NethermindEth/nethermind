@@ -29,6 +29,7 @@ public class KademliaTalkReqMessageSender(
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
+        // TODO: update distance
         byte[] pingBytes =
             SlowSSZ.Serialize(new MessageUnion()
             {

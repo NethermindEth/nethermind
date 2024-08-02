@@ -35,10 +35,10 @@ public class PortalContentNetworkFactory(
     public IPortalContentNetwork Create(byte[] protocol, IPortalContentNetwork.Store store)
     {
         var messageSender = new KademliaTalkReqMessageSender(protocol, talkReqTransport, enrProvider, logManager);
-
+        var kadstore = new PortalContentStoreAdapter(store);
         var kademlia = new Kademlia<IEnr, byte[], LookupContentResult>(
             _nodeHashProvider,
-            new PortalContentStoreAdapter(store),
+            kadstore,
             messageSender,
             logManager,
             enrProvider.SelfEnr,
@@ -46,7 +46,7 @@ public class PortalContentNetworkFactory(
             3,
             TimeSpan.FromHours(1)
         );
-        talkReqTransport.RegisterProtocol(protocol, new KademliaTalkReqHandler(kademlia, enrProvider.SelfEnr, utpManager));
+        talkReqTransport.RegisterProtocol(protocol, new KademliaTalkReqHandler(store, kademlia, enrProvider.SelfEnr, utpManager));
 
         return new PortalContentNetwork(utpManager, kademlia, messageSender, _logger);
     }
@@ -96,7 +96,9 @@ public class PortalContentNetworkFactory(
 
             Debug.Assert(result.ConnectionId != null);
 
-            var asBytes = await utpManager.DownloadContentFromUtp(result.NodeId, result.ConnectionId.Value, token);
+            MemoryStream stream = new MemoryStream();
+            await utpManager.ReadContentFromUtp(result.NodeId, true, result.ConnectionId.Value, stream, token);
+            var asBytes = stream.ToArray();
             logger.Info($"UTP download for {key.ToHexString()} took {sw.Elapsed}");
             return asBytes;
         }
@@ -112,7 +114,9 @@ public class PortalContentNetworkFactory(
             var value = content.value!;
             if (value.Payload != null) return value.Payload;
 
-            var asBytes = await utpManager.DownloadContentFromUtp(node, value.ConnectionId!.Value, token);
+            MemoryStream stream = new MemoryStream();
+            await utpManager.ReadContentFromUtp(node, true, value.ConnectionId!.Value, stream, token);
+            var asBytes = stream.ToArray();
             return asBytes;
         }
 

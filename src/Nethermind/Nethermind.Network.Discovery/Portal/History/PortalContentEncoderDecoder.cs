@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.Discovery.Portal.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Portal.History;

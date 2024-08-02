@@ -35,7 +35,7 @@ public class ContentNetworkScenarioTests
     public async Task TestSmallContentTransfer()
     {
         using CancellationTokenSource cts = new CancellationTokenSource();
-        // cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
 
         Scenario scenario = new Scenario();
 
@@ -197,6 +197,16 @@ public class ContentNetworkScenarioTests
             public byte[]? GetContent(byte[] contentKey)
             {
                 return _contents.GetValueOrDefault(contentKey);
+            }
+
+            public bool ShouldAcceptOffer(byte[] offerContentKey)
+            {
+                return false;
+            }
+
+            public void Store(byte[] contentKey, byte[] content)
+            {
+                _contents[contentKey] = content;
             }
 
             public void Set(byte[] contentId, byte[] value)

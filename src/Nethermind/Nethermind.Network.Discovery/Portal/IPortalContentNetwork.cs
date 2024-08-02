@@ -23,5 +23,7 @@ public interface IPortalContentNetwork
     public interface Store
     {
         public byte[]? GetContent(byte[] contentKey);
+        bool ShouldAcceptOffer(byte[] offerContentKey);
+        void Store(byte[] contentKey, byte[] content);
     }
 }

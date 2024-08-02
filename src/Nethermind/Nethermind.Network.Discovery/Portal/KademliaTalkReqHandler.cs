@@ -1,11 +1,16 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Collections;
+using System.IO.Pipelines;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Network.Discovery.UTP;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -16,37 +21,46 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="selfEnr"></param>
 /// <param name="utpManager"></param>
 public class KademliaTalkReqHandler(
+    IPortalContentNetwork.Store store,
     IMessageReceiver<IEnr, byte[], LookupContentResult> kad,
     IEnr selfEnr,
     IUtpManager utpManager
 ) : ITalkReqProtocolHandler
 {
+    private readonly TimeSpan OfferAcceptTimeout = TimeSpan.FromSeconds(10);
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
+
     public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
     {
         MessageUnion message = SlowSSZ.Deserialize<MessageUnion>(talkReqMessage.Request);
 
         if (message.Ping is { } ping)
         {
-            return await HandlePing(sender, kad, ping);
+            return await HandlePing(sender, ping);
         }
 
         if (message.FindNodes is { } nodes)
         {
-            return await HandleFindNode(sender, nodes, kad);
+            return await HandleFindNode(sender, nodes);
         }
 
         if (message.FindContent is { } findContent)
         {
-            return await HandleFindContent(sender, kad, findContent);
+            return await HandleFindContent(sender, findContent);
+        }
+
+        if (message.Offer is { } offer)
+        {
+            return await HandleOffer(sender, offer);
         }
 
         return null;
     }
 
-    private static async Task<byte[]?> HandlePing(IEnr sender, IMessageReceiver<IEnr, byte[], LookupContentResult> kad, Ping ping)
+    private async Task<byte[]?> HandlePing(IEnr sender, Ping ping)
     {
         // Still need to call kad since the ping is also used to populate bucket.
+        // TODO: update distance
         await kad.Ping(sender, default);
 
         return SlowSSZ.Serialize(new MessageUnion()
@@ -59,7 +73,7 @@ public class KademliaTalkReqHandler(
         });
     }
 
-    private async Task<byte[]?> HandleFindNode(IEnr sender, FindNodes nodes, IMessageReceiver<IEnr, byte[], LookupContentResult> kad)
+    private async Task<byte[]?> HandleFindNode(IEnr sender, FindNodes nodes)
     {
         // So....
         // This is weird. For some reason, discv5/overlay network uses distance instead of target node like
@@ -82,7 +96,7 @@ public class KademliaTalkReqHandler(
         return SlowSSZ.Serialize(response);
     }
 
-    private async Task<byte[]?> HandleFindContent(IEnr sender, IMessageReceiver<IEnr, byte[], LookupContentResult> kad, FindContent findContent)
+    private async Task<byte[]?> HandleFindContent(IEnr sender, FindContent findContent)
     {
         var findValueResult = await kad.FindValue(sender, findContent.ContentKey, CancellationToken.None);
         if (findValueResult.hasValue)
@@ -93,7 +107,7 @@ public class KademliaTalkReqHandler(
             LookupContentResult value = findValueResult.value!;
             if (value.Payload!.Length>  utpManager.MaxContentByteSize)
             {
-                value.ConnectionId = utpManager.InitiateUtpStreamSender(sender, value.Payload);
+                value.ConnectionId = InitiateUtpStreamSender(sender, value.Payload);
                 value.Payload = null;
             }
 
@@ -117,5 +131,75 @@ public class KademliaTalkReqHandler(
         };
 
         return SlowSSZ.Serialize(response);
+    }
+
+    private ushort InitiateUtpStreamSender(IEnr nodeId, byte[] valuePayload)
+    {
+        ushort connectionId = (ushort)Random.Shared.Next();
+
+        Task.Run(async () =>
+        {
+            // So we open a task that push the data.
+            // But we cancel it after 10 second.
+            // The peer will need to download it within 10 second.
+            using CancellationTokenSource cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            MemoryStream inputStream = new MemoryStream(valuePayload);
+            await utpManager.WriteContentToUtp(nodeId, false, connectionId, inputStream, cts.Token);
+        });
+
+        return connectionId;
+    }
+
+    private Task<byte[]?> HandleOffer(IEnr sender, Offer offer)
+    {
+        if (offer.ContentKeys.Length == 0) return Task.FromResult<byte[]?>(null);
+        BitArray toAccept = new BitArray(offer.ContentKeys.Length);
+        bool hasAccept = false;
+        for (var i = 0; i < toAccept.Count; i++)
+        {
+            if (store.ShouldAcceptOffer(offer.ContentKeys[i]))
+            {
+                toAccept[i] = true;
+                hasAccept = true;
+            }
+        }
+
+        if (!hasAccept) return Task.FromResult<byte[]?>(null);
+
+        ushort connectionId = (ushort)Random.Shared.Next();
+        _ = RunOfferAccept(sender, offer, toAccept, connectionId);
+
+        return Task.FromResult<byte[]?>(SlowSSZ.Serialize(new MessageUnion()
+        {
+            Accept = new Accept()
+            {
+                ConnectionId = connectionId,
+                AcceptedBits = toAccept
+            }
+        }));
+    }
+
+    private async Task RunOfferAccept(IEnr enr, Offer offer, BitArray accepted, ushort connectionId)
+    {
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(OfferAcceptTimeout);
+        var token =  cts.Token;
+
+        MemoryStream stream = new MemoryStream(); // TODO: Must it wait for all of it to download?
+        await utpManager.ReadContentFromUtp(enr, false, connectionId, stream, token);
+
+        for (var i = 0; i < offer.ContentKeys.Length; i++)
+        {
+            var contentKey = offer.ContentKeys[i];
+            if (!accepted[i]) continue;
+
+            ulong length = stream.ReadLEB128Unsigned();
+            byte[] buffer = new byte[length];
+            await stream.ReadAsync(buffer, token);
+
+            store.Store(contentKey, buffer);
+        }
     }
 }

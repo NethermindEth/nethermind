@@ -1,4 +1,4 @@
-namespace Nethermind.Network.Discovery.Portal;
+namespace Nethermind.Network.Discovery.Portal.Messages;
 
 public class Ping
 {
