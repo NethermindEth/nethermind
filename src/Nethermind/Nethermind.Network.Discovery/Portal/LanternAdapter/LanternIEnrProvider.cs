@@ -5,7 +5,7 @@ using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Identity;
 using Lantern.Discv5.WireProtocol;
 
-namespace Nethermind.Network.Discovery.Portal;
+namespace Nethermind.Network.Discovery.Portal.LanternAdapter;
 
 public class LanternIEnrProvider(
     IDiscv5Protocol discv5,

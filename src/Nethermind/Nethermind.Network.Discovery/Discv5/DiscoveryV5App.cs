@@ -22,8 +22,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Reflection;
 using DotNetty.Transport.Channels.Sockets;
-using Lantern.Discv5.WireProtocol.Packet.Handlers;
-using Lantern.Discv5.WireProtocol.Packet.Types;
 using Nethermind.Core;
 using Nethermind.Api;
 using Nethermind.Network.Discovery.Discv5;
@@ -74,7 +72,8 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IServiceCollection services = new ServiceCollection()
            .AddSingleton(sessionOptions.Verifier)
-           .AddSingleton(sessionOptions.Signer);
+           .AddSingleton(sessionOptions.Signer)
+           .AddSingleton(logManager);
 
         EnrEntryRegistry registry = new EnrEntryRegistry();
         EnrFactory enrFactory = new(registry);
@@ -115,14 +114,8 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithServices((components) =>
             {
                 NettyDiscoveryV5Handler.Register(components);
-                services.AddSingleton<IPacketHandlerFactory, CustomPacketHandlerFactory>();
-                services.AddSingleton<IRoutingTable, TransientRoutingTable>();
-                services.AddSingleton<IPortalContentNetworkFactory, PortalContentNetworkFactory>();
-                services.AddSingleton<ISessionManager, SessionManagerNormalizer>();
-                services.AddSingleton<IUtpManager, TalkReqUtpManager>();
-                services.AddSingleton<ITalkReqTransport, LanternTalkReqTransport>();
-                services.AddSingleton<IEnrProvider, LanternIEnrProvider>();
-                services.AddSingleton<ILogManager>(logManager);
+                Portal.ComponentConfiguration.Configure(components);
+                Portal.LanternAdapter.ComponentConfiguration.Configure(components);
             });
 
         _discv5Protocol = discv5Builder.Build();
@@ -167,26 +160,6 @@ public class DiscoveryV5App : IDiscoveryApp
     }
 
     private PortalHistoryNetwork _historyNetwork;
-
-    public class CustomPacketHandlerFactory(IServiceProvider serviceProvider) : IPacketHandlerFactory
-    {
-        private readonly Dictionary<PacketType, Type> _handlerTypes = new()
-        {
-            { PacketType.Ordinary, typeof(HacklyLanternPacketHandler) },
-            { PacketType.WhoAreYou, typeof(WhoAreYouPacketHandler) },
-            { PacketType.Handshake, typeof(HandshakePacketHandler) },
-        };
-
-        public IPacketHandler GetPacketHandler(PacketType packetType)
-        {
-            if (_handlerTypes.TryGetValue(packetType, out var handlerType))
-            {
-                return (IPacketHandler)ActivatorUtilities.CreateInstance(serviceProvider, handlerType);
-            }
-
-            throw new InvalidOperationException($"No handler found for packet type {packetType}");
-        }
-    }
 
     private void NodeAddedByDiscovery(IEnr newEntry)
     {

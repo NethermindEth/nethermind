@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Network.Discovery.Portal;
+namespace Nethermind.Network.Discovery.Portal.LanternAdapter;
 
 /// <summary>
 /// So, because of how the session works, if the routing table does not record the Enr because its full,

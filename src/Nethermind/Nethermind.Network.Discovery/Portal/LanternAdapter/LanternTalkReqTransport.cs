@@ -14,7 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using NonBlocking;
 
-namespace Nethermind.Network.Discovery.Portal;
+namespace Nethermind.Network.Discovery.Portal.LanternAdapter;
 
 /// <summary>
 /// Translate whatever is in Lantern into an ITalkReqTransport.

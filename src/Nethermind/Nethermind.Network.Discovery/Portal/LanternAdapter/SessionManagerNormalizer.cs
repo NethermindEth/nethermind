@@ -6,7 +6,7 @@ using System.Net.Sockets;
 using Lantern.Discv5.WireProtocol.Session;
 using Microsoft.Extensions.Logging;
 
-namespace Nethermind.Network.Discovery.Portal;
+namespace Nethermind.Network.Discovery.Portal.LanternAdapter;
 
 /// <summary>
 /// So the original implementation of the session manager will have problem where the received decoded

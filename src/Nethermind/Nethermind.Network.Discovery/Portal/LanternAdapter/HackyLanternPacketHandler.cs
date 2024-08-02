@@ -18,7 +18,7 @@ using Lantern.Discv5.WireProtocol.Table;
 using Lantern.Discv5.WireProtocol.Utility;
 using Microsoft.Extensions.Logging;
 
-namespace Nethermind.Network.Discovery.Portal;
+namespace Nethermind.Network.Discovery.Portal.LanternAdapter;
 
 /// <summary>
 /// A hacky implementation of OrdinaryPacketHandler so that the sender of the TalkReq can be forwarded.
