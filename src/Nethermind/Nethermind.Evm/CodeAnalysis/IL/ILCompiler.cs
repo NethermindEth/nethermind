@@ -124,6 +124,7 @@ internal class ILCompiler
         Label jumpTable = method.DefineLabel(); // jump table
         Label ret = method.DefineLabel();
 
+
         Dictionary<int, Label> jumpDestinations = new();
 
 
@@ -164,7 +165,7 @@ internal class ILCompiler
             // if gas is not available, branch to out of gas
             method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-            // else emit 
+            // else emit
             switch (op.Operation)
             {
                 case Instruction.STOP:
@@ -1291,7 +1292,7 @@ internal class ILCompiler
                     method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     // update gas
-                    using (var temp = method.DeclareLocal<long>())
+                    using (var cost = method.DeclareLocal<long>())
                     {
                         method.LoadLocal(gasAvailable);
                         method.LoadConstant(zeroXLogTopicPlusLog);
@@ -1302,12 +1303,12 @@ internal class ILCompiler
                         method.Multiply();
                         method.Add();
                         method.Convert<long>();
-                        method.StoreLocal(temp);
-                        method.LoadLocal(temp);
+                        method.StoreLocal(cost);
+                        method.LoadLocal(cost);
                         method.CompareGreaterThan(); //  gasCost > gasAvailable
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
                         method.LoadLocal(gasAvailable);
-                        method.LoadLocal(temp);
+                        method.LoadLocal(cost);
                         method.Subtract();
                         method.StoreLocal(gasAvailable); // gasAvailable -= gasCost
                     }
@@ -1382,7 +1383,7 @@ internal class ILCompiler
                     method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     // update gas
-                    using (var temp = method.DeclareLocal<long>())
+                    using (var cost = method.DeclareLocal<long>())
                     {
                         method.LoadLocal(gasAvailable);
                         method.LoadConstant(oneXLogTopicPlusLog); //0 * GasCostOf.LogTopic + GasCostOf.Log
@@ -1393,13 +1394,13 @@ internal class ILCompiler
                         method.Multiply();
                         method.Add();
                         method.Convert<long>();
-                        method.StoreLocal(temp);
-                        method.LoadLocal(temp);
+                        method.StoreLocal(cost);
+                        method.LoadLocal(cost);
                         method.CompareGreaterThan(); //  gasCost > gasAvailable
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadLocal(gasAvailable);
-                        method.LoadLocal(temp);
+                        method.LoadLocal(cost);
                         method.Subtract();
                         method.StoreLocal(gasAvailable); // gasAvailable -= gasCost
                     }
@@ -1497,7 +1498,7 @@ internal class ILCompiler
                     method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     // update gas
-                    using (var temp = method.DeclareLocal<long>())
+                    using (var cost = method.DeclareLocal<long>())
                     {
                         method.LoadLocal(gasAvailable);
                         switch ( ((int)op.Operation - (int)Instruction.LOG2) + 2 ) {
@@ -1513,12 +1514,12 @@ internal class ILCompiler
                         method.Multiply();
                         method.Add();
                         method.Convert<long>();
-                        method.StoreLocal(temp);
-                        method.LoadLocal(temp);
+                        method.StoreLocal(cost);
+                        method.LoadLocal(cost);
                         method.CompareGreaterThan(); //  gasCost > gasAvailable
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
                         method.LoadLocal(gasAvailable);
-                        method.LoadLocal(temp);
+                        method.LoadLocal(cost);
                         method.Subtract();
                         method.StoreLocal(gasAvailable); // gasAvailable -= gasCost
                     }
