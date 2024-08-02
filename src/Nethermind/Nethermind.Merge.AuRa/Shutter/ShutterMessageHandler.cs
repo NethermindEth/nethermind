@@ -9,7 +9,6 @@ using Nethermind.Crypto;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Google.Protobuf;
-using Microsoft.IdentityModel.Tokens;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 

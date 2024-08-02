@@ -61,7 +61,7 @@ public interface IShutterConfig : IConfig
         DefaultValue = "10000000")]
     ulong EncryptedGasLimit { get; set; }
 
-    [ConfigItem(Description = "Amount of milliseconds into the slot, where block building should be attempted.",
+    [ConfigItem(Description = "Maximum amount of milliseconds into the slot to wait for Shutter keys before building block.",
         DefaultValue = "1666")]
-    ulong ExtraBuildWindow { get; }
+    ushort MaxKeyDelay { get; }
 }

@@ -57,6 +57,7 @@ public class GnosisSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
     public ForkActivation[] TransitionActivations { get; }
+    public static TimeSpan SlotLength => TimeSpan.FromSeconds(5);
 
     public static GnosisSpecProvider Instance { get; } = new();
 }

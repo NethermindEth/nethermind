@@ -38,19 +38,21 @@ public class ShutterTxLoader(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
+    private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         Block? head = readOnlyBlockTree.Head;
 
         List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot}...");
+        long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
+        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
+        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot} at time {offsetText} slot start...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
         if (_logger.IsDebug && transactions.Length > 0) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
-        // question for reviewers: what is correct thing to do here if head is null?
         IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
         Transaction[] filtered = FilterTransactions(transactions, releaseSpec).ToArray();
 

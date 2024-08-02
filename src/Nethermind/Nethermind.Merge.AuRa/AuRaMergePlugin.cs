@@ -25,8 +25,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
-using Microsoft.IdentityModel.Tokens;
-using System.Linq;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -85,6 +83,22 @@ namespace Nethermind.Merge.AuRa
             return base.InitBlockProducer(consensusPlugin, txSource);
         }
 
+        public new Task InitRpcModules()
+        {
+            IBlockImprovementContextFactory? blockImprovementContextFactory = null;
+            if (_shutterConfig!.Enabled)
+            {
+                blockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
+                    _api.BlockProducer!,
+                    _shutterTxSource!,
+                    _shutterConfig,
+                    _api.SpecProvider!,
+                    _api.LogManager);
+            }
+            base.InitRpcModulesInternal(blockImprovementContextFactory, false);
+            return Task.CompletedTask;
+        }
+
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new AuRaPostMergeBlockProducerFactory(
                 _api.SpecProvider!,
@@ -93,14 +107,14 @@ namespace Nethermind.Merge.AuRa
                 _blocksConfig,
                 _api.LogManager);
 
+        ShutterTxSource? _shutterTxSource = null;
+
         protected override BlockProducerEnv CreateBlockProducerEnv()
         {
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
             Logging.ILogger logger = _api.LogManager.GetClassLogger();
-
-            ShutterTxSource? shutterTxSource = null;
 
             if (_shutterConfig!.Enabled)
             {
@@ -139,14 +153,15 @@ namespace Nethermind.Merge.AuRa
                 };
                 _api.BlockTree!.NewHeadBlock += _eonUpdateHandler;
 
-                shutterTxSource = new ShutterTxSource(new ShutterTxLoader(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager), _shutterConfig, _api.SpecProvider!, _api.LogManager);
+                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
+                _shutterTxSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
-                ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, shutterTxSource, shutterEon, _api.LogManager);
+                ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, shutterEon, _api.LogManager);
                 _shutterP2P = new(shutterMessageHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses);
             }
 
-            return _api.BlockProducerEnvFactory.Create(shutterTxSource);
+            return _api.BlockProducerEnvFactory.Create(_shutterTxSource);
         }
 
         public bool ShouldRunSteps(INethermindApi api)

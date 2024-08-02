@@ -12,7 +12,7 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    protected class StoringBlockImprovementContextFactory : IBlockImprovementContextFactory
+    private class StoringBlockImprovementContextFactory : IBlockImprovementContextFactory
     {
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         public IList<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
@@ -33,7 +33,7 @@ public partial class EngineModuleTests
         }
     }
 
-    protected class ImprovementStartedEventArgs : EventArgs
+    private class ImprovementStartedEventArgs : EventArgs
     {
         public IBlockImprovementContext BlockImprovementContext { get; }
 
