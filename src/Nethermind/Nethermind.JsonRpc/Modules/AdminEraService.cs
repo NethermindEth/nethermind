@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using MathNet.Numerics.LinearAlgebra.Factorization;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Era1;
 using Nethermind.Config;
@@ -9,14 +8,8 @@ using Nethermind.Core;
 using Nethermind.Era1;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
-using Nethermind.Synchronization;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 

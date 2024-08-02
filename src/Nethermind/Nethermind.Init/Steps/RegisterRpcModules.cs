@@ -149,6 +149,7 @@ public class RegisterRpcModules : IStep
             _api.BlockTree,
             eraImport,
             eraExporter,
+            _api.EthSyncingInfo,
             _api.ProcessExitToken!,
             _api.FileSystem,
             _api.LogManager);
