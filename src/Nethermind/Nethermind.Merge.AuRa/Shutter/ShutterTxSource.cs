@@ -58,7 +58,7 @@ public class ShutterTxSource(
         ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
         if (shutterTransactions is null)
         {
-            if (_logger.IsInfo) _logger.Info($"No Shutter transactions currently loaded for slot {buildingSlot}.");
+            if (_logger.IsDebug) _logger.Debug($"No Shutter transactions currently loaded for slot {buildingSlot}.");
             return [];
         }
 

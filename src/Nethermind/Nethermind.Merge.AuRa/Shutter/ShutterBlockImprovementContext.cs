@@ -109,12 +109,12 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             long waitTime = (long)shutterConfig.MaxKeyDelay - offset;
             if (waitTime <= 0)
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offest of {offset}ms is too late.");
+                if (_logger.IsDebug) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
                 return CurrentBestBlock;
             }
             waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
 
-            _logger.Info($"Awaiting Shutter decryption keys for {slot} at offest {offset}ms. Timeout in {waitTime}ms...");
+            if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
             using var timeoutSource = new CancellationTokenSource((int)waitTime);
             using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);

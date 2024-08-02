@@ -19,7 +19,6 @@ using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
 using System.Runtime.CompilerServices;
-using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -47,13 +46,13 @@ public class ShutterTxLoader(
 
         List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
         long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot} at offset {offset}ms from slot start...");
+        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
+        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot} at time {offsetText} slot start...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
         if (_logger.IsDebug && transactions.Length > 0) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
-        // question for reviewers: what is correct thing to do here if head is null?
         IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
         Transaction[] filtered = FilterTransactions(transactions, releaseSpec).ToArray();
 
