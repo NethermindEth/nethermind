@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.UTP;
@@ -24,11 +25,13 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
     private readonly ILogger _logger;
 
     // TODO: Maybe use Lru?
-    private readonly ConcurrentDictionary<(IEnr, ushort), UTPStream> _utpStreams = new();
+    private readonly ConcurrentDictionary<(ValueHash256, ushort), UTPStream> _utpStreams = new();
+    private readonly IEnrProvider _enrProvider;
 
-    public TalkReqUtpManager(ITalkReqTransport transport, ILogManager logManager)
+    public TalkReqUtpManager(ITalkReqTransport transport, IEnrProvider enrProvider, ILogManager logManager)
     {
         transport.RegisterProtocol(UtpProtocolByte, this);
+        _enrProvider = enrProvider;
         _talkReqTransport = transport;
         _logger = logManager.GetClassLogger<TalkReqUtpManager>();
         _logManager = logManager;
@@ -46,10 +49,10 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
             connectionId++;
         }
 
-        if (!_utpStreams.TryGetValue((sender, connectionId), out UTPStream? stream))
+        if (!_utpStreams.TryGetValue((new ValueHash256(sender.NodeId), connectionId), out UTPStream? stream))
         {
-            if (_logger.IsDebug) _logger.Debug($"Unknown connection id :{header.ConnectionId}. Resetting...");
-            Console.Error.WriteLine($"Unknown con id {header}");
+            if (_logger.IsDebug) _logger.Debug($"Unknown connection id :{connectionId}. Resetting...");
+            Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Unknown con id {header}");
             await SendReset(sender, header.ConnectionId);
             return null;
         }
@@ -77,35 +80,6 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         return SendUtpPacket(receiver, resetHeader, ReadOnlySpan<byte>.Empty, CancellationToken.None);
     }
 
-    public ushort InitiateUtpStreamSender(IEnr nodeId, byte[] valuePayload)
-    {
-        ushort connectionId = (ushort)Random.Shared.Next();
-
-        Task.Run(async () =>
-        {
-            try
-            {
-                // So we open a task that push the data.
-                // But we cancel it after 10 second.
-                // The peer will need to download it within 10 second.
-                using CancellationTokenSource cts = new CancellationTokenSource();
-                cts.CancelAfter(TimeSpan.FromSeconds(10));
-
-                MemoryStream inputStream = new MemoryStream(valuePayload);
-                await WriteContentToUtp(nodeId, false, connectionId, inputStream, cts.Token);
-            }
-            finally
-            {
-                _utpStreams.Remove((nodeId, connectionId), out _);
-            }
-        });
-
-        Span<byte> asByte = stackalloc byte[2];
-        BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
-        connectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
-        return connectionId;
-    }
-
     public async Task WriteContentToUtp(IEnr nodeId, bool isInitiator, ushort connectionId, Stream input, CancellationToken token)
     {
         // TODO: Ah man... where did this go wrong.
@@ -129,8 +103,9 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
             ourConnectionId = (ushort)(connectionId + 1);
         }
 
+        Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Write content set connection id to {ourConnectionId}");
         UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
-        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
+        if (!_utpStreams.TryAdd((new ValueHash256(nodeId.NodeId), ourConnectionId), stream))
         {
             throw new Exception("Unable to open utp stream. Connection id may already be used.");
         }
@@ -148,7 +123,8 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         }
         finally
         {
-            _utpStreams.Remove((nodeId, peerConnectionId), out _);
+            Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Write content done {ourConnectionId}");
+            _utpStreams.Remove((new ValueHash256(nodeId.NodeId), peerConnectionId), out _);
         }
     }
 
@@ -175,8 +151,9 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
             ourConnectionId = (ushort)(connectionId + 1);
         }
 
+        Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Read content set connection id to {ourConnectionId}");
         UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
-        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
+        if (!_utpStreams.TryAdd((new ValueHash256(nodeId.NodeId), ourConnectionId), stream))
         {
             throw new Exception("Unable to open utp stream. Connection id may already be used.");
         }
@@ -195,29 +172,8 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         }
         finally
         {
-            _utpStreams.Remove((nodeId, peerConnectionId), out _);
-        }
-    }
-
-    public async Task AcceptContentFromUtp(IEnr nodeId, ushort peerConnectionId, Stream output, CancellationToken token)
-    {
-        if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {peerConnectionId}");
-
-        ushort ourConnectionId = (ushort)(peerConnectionId + 1);
-        UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
-        if (!_utpStreams.TryAdd((nodeId, ourConnectionId), stream))
-        {
-            throw new Exception("Unable to open utp stream. Connection id may already be used.");
-        }
-
-        try
-        {
-            await stream.HandleHandshake(token);
-            await stream.ReadStream(output, token);
-        }
-        finally
-        {
-            _utpStreams.Remove((nodeId, peerConnectionId), out _);
+            Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Read content done {ourConnectionId}");
+            _utpStreams.Remove((new ValueHash256(nodeId.NodeId), peerConnectionId), out _);
         }
     }
 

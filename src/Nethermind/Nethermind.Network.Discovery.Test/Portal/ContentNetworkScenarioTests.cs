@@ -70,6 +70,57 @@ public class ContentNetworkScenarioTests
         (await node2.ContentNetwork.LookupContent(key, cts.Token)).Should().BeEquivalentTo(value);
     }
 
+    [Test]
+    public async Task TestSmallContentTransferWithLookups()
+    {
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+        Scenario scenario = new Scenario();
+
+        var node1 = scenario.CreateNode();
+        var key = scenario.GenerateRandomBytes(32);
+        var value = scenario.GenerateRandomBytes(50);
+        node1.SetStore(key, value);
+
+        var node2 = scenario.CreateNode();
+        node2.AddPeer(node1);
+
+        var node3 = scenario.CreateNode();
+        node3.AddPeer(node2);
+
+        var node4 = scenario.CreateNode();
+        node4.AddPeer(node3);
+
+        (await node4.ContentNetwork.LookupContent(key, cts.Token)).Should().BeEquivalentTo(value);
+    }
+
+
+    [Test]
+    public async Task TestLargeContentTransferWithLookups()
+    {
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(1));
+
+        Scenario scenario = new Scenario();
+
+        var node1 = scenario.CreateNode();
+        var key = scenario.GenerateRandomBytes(32);
+        var value = scenario.GenerateRandomBytes(50_000);
+        node1.SetStore(key, value);
+
+        var node2 = scenario.CreateNode();
+        node2.AddPeer(node1);
+
+        var node3 = scenario.CreateNode();
+        node3.AddPeer(node2);
+
+        var node4 = scenario.CreateNode();
+        node4.AddPeer(node3);
+
+        (await node4.ContentNetwork.LookupContent(key, cts.Token)).Should().BeEquivalentTo(value);
+    }
+
     private class Scenario
     {
         private readonly byte[] ProtocolId = [0, 0];
@@ -79,7 +130,7 @@ public class ContentNetworkScenarioTests
         private readonly EnrEntryRegistry _registry = new();
         private readonly EnrFactory _enrFactory;
 
-        private readonly ConcurrentDictionary<IEnr, Node> _nodes = new();
+        private readonly ConcurrentDictionary<ValueHash256, Node> _nodes = new();
 
         public Scenario()
         {
@@ -143,7 +194,7 @@ public class ContentNetworkScenarioTests
             TestStore testStore = new TestStore();
             IPortalContentNetwork contentNetwork = factory.Create(ProtocolId, testStore);
             Node node = new Node(newNodeEnr, contentNetwork, testStore, serviceProvider);
-            _nodes[newNodeEnr] = node;
+            _nodes[EnrNodeHashProvider.Instance.GetHash(newNodeEnr)] = node;
 
             return node;
         }
@@ -157,7 +208,7 @@ public class ContentNetworkScenarioTests
         {
             public Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
             {
-                if(scenario._nodes.TryGetValue(receiver, out Node? receiverNode))
+                if(scenario._nodes.TryGetValue(EnrNodeHashProvider.Instance.GetHash(receiver), out Node? receiverNode))
                 {
                     var talkReq = new TalkReqMessage(protocol, message);
 
@@ -168,9 +219,9 @@ public class ContentNetworkScenarioTests
                     {
                         try
                         {
-                            await Task.Delay(1, token);
+                            await Task.Delay(10, token);
                             var response = await receiverNode.TalkReqTransport.OnTalkReq(sender, talkReq);
-                            if (response != null && scenario._nodes.TryGetValue(sender, out Node? senderNode))
+                            if (response != null && scenario._nodes.TryGetValue(EnrNodeHashProvider.Instance.GetHash(sender), out Node? senderNode))
                             {
                                 var talkResp = new TalkRespMessage(protocol, response);
                                 talkResp.RequestId = talkReq.RequestId;

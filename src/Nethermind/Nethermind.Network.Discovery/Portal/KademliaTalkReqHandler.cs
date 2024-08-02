@@ -105,8 +105,9 @@ public class KademliaTalkReqHandler(
             // it always return the full payload without any connection id.
             // But at transport/lantern/discv5 layer, we need to translate it to UTP, or it would be too big.
             LookupContentResult value = findValueResult.value!;
-            if (value.Payload!.Length>  utpManager.MaxContentByteSize)
+            if (value.Payload!.Length >  utpManager.MaxContentByteSize)
             {
+                Console.Error.WriteLine($"{sender} initiate utp sender stream");
                 value.ConnectionId = InitiateUtpStreamSender(sender, value.Payload);
                 value.Payload = null;
             }
@@ -124,7 +125,7 @@ public class KademliaTalkReqHandler(
         var neighboursAsBytes = findValueResult.neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
         var response = new MessageUnion()
         {
-            Nodes = new Nodes()
+            Content = new Content()
             {
                 Enrs = neighboursAsBytes
             }

@@ -109,10 +109,12 @@ public class KademliaTalkReqMessageSender(
         });
 
         byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, protocol, findContentBytes, token);
+        MessageUnion union;
         Content message;
         try
         {
-            message = SlowSSZ.Deserialize<MessageUnion>(response).Content!;
+            union = SlowSSZ.Deserialize<MessageUnion>(response);
+            message = union.Content!;
         }
         catch (Exception e)
         {
