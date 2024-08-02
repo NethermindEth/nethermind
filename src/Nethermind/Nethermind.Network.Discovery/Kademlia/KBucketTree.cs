@@ -9,30 +9,32 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
 {
     private class TreeNode
     {
-        public KBucket<TNode> Bucket { get; }
+        public KBucket<TNode> Bucket { get; set; }
         public TreeNode? Left { get; set; }
         public TreeNode? Right { get; set; }
         public int Depth { get; }
+        public ValueHash256 Prefix { get; }
+        
 
-        public TreeNode(int depth, int k)
+        public TreeNode(int depth, int k, ValueHash256 prefix)
         {
             Bucket = new KBucket<TNode>(k);
             Depth = depth;
+            Prefix = prefix;
         }
     }
 
     private readonly TreeNode _root;
     private readonly int _k;
-    private readonly int _maxDepth;
-    
+    private readonly ValueHash256 _currentNodeId;
     private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
 
-    public KBucketTree(int k, int maxDepth, INodeHashProvider<TNode, TContentKey> nodeHashProvider)
+    public KBucketTree(int k, ValueHash256 currentNodeId, INodeHashProvider<TNode, TContentKey> nodeHashProvider)
     {
         _k = k;
-        _maxDepth = maxDepth;
+        _currentNodeId = currentNodeId;
         _nodeHashProvider = nodeHashProvider;
-        _root = new TreeNode(0, k);
+        _root = new TreeNode(0, k, new ValueHash256());
     }
 
     public bool TryAddOrRefresh(TNode node, out TNode? toRefresh)
@@ -40,84 +42,99 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
         ValueHash256 nodeHash = _nodeHashProvider.GetHash(node);
         TreeNode current = _root;
 
-        for (int i = 0; i < _maxDepth; i++)
+        while (true)
         {
-            bool goRight = GetBit(nodeHash, i);
-            if (goRight)
-            {
-                current.Right ??= new TreeNode(current.Depth + 1, _k);
-                current = current.Right;
-            }
-            else
-            {
-                current.Left ??= new TreeNode(current.Depth + 1, _k);
-                current = current.Left;
-            }
-
             if (current.Bucket.TryAddOrRefresh(node, out toRefresh))
-            {   
-                Console.WriteLine($"Added/refreshed node {node} at depth {current.Depth}");
+            {
                 return true;
             }
 
-            if (current.Depth == _maxDepth - 1)
+            if (ShouldSplit(current, nodeHash))
             {
-                Console.WriteLine($"Failed to add node {node} at max depth {_maxDepth}");
-                return false;
+                SplitBucket(current, nodeHash);
+                continue;
             }
-        }
 
-        toRefresh = default;
-        return false;
+            return false;
+        }
+    }
+
+    private bool ShouldSplit(TreeNode node, ValueHash256 nodeHash)
+    {
+        return node.Bucket.Count >= _k && 
+               IsInRange(nodeHash, node.Prefix, node.Depth) && 
+               IsInRange(_currentNodeId, node.Prefix, node.Depth);
+    }
+
+    private void SplitBucket(TreeNode node, ValueHash256 nodeHash)
+    {
+    var leftPrefix = new ValueHash256(node.Prefix.Bytes);
+    var rightPrefix = new ValueHash256(node.Prefix.Bytes);
+    var rightPrefixBytes = rightPrefix.Bytes.ToArray(); // Create a copy
+    rightPrefixBytes[node.Depth / 8] |= (byte)(1 << (7 - (node.Depth % 8)));
+    rightPrefix = new ValueHash256(rightPrefixBytes);
+
+    node.Left = new TreeNode(node.Depth + 1, _k, leftPrefix);
+    node.Right = new TreeNode(node.Depth + 1, _k, rightPrefix);
+
+    foreach (var item in node.Bucket.GetAll())
+    {
+        ValueHash256 itemHash = _nodeHashProvider.GetHash(item);
+        (GetBit(itemHash, node.Depth) ? node.Right : node.Left).Bucket.TryAddOrRefresh(item, out _);
+    }
+
+    node.Bucket = new KBucket<TNode>(_k);
     }
 
     public TNode[] GetAllAtDistance(int distance)
     {
         List<TNode> result = new List<TNode>();
-        GetAllAtDistanceRecursive(_root, distance, 0, result);
+        GetAllAtDistanceRecursive(_root, distance, result);
         return result.ToArray();
     }
 
-    private void GetAllAtDistanceRecursive(TreeNode? node, int targetDistance, int currentDistance, List<TNode> result)
+    private void GetAllAtDistanceRecursive(TreeNode node, int remainingDistance, List<TNode> result)
     {
-        if (node == null) return;
-
-        if (currentDistance == targetDistance)
+        if (remainingDistance == 0)
         {
             result.AddRange(node.Bucket.GetAll());
             return;
         }
 
-        GetAllAtDistanceRecursive(node.Left, targetDistance, currentDistance + 1, result);
-        GetAllAtDistanceRecursive(node.Right, targetDistance, currentDistance + 1, result);
+        if (node.Left != null)
+            GetAllAtDistanceRecursive(node.Left, remainingDistance - 1, result);
+        if (node.Right != null)
+            GetAllAtDistanceRecursive(node.Right, remainingDistance - 1, result);
     }
 
     public void Remove(TNode node)
     {
         ValueHash256 nodeHash = _nodeHashProvider.GetHash(node);
-        TreeNode current = _root;
+        RemoveRecursive(_root, node, nodeHash, 0);
+    }
 
-        for (int i = 0; i < _maxDepth; i++)
+    private void RemoveRecursive(TreeNode node, TNode toRemove, ValueHash256 nodeHash, int depth)
+    {
+        node.Bucket.Remove(toRemove);
+
+        if (node.Left == null && node.Right == null)
+            return;
+
+        bool goRight = GetBit(nodeHash, depth);
+        if (goRight && node.Right != null)
+            RemoveRecursive(node.Right, toRemove, nodeHash, depth + 1);
+        else if (!goRight && node.Left != null)
+            RemoveRecursive(node.Left, toRemove, nodeHash, depth + 1);
+    }
+
+    private bool IsInRange(ValueHash256 hash, ValueHash256 prefix, int depth)
+    {
+        for (int i = 0; i < depth; i++)
         {
-            bool goRight = GetBit(nodeHash, i);
-            if (goRight)
-            {
-                if (current.Right == null) return;
-                current = current.Right;
-            }
-            else
-            {
-                if (current.Left == null) return;
-                current = current.Left;
-            }
-
-            current.Bucket.Remove(node);
-
-            if (current.Depth == _maxDepth - 1)
-            {
-                return;
-            }
+            if (GetBit(hash, i) != GetBit(prefix, i))
+                return false;
         }
+        return true;
     }
 
     private bool GetBit(ValueHash256 hash, int index)
@@ -126,5 +143,4 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
         int bitIndex = index % 8;
         return (hash.Bytes[byteIndex] & (1 << (7 - bitIndex))) != 0;
     }
-
 }
