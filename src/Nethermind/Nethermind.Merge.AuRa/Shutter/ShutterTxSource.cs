@@ -81,8 +81,11 @@ public class ShutterTxSource(
 
             return _keyWaitTasks.GetOrAdd(slot, slot =>
             {
+                _logger.Info($"Started wait task for slot {slot}");
+
                 cancellationToken.Register(() =>
                 {
+                    _logger.Info($"Token for slot {slot} was cancelled");
                     _keyWaitTasks.TryRemove(slot, out TaskCompletionSource? cancelledWaitTask);
                     cancelledWaitTask?.TrySetException(new OperationCanceledException());
                 });
