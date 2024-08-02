@@ -20,6 +20,7 @@ using System.Threading.Channels;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Nethermind.Network.Discovery;
+using Google.Protobuf.Reflection;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 

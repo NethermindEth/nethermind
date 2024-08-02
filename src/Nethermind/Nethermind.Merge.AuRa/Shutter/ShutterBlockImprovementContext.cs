@@ -125,7 +125,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             }
             catch (OperationCanceledException)
             {
-                if (!_cancellationTokenSource.IsCancellationRequested && _logger.IsWarn)
+                if (timeoutSource.IsCancellationRequested && _logger.IsWarn)
                 {
                     _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
                 }

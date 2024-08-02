@@ -30,7 +30,6 @@ public class ShutterTxSource(
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private ulong _highestLoadedSlot = 0;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
-    private readonly object _syncObject = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -70,46 +69,37 @@ public class ShutterTxSource(
 
     public async Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
     {
-        Task? waitTask = null;
-        lock (_syncObject)
+        if (_transactionCache.Contains(slot))
         {
-            if (_transactionCache.Contains(slot))
-            {
-                return;
-            }
-
-            waitTask = _keyWaitTasks.GetOrAdd(slot, slot => new()).Task;
+            return;
         }
 
         using (cancellationToken.Register(() => CancelWaitForTransactions(slot)))
         {
-            await waitTask;
+            await _keyWaitTasks.GetOrAdd(slot, _ => new()).Task;
         }
     }
+
+    public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
+    {
+        _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
+
+        if (_highestLoadedSlot < slot)
+        {
+            _highestLoadedSlot = slot;
+        }
+
+        if (_keyWaitTasks.Remove(slot, out TaskCompletionSource? tcs))
+        {
+            tcs?.TrySetResult();
+        }
+    }
+
+    public ulong HighestLoadedSlot() => _highestLoadedSlot;
 
     private void CancelWaitForTransactions(ulong slot)
     {
         _keyWaitTasks.Remove(slot, out TaskCompletionSource? cancelledWaitTask);
         cancelledWaitTask?.TrySetException(new OperationCanceledException());
     }
-
-    public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
-    {
-        lock (_syncObject)
-        {
-            _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
-
-            if (_highestLoadedSlot < slot)
-            {
-                _highestLoadedSlot = slot;
-            }
-
-            if (_keyWaitTasks.Remove(slot, out TaskCompletionSource? tcs))
-            {
-                tcs?.TrySetResult();
-            }
-        }
-    }
-
-    public ulong HighestLoadedSlot() => _highestLoadedSlot;
 }
