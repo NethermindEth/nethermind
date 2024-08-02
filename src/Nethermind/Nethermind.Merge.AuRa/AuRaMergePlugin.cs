@@ -90,9 +90,7 @@ namespace Nethermind.Merge.AuRa
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
 
-            IBlockProducer blockProducer = base.InitBlockProducer(consensusPlugin, txSource);
-
-            return blockProducer;
+            return base.InitBlockProducer(consensusPlugin, txSource);
         }
 
         public new Task InitRpcModules()
@@ -165,13 +163,8 @@ namespace Nethermind.Merge.AuRa
                 };
                 _api.BlockTree!.NewHeadBlock += _eonUpdateHandler;
 
-                _shutterTxSource = new ShutterTxSource(new ShutterTxLoader(
-                    _api.LogFinder!,
-                    _shutterConfig,
-                    _api.SpecProvider!,
-                    _api.EthereumEcdsa!,
-                    readOnlyBlockTree,
-                    _api.LogManager), _shutterConfig, _api.SpecProvider!, _api.LogManager);
+                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
+                _shutterTxSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
                 ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, shutterEon, _api.LogManager);
                 _shutterP2P = new(shutterMessageHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
