@@ -364,9 +364,6 @@ namespace Nethermind.Evm
             spec ??= Frontier.Instance;
             return instruction switch
             {
-                Instruction.EXTCALL => "EXTCALL",
-                Instruction.EXTSTATICCALL => "EXTSTATICCALL", // StaticCallEnabled
-                Instruction.EXTDELEGATECALL => "EXTDELEGATECALL",
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
                 Instruction.JUMPDEST => spec.IsEofEnabled ? "NOP" : "JUMPDEST",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,

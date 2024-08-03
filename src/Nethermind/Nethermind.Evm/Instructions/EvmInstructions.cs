@@ -69,12 +69,12 @@ internal sealed partial class EvmInstructions
 
         lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy;
 
-        lookup[(int)Instruction.RETURNDATASIZE] = &InstructionBadInstruction;
-        lookup[(int)Instruction.RETURNDATACOPY] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RETURNDATASIZE] = &InstructionReturnDataSize;
+        lookup[(int)Instruction.RETURNDATACOPY] = &InstructionReturnDataCopy;
 
         lookup[(int)Instruction.EXTCODEHASH] = &InstructionExtCodeHash;
 
-        lookup[(int)Instruction.BLOCKHASH] = &InstructionBadInstruction;
+        lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash;
 
         lookup[(int)Instruction.COINBASE] = &InstructionEnvBytes<OpCoinbase>;
         lookup[(int)Instruction.TIMESTAMP] = &InstructionEnvUInt256<OpTimestamp>;

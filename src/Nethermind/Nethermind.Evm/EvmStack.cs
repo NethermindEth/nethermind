@@ -135,7 +135,7 @@ public ref struct EvmStack
         }
     }
 
-    public void PushUInt32(in int value)
+    public void PushUInt32(int value)
     {
         ClearWordAtHead();
 

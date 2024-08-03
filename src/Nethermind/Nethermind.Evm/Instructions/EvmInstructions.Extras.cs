@@ -8,6 +8,9 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Evm;
 using Int256;
 
+using Nethermind.Core.Crypto;
+using static Nethermind.Evm.VirtualMachine;
+
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
@@ -42,6 +45,28 @@ internal sealed partial class EvmInstructions
         else
         {
             stack.PushZero();
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionBlockHash(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        Metrics.BlockhashOpcode++;
+
+        gasAvailable -= GasCostOf.BlockHash;
+
+        if (!stack.PopUInt256(out var a)) return EvmExceptionType.StackUnderflow;
+        long number = a > long.MaxValue ? long.MaxValue : (long)a;
+
+        Hash256? blockHash = vm.BlockhashProvider.GetBlockhash(vm.State.Env.TxExecutionContext.BlockExecutionContext.Header, number);
+
+        stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
+
+        if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)
+        {
+            vm.TxTracer.ReportBlockHash(blockHash);
         }
 
         return EvmExceptionType.None;
