@@ -10,6 +10,8 @@ using Nethermind.Evm.EOF;
 namespace Nethermind.Evm;
 using Int256;
 
+using static Nethermind.Evm.VirtualMachine;
+
 internal sealed partial class EvmInstructions
 {
     public interface IOpCodeCopy
@@ -83,6 +85,80 @@ internal sealed partial class EvmInstructions
             }
         }
 
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionExtCodeSize(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        IReleaseSpec spec = vm.Spec;
+        gasAvailable -= spec.GetExtCodeCost();
+
+        Address address = stack.PopAddress();
+        if (address is null) return EvmExceptionType.StackUnderflow;
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
+
+        var codeSection = vm.State.Env.CodeInfo.MachineCode.Span;
+        if (!vm.TxTracer.IsTracingInstructions && programCounter < codeSection.Length)
+        {
+            bool optimizeAccess = false;
+            Instruction nextInstruction = (Instruction)codeSection[programCounter];
+            // code.length is zero
+            if (nextInstruction == Instruction.ISZERO)
+            {
+                optimizeAccess = true;
+            }
+            // code.length > 0 || code.length == 0
+            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
+                    stack.PeekUInt256IsZero())
+            {
+                optimizeAccess = true;
+                if (!stack.PopLimbo()) return EvmExceptionType.StackUnderflow;
+            }
+
+            if (optimizeAccess)
+            {
+                // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
+                // In solidity 0.8.1+: `return account.code.length > 0;`
+                // is is a common pattern to check if address is a contract
+                // however we can just check the address's loaded CodeHash
+                // to reduce storage access from trying to load the code
+
+                programCounter++;
+                // Add gas cost for ISZERO, GT, or EQ
+                gasAvailable -= GasCostOf.VeryLow;
+
+                // IsContract
+                bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
+                if (nextInstruction == Instruction.GT)
+                {
+                    // Invert, to IsNotContract
+                    isCodeLengthNotZero = !isCodeLengthNotZero;
+                }
+
+                if (!isCodeLengthNotZero)
+                {
+                    stack.PushOne();
+                }
+                else
+                {
+                    stack.PushZero();
+                }
+                return EvmExceptionType.None;
+            }
+        }
+
+        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, spec).MachineCode.Span;
+        if (spec.IsEofEnabled && EvmObjectFormat.IsEof(accountCode, out _))
+        {
+            stack.PushUInt256(2);
+        }
+        else
+        {
+            UInt256 result = (UInt256)accountCode.Length;
+            stack.PushUInt256(in result);
+        }
         return EvmExceptionType.None;
     }
 }

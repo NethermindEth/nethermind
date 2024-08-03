@@ -65,7 +65,7 @@ internal sealed partial class EvmInstructions
         lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<OpCodeCopy>;
         lookup[(int)Instruction.GASPRICE] = &InstructionEnvUInt256<OpGasPrice>;
 
-        lookup[(int)Instruction.EXTCODESIZE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize;
 
         lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy;
 

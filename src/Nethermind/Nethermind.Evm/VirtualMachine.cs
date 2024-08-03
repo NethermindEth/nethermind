@@ -843,7 +843,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 }
                 goto EmptyReturn;
             }
-            else if (instruction < Instruction.EXTCODESIZE)
+            else if (instruction < Instruction.RETURNDATASIZE)
             {
                 exceptionType = CalliJmpTable[(int)instruction](this, ref stack, ref gasAvailable, ref programCounter);
             }
@@ -851,70 +851,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
             {
                 switch (instruction)
                 {
-                    case Instruction.EXTCODESIZE:
-                        {
-                            gasAvailable -= _spec.GetExtCodeCost();
-
-                            Address address = stack.PopAddress();
-                            if (address is null) goto StackUnderflow;
-
-                            if (!ChargeAccountAccessGas(ref gasAvailable, _vmState, address)) goto OutOfGas;
-
-                            if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < codeSection.Length)
-                            {
-                                bool optimizeAccess = false;
-                                Instruction nextInstruction = (Instruction)codeSection[programCounter];
-                                // code.length is zero
-                                if (nextInstruction == Instruction.ISZERO)
-                                {
-                                    optimizeAccess = true;
-                                }
-                                // code.length > 0 || code.length == 0
-                                else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
-                                        stack.PeekUInt256IsZero())
-                                {
-                                    optimizeAccess = true;
-                                    if (!stack.PopLimbo()) goto StackUnderflow;
-                                }
-
-                                if (optimizeAccess)
-                                {
-                                    // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
-                                    // In solidity 0.8.1+: `return account.code.length > 0;`
-                                    // is is a common pattern to check if address is a contract
-                                    // however we can just check the address's loaded CodeHash
-                                    // to reduce storage access from trying to load the code
-
-                                    programCounter++;
-                                    // Add gas cost for ISZERO, GT, or EQ
-                                    gasAvailable -= GasCostOf.VeryLow;
-
-                                    // IsContract
-                                    bool isCodeLengthNotZero = _state.IsContract(address);
-                                    if (nextInstruction == Instruction.GT)
-                                    {
-                                        // Invert, to IsNotContract
-                                        isCodeLengthNotZero = !isCodeLengthNotZero;
-                                    }
-
-                                    if (!isCodeLengthNotZero)
-                                    {
-                                        stack.PushOne();
-                                    }
-                                    else
-                                    {
-                                        stack.PushZero();
-                                    }
-                                    break;
-                                }
-                            }
-
-                            InstructionExtCodeSize(address, ref stack);
-                            break;
-                        }
-                    case Instruction.EXTCODECOPY:
-                        exceptionType = InstructionExtCodeCopy(this, ref stack, ref gasAvailable, ref programCounter);
-                        break;
                     case Instruction.RETURNDATASIZE:
                         {
                             if (!_spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
@@ -1608,22 +1544,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         [DoesNotReturn]
         static void ThrowOperationCanceledException() =>
             throw new OperationCanceledException("Cancellation Requested");
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void InstructionExtCodeSize(Address address, ref EvmStack stack)
-    {
-        ReadOnlyMemory<byte> accountCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, _spec).MachineCode;
-        if (_spec.IsEofEnabled && EvmObjectFormat.IsEof(accountCode.Span, out _))
-        {
-            stack.PushUInt256(2);
-        }
-        else
-        {
-            UInt256 result = (UInt256)accountCode.Length;
-            stack.PushUInt256(in result);
-        }
     }
 
     [SkipLocalsInit]
