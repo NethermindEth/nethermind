@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
@@ -78,16 +79,11 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     {
         Metrics.Secp256r1Precompile++;
 
-        ReadOnlySpan<byte> input = inputData.Span;
-
+        using MemoryHandle pin = inputData.Pin();
         unsafe
         {
-            fixed (byte* p = input)
-            {
-                var ptr = (IntPtr) p;
-                GoSlice slice = new(ptr, input.Length);
-                return (VerifyBytes(slice) != 0 ? ValidResult : null, true);
-            }
+            GoSlice slice = new((IntPtr) pin.Pointer, inputData.Length);
+            return (VerifyBytes(slice) != 0 ? ValidResult : null, true);
         }
     }
 }
