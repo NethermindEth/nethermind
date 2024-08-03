@@ -63,7 +63,7 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
         public long Len = len, Cap = len;
     }
 
-    [DllImport("secp256r1", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("secp256r1", CallingConvention = CallingConvention.Cdecl, SetLastError = true)]
     private static extern byte VerifyBytes(GoSlice hash);
 
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
@@ -76,18 +76,18 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.Secp256r1Precompile++;
+
         ReadOnlySpan<byte> input = inputData.Span;
 
-        GoSlice slice;
         unsafe
         {
             fixed (byte* p = input)
             {
                 var ptr = (IntPtr) p;
-                slice = new(ptr, input.Length);
+                GoSlice slice = new(ptr, input.Length);
+                return (VerifyBytes(slice) != 0 ? ValidResult : null, true);
             }
         }
-
-        return (VerifyBytes(slice) != 0 ? ValidResult : null, true);
     }
 }
