@@ -10,6 +10,6 @@ namespace Nethermind.Consensus.Processing;
 
 public interface IBlockCachePreWarmer
 {
-    Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken = default);
+    Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, CancellationToken cancellationToken = default);
     void ClearCaches();
 }

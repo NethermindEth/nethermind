@@ -24,7 +24,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             _api = api;
         }
 
-        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)
+        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, IBlockCachePreWarmer? preWarmer)
         {
             IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;

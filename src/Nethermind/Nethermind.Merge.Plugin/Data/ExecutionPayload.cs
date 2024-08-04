@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -113,17 +114,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
-    /// <summary>
-    /// Creates the execution block from payload.
-    /// </summary>
-    /// <param name="block">When this method returns, contains the execution block.</param>
-    /// <param name="totalDifficulty">A total difficulty of the block.</param>
-    /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
+    public virtual bool TryGetBlockLight([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
     {
         try
         {
-            var transactions = GetTransactions();
+            Transaction[] transactions = GetTransactions();
             var header = new BlockHeader(
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -144,9 +139,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
                 MixHash = PrevRandao,
                 Author = FeeRecipient,
                 IsPostMerge = true,
-                TotalDifficulty = totalDifficulty,
-                TxRoot = TxTrie.CalculateRoot(transactions),
-                WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+                TotalDifficulty = totalDifficulty
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
@@ -158,6 +151,32 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             block = null;
             return false;
         }
+    }
+
+    /// <summary>
+    /// Creates the execution block from payload.
+    /// </summary>
+    /// <param name="block">When this method returns, contains the execution block.</param>
+    /// <param name="totalDifficulty">A total difficulty of the block.</param>
+    /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
+    public bool TryGetBlock([NotNullWhen(true)]out Block? block, UInt256? totalDifficulty = null)
+    {
+        try
+        {
+            if (TryGetBlockLight(out block, totalDifficulty))
+            {
+                block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
+                block.Header.WithdrawalsRoot = block.Withdrawals is null ? null : new WithdrawalTrie(block.Withdrawals).RootHash;
+                return true;
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+
+        block = null;
+        return false;
     }
 
     private Transaction[]? _transactions = null;

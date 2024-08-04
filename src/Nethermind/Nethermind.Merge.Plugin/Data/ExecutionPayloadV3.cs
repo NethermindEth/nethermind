@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -22,16 +23,16 @@ public class ExecutionPayloadV3 : ExecutionPayload
         ExcessBlobGas = block.ExcessBlobGas;
     }
 
-    public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
+    public override bool TryGetBlockLight([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
     {
-        if (!base.TryGetBlock(out block, totalDifficulty))
+        if (!base.TryGetBlockLight(out block, totalDifficulty))
         {
             return false;
         }
 
-        block!.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
-        block!.Header.BlobGasUsed = BlobGasUsed;
-        block!.Header.ExcessBlobGas = ExcessBlobGas;
+        block.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        block.Header.BlobGasUsed = BlobGasUsed;
+        block.Header.ExcessBlobGas = ExcessBlobGas;
         return true;
     }
 

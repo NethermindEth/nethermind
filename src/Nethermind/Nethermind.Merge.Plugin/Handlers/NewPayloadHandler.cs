@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -40,6 +41,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBlockProcessingQueue _processingQueue;
     private readonly IMergeSyncController _mergeSyncController;
+    private readonly IBlockCachePreWarmer? _preWarmer;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
@@ -60,7 +62,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         ILogManager logManager,
         TimeSpan? timeout = null,
         bool storeReceipts = true,
-        int cacheSize = 50)
+        int cacheSize = 50,
+        IBlockCachePreWarmer? preWarmer = null)
     {
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
@@ -72,6 +75,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _processingQueue = processingQueue;
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
+        _preWarmer = preWarmer;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
@@ -87,16 +91,54 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        CancellationTokenSource preWarmCancellationTokenSource = new();
+        ResultWrapper<PayloadStatusV1>? result = null;
+        try
+        {
+            result = await HandleAsync(request, preWarmCancellationTokenSource.Token);
+        }
+        finally
+        {
+            if (result is null || result.Data.Status == PayloadStatus.Invalid)
+            {
+                await preWarmCancellationTokenSource.CancelAsync();
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>
+    /// and the hash of the last valid block.
+    /// </summary>
+    /// <param name="request">The execution payload to process.</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    private async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request, CancellationToken cancellationToken)
+    {
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
 
-        if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
+        if (!request.TryGetBlockLight(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {requestStr}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
         }
 
-        if (!HeaderValidator.ValidateHash(block!.Header))
+        BlockHeader? parentHeader = null;
+        if (_preWarmer is not null)
+        {
+            parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (parentHeader is not null)
+            {
+                _ = _preWarmer?.PreWarmCaches(block, parentHeader.StateRoot, cancellationToken);
+            }
+        }
+
+        block.CalculateTrieRoots();
+
+        if (!HeaderValidator.ValidateHash(block.Header))
         {
             if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
@@ -123,7 +165,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
-        BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        parentHeader ??= _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))

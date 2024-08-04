@@ -23,25 +23,35 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private Task _currentPreWarm = Task.CompletedTask;
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, CancellationToken cancellationToken = default)
     {
-        if (targetWorldState is not null)
-        {
-            if (targetWorldState.ClearCache())
-            {
-                if (_logger.IsWarn) _logger.Warn("Cashes are not empty. Clearing them.");
-            }
+        void FinishTask() => _currentPreWarm = Task.CompletedTask;
 
-            if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)
+        if (_currentPreWarm.IsCompleted)
+        {
+            using CancellationTokenRegistration cancellationAction = cancellationToken.Register(FinishTask);
+            if (targetWorldState is not null)
             {
-                // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
-                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, cancellationToken));
+                if (targetWorldState.ClearCache())
+                {
+                    if (_logger.IsWarn) _logger.Warn("Cashes are not empty. Clearing them.");
+                }
+
+                if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 &&
+                    !cancellationToken.IsCancellationRequested)
+                {
+                    // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
+                    return _currentPreWarm = Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot!, cancellationToken));
+                }
             }
         }
-
-        return Task.CompletedTask;
+        
+        return _currentPreWarm = Task.CompletedTask;
     }
+
+
 
     // Parent state root is null for genesis block
     private bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
