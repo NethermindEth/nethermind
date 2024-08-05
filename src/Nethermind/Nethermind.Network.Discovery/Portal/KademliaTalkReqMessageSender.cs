@@ -25,19 +25,18 @@ public class KademliaTalkReqMessageSender(
 ) : IMessageSender<IEnr, byte[], LookupContentResult>
 {
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
-    private ILogger _logger = logManager.GetClassLogger<KademliaTalkReqMessageSender>();
-    private byte[] _protocol = config.ProtocolId;
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaTalkReqMessageSender>();
+    private readonly byte[] _protocol = config.ProtocolId;
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
-        // TODO: update distance
         byte[] pingBytes =
             SlowSSZ.Serialize(new MessageUnion()
             {
                 Ping = new Ping()
                 {
                     EnrSeq = enrProvider.SelfEnr.SequenceNumber,
-                    CustomPayload = Array.Empty<byte>()
+                    CustomPayload = config.ContentRadius.ToBigEndian()
                 }
             });
 
