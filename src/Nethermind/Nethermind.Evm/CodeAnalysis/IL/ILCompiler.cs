@@ -2248,9 +2248,9 @@ internal class ILCompiler
         il.LoadConstant(0);
         il.NewArray(typeOfArrayElement);
         case0.postLoad.Invoke(il);
+        il.Branch(ret);
         if (lengthOfArray > 0)
         {
-            il.Branch(ret);
             il.MarkLabel(labels[1]);
             case1.preAssignment.Invoke(il);
             il.LoadConstant(1);
