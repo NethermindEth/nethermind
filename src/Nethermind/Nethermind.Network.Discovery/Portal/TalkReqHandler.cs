@@ -17,7 +17,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="kad"></param>
 /// <param name="selfEnr"></param>
 /// <param name="utpManager"></param>
-public class KademliaTalkReqHandler(
+public class TalkReqHandler(
     IPortalContentNetwork.Store store,
     IKademlia<IEnr, byte[], LookupContentResult> kad,
     IContentDistributor contentDistributor,
@@ -162,6 +162,7 @@ public class KademliaTalkReqHandler(
         bool hasAccept = false;
         for (var i = 0; i < toAccept.Count; i++)
         {
+            if (!contentDistributor.IsContentInRadius(offer.ContentKeys[i])) continue;
             if (store.ShouldAcceptOffer(offer.ContentKeys[i]))
             {
                 toAccept[i] = true;

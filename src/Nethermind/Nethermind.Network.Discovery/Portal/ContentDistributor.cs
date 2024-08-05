@@ -14,7 +14,6 @@ namespace Nethermind.Network.Discovery.Portal;
 
 public class ContentDistributor : IContentDistributor
 {
-    private static byte[] _protocol = new byte[0];
     private TimeSpan OfferAndSendContentTimeout = TimeSpan.FromSeconds(10);
 
     private readonly UInt256 _defaultRadius;
@@ -23,15 +22,22 @@ public class ContentDistributor : IContentDistributor
     private readonly IKademlia<IEnr, byte[], LookupContentResult> _kad;
     private readonly ITalkReqTransport _transport;
     private readonly IUtpManager _utpManager;
+    private readonly IEnrProvider _enrProvider;
+    private readonly ContentNetworkConfig _config;
 
-    public ContentDistributor(IKademlia<IEnr, byte[], LookupContentResult> kad, ContentNetworkConfig config, ITalkReqTransport transport, IUtpManager utpManager)
-    {
+    public ContentDistributor(
+        IKademlia<IEnr, byte[], LookupContentResult> kad,
+        IEnrProvider enrProvider,
+        ContentNetworkConfig config,
+        ITalkReqTransport transport,
+        IUtpManager utpManager
+    ) {
         _kad = kad;
-        _protocol = config.ProtocolId;
+        _config = config;
+        _enrProvider = enrProvider;
         _transport = transport;
         _utpManager = utpManager;
-        _defaultRadius = UInt256.MaxValue;
-        // UInt256.One.LeftShift(255, out _defaultRadius);
+        _defaultRadius = config.DefaultPeerRadius;
     }
 
     public void UpdatePeerRadius(IEnr node, UInt256 radius)
@@ -47,6 +53,19 @@ public class ContentDistributor : IContentDistributor
             nodeRadius = _defaultRadius;
         }
 
+        return IsInRadius(nodeHash, contentHash, nodeRadius);
+    }
+
+    public bool IsContentInRadius(byte[] offerContentKey)
+    {
+        ValueHash256 contentHash = _nodeHashProvider.GetHash(offerContentKey);
+        ValueHash256 nodeHash = _nodeHashProvider.GetHash(_enrProvider.SelfEnr);
+
+        return IsInRadius(nodeHash, contentHash, _config.ContentRadius);
+    }
+
+    private bool IsInRadius(ValueHash256 nodeHash, ValueHash256 contentHash, UInt256 nodeRadius)
+    {
         UInt256 distance = Hash256XORUtils.CalculateDistanceUInt256(contentHash, nodeHash);
         bool inRadius = distance <= nodeRadius;
         return inRadius;
@@ -95,26 +114,13 @@ public class ContentDistributor : IContentDistributor
             {
             }
         }
-
-        /*
-        await Task.WhenAll(nearestNodes.Select(async (kv) =>
-        {
-            try
-            {
-                IEnr enr = kv.Value;
-                await OfferAndSendContent(enr, contentKey, content, token);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }));
-        */
     }
 
     private async Task OfferAndSendContent(IEnr enr, byte[] contentKey, byte[] content, CancellationToken token)
     {
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        // cts.CancelAfter(OfferAndSendContentTimeout);
+        cts.CancelAfter(OfferAndSendContentTimeout);
+
         token = cts.Token;
 
         var message = SlowSSZ.Serialize(new MessageUnion()
@@ -125,7 +131,7 @@ public class ContentDistributor : IContentDistributor
             }
         });
 
-        var responseByte = await _transport.CallAndWaitForResponse(enr, _protocol, message, token);
+        var responseByte = await _transport.CallAndWaitForResponse(enr, _config.ProtocolId, message, token);
 
         var accept = SlowSSZ.Deserialize<MessageUnion>(responseByte).Accept;
         if (accept == null) return;

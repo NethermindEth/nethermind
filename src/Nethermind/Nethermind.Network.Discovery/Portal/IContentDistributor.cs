@@ -10,4 +10,5 @@ public interface IContentDistributor
 {
     void UpdatePeerRadius(IEnr sender, UInt256 radius);
     Task DistributeContent(byte[] contentKey, byte[] content, CancellationToken token);
+    bool IsContentInRadius(byte[] offerContentKey);
 }

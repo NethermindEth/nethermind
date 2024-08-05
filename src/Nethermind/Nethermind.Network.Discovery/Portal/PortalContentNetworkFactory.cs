@@ -26,7 +26,7 @@ public class PortalContentNetworkFactory(
             .AddSingleton(config)
             .AddSingleton(store)
             .AddSingleton<INodeHashProvider<IEnr, byte[]>>(EnrNodeHashProvider.Instance)
-            .AddSingleton<ITalkReqProtocolHandler, KademliaTalkReqHandler>()
+            .AddSingleton<ITalkReqProtocolHandler, TalkReqHandler>()
             .AddSingleton<IContentDistributor, ContentDistributor>()
             .AddSingleton<IMessageSender<IEnr, byte[], LookupContentResult>, KademliaTalkReqMessageSender>()
             .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>.IStore, PortalContentStoreAdapter>()
