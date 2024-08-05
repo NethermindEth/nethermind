@@ -64,7 +64,7 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
         public long Len = len, Cap = len;
     }
 
-    [DllImport("secp256r1", CallingConvention = CallingConvention.Cdecl, SetLastError = true)]
+    [DllImport("secp256r1", CallingConvention = CallingConvention.StdCall, SetLastError = true)]
     private static extern byte VerifyBytes(GoSlice hash);
 
     private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
