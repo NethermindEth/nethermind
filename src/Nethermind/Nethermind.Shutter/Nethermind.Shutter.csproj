@@ -1,18 +1,29 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Nethermind.Merge.AuRa</RootNamespace>
+    <RootNamespace>Nethermind.Shutter</RootNamespace>
     <Nullable>enable</Nullable>
      <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Contracts\WithdrawalContract.json" />
+    <None Remove="Contracts\ValidatorRegistryContract.json" />
+    <None Remove="Contracts\KeyBroadcastContract.json" />
+    <None Remove="Contracts\KeyperSetManagerContract.json" />
+    <None Remove="Contracts\SequencerContract.json" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Contracts\WithdrawalContract.json" />
+    <EmbeddedResource Include="Contracts\ValidatorRegistryContract.json" />
+    <EmbeddedResource Include="Contracts\KeyBroadcastContract.json" />
+    <EmbeddedResource Include="Contracts\KeyperSetManagerContract.json" />
+    <EmbeddedResource Include="Contracts\KeyperSetContract.json" />
+    <EmbeddedResource Include="Contracts\SequencerContract.json" />
   </ItemGroup>
+
+  <ItemGroup>
+		<AdditionalFiles Include="Dto\gossip.proto" CopyToOutputDirectory="Never" />
+	</ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Libp2p" />
@@ -34,6 +45,7 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
     <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj" />
   </ItemGroup>
 
 </Project>
