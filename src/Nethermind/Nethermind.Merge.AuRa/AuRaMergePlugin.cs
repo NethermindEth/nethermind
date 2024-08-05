@@ -37,7 +37,7 @@ namespace Nethermind.Merge.AuRa
         private AuRaNethermindApi? _auraApi;
         private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
-        private EventHandler<BlockEventArgs>? _eonUpdateHandler;
+        private EventHandler<BlockEventArgs>? _newHeadBlockHandler;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
@@ -136,27 +136,18 @@ namespace Nethermind.Merge.AuRa
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-                ShutterEon shutterEon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
-                bool haveCheckedRegistered = false;
-                _eonUpdateHandler = (_, e) =>
+                ShutterEon eon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
+                ShutterBlockHandler blockHandler = new(_api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryContractAddress!, _shutterConfig.ValidatorRegistryMessageVersion, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, validatorsInfo, eon, _api.LogManager);
+                _newHeadBlockHandler = (_, e) =>
                 {
-                    int headerAge = (int)(e.Block.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds());
-                    if (headerAge < 10)
-                    {
-                        if (!haveCheckedRegistered)
-                        {
-                            CheckRegistered(e.Block.Header, validatorsInfo, readOnlyTxProcessingEnvFactory, logger);
-                            haveCheckedRegistered = true;
-                        }
-                        shutterEon.Update(e.Block.Header);
-                    }
+                    blockHandler.OnNewHeadBlock(e.Block);
                 };
-                _api.BlockTree!.NewHeadBlock += _eonUpdateHandler;
+                _api.BlockTree!.NewHeadBlock += _newHeadBlockHandler;
 
                 ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
                 _shutterTxSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
-                ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, shutterEon, _api.LogManager);
+                ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, eon, _api.LogManager);
                 _shutterP2P = new(shutterMessageHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses);
             }
@@ -172,33 +163,12 @@ namespace Nethermind.Merge.AuRa
 
         public override async ValueTask DisposeAsync()
         {
-            if (_eonUpdateHandler is not null)
+            if (_newHeadBlockHandler is not null)
             {
-                _api.BlockTree!.NewHeadBlock -= _eonUpdateHandler;
+                _api.BlockTree!.NewHeadBlock -= _newHeadBlockHandler;
             }
             await (_shutterP2P?.DisposeAsync() ?? default);
             await base.DisposeAsync();
-        }
-
-        private void CheckRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory, ILogger logger)
-        {
-            if (validatorsInfo.Count == 0)
-            {
-                return;
-            }
-
-            IReadOnlyTxProcessingScope scope = envFactory.Create().Build(parent.StateRoot!);
-            ITransactionProcessor processor = scope.TransactionProcessor;
-
-            ValidatorRegistryContract validatorRegistryContract = new(processor, _api.AbiEncoder!, new(_shutterConfig!.ValidatorRegistryContractAddress!), logger, _api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryMessageVersion);
-            if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
-            {
-                if (logger.IsInfo) logger.Info($"All Shutter validators are registered.");
-            }
-            else
-            {
-                if (logger.IsError) logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
-            }
         }
 
         private void ValidateShutterConfig(IShutterConfig shutterConfig)

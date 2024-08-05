@@ -18,7 +18,7 @@ public class ShutterMessageHandler(
     IShutterConfig shutterConfig,
     ShutterTxSource txSource,
     ShutterEon eon,
-    ILogManager logManager)
+    ILogManager logManager) : IShutterMessageHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
