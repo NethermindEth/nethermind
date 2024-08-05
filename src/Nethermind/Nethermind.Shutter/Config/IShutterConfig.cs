@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
 
-namespace Nethermind.Consensus.AuRa.Config;
+namespace Nethermind.Shutter.Config;
 
 public interface IShutterConfig : IConfig
 {
@@ -30,8 +30,8 @@ public interface IShutterConfig : IConfig
     string? KeyperSetManagerContractAddress { get; set; }
 
     [ConfigItem(Description = "The p2p addresses of the Shutter keypers.",
-        DefaultValue = "[]")]
-    string[] KeyperP2PAddresses { get; set; }
+        DefaultValue = "null")]
+    string[]? KeyperP2PAddresses { get; set; }
 
     [ConfigItem(Description = "The port to connect to Shutter P2P network with.",
         DefaultValue = "23001")]
@@ -43,11 +43,11 @@ public interface IShutterConfig : IConfig
 
     [ConfigItem(Description = "The Shutter P2P protocol version.",
         DefaultValue = "/shutter/0.1.0")]
-    string P2PProtocolVersion { get; set; }
+    string? P2PProtocolVersion { get; set; }
 
     [ConfigItem(Description = "The Shutter P2P agent version.",
         DefaultValue = "github.com/shutter-network/rolling-shutter/rolling-shutter")]
-    string P2PAgentVersion { get; set; }
+    string? P2PAgentVersion { get; set; }
 
     [ConfigItem(Description = "The Shutter validator registry message version.",
         DefaultValue = "0")]

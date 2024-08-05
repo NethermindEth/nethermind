@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Shutter.Config;
 using Nethermind.Logging;
 using Google.Protobuf;
 

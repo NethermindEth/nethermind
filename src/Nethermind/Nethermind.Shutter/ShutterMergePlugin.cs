@@ -9,9 +9,9 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Shutter;
+using Nethermind.Shutter.Config;
 using Nethermind.Merge.AuRa;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Consensus.Processing;
@@ -72,14 +72,14 @@ namespace Nethermind.Shutter
 
             if (_shutterConfig!.Enabled)
             {
-                ValidateShutterConfig(_shutterConfig);
+                ShutterHelpers.ValidateConfig(_shutterConfig);
 
                 Dictionary<ulong, byte[]> validatorsInfo = [];
                 if (_shutterConfig.ValidatorInfoFile is not null)
                 {
                     try
                     {
-                        validatorsInfo = LoadValidatorInfo(_shutterConfig.ValidatorInfoFile);
+                        validatorsInfo = ShutterHelpers.LoadValidatorInfo(_shutterConfig.ValidatorInfoFile);
                     }
                     catch (Exception e)
                     {
@@ -99,7 +99,7 @@ namespace Nethermind.Shutter
                     {
                         if (!haveCheckedRegistered)
                         {
-                            CheckRegistered(e.Block.Header, validatorsInfo, readOnlyTxProcessingEnvFactory, logger);
+                            CheckValidatorsRegistered(e.Block.Header, validatorsInfo, readOnlyTxProcessingEnvFactory, logger);
                             haveCheckedRegistered = true;
                         }
                         shutterEon.Update(e.Block.Header);
@@ -112,7 +112,7 @@ namespace Nethermind.Shutter
 
                 ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, shutterEon, _api.LogManager);
                 _shutterP2P = new(shutterMessageHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
-                _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses);
+                _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses!);
             }
 
             return _api.BlockProducerEnvFactory.Create(_shutterTxSource);
@@ -128,7 +128,7 @@ namespace Nethermind.Shutter
             await base.DisposeAsync();
         }
 
-        private void CheckRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory, ILogger logger)
+        private void CheckValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory, ILogger logger)
         {
             if (validatorsInfo.Count == 0)
             {
@@ -149,55 +149,5 @@ namespace Nethermind.Shutter
             }
         }
 
-        private void ValidateShutterConfig(IShutterConfig shutterConfig)
-        {
-            if (shutterConfig.Validator && shutterConfig.ValidatorInfoFile is null)
-            {
-                throw new ArgumentException($"Must set Shutter.ValidatorInfoFile to a valid json file.");
-            }
-
-            if (shutterConfig.ValidatorInfoFile is not null && !File.Exists(shutterConfig.ValidatorInfoFile))
-            {
-                throw new ArgumentException($"Shutter validator info file \"{shutterConfig.ValidatorInfoFile}\" does not exist.");
-            }
-
-            if (shutterConfig.SequencerContractAddress is null || !Address.TryParse(shutterConfig.SequencerContractAddress, out _))
-            {
-                throw new ArgumentException("Must set Shutter sequencer contract address to valid address.");
-            }
-
-            if (shutterConfig.ValidatorRegistryContractAddress is null || !Address.TryParse(shutterConfig.ValidatorRegistryContractAddress, out _))
-            {
-                throw new ArgumentException("Must set Shutter validator registry contract address to valid address.");
-            }
-
-            if (shutterConfig.KeyBroadcastContractAddress is null || !Address.TryParse(shutterConfig.KeyBroadcastContractAddress, out _))
-            {
-                throw new ArgumentException("Must set Shutter key broadcast contract address to valid address.");
-            }
-
-            if (shutterConfig.KeyperSetManagerContractAddress is null || !Address.TryParse(shutterConfig.KeyperSetManagerContractAddress, out _))
-            {
-                throw new ArgumentException("Must set Shutter keyper set manager contract address to valid address.");
-            }
-
-            foreach (string addr in shutterConfig.KeyperP2PAddresses)
-            {
-                try
-                {
-                    Multiaddress.Decode(addr);
-                }
-                catch (NotSupportedException)
-                {
-                    throw new ArgumentException($"Could not decode Shutter keyper p2p address \"{addr}\".");
-                }
-            }
-        }
-
-        private Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)
-        {
-            FileStream fstream = new FileStream(fp, FileMode.Open, FileAccess.Read, FileShare.None);
-            return new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
-        }
     }
 }

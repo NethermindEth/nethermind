@@ -8,7 +8,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Abi;
 using Nethermind.Shutter.Contracts;
 using Nethermind.Logging;
-using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Shutter.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 

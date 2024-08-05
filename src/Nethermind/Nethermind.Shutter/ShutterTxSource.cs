@@ -6,7 +6,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Shutter.Config;
 using Nethermind.Logging;
 using System;
 using Nethermind.Core.Caching;

@@ -12,7 +12,7 @@ using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
 using Multiformats.Address;
-using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Shutter.Config;
 using Nethermind.Logging;
 using Nethermind.Core.Extensions;
 using ILogger = Nethermind.Logging.ILogger;
