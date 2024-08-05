@@ -148,5 +148,10 @@ namespace Nethermind.Db
             }
             _db[key] = value;
         }
+
+        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

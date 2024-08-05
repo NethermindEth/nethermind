@@ -169,6 +169,11 @@ namespace Nethermind.Db
                 if (_wrapped is ITunableDb tunable)
                     tunable.Tune(type);
             }
+
+            public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }
