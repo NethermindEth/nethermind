@@ -47,7 +47,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 }
             }
         }
-        
+
         return _currentPreWarm = Task.CompletedTask;
     }
 
