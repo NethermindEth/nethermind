@@ -91,7 +91,11 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
-            .WithServices(NettyDiscoveryV5Handler.Register);
+            .WithServices(s =>
+            {
+                s.AddSingleton(logManager);
+                NettyDiscoveryV5Handler.Register(s);
+            });
 
         _discv5Protocol = discv5Builder.Build();
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);

@@ -11,10 +11,11 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery;
 
-public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMsgSender
+public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 {
     private readonly ILogger _logger;
     private readonly IDiscoveryManager _discoveryManager;
@@ -27,7 +28,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         IChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
-        ILogManager? logManager)
+        ILogManager? logManager) : base(logManager)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
@@ -80,7 +81,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         }
 
         int size = msgBuffer.ReadableBytes;
-        if (size > 1280)
+        if (size > MaxPacketSize)
         {
             if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all client. Msg: ${discoveryMsg}");
         }

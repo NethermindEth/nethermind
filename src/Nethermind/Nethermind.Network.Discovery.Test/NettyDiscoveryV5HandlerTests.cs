@@ -12,6 +12,7 @@ using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,7 +30,7 @@ namespace Nethermind.Network.Discovery.Test
         public void Initialize()
         {
             _channel = new();
-            _handler = new(new LoggerFactory());
+            _handler = new(new TestLogManager());
             _handler.InitializeChannel(_channel);
         }
 
