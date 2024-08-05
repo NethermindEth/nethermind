@@ -39,12 +39,17 @@ public class ShutterTxLoader(
     private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
+    private readonly List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
+    private bool _firstLoad = true;
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         Block? head = readOnlyBlockTree.Head;
-
-        List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
+        List<SequencedTransaction>? sequencedTransactions = null;
+        lock (_transactionSubmittedEvents)
+        {
+            sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
+        }
         long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot} at time {offsetText} slot start...");
@@ -64,6 +69,20 @@ public class ShutterTxLoader(
 
         if (_logger.IsDebug && shutterTransactions.Transactions.Length > 0) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
         return shutterTransactions;
+    }
+
+    public void OnNewReceipts(TxReceipt[] receipts, long blockNumber)
+    {
+        foreach(TxReceipt receipt in receipts)
+        {
+            foreach (LogEntry log in receipt.Logs!)
+            {
+                if (_sequencerContract.FilterAccepts(log, blockNumber))
+                {
+                    _transactionSubmittedEvents.Add(_sequencerContract.ParseTransactionSubmitted(log));
+                }
+            }
+        }
     }
 
     internal IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, IReleaseSpec releaseSpec)
@@ -171,7 +190,8 @@ public class ShutterTxLoader(
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber);
+        List<ISequencerContract.TransactionSubmitted> events = _firstLoad ? _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).ToList() : _transactionSubmittedEvents;
+        _firstLoad = false;
         if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
         UInt256 totalGas = 0;
@@ -188,6 +208,8 @@ public class ShutterTxLoader(
             byte[] identityPreimage = new byte[52];
             e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
             e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
+
+            _transactionSubmittedEvents.Remove(e);
 
             SequencedTransaction sequencedTransaction = new()
             {

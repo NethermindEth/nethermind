@@ -19,11 +19,12 @@ public class ShutterBlockHandler(
     ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder,
     Dictionary<ulong, byte[]> validatorsInfo,
     ShutterEon eon,
+    ShutterTxLoader txLoader,
     ILogManager logManager) : IShutterBlockHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private bool _haveCheckedRegistered = false;
-    public void OnNewHeadBlock(Block head)
+    public void OnBlockProcessed(Block head, TxReceipt[] receipts)
     {
         int headerAge = (int)(head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds());
         if (headerAge < 10)
@@ -34,6 +35,7 @@ public class ShutterBlockHandler(
                 _haveCheckedRegistered = true;
             }
             eon.Update(head.Header);
+            txLoader.OnNewReceipts(receipts, head.Number);
         }
     }
 

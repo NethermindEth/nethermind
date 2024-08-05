@@ -6,5 +6,5 @@ using Nethermind.Core;
 namespace Nethermind.Merge.AuRa.Shutter;
 public interface IShutterBlockHandler
 {
-    void OnNewHeadBlock(Block head);
+    void OnBlockProcessed(Block head, TxReceipt[] receipts);
 }

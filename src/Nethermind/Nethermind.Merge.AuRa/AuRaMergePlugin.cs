@@ -37,7 +37,7 @@ namespace Nethermind.Merge.AuRa
         private AuRaNethermindApi? _auraApi;
         private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
-        private EventHandler<BlockEventArgs>? _newHeadBlockHandler;
+        private EventHandler<BlockProcessedEventArgs>? _newHeadBlockHandler;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
@@ -137,14 +137,14 @@ namespace Nethermind.Merge.AuRa
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
                 ShutterEon eon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
-                ShutterBlockHandler blockHandler = new(_api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryContractAddress!, _shutterConfig.ValidatorRegistryMessageVersion, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, validatorsInfo, eon, _api.LogManager);
+                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
+                ShutterBlockHandler blockHandler = new(_api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryContractAddress!, _shutterConfig.ValidatorRegistryMessageVersion, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, validatorsInfo, eon, txLoader, _api.LogManager);
                 _newHeadBlockHandler = (_, e) =>
                 {
-                    blockHandler.OnNewHeadBlock(e.Block);
+                    blockHandler.OnBlockProcessed(e.Block, e.TxReceipts);
                 };
-                _api.BlockTree!.NewHeadBlock += _newHeadBlockHandler;
+                _api.MainBlockProcessor!.BlockProcessed += _newHeadBlockHandler;
 
-                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
                 _shutterTxSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
                 ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, eon, _api.LogManager);
@@ -165,7 +165,7 @@ namespace Nethermind.Merge.AuRa
         {
             if (_newHeadBlockHandler is not null)
             {
-                _api.BlockTree!.NewHeadBlock -= _newHeadBlockHandler;
+                _api.MainBlockProcessor!.BlockProcessed -= _newHeadBlockHandler;
             }
             await (_shutterP2P?.DisposeAsync() ?? default);
             await base.DisposeAsync();

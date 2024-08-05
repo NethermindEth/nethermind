@@ -4,14 +4,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Microsoft.IdentityModel.Tokens;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -48,6 +46,24 @@ public class SequencerContract : Contract
                 yield return tx;
             }
         }
+    }
+
+    public bool FilterAccepts(LogEntry log, long blockNumber)
+        => new LogFilter(0, new(blockNumber), new(blockNumber), _addressFilter, _topicsFilter).Accepts(log);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(LogEntry log)
+    {
+        object[] decodedEvent = AbiEncoder.Decode(AbiEncodingStyle.None, _transactionSubmittedAbi.Signature, log.Data);
+        return new ISequencerContract.TransactionSubmitted
+        {
+            Eon = (ulong)decodedEvent[0],
+            TxIndex = (ulong)decodedEvent[1],
+            IdentityPrefix = new Bytes32((byte[])decodedEvent[2]),
+            Sender = (Address)decodedEvent[3],
+            EncryptedTransaction = (byte[])decodedEvent[4],
+            GasLimit = (UInt256)decodedEvent[5]
+        };
     }
 
     private List<List<ISequencerContract.TransactionSubmitted>> GetEventBlocks(ulong eon, ulong txPointer, long headBlockNumber, out int count)
