@@ -148,8 +148,8 @@ public class DiscoveryApp : IDiscoveryApp
 
         NetworkChange.NetworkAvailabilityChanged += ResetUnreachableStatus;
 
-        IPAddress ip = IPAddress.Parse(_networkConfig.LocalIp!);
-        _bindingTask = bootstrap.BindAsync(ip, _networkConfig.DiscoveryPort)
+        var ip = IPAddress.Parse(_networkConfig.LocalIp!);
+        _bindingTask = bootstrap.BindFromConfigAsync<INetworkConfig>(nameof(_networkConfig.DiscoveryPort), ip, _networkConfig.DiscoveryPort)
             .ContinueWith(
                 t
                     =>
