@@ -106,7 +106,6 @@ public class MetricsTests
         };
         List<Type> knownMetricsTypes = new()
         {
-            typeof(Mev.Metrics),
             typeof(TxPool.Metrics),
             typeof(Blockchain.Metrics),
             typeof(Consensus.AuRa.Metrics),
