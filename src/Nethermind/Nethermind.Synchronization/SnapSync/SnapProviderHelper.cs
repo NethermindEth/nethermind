@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -15,6 +16,7 @@ using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using static System.Reflection.Metadata.BlobBuilder;
 using static Nethermind.Core.Extensions.Bytes;
 using Rlp = Nethermind.Serialization.Rlp.Rlp;
 
@@ -81,13 +83,33 @@ namespace Nethermind.Synchronization.SnapSync
             if (sortedBoundaryList?.Count > 0)
             {
                 Span<byte> path = stackalloc byte[64];
-                FillInAccountHashesOnBoundary(state, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
+                //FillInAccountHashesOnBoundary(state, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
+                FillInProofNodes(state, Keccak.Zero, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
             }
 
             //tree.UpdateRootHash();
             ValueHash256 newStateRoot = state.RefreshRootHash();
             if (newStateRoot != expectedRootHash)
             {
+                using var fileStream = new FileStream(@$"C:\Temp\case_{startingHash}_{lastHash}.txt", FileMode.Create);
+                using var sw = new StreamWriter(fileStream);
+                //sw.WriteLine($"{account.Path.ToString()}|{account.Account.Balance}|{account.Account.StorageRoot}");
+                sw.WriteLine(startingHash.ToString());
+                sw.WriteLine(expectedRootHash.ToString());
+                sw.WriteLine(newStateRoot.ToString());
+
+                for (var index = 0; index < accounts.Count; index++)
+                {
+                    PathWithAccount pwa = accounts[index];
+                    sw.WriteLine($"{pwa.Path.ToString()}|{pwa.Account.Nonce}|{pwa.Account.Balance}|{pwa.Account.StorageRoot}|{pwa.Account.CodeHash}");
+                }
+
+                sw.WriteLine();
+                for (var index = 0; index < proofs?.Count; index++)
+                {
+                    sw.WriteLine($"{proofs[index].ToHexString()}");
+                }
+
                 state.Discard();
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
@@ -163,6 +185,10 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             state.SetStorageHash(accountHash, Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
                         }
+                        //else
+                        //{
+                        //    state.SetStorageHash(accountHash, Nibbles.ToBytes(path), pathIndex + 1, Keccak.EmptyTreeHash);
+                        //}
                     }
                     else
                     {
@@ -170,6 +196,61 @@ namespace Nethermind.Synchronization.SnapSync
                         if (childNode is not null)
                             FillInStorageHashesOnBoundary(state, accountHash, firstPath, lastPath, childNode, path, pathIndex + 1);
                     }
+                }
+            }
+        }
+
+        private static void FillInProofNodes(IRawState state, ValueHash256 accountHash, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
+        {
+            TreePath emptyPath = TreePath.Empty;
+
+            if (node.IsExtension)
+            {
+                node.Key.CopyTo(path.Slice(pathIndex));
+                FillInProofNodes(state, accountHash, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0), path, pathIndex + node.Key.Length);
+                state.CreateProofExtension(accountHash, Nibbles.ToBytes(path), pathIndex, node.Key.Length);
+            }
+            else if (node.IsBranch)
+            {
+                List<byte> children = new List<byte>();
+                List<Hash256?> childHashes = new List<Hash256?>();
+                for (int i = 0; i < 16; i++)
+                {
+                    path[pathIndex] = (byte)i;
+                    if (IsNotInRange(path, pathIndex + 1, firstPath, lastPath))
+                    {
+                        if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                        {
+                            children.Add((byte)i);
+                            childHashes.Add(childHash.ToCommitment());
+                        }
+                    }
+                    else
+                    {
+                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i);
+                        if (childNode is not null)
+                        {
+                            FillInProofNodes(state, accountHash, firstPath, lastPath, childNode, path, pathIndex + 1);
+                            children.Add((byte)i);
+                            childHashes.Add(null);
+                        }
+                        else
+                        {
+                            if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash)) continue;
+                            children.Add((byte)i);
+                            childHashes.Add(null);
+                        }
+                    }
+                }
+
+                if (children.Count < 2)
+                {
+                    Console.WriteLine($"Less than 2 children for branch node {path.ToHexString()} | {pathIndex} | {node.FullRlp.ToArray()?.ToHexString()}");
+                }
+                else
+                {
+                    state.CreateProofBranch(accountHash, Nibbles.ToBytes(path), pathIndex, children.ToArray(),
+                        childHashes.ToArray());
                 }
             }
         }
@@ -218,7 +299,9 @@ namespace Nethermind.Synchronization.SnapSync
             if (sortedBoundaryList?.Count > 0)
             {
                 Span<byte> path = stackalloc byte[64];
-                FillInStorageHashesOnBoundary(state, account.Path, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
+                //FillInStorageHashesOnBoundary(state, account.Path, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
+
+                FillInProofNodes(state, account.Path, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
             }
 
 
@@ -229,9 +312,31 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (newStorageRoot != expectedRootHash)
             {
+                using var fileStream = new FileStream(@$"C:\Temp\case_{account.Path}.txt", FileMode.Create);
+                using var sw = new StreamWriter(fileStream);
+                sw.WriteLine($"{account.Path.ToString()}|{account.Account.Balance}|{account.Account.StorageRoot}");
+                sw.WriteLine(startingHash.ToString());
+                sw.WriteLine(expectedRootHash.ToString());
+                sw.WriteLine(newStorageRoot.ToString());
+
+                for (var index = 0; index < slots.Count; index++)
+                {
+                    PathWithStorageSlot slot = slots[index];
+                    sw.WriteLine($"{slot.Path.ToString()}|{slot.SlotRlpValue.ToHexString()}");
+                }
+
+                sw.WriteLine();
+                for (var index = 0; index < proofs?.Count; index++)
+                {
+                    sw.WriteLine($"{proofs[index].ToHexString()}");
+                }
+
                 state.Discard();
                 return (AddRangeResult.DifferentRootHash, true);
             }
+
+            //ProcessBoundaries(account.Path, sortedBoundaryList, state);
+
             state.Commit(false);
 
             //StitchBoundaries(sortedBoundaryList, tree.TrieStore);
@@ -425,6 +530,38 @@ namespace Nethermind.Synchronization.SnapSync
                         }
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
+                    }
+                }
+            }
+        }
+
+        private static void ProcessBoundaries(ValueHash256 accountHash, List<(TrieNode, TreePath)> sortedBoundaryList, IRawState state)
+        {
+            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
+            {
+                (TrieNode node, TreePath path) = sortedBoundaryList[i];
+
+                if (!node.IsPersisted)
+                {
+                    if (node.IsExtension)
+                    {
+                        state.CheckBoundaryProof(accountHash, path.Span, path.Length);
+                    }
+
+                    if (node.IsBranch)
+                    {
+                        state.CheckBoundaryProof(accountHash, path.Span, path.Length);
+                        //bool isBoundaryProofNode = false;
+                        //for (int ci = 0; ci <= 15; ci++)
+                        //{
+                        //}
+
+                        //node.IsBoundaryProofNode = isBoundaryProofNode;
                     }
                 }
             }

@@ -43,7 +43,8 @@ public class PaprikaStateFactory : IStateFactory
     public PaprikaStateFactory()
     {
         _db = PagedDb.NativeMemoryDb(64 * 1024 * 1024);
-        _merkleBehaviour = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
+        //_merkleBehaviour = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
+        _merkleBehaviour = new ComputeMerkleBehavior(2);
         _blockchain = new Blockchain(_db, _merkleBehaviour);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
@@ -63,7 +64,8 @@ public class PaprikaStateFactory : IStateFactory
 
         _db = PagedDb.MemoryMappedDb(_holesky, 64, directory, flushToDisk: true);
 
-        var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
+        //var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
+        var parallelism = ComputeMerkleBehavior.ParallelismNone;
 
         _merkleBehaviour = new(parallelism);
         _blockchain = new Blockchain(_db, _merkleBehaviour, _flushFileEvery, stateOptions, merkleOptions);
@@ -453,6 +455,27 @@ public class PaprikaStateFactory : IStateFactory
             //_factory._logger.Info($"Setting storage hash for path {path.ToString()} - {keccak}");
         }
 
+        public void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, byte[] childNibbles, Hash256?[] childHashes)
+        {
+            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            PaprikaKeccak[] hashes = new PaprikaKeccak[childHashes.Length];
+            for (int i = 0; i < childHashes.Length; i++)
+            {
+                hashes[i] = childHashes[i] is not null ? Convert(childHashes[i]!) : PaprikaKeccak.Zero;
+            }
+            _wrapped.CreateProofBranch(Convert(accountHash), path, childNibbles, hashes);
+        }
+
+        public void CreateProofExtension(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
+            int extPathLength)
+        {
+            var fullPath = NibblePath.FromKey(keyPath);
+            NibblePath storagePath = fullPath.SliceTo(targetKeyLength);
+            NibblePath extensionPath = fullPath.SliceFrom(targetKeyLength).SliceTo(extPathLength);
+
+            _wrapped.CreateProofExtension(Convert(accountHash), storagePath, extensionPath);
+        }
+
         public void Commit(bool ensureHash)
         {
             try
@@ -470,6 +493,18 @@ public class PaprikaStateFactory : IStateFactory
         {
             NibblePath nibblePath = NibblePath.FromKey(path).SliceTo(pathLength);
             return Convert(_wrapped.GetHash(nibblePath));
+        }
+
+        public ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength)
+        {
+            NibblePath nibblePath = NibblePath.FromKey(storagePath).SliceTo(pathLength);
+            return Convert(_wrapped.GetStorageHash(Convert(accountHash), nibblePath));
+        }
+
+        public void CheckBoundaryProof(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength)
+        {
+            NibblePath nibblePath = NibblePath.FromKey(storagePath).SliceTo(pathLength);
+            _wrapped.CheckBoundaryProof(Convert(accountHash), nibblePath);
         }
 
         public void Finalize(uint blockNumber)

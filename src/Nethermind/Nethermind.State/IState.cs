@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie.Pruning;
 using Paprika.Chain;
+using Paprika.Data;
 using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State;
@@ -63,6 +64,15 @@ public interface IRawState : IReadOnlyState
     void SetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
     void Commit(bool ensureHash);
     ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength);
+    ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength);
+    void CheckBoundaryProof(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength);
+
+    void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
+        byte[] childNibbles, Hash256[] childHashes);
+
+    void CreateProofExtension(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
+        int extPathLength);
+
     void Finalize(uint blockNumber);
     string DumpTrie();
     ValueHash256 RefreshRootHash();
