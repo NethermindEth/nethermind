@@ -22,8 +22,9 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// TODO: Switch to tree based kademlia implementation.
 public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentKey, TContent> where TNode : notnull
 {
-    private IKademlia<TNode, TContentKey, TContent>.IStore _store;
-    private readonly static TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
+
+    private readonly IKademlia<TNode, TContentKey, TContent>.IStore _store;
     private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
     private readonly ConcurrentDictionary<TNode, bool> _isRefreshing = new ConcurrentDictionary<TNode, bool>();
 
@@ -75,7 +76,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _isRefreshing.TryRemove(node, out _);
 
         var bucket = GetBucket(node);
-        if (!bucket.TryAddOrRefresh(node, out TNode? toRefresh))
+        if (!bucket.TryAddOrRefresh(_nodeHashProvider.GetHash(node), node, out TNode? toRefresh))
         {
             if (toRefresh != null) TryRefresh(toRefresh);
         }
@@ -87,6 +88,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         {
             Task.Run(async () =>
             {
+                ValueHash256 nodeHash = _nodeHashProvider.GetHash(toRefresh);
                 using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
                 try
                 {
@@ -105,7 +107,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
                 if (_isRefreshing.TryRemove(toRefresh, out _))
                 {
                     // Well... basically its not responding.
-                    GetBucket(toRefresh).RemoveAndReplace(toRefresh);
+                    GetBucket(toRefresh).RemoveAndReplace(nodeHash);
                 }
             });
         }
@@ -408,7 +410,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
         if (currentFailure >= 5)
         {
-            GetBucket(receiver).Remove(receiver);
+            ValueHash256 nodeHash = _nodeHashProvider.GetHash(receiver);
+            GetBucket(receiver).Remove(nodeHash);
             _peerFailures.Delete(receiver);
 
         }

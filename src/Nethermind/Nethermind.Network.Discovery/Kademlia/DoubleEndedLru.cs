@@ -1,29 +1,30 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
 // TODO: Combine with LruCace?
-public class DoubleEndedLru<THash>(int capacity) where THash : notnull
+public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
 {
     // Double check if can be done locklesly
     private McsLock _lock = new McsLock();
 
-    private LinkedList<THash> _queue = new();
-    private ConcurrentDictionary<THash, LinkedListNode<THash>> _hashMapping = new();
+    private LinkedList<(ValueHash256, TNode)> _queue = new();
+    private ConcurrentDictionary<ValueHash256, LinkedListNode<(ValueHash256, TNode)>> _hashMapping = new();
     public int Count => _queue.Count;
 
-    public bool AddOrRefresh(THash hash)
+    public bool AddOrRefresh(in ValueHash256 hash, TNode node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        if (_hashMapping.TryGetValue(hash, out var node))
+        if (_hashMapping.TryGetValue(hash, out var listNode))
         {
-            _queue.Remove(node);
-            _queue.AddFirst(node);
+            _queue.Remove(listNode);
+            _queue.AddFirst(listNode);
             return true;
         }
 
@@ -32,63 +33,63 @@ public class DoubleEndedLru<THash>(int capacity) where THash : notnull
             return false;
         }
 
-        node = _queue.AddFirst(hash);
-        if (_hashMapping.TryAdd(hash, node) && _queue.Count <= capacity) return true;
+        listNode = _queue.AddFirst((hash, node));
+        if (_hashMapping.TryAdd(hash, listNode) && _queue.Count <= capacity) return true;
 
-        _queue.Remove(node);
-        _hashMapping.TryRemove(hash, out node);
+        _queue.Remove((hash, node));
+        _hashMapping.TryRemove(hash, out listNode);
 
         return false;
     }
 
-    public bool TryPopHead(out THash? hash)
+    public bool TryPopHead(out TNode? node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        LinkedListNode<THash>? front = _queue.First;
+        LinkedListNode<(ValueHash256, TNode)>? front = _queue.First;
         if (front == null)
         {
-            hash = default;
+            node = default;
             return false;
         }
 
         _queue.Remove(front);
-        hash = front.Value;
-        _hashMapping.TryRemove(front.Value, out front);
+        node = front.Value.Item2;
+        _hashMapping.TryRemove(front.Value.Item1, out front);
 
         return true;
     }
 
-    public bool TryGetLast(out THash? last)
+    public bool TryGetLast(out TNode? last)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        LinkedListNode<THash>? lastNode = _queue.Last;
+        LinkedListNode<(ValueHash256, TNode)>? lastNode = _queue.Last;
         if (lastNode == null)
         {
             last = default;
             return false;
         }
 
-        last = lastNode.Value;
+        last = lastNode.Value.Item2;
         return true;
     }
 
-    public bool Remove(THash hash)
+    public bool Remove(ValueHash256 hash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        if (_hashMapping.TryRemove(hash, out var node))
+        if (_hashMapping.TryRemove(hash, out var listNode))
         {
-            _queue.Remove(node);
+            _queue.Remove(listNode);
             return true;
         }
 
         return false;
     }
 
-    public THash[] GetAll()
+    public TNode[] GetAll()
     {
-        return _hashMapping.Select(kv => kv.Key).ToArray();
+        return _hashMapping.Select(kv => kv.Value.Value.Item2).ToArray();
     }
 }

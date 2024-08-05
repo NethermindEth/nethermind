@@ -74,8 +74,6 @@ public class KademliaSimulation
 
         await fabric.Bootstrap(cts.Token);
 
-        Console.Out.WriteLine("Lookup =======");
-
         (await node1.LookupValue(node2Hash, cts.Token)).Should().BeEquivalentTo(node2Hash);
         (await node1.LookupValue(node3Hash, cts.Token)).Should().BeEquivalentTo(node3Hash);
     }

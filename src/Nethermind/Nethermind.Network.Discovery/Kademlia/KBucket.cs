@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Network.Discovery.Kademlia;
 
 public class KBucket<TNode>(int k) where TNode : notnull
@@ -17,15 +19,15 @@ public class KBucket<TNode>(int k) where TNode : notnull
     /// </summary>
     /// <param name="item"></param>
     /// <returns></returns>
-    public bool TryAddOrRefresh(TNode item, out TNode? toRefresh)
+    public bool TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh)
     {
-        if (_items.AddOrRefresh(item))
+        if (_items.AddOrRefresh(hash, item))
         {
             toRefresh = default;
             return true;
         }
 
-        _replacement.AddOrRefresh(item);
+        _replacement.AddOrRefresh(hash, item);
         _items.TryGetLast(out toRefresh);
         return false;
     }
@@ -36,20 +38,20 @@ public class KBucket<TNode>(int k) where TNode : notnull
         return _items.GetAll();
     }
 
-    public void RemoveAndReplace(TNode node)
+    public void RemoveAndReplace(in ValueHash256 hash)
     {
-        if (_items.Remove(node))
+        if (_items.Remove(hash))
         {
             if (_replacement.TryPopHead(out TNode? replacement))
             {
-                _items.AddOrRefresh(replacement!);
+                _items.AddOrRefresh(hash, replacement!);
             }
         }
     }
 
-    public void Remove(TNode node)
+    public void Remove(in ValueHash256 hash)
     {
-        _items.Remove(node);
-        _replacement.Remove(node);
+        _items.Remove(hash);
+        _replacement.Remove(hash);
     }
 }

@@ -24,13 +24,13 @@ public class KBucketTests
 
         foreach (ValueHash256 valueHash256 in toAdd)
         {
-            bucket.TryAddOrRefresh(valueHash256, out _);
+            bucket.TryAddOrRefresh(valueHash256, valueHash256, out _);
         }
 
         // Again
         foreach (ValueHash256 valueHash256 in toAdd)
         {
-            bucket.TryAddOrRefresh(valueHash256, out _);
+            bucket.TryAddOrRefresh(valueHash256, valueHash256, out _);
         }
 
         bucket.GetAll().ToHashSet().Should().BeEquivalentTo(toAdd[..5].ToHashSet());
