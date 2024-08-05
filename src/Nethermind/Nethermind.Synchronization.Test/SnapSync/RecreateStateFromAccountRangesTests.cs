@@ -5,11 +5,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -198,6 +200,72 @@ namespace Nethermind.Synchronization.Test.SnapSync
         }
 
         [Test]
+        public void RecreateStorageStateFromOneRangeWithoutProof_File()
+        {
+            var accounts = new List<PathWithAccount>();
+            var proofs = new List<byte[]>();
+
+            Hash256 rootHash;
+            Hash256 staringHash;
+            Hash256 calculatedHash;
+
+            using (var sr = new StreamReader(@"C:\Temp\case_0x0000000000000000000000000000000000000000000000000000000000000000_0x000850acb57ae8470f5b1b712acad557dca7e9988dd960c67e867093ae19dc77.txt"))
+            {
+                string line = "";
+
+                staringHash = new Hash256(sr.ReadLine());
+                rootHash = new Hash256(sr.ReadLine());
+                calculatedHash = new Hash256(sr.ReadLine());
+
+                while ((line = sr.ReadLine()) != null)
+                {
+                    if (string.IsNullOrEmpty(line))
+                        break;
+                    var parts = line.Split('|');
+
+                    Account account = new Account(UInt256.Parse(parts[1]), UInt256.Parse(parts[2]), new Hash256(parts[3]), new Hash256(parts[4]));
+
+                    accounts.Add(new PathWithAccount(new Hash256(parts[0]), account));
+                }
+
+                while ((line = sr.ReadLine()) != null)
+                {
+                    if (string.IsNullOrEmpty(line))
+                        break;
+
+                    var proof = Bytes.FromHexString(line);
+
+                    proofs.Add(proof);
+                }
+            }
+
+            TrieStore trieStore = new TrieStore(new MemDb(), NullLogManager.Instance);
+            StateTree trie = new StateTree(trieStore.GetTrieStore(null), NullLogManager.Instance);
+
+            for (int i = 0; i < accounts.Count; i++)
+            {
+                trie.Set(accounts[i].Path, accounts[i].Account);
+            }
+            trie.UpdateRootHash();
+
+            MemDb db = new();
+            IDbProvider dbProvider = new DbProvider();
+            dbProvider.RegisterDb(DbNames.State, db);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.StateDb, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider.StateDb, new NodeStorage(db), LimboLogs.Instance);
+
+            var result = snapProvider.AddAccountRange(1, rootHash, staringHash, accounts, proofs);
+
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+
+            IRawState rawState = progressTracker.GetSyncState();
+            rawState.Finalize(1);
+            IReadOnlyState state = stateFactory.GetReadOnly(rawState.StateRoot);
+            //AssertAllStorageSlots(state, 6);
+        }
+
+        [Test]
         public void RecreateAccountStateFromMultipleRange()
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
@@ -368,7 +436,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         public void RecreateAccountStateFromMultipleRange_PivotChange_Low()
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
-            StateTree newPivotTree = TestItem.Tree.GetStateTree();
+            StateTree newPivotTree = TestItem.Tree.GetStateTree(maxCount: 6);
             newPivotTree.Set(TestItem.Tree.AccountAddress0, TestItem.Tree.Account10);
             newPivotTree.Commit(1);
             Hash256 rootHashNew = newPivotTree.RootHash;
@@ -411,7 +479,13 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(1);
 
             var state = stateFactory.Get(rootHashNew);
-            AssertAllAccounts(state, 6);
+
+            foreach (var item in TestItem.Tree.AccountsWithPaths[1..6])
+            {
+                Account a = state.Get(item.Path);
+                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
+                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
+            }
         }
 
         [Test]
