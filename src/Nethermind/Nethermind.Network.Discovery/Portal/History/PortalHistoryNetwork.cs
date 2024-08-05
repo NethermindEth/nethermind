@@ -24,11 +24,11 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
         byte[] protocolId,
         IEnr[] bootNodes
     ) {
-        _contentNetwork = portalContentNetworkFactory.Create(new ContentNetworkConfig(protocolId), this);
-        foreach (IEnr bootNode in bootNodes)
+        _contentNetwork = portalContentNetworkFactory.Create(new ContentNetworkConfig()
         {
-            _contentNetwork.AddOrRefresh(bootNode);
-        }
+            ProtocolId = protocolId,
+            BootNodes = bootNodes
+        }, this);
 
         _blockTree = blockTree;
         _logger = logManager.GetClassLogger<PortalHistoryNetwork>();

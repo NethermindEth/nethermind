@@ -1,18 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Collections;
-using System.IO.Pipelines;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
-using Nethermind.Network.Discovery.UTP;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -24,9 +19,9 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="utpManager"></param>
 public class KademliaTalkReqHandler(
     IPortalContentNetwork.Store store,
-    IMessageReceiver<IEnr, byte[], LookupContentResult> kad,
+    IKademlia<IEnr, byte[], LookupContentResult> kad,
     IContentDistributor contentDistributor,
-    IEnr selfEnr,
+    IEnrProvider enrProvider,
     IUtpManager utpManager
 ) : ITalkReqProtocolHandler
 {
@@ -89,7 +84,7 @@ public class KademliaTalkReqHandler(
         // fortunately, its basically the same as randomizing hash at a specific distance.
         // unfortunately, the protocol said to filter neighbour that is of incorrect distance...
         // which is another weird thing that I'm not sure how to handle.
-        ValueHash256 theHash = Hash256XORUtils.GetRandomHashAtDistance(_nodeHashProvider.GetHash(selfEnr), nodes.Distances[0]);
+        ValueHash256 theHash = Hash256XORUtils.GetRandomHashAtDistance(_nodeHashProvider.GetHash(enrProvider.SelfEnr), nodes.Distances[0]);
         var neighbours = await kad.FindNeighbours(sender, theHash, CancellationToken.None);
         var neighboursAsBytes = neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
 

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using FluentAssertions.Extensions;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Entries;
 using Lantern.Discv5.Enr.Identity;
@@ -17,17 +16,12 @@ using Lantern.Discv5.WireProtocol.Session;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal;
 using Nethermind.Network.Test;
 using NonBlocking;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
@@ -228,7 +222,10 @@ public class ContentNetworkScenarioTests
 
             IPortalContentNetworkFactory factory = serviceProvider.GetRequiredService<IPortalContentNetworkFactory>();
             TestStore testStore = new TestStore();
-            IPortalContentNetwork contentNetwork = factory.Create(new ContentNetworkConfig(ProtocolId), testStore);
+            IPortalContentNetwork contentNetwork = factory.Create(new ContentNetworkConfig()
+            {
+                ProtocolId = ProtocolId
+            }, testStore);
             Node node = new Node(newNodeEnr, contentNetwork, testStore, serviceProvider);
             _nodes[EnrNodeHashProvider.Instance.GetHash(newNodeEnr)] = node;
 
