@@ -117,6 +117,8 @@ public class TestBlockchain : IDisposable
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
+    public ChainLevelInfoRepository ChainLevelInfoRepository { get; protected set; } = null!;
+
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
@@ -160,12 +162,13 @@ public class TestBlockchain : IDisposable
         WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
+        ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
         BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
             new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
             DbProvider.BlockInfosDb,
             DbProvider.MetadataDb,
             new BlockStore(new TestMemDb(), 100),
-            new ChainLevelInfoRepository(DbProvider.BlockInfosDb),
+            ChainLevelInfoRepository,
             SpecProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),
@@ -373,7 +376,7 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
             State,
             ReceiptStorage,
-            new BlockhashStore(BlockTree, SpecProvider, State),
+            new BlockhashStore(SpecProvider, State),
             LogManager);
 
     public async Task WaitForNewHead()

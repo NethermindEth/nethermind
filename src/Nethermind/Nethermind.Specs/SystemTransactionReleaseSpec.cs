@@ -16,6 +16,7 @@ namespace Nethermind.Specs
             _spec = spec;
         }
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
+        public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
 
         public string Name => "System";
 
@@ -129,6 +130,7 @@ namespace Nethermind.Specs
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
+        public bool IsEip7709Enabled => _spec.IsEip7709Enabled;
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;

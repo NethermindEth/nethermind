@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -62,7 +61,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
 
             uint fastLzSize = ComputeFlzCompressLen(tx);
 
-            return ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar);
+            return ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar, out _);
         }
 
         UInt256 dataGas = ComputeDataGas(tx, _opSpecHelper.IsRegolith(header));
@@ -112,7 +111,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
     // l1FeeScaled = baseFeeScalar * l1BaseFee * 16 + blobFeeScalar * l1BlobBaseFee
     // estimatedSize = max(minTransactionSize, intercept + fastlzCoef * fastlzSize)
     // l1Cost = estimatedSize * l1FeeScaled / 1e12
-    public static UInt256 ComputeL1CostFjord(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
+    public static UInt256 ComputeL1CostFjord(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar, out UInt256 estimatedSize)
     {
         UInt256 l1FeeScaled = l1BaseFeeScalar * l1BaseFee * PrecisionMultiplier + l1BlobBaseFeeScalar * blobBaseFee;
         UInt256 fastLzCost = L1CostFastlzCoef * fastLzSize;
@@ -126,7 +125,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
             fastLzCost -= L1CostInterceptNeg;
         }
 
-        var estimatedSize = UInt256.Max(MinTransactionSizeScaled, fastLzCost);
+        estimatedSize = UInt256.Max(MinTransactionSizeScaled, fastLzCost);
         return estimatedSize * l1FeeScaled / FjordDivisor;
     }
 
@@ -145,109 +144,103 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
     // Based on:
     // https://github.com/ethereum-optimism/op-geth/blob/7c2819836018bfe0ca07c4e4955754834ffad4e0/core/types/rollup_cost.go
     // https://github.com/Vectorized/solady/blob/5315d937d79b335c668896d7533ac603adac5315/js/solady.js
-    [SkipLocalsInit]
+    // Do not use SkipLocalsInit, `ht` should be zeros initially
     public static uint ComputeFlzCompressLen(Transaction tx)
     {
         byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-        [SkipLocalsInit]
         static uint FlzCompressLen(byte[] data)
         {
             uint n = 0;
-            uint[] ht = ArrayPool<uint>.Shared.Rent(8192);
-            try
+            Span<uint> ht = stackalloc uint[8192];
+
+            uint u24(uint i) => data[i] | ((uint)data[i + 1] << 8) | ((uint)data[i + 2] << 16);
+            uint cmp(uint p, uint q, uint e)
             {
-                uint u24(uint i) => data[i] | ((uint)data[i + 1] << 8) | ((uint)data[i + 2] << 16);
-                uint cmp(uint p, uint q, uint e)
+                uint l = 0;
+                for (e -= q; l < e; l++)
                 {
-                    uint l = 0;
-                    for (e -= q; l < e; l++)
+                    if (data[p + (int)l] != data[q + (int)l])
                     {
-                        if (data[p + (int)l] != data[q + (int)l])
-                        {
-                            e = 0;
-                        }
-                    }
-                    return l;
-                }
-                void literals(uint r)
-                {
-                    n += 0x21 * (r / 0x20);
-                    r %= 0x20;
-                    if (r != 0)
-                    {
-                        n += r + 1;
+                        e = 0;
                     }
                 }
-                void match(uint l)
+                return l;
+            }
+            void literals(uint r)
+            {
+                n += 0x21 * (r / 0x20);
+                r %= 0x20;
+                if (r != 0)
                 {
-                    l--;
-                    n += 3 * (l / 262);
-                    if (l % 262 >= 6)
-                    {
-                        n += 3;
-                    }
-                    else
-                    {
-                        n += 2;
-                    }
+                    n += r + 1;
                 }
-                uint hash(uint v) => ((2654435769 * v) >> 19) & 0x1fff;
-                uint setNextHash(uint ip)
+            }
+            void match(uint l)
+            {
+                l--;
+                n += 3 * (l / 262);
+                if (l % 262 >= 6)
                 {
-                    ht[hash(u24(ip))] = ip;
-                    return ip + 1;
+                    n += 3;
                 }
-                uint a = 0;
-                uint ipLimit = (uint)data.Length - 13;
-                if (data.Length < 13)
+                else
                 {
-                    ipLimit = 0;
+                    n += 2;
                 }
-                for (uint ip = a + 2; ip < ipLimit;)
+            }
+            uint hash(uint v) => ((2654435769 * v) >> 19) & 0x1fff;
+            uint setNextHash(uint ip, ref Span<uint> ht)
+            {
+                ht[(int)hash(u24(ip))] = ip;
+                return ip + 1;
+            }
+            uint a = 0;
+            uint ipLimit = (uint)data.Length - 13;
+            if (data.Length < 13)
+            {
+                ipLimit = 0;
+            }
+            for (uint ip = a + 2; ip < ipLimit;)
+            {
+                uint d;
+                uint r;
+                for (; ; )
                 {
-                    uint d;
-                    uint r;
-                    for (; ; )
-                    {
-                        uint s = u24(ip);
-                        uint h = hash(s);
-                        r = ht[h];
-                        ht[h] = ip;
-                        d = ip - r;
-                        if (ip >= ipLimit)
-                        {
-                            break;
-                        }
-                        ip++;
-                        if (d <= 0x1fff && s == u24(r))
-                        {
-                            break;
-                        }
-                    }
+                    uint s = u24(ip);
+                    int h = (int)hash(s);
+                    r = ht[h];
+                    ht[h] = ip;
+                    d = ip - r;
                     if (ip >= ipLimit)
                     {
                         break;
                     }
-                    ip--;
-                    if (ip > a)
+                    ip++;
+                    if (d <= 0x1fff && s == u24(r))
                     {
-                        literals(ip - a);
+                        break;
                     }
-                    uint l = cmp(r + 3, ip + 3, ipLimit + 9);
-                    match(l);
-                    ip = setNextHash(setNextHash(ip + l));
-                    a = ip;
                 }
-                literals((uint)data.Length - a);
-                return n;
+                if (ip >= ipLimit)
+                {
+                    break;
+                }
+                ip--;
+                if (ip > a)
+                {
+                    literals(ip - a);
+                }
+                uint l = cmp(r + 3, ip + 3, ipLimit + 9);
+                match(l);
+                ip = setNextHash(setNextHash(ip + l, ref ht), ref ht);
+                a = ip;
             }
-            finally
-            {
-                ArrayPool<uint>.Shared.Return(ht);
-            }
+            literals((uint)data.Length - a);
+            return n;
         }
-
         return FlzCompressLen(encoded);
     }
+
+    internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
 }

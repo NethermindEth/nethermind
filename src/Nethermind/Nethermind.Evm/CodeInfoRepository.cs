@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -25,27 +25,27 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly LruCacheLowObject<ValueHash256, CodeInfo>[] _caches;
+        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new LruCacheLowObject<ValueHash256, CodeInfo>[CacheCount];
+            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new LruCacheLowObject<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
             }
         }
 
         public CodeInfo? Get(in ValueHash256 codeHash)
         {
-            LruCacheLowObject<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
         public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
         {
-            LruCacheLowObject<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 
@@ -61,6 +61,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
 
     private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
     {
@@ -89,14 +90,23 @@ public class CodeInfoRepository : ICodeInfoRepository
             [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+
+            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
         }.ToFrozenDictionary();
+    }
+
+    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)>? precompileCache = null)
+    {
+        _localPrecompiles = precompileCache is null
+            ? _precompiles
+            : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
-            return _precompiles[codeSource];
+            return _localPrecompiles[codeSource];
         }
 
         CodeInfo? cachedCodeInfo = null;
@@ -157,5 +167,36 @@ public class CodeInfoRepository : ICodeInfoRepository
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);
+    }
+
+    private CodeInfo CreateCachedPrecompile(
+        in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
+        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+
+    private class CachedPrecompile(
+        Address address,
+        IPrecompile precompile,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) : IPrecompile
+    {
+        public static Address Address => Address.Zero;
+
+        public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
+
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
+
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
+            if (!cache.TryGetValue(key, out (ReadOnlyMemory<byte>, bool) result))
+            {
+                result = precompile.Run(inputData, releaseSpec);
+                // we need to rebuild the key with data copy as the data can be changed by VM processing
+                key = new PreBlockCaches.PrecompileCacheKey(address, inputData.ToArray());
+                cache.TryAdd(key, result);
+            }
+
+            return result;
+        }
     }
 }

@@ -106,6 +106,7 @@ public partial class BlockProcessor : IBlockProcessor
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
+
         try
         {
             for (int i = 0; i < blocksCount; i++)
@@ -117,9 +118,9 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 using CancellationTokenSource cancellationTokenSource = new();
-                Task? preWarmTask = suggestedBlock.Transactions.Length < 3 ?
-                    null :
-                    _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
+                Task? preWarmTask = suggestedBlock.Transactions.Length < 3
+                    ? null
+                    : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 cancellationTokenSource.Cancel();
                 preWarmTask?.GetAwaiter().GetResult();
@@ -160,8 +161,11 @@ public partial class BlockProcessor : IBlockProcessor
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
-            _preWarmer?.ClearCaches();
             throw;
+        }
+        finally
+        {
+            _preWarmer?.ClearCaches();
         }
     }
 
@@ -253,7 +257,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
-        _blockhashStore.ApplyHistoryBlockHashes(block.Header);
+        _blockhashStore.ApplyBlockhashStateChanges(block.Header);
 
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
