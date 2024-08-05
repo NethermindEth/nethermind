@@ -7,6 +7,8 @@ using System.IO.Pipelines;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Int256;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
 using Nethermind.Network.Discovery.UTP;
@@ -23,6 +25,7 @@ namespace Nethermind.Network.Discovery.Portal;
 public class KademliaTalkReqHandler(
     IPortalContentNetwork.Store store,
     IMessageReceiver<IEnr, byte[], LookupContentResult> kad,
+    IContentDistributor contentDistributor,
     IEnr selfEnr,
     IUtpManager utpManager
 ) : ITalkReqProtocolHandler
@@ -60,7 +63,12 @@ public class KademliaTalkReqHandler(
     private async Task<byte[]?> HandlePing(IEnr sender, Ping ping)
     {
         // Still need to call kad since the ping is also used to populate bucket.
-        // TODO: update distance
+        if (ping.CustomPayload?.Length == 32)
+        {
+            UInt256 radius = SlowSSZ.Deserialize<UInt256>(ping.CustomPayload);
+            contentDistributor.UpdatePeerRadius(sender, radius);
+        }
+
         await kad.Ping(sender, default);
 
         return SlowSSZ.Serialize(new MessageUnion()
@@ -68,7 +76,7 @@ public class KademliaTalkReqHandler(
             Pong = new Pong()
             {
                 EnrSeq = ping.EnrSeq,
-                CustomPayload = ping.CustomPayload
+                CustomPayload = ping.CustomPayload!
             }
         });
     }
@@ -107,7 +115,6 @@ public class KademliaTalkReqHandler(
             LookupContentResult value = findValueResult.value!;
             if (value.Payload!.Length >  utpManager.MaxContentByteSize)
             {
-                Console.Error.WriteLine($"{sender} initiate utp sender stream");
                 value.ConnectionId = InitiateUtpStreamSender(sender, value.Payload);
                 value.Payload = null;
             }
@@ -185,11 +192,12 @@ public class KademliaTalkReqHandler(
     private async Task RunOfferAccept(IEnr enr, Offer offer, BitArray accepted, ushort connectionId)
     {
         using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(OfferAcceptTimeout);
+        // cts.CancelAfter(OfferAcceptTimeout);
         var token =  cts.Token;
 
         MemoryStream stream = new MemoryStream(); // TODO: Must it wait for all of it to download?
         await utpManager.ReadContentFromUtp(enr, false, connectionId, stream, token);
+        stream = new MemoryStream(stream.ToArray()); // Wait... how to use this exactly?
 
         for (var i = 0; i < offer.ContentKeys.Length; i++)
         {

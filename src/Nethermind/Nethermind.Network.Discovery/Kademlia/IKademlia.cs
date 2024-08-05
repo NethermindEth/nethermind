@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Lantern.Discv5.Enr;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
@@ -12,17 +13,24 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public interface IKademlia<TNode, TContentKey, TContent>: IMessageReceiver<TNode, TContentKey, TContent>
 {
     /// Add node to the table.
-    public void AddOrRefresh(TNode node);
+    void AddOrRefresh(TNode node);
 
     /// Initiate a full traversal for finding the value
-    public Task<TContent?> LookupValue(TContentKey id, CancellationToken token);
+    Task<TContent?> LookupValue(TContentKey id, CancellationToken token);
+
+    /// Lookup k nearest neighbour closest to the content id
+    Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, int k, CancellationToken token);
 
     /// Start timers, refresh and such for maintenance of the table.
-    public Task Run(CancellationToken token);
+    Task Run(CancellationToken token);
 
     /// Just do the bootstrap sequence, which is to initiate a lookup on current node id.
     /// Also do a refresh on all bucket which is not part of joining strictly speaking.
-    public Task Bootstrap(CancellationToken token);
+    Task Bootstrap(CancellationToken token);
+
+    /// Enumerate nodes within the table starting from the node nearest to target hash.
+    /// No guarentee is made that the nodes are of exact order.
+    IEnumerable<TNode> IterateNeighbour(ValueHash256 hash);
 
     public interface IStore
     {

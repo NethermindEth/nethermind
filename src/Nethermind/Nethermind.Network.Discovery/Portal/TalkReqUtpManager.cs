@@ -52,12 +52,10 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         if (!_utpStreams.TryGetValue((new ValueHash256(sender.NodeId), connectionId), out UTPStream? stream))
         {
             if (_logger.IsDebug) _logger.Debug($"Unknown connection id :{connectionId}. Resetting...");
-            Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Unknown con id {header}");
             await SendReset(sender, header.ConnectionId);
             return null;
         }
 
-        Console.Error.WriteLine($"Handle {header}");
         await stream.ReceiveMessage(header, talkReqMessage.Request.AsSpan()[headerSize..], CancellationToken.None);
         return Array.Empty<byte>();
     }
@@ -103,7 +101,6 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
             ourConnectionId = (ushort)(connectionId + 1);
         }
 
-        Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Write content set connection id to {ourConnectionId}");
         UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
         if (!_utpStreams.TryAdd((new ValueHash256(nodeId.NodeId), ourConnectionId), stream))
         {
@@ -118,12 +115,18 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
             using CancellationTokenSource cts = new CancellationTokenSource();
             cts.CancelAfter(TimeSpan.FromSeconds(10));
 
-            await stream.HandleHandshake(cts.Token);
+            if (isInitiator)
+            {
+                await stream.InitiateHandshake(cts.Token, ourConnectionId);
+            }
+            else
+            {
+                await stream.HandleHandshake(cts.Token);
+            }
             await stream.WriteStream(input, cts.Token);
         }
         finally
         {
-            Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Write content done {ourConnectionId}");
             _utpStreams.Remove((new ValueHash256(nodeId.NodeId), peerConnectionId), out _);
         }
     }
@@ -151,7 +154,6 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
             ourConnectionId = (ushort)(connectionId + 1);
         }
 
-        Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Read content set connection id to {ourConnectionId}");
         UTPStream stream = new UTPStream(new UTPToMsgReqAdapter(nodeId, this), peerConnectionId, _logManager);
         if (!_utpStreams.TryAdd((new ValueHash256(nodeId.NodeId), ourConnectionId), stream))
         {
@@ -172,7 +174,6 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         }
         finally
         {
-            Console.Error.WriteLine($"{_enrProvider.SelfEnr.NodeId.ToHexString()} Read content done {ourConnectionId}");
             _utpStreams.Remove((new ValueHash256(nodeId.NodeId), peerConnectionId), out _);
         }
     }

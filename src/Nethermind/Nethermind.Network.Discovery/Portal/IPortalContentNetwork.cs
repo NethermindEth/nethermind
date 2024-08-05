@@ -10,12 +10,13 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 public interface IPortalContentNetwork
 {
-    public Task<byte[]?> LookupContent(byte[] contentKey, CancellationToken token);
-    public Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token);
+    Task<byte[]?> LookupContent(byte[] contentKey, CancellationToken token);
+    Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token);
+    Task BroadcastContent(byte[] contentKey, byte[] value, CancellationToken token);
 
-    public void AddOrRefresh(IEnr node);
-    public Task Run(CancellationToken token);
-    public Task Bootstrap(CancellationToken token);
+    void AddOrRefresh(IEnr node);
+    Task Run(CancellationToken token);
+    Task Bootstrap(CancellationToken token);
 
     /// <summary>
     /// Content provider to be used when serving content to peer.

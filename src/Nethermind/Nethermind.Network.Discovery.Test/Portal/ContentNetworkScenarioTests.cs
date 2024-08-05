@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Entries;
 using Lantern.Discv5.Enr.Identity;
@@ -16,8 +17,10 @@ using Lantern.Discv5.WireProtocol.Session;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal;
@@ -95,7 +98,6 @@ public class ContentNetworkScenarioTests
         (await node4.ContentNetwork.LookupContent(key, cts.Token)).Should().BeEquivalentTo(value);
     }
 
-
     [Test]
     public async Task TestLargeContentTransferWithLookups()
     {
@@ -119,6 +121,39 @@ public class ContentNetworkScenarioTests
         node4.AddPeer(node3);
 
         (await node4.ContentNetwork.LookupContent(key, cts.Token)).Should().BeEquivalentTo(value);
+    }
+
+    [Test]
+    public async Task TestContentDistribute()
+    {
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(100));
+
+        Scenario scenario = new Scenario();
+        var contentKey = scenario.GenerateRandomBytes(32);
+        var node1 = scenario.CreateNode();
+
+        var node2 = scenario.CreateNode();
+        node2.AddPeer(node1);
+
+        var node3 = scenario.CreateNode();
+        node3.AddPeer(node2);
+
+        var node4 = scenario.CreateNode();
+        node4.AddPeer(node3);
+        var value = scenario.GenerateRandomBytes(50_000);
+        node4.SetStore(contentKey, value);
+
+        await scenario.Bootstrap(cts.Token);
+
+        await node4.ContentNetwork.BroadcastContent(contentKey, value, cts.Token);
+
+        await Task.Delay(TimeSpan.FromSeconds(1));
+
+        node4.Store.GetContent(contentKey).Should().BeEquivalentTo(value);
+        node3.Store.GetContent(contentKey).Should().BeEquivalentTo(value);
+        node2.Store.GetContent(contentKey).Should().BeEquivalentTo(value);
+        node1.Store.GetContent(contentKey).Should().BeEquivalentTo(value);
     }
 
     private class Scenario
@@ -150,6 +185,8 @@ public class ContentNetworkScenarioTests
 
             internal IEnr Enr => enr;
 
+            internal TestStore Store => testStore;
+
             public void SetStore(byte[] contentId, byte[] value)
             {
                 testStore.Set(contentId, value);
@@ -170,19 +207,18 @@ public class ContentNetworkScenarioTests
                 Verifier = _identityVerifier,
                 SessionKeys = new SessionKeys(privateKey.KeyBytes),
             };
-
             IEnr newNodeEnr = new EnrBuilder()
                 .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
                 .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-                .WithEntry(EnrEntryKey.Secp256K1,
-                    new EntrySecp256K1(NBitcoin.Secp256k1.Context.Instance.CreatePubKey(privateKey.PublicKey.PrefixedBytes)
-                        .ToBytes(false)))
+                .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(
+                    NBitcoin.Secp256k1.Context.Instance.CreatePubKey(privateKey.PublicKey.PrefixedBytes).ToBytes(false)
+                ))
                 .Build();
 
             IEnrProvider enrProvider = new TestEnrProvider(newNodeEnr, _identityVerifier, _enrFactory);
             IRawTalkReqSender talkReqSender = CreateTalkReqSenderFor(newNodeEnr);
             IServiceCollection services = new ServiceCollection()
-                .AddSingleton<ILogManager>(new TestLogManager())
+                .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
                 .AddSingleton(enrProvider)
                 .AddSingleton(talkReqSender);
 
@@ -252,7 +288,7 @@ public class ContentNetworkScenarioTests
 
             public bool ShouldAcceptOffer(byte[] offerContentKey)
             {
-                return false;
+                return !_contents.ContainsKey(offerContentKey);
             }
 
             public void Store(byte[] contentKey, byte[] content)
@@ -285,6 +321,14 @@ public class ContentNetworkScenarioTests
             byte[] bytes = new byte[size];
             _rng.NextBytes(bytes);
             return bytes;
+        }
+
+        public async Task Bootstrap(CancellationToken ctsToken)
+        {
+            foreach (var kv in _nodes)
+            {
+                await kv.Value.ContentNetwork.Bootstrap(ctsToken);
+            }
         }
     }
 }

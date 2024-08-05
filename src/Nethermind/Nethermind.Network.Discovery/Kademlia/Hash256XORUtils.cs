@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -35,6 +36,19 @@ public static class Hash256XORUtils
         }
 
         return MaxDistance - zeros;
+    }
+
+    public static UInt256 CalculateDistanceUInt256(ValueHash256 h1, ValueHash256 h2)
+    {
+        ValueHash256 xored = new ValueHash256();
+        // TODO: Make this more efficirent/simd it.
+        for (int i = 0; i < 32; i++)
+        {
+            xored.BytesAsSpan[i] = (byte)(h1.BytesAsSpan[i] ^ h2.BytesAsSpan[i]);
+        }
+
+        UInt256 XORed = new UInt256(xored.BytesAsSpan, true);
+        return XORed;
     }
 
     public static int MaxDistance => 256;

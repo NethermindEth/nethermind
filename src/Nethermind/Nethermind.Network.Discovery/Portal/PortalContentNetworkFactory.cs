@@ -46,9 +46,15 @@ public class PortalContentNetworkFactory(
             3,
             TimeSpan.FromHours(1)
         );
-        talkReqTransport.RegisterProtocol(protocol, new KademliaTalkReqHandler(store, kademlia, enrProvider.SelfEnr, utpManager));
+        var contentDistributor = new ContentDistributor(kademlia, protocol, talkReqTransport, utpManager);
+        talkReqTransport.RegisterProtocol(protocol, new KademliaTalkReqHandler(
+            store,
+            kademlia,
+            contentDistributor,
+            enrProvider.SelfEnr,
+            utpManager));
 
-        return new PortalContentNetwork(utpManager, kademlia, messageSender, _logger);
+        return new PortalContentNetwork(utpManager, kademlia, messageSender, contentDistributor, _logger);
     }
 
     private class PortalContentStoreAdapter(IPortalContentNetwork.Store sourceStore) : IKademlia<IEnr, byte[], LookupContentResult>.IStore
@@ -70,10 +76,11 @@ public class PortalContentNetworkFactory(
         }
     }
 
-    private class PortalContentNetwork(
+    public class PortalContentNetwork(
         IUtpManager utpManager,
         IKademlia<IEnr, byte[], LookupContentResult> kademlia,
         IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
+        IContentDistributor contentDistributor,
         ILogger logger)
         : IPortalContentNetwork
     {
@@ -118,6 +125,11 @@ public class PortalContentNetworkFactory(
             await utpManager.ReadContentFromUtp(node, true, value.ConnectionId!.Value, stream, token);
             var asBytes = stream.ToArray();
             return asBytes;
+        }
+
+        public Task BroadcastContent(byte[] contentKey, byte[] value, CancellationToken token)
+        {
+            return contentDistributor.DistributeContent(contentKey, value, token);
         }
 
         public async Task Run(CancellationToken token)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Lantern.Discv5.Enr;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -134,7 +135,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         try
         {
             await LookupNodesClosest(
-                targetHash, async (nextNode, token) =>
+                targetHash, _kSize, async (nextNode, token) =>
                 {
                     FindValueResponse<TNode, TContent> valueResponse = await _messageSender.FindValue(nextNode, contentKey, token);
                     if (valueResponse.hasValue)
@@ -159,10 +160,11 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         return result;
     }
 
-    private async Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, CancellationToken token)
+    public async Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, int k, CancellationToken token)
     {
         return await LookupNodesClosest(
             targetHash,
+            k,
             async (nextNode, token) => await _messageSender.FindNeighbours(nextNode, targetHash, token),
             token
         );
@@ -175,11 +177,13 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     /// store RPC (not implemented).
     /// </summary>
     /// <param name="targetHash"></param>
+    /// <param name="k"></param>
     /// <param name="findNeighbourOp"></param>
     /// <param name="token"></param>
     /// <returns></returns>
     private async Task<TNode[]> LookupNodesClosest(
         ValueHash256 targetHash,
+        int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     ) {
@@ -241,7 +245,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             foreach ((TNode NodeId, TNode[]? Neighbours) response in currentRoundResponse)
             {
                 if (response.Neighbours == null) continue; // Timeout or failed to get response
-                _logger.Info($"Received {response.Neighbours.Length} from {response.NodeId}");
+                // _logger.Trace($"Received {response.Neighbours.Length} from {response.NodeId}");
+                Console.Error.WriteLine($"Received {response.Neighbours.Length} from {response.NodeId}");
 
                 queriedAndResponded.Add(response.NodeId);
 
@@ -267,6 +272,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
             if (!hasCloserThanClosest)
             {
+                Console.Error.WriteLine("No closer node");
                 // end condition it seems
                 break;
             }
@@ -279,7 +285,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
         // At this point need to query for the maxNode.
         List<TNode> result = [];
-        while (result.Count < _kSize && bestSeenAllTime.Count > 0)
+        while (result.Count < k && bestSeenAllTime.Count > 0)
         {
             token.ThrowIfCancellationRequested();
             TNode nextLowest = bestSeenAllTime.Dequeue();
@@ -309,7 +315,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     public async Task Run(CancellationToken token)
     {
-        await LookupNodesClosest(_currentNodeIdAsHash, token);
+        await LookupNodesClosest(_currentNodeIdAsHash, _kSize, token);
 
         while (true)
         {
@@ -322,7 +328,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     public async Task Bootstrap(CancellationToken token)
     {
         Stopwatch sw = Stopwatch.StartNew();
-        await LookupNodesClosest(_currentNodeIdAsHash, token);
+        await LookupNodesClosest(_currentNodeIdAsHash, _kSize, token);
 
         token.ThrowIfCancellationRequested();
 
@@ -335,7 +341,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             if (_buckets[i].Count > 0)
             {
                 ValueHash256 nodeToLookup = Hash256XORUtils.GetRandomHashAtDistance(_currentNodeIdAsHash, i);
-                await LookupNodesClosest(nodeToLookup, token);
+                await LookupNodesClosest(nodeToLookup, _kSize, token);
             }
         }
 
