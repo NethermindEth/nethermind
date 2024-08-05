@@ -85,7 +85,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             InitDiscoveryV5(_privateKeyProvider);
     }
 
-    public void InitializeChannel(IDatagramChannel channel)
+    public void InitializeChannel(IChannel channel)
     {
         _v4?.InitializeChannel(channel);
         _v5?.InitializeChannel(channel);

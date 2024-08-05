@@ -18,13 +18,13 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 {
     private readonly ILogger _logger;
     private readonly IDiscoveryManager _discoveryManager;
-    private readonly IDatagramChannel _channel;
+    private readonly IChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
 
     public NettyDiscoveryHandler(
         IDiscoveryManager? discoveryManager,
-        IDatagramChannel? channel,
+        IChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
         ILogManager? logManager)

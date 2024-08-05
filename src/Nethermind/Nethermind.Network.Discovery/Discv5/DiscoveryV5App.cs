@@ -20,7 +20,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Db;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using DotNetty.Transport.Channels.Sockets;
+using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Api;
 using Nethermind.Network.Discovery.Discv5;
@@ -34,13 +34,13 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IApiWithNetwork _api;
     private readonly Logging.ILogger _logger;
     private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly SimpleFilePublicKeyDb _discoveryDb;
+    private readonly IFullDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IFullDb discoveryDb, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
         _discoveryConfig = discoveryConfig;
@@ -194,7 +194,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public void Initialize(PublicKey masterPublicKey) { }
 
-    public void InitializeChannel(IDatagramChannel channel)
+    public void InitializeChannel(IChannel channel)
     {
         var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
