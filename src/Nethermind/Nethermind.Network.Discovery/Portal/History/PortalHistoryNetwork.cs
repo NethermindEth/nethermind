@@ -24,7 +24,7 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
         byte[] protocolId,
         IEnr[] bootNodes
     ) {
-        _contentNetwork = portalContentNetworkFactory.Create(protocolId, this);
+        _contentNetwork = portalContentNetworkFactory.Create(new ContentNetworkConfig(protocolId), this);
         foreach (IEnr bootNode in bootNodes)
         {
             _contentNetwork.AddOrRefresh(bootNode);

@@ -3,7 +3,6 @@
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public interface IPortalContentNetworkFactory
-{
-    IPortalContentNetwork Create(ContentNetworkConfig config, IPortalContentNetwork.Store store);
-}
+public record ContentNetworkConfig(
+    byte[] ProtocolId
+);

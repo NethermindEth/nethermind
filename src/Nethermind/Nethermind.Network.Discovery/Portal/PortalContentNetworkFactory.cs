@@ -32,9 +32,9 @@ public class PortalContentNetworkFactory(
     private readonly ILogger _logger = logManager.GetClassLogger<PortalContentNetworkFactory>();
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
 
-    public IPortalContentNetwork Create(byte[] protocol, IPortalContentNetwork.Store store)
+    public IPortalContentNetwork Create(ContentNetworkConfig config, IPortalContentNetwork.Store store)
     {
-        var messageSender = new KademliaTalkReqMessageSender(protocol, talkReqTransport, enrProvider, logManager);
+        var messageSender = new KademliaTalkReqMessageSender(config, talkReqTransport, enrProvider, logManager);
         var kadstore = new PortalContentStoreAdapter(store);
         var kademlia = new Kademlia<IEnr, byte[], LookupContentResult>(
             _nodeHashProvider,
@@ -46,15 +46,15 @@ public class PortalContentNetworkFactory(
             3,
             TimeSpan.FromHours(1)
         );
-        var contentDistributor = new ContentDistributor(kademlia, protocol, talkReqTransport, utpManager);
-        talkReqTransport.RegisterProtocol(protocol, new KademliaTalkReqHandler(
+        var contentDistributor = new ContentDistributor(kademlia, config, talkReqTransport, utpManager);
+        var talkReqHandler = new KademliaTalkReqHandler(
             store,
             kademlia,
             contentDistributor,
             enrProvider.SelfEnr,
-            utpManager));
+            utpManager);
 
-        return new PortalContentNetwork(utpManager, kademlia, messageSender, contentDistributor, _logger);
+        return new PortalContentNetwork(config, utpManager, kademlia, talkReqHandler, talkReqTransport, messageSender, contentDistributor, _logger);
     }
 
     private class PortalContentStoreAdapter(IPortalContentNetwork.Store sourceStore) : IKademlia<IEnr, byte[], LookupContentResult>.IStore
@@ -76,14 +76,31 @@ public class PortalContentNetworkFactory(
         }
     }
 
-    public class PortalContentNetwork(
-        IUtpManager utpManager,
-        IKademlia<IEnr, byte[], LookupContentResult> kademlia,
-        IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
-        IContentDistributor contentDistributor,
-        ILogger logger)
-        : IPortalContentNetwork
+    private class PortalContentNetwork : IPortalContentNetwork
     {
+        private readonly IUtpManager _utpManager;
+        private readonly IKademlia<IEnr, byte[], LookupContentResult> _kademlia;
+        private readonly IMessageSender<IEnr, byte[], LookupContentResult> _messageSender;
+        private readonly IContentDistributor _contentDistributor;
+        private readonly ILogger _logger1;
+
+        public PortalContentNetwork(
+            ContentNetworkConfig config,
+            IUtpManager utpManager,
+            IKademlia<IEnr, byte[], LookupContentResult> kademlia,
+            ITalkReqProtocolHandler talkReqHandler,
+            ITalkReqTransport talkReqTransport,
+            IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
+            IContentDistributor contentDistributor,
+            ILogger logger)
+        {
+            talkReqTransport.RegisterProtocol(config.ProtocolId, talkReqHandler);
+            _utpManager = utpManager;
+            _kademlia = kademlia;
+            _messageSender = messageSender;
+            _contentDistributor = contentDistributor;
+            _logger1 = logger;
+        }
 
         public async Task<byte[]?> LookupContent(byte[] key, CancellationToken token)
         {
@@ -92,8 +109,8 @@ public class PortalContentNetworkFactory(
             token = cts.Token;
 
             Stopwatch sw = Stopwatch.StartNew();
-            var result = await kademlia.LookupValue(key, token);
-            logger.Info($"Lookup {key.ToHexString()} took {sw.Elapsed}");
+            var result = await _kademlia.LookupValue(key, token);
+            _logger1.Info($"Lookup {key.ToHexString()} took {sw.Elapsed}");
 
             sw.Restart();
 
@@ -104,15 +121,15 @@ public class PortalContentNetworkFactory(
             Debug.Assert(result.ConnectionId != null);
 
             MemoryStream stream = new MemoryStream();
-            await utpManager.ReadContentFromUtp(result.NodeId, true, result.ConnectionId.Value, stream, token);
+            await _utpManager.ReadContentFromUtp(result.NodeId, true, result.ConnectionId.Value, stream, token);
             var asBytes = stream.ToArray();
-            logger.Info($"UTP download for {key.ToHexString()} took {sw.Elapsed}");
+            _logger1.Info($"UTP download for {key.ToHexString()} took {sw.Elapsed}");
             return asBytes;
         }
 
         public async Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token)
         {
-            var content = await messageSender.FindValue(node, contentKey, token);
+            var content = await _messageSender.FindValue(node, contentKey, token);
             if (!content.hasValue)
             {
                 return null;
@@ -122,29 +139,29 @@ public class PortalContentNetworkFactory(
             if (value.Payload != null) return value.Payload;
 
             MemoryStream stream = new MemoryStream();
-            await utpManager.ReadContentFromUtp(node, true, value.ConnectionId!.Value, stream, token);
+            await _utpManager.ReadContentFromUtp(node, true, value.ConnectionId!.Value, stream, token);
             var asBytes = stream.ToArray();
             return asBytes;
         }
 
         public Task BroadcastContent(byte[] contentKey, byte[] value, CancellationToken token)
         {
-            return contentDistributor.DistributeContent(contentKey, value, token);
+            return _contentDistributor.DistributeContent(contentKey, value, token);
         }
 
         public async Task Run(CancellationToken token)
         {
-            await kademlia.Run(token);
+            await _kademlia.Run(token);
         }
 
         public async Task Bootstrap(CancellationToken token)
         {
-            await kademlia.Bootstrap(token);
+            await _kademlia.Bootstrap(token);
         }
 
         public void AddOrRefresh(IEnr node)
         {
-            kademlia.AddOrRefresh(node);
+            _kademlia.AddOrRefresh(node);
         }
     }
 

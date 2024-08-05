@@ -228,7 +228,7 @@ public class ContentNetworkScenarioTests
 
             IPortalContentNetworkFactory factory = serviceProvider.GetRequiredService<IPortalContentNetworkFactory>();
             TestStore testStore = new TestStore();
-            IPortalContentNetwork contentNetwork = factory.Create(ProtocolId, testStore);
+            IPortalContentNetwork contentNetwork = factory.Create(new ContentNetworkConfig(ProtocolId), testStore);
             Node node = new Node(newNodeEnr, contentNetwork, testStore, serviceProvider);
             _nodes[EnrNodeHashProvider.Instance.GetHash(newNodeEnr)] = node;
 

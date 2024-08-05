@@ -18,7 +18,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="enrProvider"></param>
 /// <param name="logManager"></param>
 public class KademliaTalkReqMessageSender(
-    byte[] protocol,
+    ContentNetworkConfig config,
     ITalkReqTransport talkReqTransport,
     IEnrProvider enrProvider,
     ILogManager logManager
@@ -26,6 +26,7 @@ public class KademliaTalkReqMessageSender(
 {
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
     private ILogger _logger = logManager.GetClassLogger<KademliaTalkReqMessageSender>();
+    private byte[] _protocol = config.ProtocolId;
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
@@ -40,7 +41,7 @@ public class KademliaTalkReqMessageSender(
                 }
             });
 
-        await talkReqTransport.CallAndWaitForResponse(receiver, protocol, pingBytes, token);
+        await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
     }
 
     public async Task<IEnr[]> FindNeighbours(IEnr receiver, ValueHash256 hash, CancellationToken token)
@@ -84,7 +85,7 @@ public class KademliaTalkReqMessageSender(
             }
         });
 
-        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, protocol, pingBytes, token);
+        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
 
         Nodes message = SlowSSZ.Deserialize<MessageUnion>(response).Nodes!;
 
@@ -108,7 +109,7 @@ public class KademliaTalkReqMessageSender(
             }
         });
 
-        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, protocol, findContentBytes, token);
+        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, findContentBytes, token);
         MessageUnion union;
         Content message;
         try

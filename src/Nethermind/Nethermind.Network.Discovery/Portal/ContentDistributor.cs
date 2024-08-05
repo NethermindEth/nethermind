@@ -24,10 +24,10 @@ public class ContentDistributor : IContentDistributor
     private readonly ITalkReqTransport _transport;
     private readonly IUtpManager _utpManager;
 
-    public ContentDistributor(IKademlia<IEnr, byte[], LookupContentResult> kad, byte[] protocol, ITalkReqTransport transport, IUtpManager utpManager)
+    public ContentDistributor(IKademlia<IEnr, byte[], LookupContentResult> kad, ContentNetworkConfig config, ITalkReqTransport transport, IUtpManager utpManager)
     {
         _kad = kad;
-        _protocol = protocol;
+        _protocol = config.ProtocolId;
         _transport = transport;
         _utpManager = utpManager;
         _defaultRadius = UInt256.MaxValue;
