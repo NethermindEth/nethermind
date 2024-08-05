@@ -28,6 +28,7 @@ public class ShutterTxSource(
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private ulong _highestLoadedSlot = 0;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
+    private readonly object _syncObject = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -67,15 +68,20 @@ public class ShutterTxSource(
 
     public async Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
     {
-        if (_transactionCache.Contains(slot))
+        TaskCompletionSource? tcs = null;
+        lock (_syncObject)
         {
-            return;
-        }
+            if (_transactionCache.Contains(slot))
+            {
+                return;
+            }
 
-        using (cancellationToken.Register(() => CancelWaitForTransactions(slot)))
-        {
-            await _keyWaitTasks.GetOrAdd(slot, _ => new()).Task;
+            using (cancellationToken.Register(() => CancelWaitForTransactions(slot)))
+            {
+                tcs = _keyWaitTasks.GetOrAdd(slot, _ => new());
+            }
         }
+        await tcs.Task;
     }
 
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
@@ -87,9 +93,12 @@ public class ShutterTxSource(
             _highestLoadedSlot = slot;
         }
 
-        if (_keyWaitTasks.Remove(slot, out TaskCompletionSource? tcs))
+        lock (_syncObject)
         {
-            tcs?.TrySetResult();
+            if (_keyWaitTasks.Remove(slot, out TaskCompletionSource? tcs))
+            {
+                tcs?.TrySetResult();
+            }
         }
     }
 
