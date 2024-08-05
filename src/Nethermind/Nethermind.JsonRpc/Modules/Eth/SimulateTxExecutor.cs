@@ -47,6 +47,11 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                             callTransactionModel.Type = TxType.EIP1559;
                         }
 
+                        if (callTransactionModel.BlobVersionedHashes is not null)
+                        {
+                            callTransactionModel.Type = TxType.Blob;
+                        }
+
                         bool hadGasLimitInRequest = callTransactionModel.Gas.HasValue;
                         bool hadNonceInRequest = callTransactionModel.Nonce.HasValue;
                         callTransactionModel.EnsureDefaults(_gasCapBudget);

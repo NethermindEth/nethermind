@@ -59,7 +59,12 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore | NoValidation
+            CommitAndRestore = Commit | Restore | NoValidation,
+
+            /// <summary>
+            /// Execute in simulation mode, without making actual changes
+            /// </summary>
+            Simulation = 8
         }
 
         public TransactionProcessor(
@@ -444,7 +449,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out long spentGas,
             out byte statusCode)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation) || opts.HasFlag(ExecutionOptions.Simulation);
 
             substate = null;
             spentGas = tx.GasLimit;
