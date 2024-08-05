@@ -1269,7 +1269,6 @@ internal class ILCompiler
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                     break;
                 case Instruction.LOG0:
-                    const long zeroXLogTopicPlusLog = GasCostOf.Log;
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
@@ -1295,7 +1294,7 @@ internal class ILCompiler
                     using (var cost = method.DeclareLocal<long>())
                     {
                         method.LoadLocal(gasAvailable);
-                        method.LoadConstant(zeroXLogTopicPlusLog);
+                        method.LoadConstant( GasCostOf.Log);
                         method.LoadLocal(uint256B); // length
                         method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                         method.Convert<long>();
@@ -1313,55 +1312,15 @@ internal class ILCompiler
                         method.StoreLocal(gasAvailable); // gasAvailable -= gasCost
                     }
 
-                    // Executing account
-                    method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(
-                        GetFieldInfo(
-                            typeof(ExecutionEnvironment),
-                            nameof(ExecutionEnvironment.ExecutingAccount)
-                        )
-                    );
-
-                    // memory load
-                    method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
-                    method.LoadLocalAddress(uint256A);
-                    method.LoadLocalAddress(uint256B);
-                    method.Call(
-                        typeof(EvmPooledMemory).GetMethod(
-                            nameof(EvmPooledMemory.Load),
-                            [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]
-                        )
-                    );
-                    method.StoreLocal(localReadOnlyMemory);
-                    method.LoadLocalAddress(localReadOnlyMemory);
-                    method.Call(typeof(ReadOnlyMemory<byte>).GetMethod("ToArray"));
-
-                    //topics
-                    method.LoadConstant(0);
-                    method.NewArray<Hash256>();
-                    method.NewObject<LogEntry, Address, byte[], Hash256[]>();
-
-                    using (var logEntry = method.DeclareLocal<LogEntry>())
-                    {
-                        method.StoreLocal(logEntry);
-                        method.LoadArgument(0);
-                        method.LoadField(
-                            GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState))
-                        );
-                        method.CallVirtual(typeof(EvmState).GetMethod("get_Logs"));
-                        method.LoadLocal(logEntry);
-                        method.CallVirtual(
-                            typeof(ICollection<LogEntry>).GetMethod(
-                                nameof(ICollection<LogEntry>.Add)
-                            )
-                        );
-                    }
+                    EmitLogEntryMethod(method,
+                        (il, locals) =>
+                        {
+                            il.LoadConstant(0);
+                            il.NewArray<Hash256>();
+                        },uint256A,uint256B,localReadOnlyMemory);
 
                     break;
                 case Instruction.LOG1:
-                    const long oneXLogTopicPlusLog = GasCostOf.LogTopic + GasCostOf.Log;
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
@@ -1386,7 +1345,7 @@ internal class ILCompiler
                     using (var cost = method.DeclareLocal<long>())
                     {
                         method.LoadLocal(gasAvailable);
-                        method.LoadConstant(oneXLogTopicPlusLog); //0 * GasCostOf.LogTopic + GasCostOf.Log
+                        method.LoadConstant( GasCostOf.LogTopic + GasCostOf.Log);
                         method.LoadLocal(uint256B); // length
                         method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                         method.Convert<long>();
@@ -1417,66 +1376,22 @@ internal class ILCompiler
                     }
                     method.StoreLocal(hash256);
 
-                    // Executing account
-                    method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                    method.LoadField(
-                        GetFieldInfo(
-                            typeof(ExecutionEnvironment),
-                            nameof(ExecutionEnvironment.ExecutingAccount)
-                        )
-                    );
-
-                    // memory load
-                    method.LoadArgument(0);
-                    method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
-                    method.LoadLocalAddress(uint256A);
-                    method.LoadLocalAddress(uint256B);
-                    method.Call(
-                        typeof(EvmPooledMemory).GetMethod(
-                            nameof(EvmPooledMemory.Load),
-                            [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]
-                        )
-                    );
-                    method.StoreLocal(localReadOnlyMemory);
-                    method.LoadLocalAddress(localReadOnlyMemory);
-                    method.Call(typeof(ReadOnlyMemory<byte>).GetMethod("ToArray"));
 
                     //topics
-                    method.LoadConstant(1);
-                    method.NewArray<Hash256>();
-                    method.Duplicate();
-                    method.LoadConstant(0); // index to modify
-                    method.LoadLocal(hash256); // value to set
-                    method.StoreElement<Hash256>(); //set value of array at index
-                    method.NewObject(
-                        typeof(LogEntry),
-                        typeof(Address),
-                        typeof(byte[]),
-                        typeof(Hash256[])
-                    );
-                    using (var logEntry = method.DeclareLocal<LogEntry>())
-                    {
-                        method.StoreLocal(logEntry);
-                        method.LoadArgument(0);
-                        method.LoadField(
-                            GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState))
-                        );
-                        method.CallVirtual(typeof(EvmState).GetMethod("get_Logs"));
-                        method.LoadLocal(logEntry);
-                        method.CallVirtual(
-                            typeof(ICollection<LogEntry>).GetMethod(
-                                nameof(ICollection<LogEntry>.Add)
-                            )
-                        );
-                    }
+                    EmitLogEntryMethod(method,
+                        (il, locals) =>
+                        {
+                            method.LoadConstant(1);
+                            method.NewArray<Hash256>();
+                            method.Duplicate();
+                            method.LoadConstant(0);
+                            method.LoadLocal(locals[3]);
+                            method.StoreElement<Hash256>();
+                        },uint256A,uint256B,localReadOnlyMemory,hash256);
                     break;
                 case Instruction.LOG2:
                 case Instruction.LOG3:
                 case Instruction.LOG4:
-                    const long twoXLogTopicPlusLog = 2 * GasCostOf.LogTopic + GasCostOf.Log;
-                    const long threeXLogTopicPlusLog = 3 * GasCostOf.LogTopic + GasCostOf.Log;
-                    const long fourXLogTopicPlusLog = 4 * GasCostOf.LogTopic + GasCostOf.Log;
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
@@ -1502,9 +1417,9 @@ internal class ILCompiler
                     {
                         method.LoadLocal(gasAvailable);
                         switch ( ((int)op.Operation - (int)Instruction.LOG2) + 2 ) {
-                            case 2: method.LoadConstant(twoXLogTopicPlusLog); break;
-                            case 3: method.LoadConstant(threeXLogTopicPlusLog); break;
-                            case 4: method.LoadConstant(fourXLogTopicPlusLog); break;
+                            case 2: method.LoadConstant( 2 * GasCostOf.LogTopic + GasCostOf.Log); break;
+                            case 3: method.LoadConstant( 3 * GasCostOf.LogTopic + GasCostOf.Log); break;
+                            case 4: method.LoadConstant( 4 * GasCostOf.LogTopic + GasCostOf.Log); break;
 
                         }
                         method.LoadLocal(uint256B); // length
@@ -1566,56 +1481,11 @@ internal class ILCompiler
                             method.StoreLocal(hash256Array);
                         }
 
-                        // Executing account
-                        method.LoadArgument(0);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-                        method.LoadField(
-                            GetFieldInfo(
-                                typeof(ExecutionEnvironment),
-                                nameof(ExecutionEnvironment.ExecutingAccount)
-                            )
-                        );
-
-                        // memory load
-                        method.LoadArgument(0);
-                        method.LoadField(
-                            GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory))
-                        );
-                        method.LoadLocalAddress(uint256A);
-                        method.LoadLocalAddress(uint256B);
-                        method.Call(
-                            typeof(EvmPooledMemory).GetMethod(
-                                nameof(EvmPooledMemory.Load),
-                                [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]
-                            )
-                        );
-                        method.StoreLocal(localReadOnlyMemory);
-                        method.LoadLocalAddress(localReadOnlyMemory);
-                        method.Call(typeof(ReadOnlyMemory<byte>).GetMethod("ToArray"));
-
-                        //topics
-                        method.LoadLocal(hash256Array);
-                        method.NewObject(
-                            typeof(LogEntry),
-                            typeof(Address),
-                            typeof(byte[]),
-                            typeof(Hash256[])
-                        );
-                    }
-                    using (var logEntry = method.DeclareLocal<LogEntry>())
-                    {
-                        method.StoreLocal(logEntry);
-                        method.LoadArgument(0);
-                        method.LoadField(
-                            GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState))
-                        );
-                        method.CallVirtual(typeof(EvmState).GetMethod("get_Logs"));
-                        method.LoadLocal(logEntry);
-                        method.CallVirtual(
-                            typeof(ICollection<LogEntry>).GetMethod(
-                                nameof(ICollection<LogEntry>.Add)
-                            )
-                        );
+                        EmitLogEntryMethod(method,
+                            (il, locals) =>
+                            {
+                                 method.LoadLocal(locals[3]);
+                            },uint256A,uint256B,localReadOnlyMemory,hash256Array);
                     }
                     break;
                 case Instruction.TSTORE:
@@ -2381,6 +2251,55 @@ internal class ILCompiler
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
     }
+
+    private static void EmitLogEntryMethod<T>(Emit<T> il, Action<Emit<T>, Local[]> loadTopics,  params Local[] locals)
+    {
+                    // Executing account
+                    il.LoadArgument(0);
+                    il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                    il.LoadField(
+                        GetFieldInfo(
+                            typeof(ExecutionEnvironment),
+                            nameof(ExecutionEnvironment.ExecutingAccount)
+                        )
+                    );
+
+                    // memory load
+                    il.LoadArgument(0);
+                    il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                    il.LoadLocalAddress(locals[0]);
+                    il.LoadLocalAddress(locals[1]);
+                    il.Call(
+                        typeof(EvmPooledMemory).GetMethod(
+                            nameof(EvmPooledMemory.Load),
+                            [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]
+                        )
+                    );
+                    il.StoreLocal(locals[2]);
+                    il.LoadLocalAddress(locals[2]);
+                    il.Call(typeof(ReadOnlyMemory<byte>).GetMethod("ToArray"));
+
+                    loadTopics.Invoke(il, locals);
+
+
+                    il.NewObject<LogEntry, Address, byte[], Hash256[]>();
+                    using (var logEntry = il.DeclareLocal<LogEntry>())
+                    {
+                        il.StoreLocal(logEntry);
+                        il.LoadArgument(0);
+                        il.LoadField(
+                            GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState))
+                        );
+                        il.CallVirtual(typeof(EvmState).GetMethod("get_Logs"));
+                        il.LoadLocal(logEntry);
+                        il.CallVirtual(
+                            typeof(ICollection<LogEntry>).GetMethod(
+                                nameof(ICollection<LogEntry>.Add)
+                            )
+                        );
+    }
+    }
+
 
     private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
