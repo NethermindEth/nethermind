@@ -80,13 +80,16 @@ public class TalkReqTransport(
             }
 
             TalkRespMessage response = await talkReq.Task.WaitAsync(cts.Token);
-            _logger.Info($"Received TalkResp from {receiver}");
+            if (_logger.IsTrace) _logger.Trace($"Received TalkResp from {receiver}");
             return response.Response;
         }
         catch (OperationCanceledException)
         {
-            var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip);
-            _logger.Warn($"TalkResp to {destIpKey} with id {requestId} timed out");
+            if (_logger.IsDebug)
+            {
+                var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip);
+                _logger.Debug($"TalkResp to {destIpKey} with id {requestId} timed out");
+            }
             throw;
         }
         finally

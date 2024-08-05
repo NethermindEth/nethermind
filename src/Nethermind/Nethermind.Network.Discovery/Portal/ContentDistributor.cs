@@ -96,7 +96,7 @@ public class ContentDistributor : IContentDistributor
             foreach (IEnr enr in enrs)
             {
                 bool inRadius = IsInRadius(enr, contentHash);
-                if (!nearestNodes.ContainsKey(enr.NodeId) && IsInRadius(enr, contentHash))
+                if (!nearestNodes.ContainsKey(enr.NodeId) && inRadius)
                 {
                     nearestNodes[enr.NodeId] = enr;
                 }

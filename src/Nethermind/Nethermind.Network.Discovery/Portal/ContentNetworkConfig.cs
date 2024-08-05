@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.Enr;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Network.Discovery.Portal;
@@ -34,12 +35,12 @@ public class ContentNetworkConfig
     public IEnr[] BootNodes { get; set; } = Array.Empty<IEnr>();
 
     /// <summary>
-    /// The radius of content that this peer will store
+    /// The radius of content that this peer will store.
     /// </summary>
-    public UInt256 ContentRadius { get; set; } = UInt256.MaxValue;
+    public UInt256 ContentRadius { get; set; } = new UInt256(Bytes.FromHexString("0x0100000000000000000000000000000000000000000000000000000000000000"));
 
     /// <summary>
-    /// The radius of peer when we don't know what is its radius
+    /// The radius of peer when we don't know what is its radius. We assume it always want to store.
     /// </summary>
     public UInt256 DefaultPeerRadius { get; set; } = UInt256.MaxValue;
 };

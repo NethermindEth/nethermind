@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal;
 using Nethermind.Network.Test;
@@ -224,7 +225,8 @@ public class ContentNetworkScenarioTests
             TestStore testStore = new TestStore();
             IPortalContentNetwork contentNetwork = factory.Create(new ContentNetworkConfig()
             {
-                ProtocolId = ProtocolId
+                ProtocolId = ProtocolId,
+                ContentRadius = UInt256.MaxValue
             }, testStore);
             Node node = new Node(newNodeEnr, contentNetwork, testStore, serviceProvider);
             _nodes[EnrNodeHashProvider.Instance.GetHash(newNodeEnr)] = node;
