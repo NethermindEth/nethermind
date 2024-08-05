@@ -290,7 +290,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
             }
 
-            if (_api.PeerManager?.ActivePeers.Count != 0)
+            if (_api.PeerManager?.ActivePeers is { Count: > 0 })
             {
                 await Task.Delay(_discoveryConfig.DiscoveryInterval, _appShutdownSource.Token);
             }
