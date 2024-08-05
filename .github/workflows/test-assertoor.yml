@@ -20,4 +20,4 @@ jobs:
       with:
         ethereum_package_url: "."
         ethereum_package_branch: ""
-        ethereum_package_args: .github/tests/mix-assert.yaml
+        ethereum_package_args: .github/tests/assertor.yaml
