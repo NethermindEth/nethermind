@@ -16,7 +16,6 @@ public class BeaconBlockRootHandler(
     ILogManager? logManager)
     : IBeaconBlockRootHandler
 {
-    private static readonly Address Default4788Address = new("0x000f3df6d732807ef1319fb7b8bb8522d0beac02");
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger();
     private const long GasLimit = 30_000_000L;
 
@@ -27,13 +26,16 @@ public class BeaconBlockRootHandler(
                                   && !header.IsGenesis
                                   && header.ParentBeaconBlockRoot is not null;
 
+        if (spec.Eip4788ContractAddress is null)
+            throw new ArgumentException("Eip4788ContractAddress shouldn't be null");
+
         if (canInsertBeaconRoot)
         {
             Transaction transaction = new()
             {
                 Value = UInt256.Zero,
                 Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
-                To = spec.Eip4788ContractAddress ?? Default4788Address,
+                To = spec.Eip4788ContractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = GasLimit,
                 GasPrice = UInt256.Zero,
