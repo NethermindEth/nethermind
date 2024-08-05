@@ -2236,14 +2236,14 @@ internal class ILCompiler
         case0 = case0 == default ? (_il => { }, _il => { }) : case0;
         case1 = case1 == default ? (_il => { }, _il => { }) : case1;
         caseN = caseN == default ? (_il => { }, _il => { }, _il => { }) : caseN;
-        Label[] lbls = new Label[lengthOfArray + 1];
+        Label[] labels = new Label[lengthOfArray + 1];
         Label ret = il.DefineLabel();
         for (int i = 0; i < lengthOfArray + 1; i++)
         {
-            lbls[i] = il.DefineLabel();
+            labels[i] = il.DefineLabel();
         }
-        il.Switch(lbls);
-        il.MarkLabel(lbls[0]);
+        il.Switch(labels);
+        il.MarkLabel(labels[0]);
         case0.preAssignment.Invoke(il);
         il.LoadConstant(0);
         il.NewArray(typeOfArrayElement);
@@ -2251,7 +2251,7 @@ internal class ILCompiler
         if (lengthOfArray > 0)
         {
             il.Branch(ret);
-            il.MarkLabel(lbls[1]);
+            il.MarkLabel(labels[1]);
             case1.preAssignment.Invoke(il);
             il.LoadConstant(1);
             il.NewArray(typeOfArrayElement);
@@ -2266,7 +2266,7 @@ internal class ILCompiler
         {
             for (int labelIdx = 2; labelIdx < lengthOfArray + 1; labelIdx++)
             {
-                il.MarkLabel(lbls[labelIdx]);
+                il.MarkLabel(labels[labelIdx]);
             }
             using (var hash256Array = il.DeclareLocal(typeOfArray))
             {
