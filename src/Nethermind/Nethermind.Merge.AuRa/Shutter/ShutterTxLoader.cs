@@ -40,7 +40,9 @@ public class ShutterTxLoader(
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
+    private ulong _loadedTxIndex = ulong.MaxValue;
     private bool _firstLoad = true;
+
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
@@ -71,14 +73,30 @@ public class ShutterTxLoader(
 
     public void OnNewReceipts(TxReceipt[] receipts, long blockNumber)
     {
-        foreach(TxReceipt receipt in receipts)
+        lock (_transactionSubmittedEvents)
         {
-            foreach (LogEntry log in receipt.Logs!)
+            if (!_firstLoad)
             {
-                if (_sequencerContract.FilterAccepts(log, blockNumber))
+                int count = 0;
+                foreach(TxReceipt receipt in receipts)
                 {
-                    _transactionSubmittedEvents.Add(_sequencerContract.ParseTransactionSubmitted(log));
+                    foreach (LogEntry log in receipt.Logs!)
+                    {
+                        if (_sequencerContract.FilterAccepts(log, blockNumber))
+                        {
+                            ISequencerContract.TransactionSubmitted e = _sequencerContract.ParseTransactionSubmitted(log);
+                            if (e.TxIndex != _loadedTxIndex + 1 && _logger.IsWarn)
+                            {
+                                _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex}, expected {_loadedTxIndex + 1}.");
+                            }
+                            _loadedTxIndex = e.TxIndex;
+                            _transactionSubmittedEvents.Add(e);
+                            count++;
+                        }
+                    }
                 }
+                // todo: make debug
+                if (_logger.IsInfo) _logger.Info($"Found {count} Shutter events in block {blockNumber}, current TxIndex is {_loadedTxIndex}.");
             }
         }
     }
@@ -193,10 +211,17 @@ public class ShutterTxLoader(
             if (_firstLoad)
             {
                 _transactionSubmittedEvents = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).ToList();
+                _loadedTxIndex = _transactionSubmittedEvents.Count == 0 ? txPointer : _transactionSubmittedEvents.Last().TxIndex;
                 _firstLoad = false;
+                // todo: make debug
+                if (_logger.IsInfo) _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, current TxIndex is {_loadedTxIndex}.");
+            }
+            else
+            {
+                // todo: make debug
+                if (_logger.IsInfo) _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from recent blocks up to {headBlockNumber}, current TxIndex is {_loadedTxIndex}.");
             }
             List<ISequencerContract.TransactionSubmitted> events = _transactionSubmittedEvents;
-            if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
             UInt256 totalGas = 0;
             int index = 0;
