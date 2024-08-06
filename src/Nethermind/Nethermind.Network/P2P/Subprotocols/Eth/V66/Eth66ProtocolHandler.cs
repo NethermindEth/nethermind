@@ -170,47 +170,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
 
-        /// <summary>
-        /// Disposes <paramref name="message"/> if <paramref name="action"/> failed.
-        /// </summary>
-        private void SafeHandle<T>(T message, Action action) where T : P2PMessage
-        {
-            try
-            {
-                action();
-            }
-            finally
-            {
-                message?.Dispose();
-            }
-        }
-
         private void Handle(BlockHeadersMessage message, long size)
         {
-            SafeHandle(message, () =>
-                _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size)
-            );
+            _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
         }
 
         private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
-            SafeHandle(blockBodiesMessage, () =>
-                _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size)
-            );
+            _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
         }
 
         private void Handle(NodeDataMessage msg, int size)
         {
-            SafeHandle(msg, () =>
-                _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size)
-            );
+            _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
         }
 
         private void Handle(ReceiptsMessage msg, long size)
         {
-            SafeHandle(msg, () =>
-                _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size)
-            );
+            _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
         }
 
         protected override void Handle(NewPooledTransactionHashesMessage msg)
