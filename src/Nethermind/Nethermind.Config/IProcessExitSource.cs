@@ -7,6 +7,10 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config;
 
+public interface IProcessExitToken
+{
+    public CancellationToken Token { get; }
+}
 public interface IProcessExitSource
 {
     public void Exit(int exitCode);
@@ -14,7 +18,7 @@ public interface IProcessExitSource
     public CancellationToken Token { get; }
 }
 
-public class ProcessExitSource : IProcessExitSource
+public class ProcessExitSource : IProcessExitSource, IProcessExitToken
 {
     private CancellationTokenSource _cancellationTokenSource = new();
     public int ExitCode { get; set; } = ExitCodes.Ok;

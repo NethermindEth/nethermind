@@ -239,6 +239,8 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
+        public IProcessExitToken? ProcessExitToken { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+        public IEraStore? EraStore { get; set; }
     }
 }
