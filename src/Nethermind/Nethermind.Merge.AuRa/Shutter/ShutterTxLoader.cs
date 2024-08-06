@@ -41,6 +41,7 @@ public class ShutterTxLoader(
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     private ulong _loadedTxIndex = ulong.MaxValue;
+    private long _loadedBlockNumber = long.MaxValue;
     private bool _firstLoad = true;
 
 
@@ -71,12 +72,15 @@ public class ShutterTxLoader(
         return shutterTransactions;
     }
 
-    public void OnNewReceipts(TxReceipt[] receipts, long blockNumber)
+    public void OnReceiptsProcessed(TxReceipt[] receipts, long blockNumber)
     {
         lock (_transactionSubmittedEvents)
         {
-            if (!_firstLoad)
+            Block? head = readOnlyBlockTree.Head;
+            if (!_firstLoad && head is not null && head.Number == blockNumber && blockNumber != _loadedBlockNumber)
             {
+                _loadedBlockNumber = blockNumber;
+
                 int count = 0;
                 foreach(TxReceipt receipt in receipts)
                 {

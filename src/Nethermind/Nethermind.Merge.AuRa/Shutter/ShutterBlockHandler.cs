@@ -23,11 +23,11 @@ public class ShutterBlockHandler(
     ILogManager logManager) : IShutterBlockHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(10);
     private bool _haveCheckedRegistered = false;
-    public void OnBlockProcessed(Block head, TxReceipt[] receipts)
+    public void OnNewHeadBlock(Block head)
     {
-        int headerAge = (int)(head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds());
-        if (headerAge < 10)
+        if (IsBlockUpToDate(head))
         {
             if (!_haveCheckedRegistered)
             {
@@ -35,9 +35,19 @@ public class ShutterBlockHandler(
                 _haveCheckedRegistered = true;
             }
             eon.Update(head.Header);
-            txLoader.OnNewReceipts(receipts, head.Number);
         }
     }
+
+    public void OnBlockProcessed(Block head, TxReceipt[] receipts)
+    {
+        if (IsBlockUpToDate(head))
+        {
+            txLoader.OnReceiptsProcessed(receipts, head.Number);
+        }
+    }
+
+    private bool IsBlockUpToDate(Block head)
+        => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < _upToDateCutoff.TotalSeconds;
 
     private void CheckRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory)
     {

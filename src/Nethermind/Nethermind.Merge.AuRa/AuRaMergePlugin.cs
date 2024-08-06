@@ -37,7 +37,8 @@ namespace Nethermind.Merge.AuRa
         private AuRaNethermindApi? _auraApi;
         private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
-        private EventHandler<BlockProcessedEventArgs>? _newHeadBlockHandler;
+        private EventHandler<BlockEventArgs>? _newHeadBlockHandler;
+        private EventHandler<BlockProcessedEventArgs>? _blockProcessedHandler;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
@@ -141,9 +142,14 @@ namespace Nethermind.Merge.AuRa
                 ShutterBlockHandler blockHandler = new(_api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryContractAddress!, _shutterConfig.ValidatorRegistryMessageVersion, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, validatorsInfo, eon, txLoader, _api.LogManager);
                 _newHeadBlockHandler = (_, e) =>
                 {
+                    blockHandler.OnNewHeadBlock(e.Block);
+                };
+                _blockProcessedHandler = (_, e) =>
+                {
                     blockHandler.OnBlockProcessed(e.Block, e.TxReceipts);
                 };
-                _api.MainBlockProcessor!.BlockProcessed += _newHeadBlockHandler;
+                _api.BlockTree!.NewHeadBlock += _newHeadBlockHandler;
+                _api.MainBlockProcessor!.BlockProcessed += _blockProcessedHandler;
 
                 _shutterTxSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
@@ -165,7 +171,11 @@ namespace Nethermind.Merge.AuRa
         {
             if (_newHeadBlockHandler is not null)
             {
-                _api.MainBlockProcessor!.BlockProcessed -= _newHeadBlockHandler;
+                _api.BlockTree!.NewHeadBlock -= _newHeadBlockHandler;
+            }
+            if (_blockProcessedHandler is not null)
+            {
+                _api.MainBlockProcessor!.BlockProcessed -= _blockProcessedHandler;
             }
             await (_shutterP2P?.DisposeAsync() ?? default);
             await base.DisposeAsync();
