@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -95,6 +96,11 @@ public class Eth69ProtocolHandlerTests
     [TearDown]
     public void TearDown()
     {
+        // Dispose received messages
+        _session?.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))
+            .ForEach(c => (c.GetArguments()[0] as P2PMessage)?.Dispose());
+
         _handler.Dispose();
         _session.Dispose();
         _syncManager.Dispose();
@@ -149,7 +155,7 @@ public class Eth69ProtocolHandlerTests
         TxReceipt[][] receipts = Enumerable.Repeat(
             Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 10).ToArray(), count
         ).ToArray();
-        ReceiptsMessage69 msg = new(0, new(receipts.ToPooledList()));
+        using ReceiptsMessage69 msg = new(0, new(receipts.ToPooledList()));
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call =>
         {
@@ -173,7 +179,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Can_handle_GetReceipts()
     {
-        var msg66 = new GetReceiptsMessage(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+        using var msg66 = new GetReceiptsMessage(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
@@ -183,7 +189,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_throw_when_receiving_unrequested_receipts()
     {
-        var msg66 = new ReceiptsMessage(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
+        using var msg66 = new ReceiptsMessage(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
@@ -193,7 +199,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Ignores_NewBlock_message()
     {
-        var msg = new NewBlockMessage { TotalDifficulty = 1, Block = Build.A.Block.TestObject };
+        using var msg = new NewBlockMessage { TotalDifficulty = 1, Block = Build.A.Block.TestObject };
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth62MessageCode.NewBlock);
@@ -204,7 +210,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Ignores_NewBlockHashes_message()
     {
-        var msg = new NewBlockHashesMessage((Keccak.MaxValue, 111));
+        using var msg = new NewBlockHashesMessage((Keccak.MaxValue, 111));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
@@ -214,7 +220,7 @@ public class Eth69ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+        using var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
         IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
         statusPacket.ReadByte();
