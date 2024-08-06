@@ -352,13 +352,13 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 #if DEBUG
     private readonly StackTrace _creationStackTrace = new();
 
-    ~ArrayPoolList()
-    {
-        if (_capacity != 0 && !_disposed)
-        {
-            throw new InvalidOperationException($"{nameof(ArrayPoolList<T>)} hasn't been disposed. Created {_creationStackTrace}");
-        }
-    }
+    //~ArrayPoolList()
+    //{
+    //    if (_capacity != 0 && !_disposed)
+    //    {
+    //        throw new InvalidOperationException($"{nameof(ArrayPoolList<T>)} hasn't been disposed. Created {_creationStackTrace}");
+    //    }
+    //}
 #endif
 
     public Span<T> AsSpan() => _array.AsSpan(0, Count);

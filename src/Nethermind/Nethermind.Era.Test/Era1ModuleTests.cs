@@ -430,4 +430,33 @@ public class Era1ModuleTests
 
         Assert.That(bestSuggestedNumber, Is.EqualTo(ChainLength - 1));
     }
+
+    [Test]
+    public async Task EraExportAndImportNormal()
+    {
+        const int ChainLength = EraWriter.MaxEra1Size * 5;
+        var fileSystem = new MockFileSystem();
+        BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
+        await exporter.Export("test", 0, ChainLength - 1);
+
+        BlockTree importTree = Build.A.BlockTree()
+            .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+
+        EraImporter importer = new(
+            fileSystem,
+            importTree,
+            blockValidator,
+            receiptStorage,
+            specProvider,
+            "abc");
+
+        await importer.Import("test", 0, exportTree.Head!.Number, Path.Combine("test", "accumulators.txt"));
+
+        Assert.That(importTree.LowestInsertedHeader, Is.Not.Null);
+        Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
+    }
 }

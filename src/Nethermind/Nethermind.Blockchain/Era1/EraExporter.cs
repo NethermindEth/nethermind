@@ -15,6 +15,7 @@ using Nethermind.Era1;
 using System.Linq;
 using Nethermind.Blockchain.Era1;
 using System.Collections.Generic;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain;
 public class EraExporter : IEraExporter
@@ -30,7 +31,7 @@ public class EraExporter : IEraExporter
 
     public string NetworkName => _networkName;
 
-    public const string AccumulatorFileName = "accumulators.tx";
+    public const string AccumulatorFileName = "accumulators.txt";
 
     public EraExporter(
         IFileSystem fileSystem,
@@ -85,19 +86,21 @@ public class EraExporter : IEraExporter
             for (var y = i; y <= i + size; y++)
             {
                 Block? block = _blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-
-                if (block == null)
+                if (block is null)
                 {
                     throw new EraException($"Could not find a block with number {y}.");
                 }
 
                 TxReceipt[]? receipts = _receiptStorage.Get(block);
-                if (receipts == null)
+                if (receipts is null)
                 {
                     //Can this even happen?
                     throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}");
                 }
-                if (!await builder.Add(block, receipts, cancellation) || y == i + size || y == end)
+
+                UInt256 td = block.TotalDifficulty ?? _blockTree.GetInfo(block.Number, block.Hash).Info?.TotalDifficulty ?? block.Difficulty;
+                
+                if (!await builder.Add(block, receipts, td, cancellation) || y == i + size || y == end)
                 {
                     byte[] root = await builder.Finalize();
                     builder.Dispose();
@@ -129,6 +132,26 @@ public class EraExporter : IEraExporter
                 }
             }
         }
-        _fileSystem.File.WriteAllLines(accumulatorPath, eraRoots.Select(s=>s.ToHexString(true)));
+        await CreateAccumulatorFile(destinationPath, _networkName, _fileSystem, cancellation);
     }
+
+    private static async Task CreateAccumulatorFile(string destination, string network, IFileSystem fileSystem, CancellationToken cancellationToken)
+    {
+        IEnumerable<string> files = EraReader.GetAllEraFiles(destination, network, fileSystem);
+        using StreamWriter stream = new StreamWriter(fileSystem.File.Create(Path.Combine(destination, AccumulatorFileName)), System.Text.Encoding.UTF8);
+        bool first = true;
+        foreach (string file in files)
+        {
+            using (EraReader reader = await EraReader.Create(file, fileSystem, cancellationToken))
+            {
+                string root = (await reader.ReadAccumulator(cancellationToken)).ToHexString(true);
+                if (!first)
+                    root = Environment.NewLine + root;
+                else
+                    first = false;
+                await stream.WriteAsync(root);
+            }
+        }
+    }
+
 }

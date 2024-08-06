@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Specs;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
@@ -74,4 +75,26 @@ public class EraExporterTests
         Assert.That(() => sut.Export("test", 0, 1), Throws.TypeOf<EraException>());
     }
 
+    [Test]
+    public async Task Export_()
+    {
+        //var fileSystem = new MockFileSystem();
+        //const int ChainLength = 8192;
+        //BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
+        //IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+
+        //EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, NetworkName);
+
+        //await sut.Export("test", 0, ChainLength - 1, 8192);
+        const string NetworkName = "holesky";
+        foreach (var item in EraReader.GetAllEraFiles(@"C:/ethereum/export",NetworkName).Skip(2))
+        {
+
+            using EraReader reader = await EraReader.Create(item);
+
+            var expectedAccumulator = await reader.ReadAccumulator();
+            Assert.That(await reader.VerifyAccumulator(expectedAccumulator, HoleskySpecProvider.Instance), Is.True);
+        }
+    }
 }

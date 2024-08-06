@@ -17,7 +17,6 @@ using Nethermind.Era1;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Core.Extensions;
-using System.IO;
 
 namespace Nethermind.JsonRpc.Modules;
 public class EraImporter : IEraImporter
@@ -131,7 +130,7 @@ public class EraImporter : IEraImporter
                 blocksProcessed++;
                 txProcessed += b.Transactions.Length;
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
-                if (elapsed.TotalSeconds > ProgressInterval.TotalSeconds)
+                if (elapsed > ProgressInterval)
                 {
                     ImportProgressChanged?.Invoke(this, new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
                     lastProgress = DateTime.Now;
@@ -184,7 +183,7 @@ public class EraImporter : IEraImporter
             throw new EraImportException($"Directory does not exist '{eraDirectory}'");
         if (!_fileSystem.File.Exists(accumulatorFile))
             throw new EraImportException($"Accumulator file does not exist '{accumulatorFile}'");
-        string[] eraFiles = EraReader.GetAllEraFiles(eraDirectory, _networkName).ToArray();
+        string[] eraFiles = EraReader.GetAllEraFiles(eraDirectory, _networkName, _fileSystem).ToArray();
         string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
 
         byte[][] accumulators = lines.Select(s => Bytes.FromHexString(s)).ToArray();
