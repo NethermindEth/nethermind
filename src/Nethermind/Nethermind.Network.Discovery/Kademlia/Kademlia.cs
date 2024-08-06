@@ -228,7 +228,9 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     /// This find nearest k query does not follow the kademlia paper faithfully. Instead of distinct rounds, it has
     /// num worker where alpha is the number of worker. Worker does not wait for other worker. Stop condition
     /// happens if no more node to query or no new node can be added to the current result set that can improve it
-    /// for more than alpha*2 request.
+    /// for more than alpha*2 request. It is slightly faster than the legacy query on find value where it can be cancelled
+    /// earlier as it converge to the content faster, but take more query for findnodes due to a more strict stop
+    /// condition.
     /// </summary>
     /// <param name="targetHash"></param>
     /// <param name="k"></param>

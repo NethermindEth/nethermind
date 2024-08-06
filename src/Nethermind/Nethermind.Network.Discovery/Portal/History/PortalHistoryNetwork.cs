@@ -117,9 +117,9 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
         // EnrFactory enrFactory = new(registry);
         // IdentityVerifierV4 identityVerifier = new();
         // var enr = enrFactory.CreateFromString("enr:-IS4QIvH4sUnNXGBWyR2M8GUb9B0haxCbqYZgC_9HYgvR890B8t3u44EeJpRA7czZBgDVzAovXEwx_F56YLU9ZoIhRAhgmlkgnY0gmlwhMIhK1qJc2VjcDI1NmsxoQKKqT_1W3phl5Ial-DBViE0MIZbwAHdRyrpZWKe0ttv4oN1ZHCCI4w", identityVerifier);
-        _logger.Info("-------------- looking up ----------------------");
-        BlockBody? body = await LookupBlockBody(new ValueHash256("0xead3ee2e6370d110e02840d700097d844ca4d1f62697194564f687985dfe2c1a"), token);
-        _logger.Info($"Lookup body got {body}");
+        // _logger.Info("-------------- looking up ----------------------");
+        // BlockBody? body = await LookupBlockBody(new ValueHash256("0xead3ee2e6370d110e02840d700097d844ca4d1f62697194564f687985dfe2c1a"), token);
+        // _logger.Info($"Lookup body got {body}");
 
         // await _contentNetwork.Run(token);
     }

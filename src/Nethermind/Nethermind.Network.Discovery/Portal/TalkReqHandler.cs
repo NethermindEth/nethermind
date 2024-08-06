@@ -34,26 +34,34 @@ public class TalkReqHandler(
 
     public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
     {
-        MessageUnion message = SlowSSZ.Deserialize<MessageUnion>(talkReqMessage.Request);
-
-        if (message.Ping is { } ping)
+        try
         {
-            return await HandlePing(sender, ping);
+            MessageUnion message = SlowSSZ.Deserialize<MessageUnion>(talkReqMessage.Request);
+
+            if (message.Ping is { } ping)
+            {
+                return await HandlePing(sender, ping);
+            }
+
+            if (message.FindNodes is { } nodes)
+            {
+                return await HandleFindNode(sender, nodes);
+            }
+
+            if (message.FindContent is { } findContent)
+            {
+                return await HandleFindContent(sender, findContent);
+            }
+
+            if (message.Offer is { } offer)
+            {
+                return await HandleOffer(sender, offer);
+            }
+
         }
-
-        if (message.FindNodes is { } nodes)
+        catch (Exception e)
         {
-            return await HandleFindNode(sender, nodes);
-        }
-
-        if (message.FindContent is { } findContent)
-        {
-            return await HandleFindContent(sender, findContent);
-        }
-
-        if (message.Offer is { } offer)
-        {
-            return await HandleOffer(sender, offer);
+            if (_logger.IsWarn) _logger.Warn($"Error handling msg req {e}");
         }
 
         return null;
@@ -182,6 +190,7 @@ public class TalkReqHandler(
 
         if (!hasAccept) return Task.FromResult<byte[]?>(null);
 
+        if (_logger.IsDebug) _logger.Debug($"Accepting offer from {sender.NodeId.ToHexString()}");
         ushort connectionId = (ushort)Random.Shared.Next();
         _ = RunOfferAccept(sender, offer, toAccept, connectionId);
 
@@ -198,7 +207,7 @@ public class TalkReqHandler(
     private async Task RunOfferAccept(IEnr enr, Offer offer, BitArray accepted, ushort connectionId)
     {
         using CancellationTokenSource cts = new CancellationTokenSource();
-        // cts.CancelAfter(OfferAcceptTimeout);
+        cts.CancelAfter(OfferAcceptTimeout);
         var token =  cts.Token;
 
         MemoryStream stream = new MemoryStream(); // TODO: Must it wait for all of it to download?
