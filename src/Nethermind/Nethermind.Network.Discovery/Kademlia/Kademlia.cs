@@ -224,6 +224,17 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         );
     }
 
+    /// <summary>
+    /// This find nearest k query does not follow the kademlia paper faithfully. Instead of distinct rounds, it has
+    /// num worker where alpha is the number of worker. Worker does not wait for other worker. Stop condition
+    /// happens if no more node to query or no new node can be added to the current result set that can improve it
+    /// for more than alpha*2 request.
+    /// </summary>
+    /// <param name="targetHash"></param>
+    /// <param name="k"></param>
+    /// <param name="findNeighbourOp"></param>
+    /// <param name="token"></param>
+    /// <returns></returns>
     private async Task<TNode[]> LookupNodesClosestNew(
         ValueHash256 targetHash,
         int k,
