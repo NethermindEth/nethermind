@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -11,7 +13,6 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -61,20 +62,47 @@ namespace Nethermind.Network.Discovery.Test
             var from = IPEndPoint.Parse("127.0.0.1:10000");
             var to = IPEndPoint.Parse("127.0.0.1:10001");
 
-            IAsyncEnumerator<UdpReceiveResult> enumerator = _handler.ReadMessagesAsync().GetAsyncEnumerator();
+            using var cancellationSource = new CancellationTokenSource(10_000);
+            IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
+                .ReadMessagesAsync(cancellationSource.Token)
+                .GetAsyncEnumerator(cancellationSource.Token);
 
             var ctx = Substitute.For<IChannelHandlerContext>();
-            var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
 
-            _handler.ChannelRead(ctx, packet);
+            _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
 
-            using var cancellationSource = new CancellationTokenSource(10_000);
             (await enumerator.MoveNextAsync(cancellationSource.Token)).Should().BeTrue();
             UdpReceiveResult forwardedPacket = enumerator.Current;
 
             forwardedPacket.Should().NotBeNull();
             forwardedPacket.Buffer.Should().BeEquivalentTo(data);
             forwardedPacket.RemoteEndPoint.Should().Be(from);
+        }
+
+        [TestCase(0)]
+        [TestCase(1280 + 1)]
+        public async Task SkipsMessagesOfInvalidSize(int size)
+        {
+            byte[] data = [1, 2, 3];
+            byte[] invalidData = Enumerable.Repeat((byte) 1, size).ToArray();
+            var from = IPEndPoint.Parse("127.0.0.1:10000");
+            var to = IPEndPoint.Parse("127.0.0.1:10001");
+
+            using var cancellationSource = new CancellationTokenSource(10_000);
+            IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
+                .ReadMessagesAsync(cancellationSource.Token)
+                .GetAsyncEnumerator(cancellationSource.Token);
+
+            var ctx = Substitute.For<IChannelHandlerContext>();
+
+            _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])invalidData.Clone()), from, to));
+            _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
+            _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])invalidData.Clone()), from, to));
+            _handler.Close();
+
+            (await enumerator.MoveNextAsync(cancellationSource.Token)).Should().BeTrue();
+            enumerator.Current.Buffer.Should().BeEquivalentTo(data);
+            (await enumerator.MoveNextAsync(cancellationSource.Token)).Should().BeFalse();
         }
     }
 }
