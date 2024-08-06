@@ -84,7 +84,7 @@ namespace Nethermind.Network.Discovery.Test
         public async Task SkipsMessagesOfInvalidSize(int size)
         {
             byte[] data = [1, 2, 3];
-            byte[] invalidData = Enumerable.Repeat((byte) 1, size).ToArray();
+            byte[] invalidData = Enumerable.Repeat((byte)1, size).ToArray();
             var from = IPEndPoint.Parse("127.0.0.1:10000");
             var to = IPEndPoint.Parse("127.0.0.1:10001");
 
