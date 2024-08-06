@@ -88,7 +88,7 @@ public class TalkReqTransport(
             if (_logger.IsDebug)
             {
                 var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip);
-                _logger.Debug($"TalkResp to {destIpKey} with id {requestId} timed out");
+                _logger.Debug($"TalkResp to {destIpKey.Value} with id {requestId} timed out");
             }
             throw;
         }

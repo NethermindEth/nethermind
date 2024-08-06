@@ -5,7 +5,9 @@ using System.Collections;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
 
@@ -22,9 +24,11 @@ public class TalkReqHandler(
     IKademlia<IEnr, byte[], LookupContentResult> kad,
     IContentDistributor contentDistributor,
     IEnrProvider enrProvider,
-    IUtpManager utpManager
+    IUtpManager utpManager,
+    ILogManager logManager
 ) : ITalkReqProtocolHandler
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<TalkReqHandler>();
     private readonly TimeSpan OfferAcceptTimeout = TimeSpan.FromSeconds(10);
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
 
@@ -57,6 +61,8 @@ public class TalkReqHandler(
 
     private async Task<byte[]?> HandlePing(IEnr sender, Ping ping)
     {
+        if (_logger.IsDebug) _logger.Debug($"Handling ping from {sender.NodeId.ToHexString()}");
+
         // Still need to call kad since the ping is also used to populate bucket.
         if (ping.CustomPayload?.Length == 32)
         {
@@ -78,6 +84,7 @@ public class TalkReqHandler(
 
     private async Task<byte[]?> HandleFindNode(IEnr sender, FindNodes nodes)
     {
+        if (_logger.IsDebug) _logger.Debug($"Handling find node from {sender.NodeId.ToHexString()}");
         // So....
         // This is weird. For some reason, discv5/overlay network uses distance instead of target node like
         // with Kademlia/discv4. It also makes it more implementation specific.
@@ -101,6 +108,7 @@ public class TalkReqHandler(
 
     private async Task<byte[]?> HandleFindContent(IEnr sender, FindContent findContent)
     {
+        if (_logger.IsDebug) _logger.Debug($"Handling find content from {sender.NodeId.ToHexString()}");
         var findValueResult = await kad.FindValue(sender, findContent.ContentKey, CancellationToken.None);
         if (findValueResult.hasValue)
         {
@@ -157,6 +165,8 @@ public class TalkReqHandler(
 
     private Task<byte[]?> HandleOffer(IEnr sender, Offer offer)
     {
+        if (_logger.IsDebug) _logger.Debug($"Handling offer from {sender.NodeId.ToHexString()}");
+
         if (offer.ContentKeys.Length == 0) return Task.FromResult<byte[]?>(null);
         BitArray toAccept = new BitArray(offer.ContentKeys.Length);
         bool hasAccept = false;

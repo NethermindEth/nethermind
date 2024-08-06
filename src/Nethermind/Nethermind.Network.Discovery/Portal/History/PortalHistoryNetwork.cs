@@ -5,6 +5,7 @@ using Lantern.Discv5.Enr;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal.Messages;
 
@@ -59,12 +60,14 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
 
     public bool ShouldAcceptOffer(byte[] offerContentKey)
     {
-        return false;
+        // Note: Just testing
+        return true;
     }
 
     public void Store(byte[] contentKey, byte[] content)
     {
-        throw new NotImplementedException();
+        // Note: Just testing
+        _logger.Info($"Got content {contentKey.ToHexString()} of size {content.Length} from portal network");
     }
 
     private async Task<BlockHeader?> LookupBlockHeader(ValueHash256 hash, CancellationToken token)
