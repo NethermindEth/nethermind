@@ -44,11 +44,22 @@ public class PortalContentNetwork : IPortalContentNetwork
         _messageSender = messageSender;
         _contentDistributor = contentDistributor;
         _logger1 = logManager.GetClassLogger<PortalContentNetwork>();
+        _kademlia.OnNodeAdded += KademliaOnOnNodeAdded;
 
         foreach (IEnr bootNode in config.BootNodes)
         {
             AddOrRefresh(bootNode);
         }
+    }
+
+    private void KademliaOnOnNodeAdded(object? sender, IEnr newNode)
+    {
+        // So with history network and its radius custom payload, something confusing happen.
+        // We never actually send ping except during refresh, and that only happen if a bucket is full.
+        // So when do we actually send ping? Its unclear where. But just to make sure I send it when a
+        // new node is found.
+        if (_logger1.IsDebug) _logger1.Debug($"Ping {newNode.NodeId.ToHexString()} on new node");
+        _messageSender.Ping(newNode, CancellationToken.None);
     }
 
     public async Task<byte[]?> LookupContent(byte[] key, CancellationToken token)

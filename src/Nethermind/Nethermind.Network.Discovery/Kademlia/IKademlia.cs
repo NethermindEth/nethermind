@@ -32,6 +32,8 @@ public interface IKademlia<TNode, TContentKey, TContent>: IMessageReceiver<TNode
     /// No guarentee is made that the nodes are of exact order.
     IEnumerable<TNode> IterateNeighbour(ValueHash256 hash);
 
+    event EventHandler<TNode> OnNodeAdded;
+
     public interface IStore
     {
         /// Used for serving transport.

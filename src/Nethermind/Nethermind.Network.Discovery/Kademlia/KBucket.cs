@@ -19,17 +19,18 @@ public class KBucket<TNode>(int k) where TNode : notnull
     /// </summary>
     /// <param name="item"></param>
     /// <returns></returns>
-    public bool TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh)
+    public BucketAddResult TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh)
     {
-        if (_items.AddOrRefresh(hash, item))
+        BucketAddResult addResult = _items.AddOrRefresh(hash, item);
+        if (addResult != BucketAddResult.Full)
         {
             toRefresh = default;
-            return true;
+            return addResult;
         }
 
         _replacement.AddOrRefresh(hash, item);
         _items.TryGetLast(out toRefresh);
-        return false;
+        return BucketAddResult.Full;
     }
 
     public TNode[] GetAll()

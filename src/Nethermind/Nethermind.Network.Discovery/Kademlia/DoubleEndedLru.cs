@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Lantern.Discv5.WireProtocol.Table;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using NonBlocking;
@@ -17,7 +18,7 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
     private ConcurrentDictionary<ValueHash256, LinkedListNode<(ValueHash256, TNode)>> _hashMapping = new();
     public int Count => _queue.Count;
 
-    public bool AddOrRefresh(in ValueHash256 hash, TNode node)
+    public BucketAddResult AddOrRefresh(in ValueHash256 hash, TNode node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
@@ -25,21 +26,21 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         {
             _queue.Remove(listNode);
             _queue.AddFirst(listNode);
-            return true;
+            return BucketAddResult.Refreshed;
         }
 
         if (_queue.Count >= capacity)
         {
-            return false;
+            return BucketAddResult.Full;
         }
 
         listNode = _queue.AddFirst((hash, node));
-        if (_hashMapping.TryAdd(hash, listNode) && _queue.Count <= capacity) return true;
+        if (_hashMapping.TryAdd(hash, listNode) && _queue.Count <= capacity) return BucketAddResult.Added;
 
         _queue.Remove((hash, node));
         _hashMapping.TryRemove(hash, out listNode);
 
-        return false;
+        return BucketAddResult.Full;
     }
 
     public bool TryPopHead(out TNode? node)

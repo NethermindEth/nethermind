@@ -36,6 +36,7 @@ public class KademliaTalkReqMessageSender(
                 Ping = new Ping()
                 {
                     EnrSeq = enrProvider.SelfEnr.SequenceNumber,
+                    // Note: This custom payload of type content radius is actually history network specific
                     CustomPayload = config.ContentRadius.ToBigEndian()
                 }
             });

@@ -79,7 +79,12 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _isRefreshing.TryRemove(_nodeHashProvider.GetHash(node), out _);
 
         var bucket = GetBucket(node);
-        if (!bucket.TryAddOrRefresh(_nodeHashProvider.GetHash(node), node, out TNode? toRefresh))
+        var addResult = bucket.TryAddOrRefresh(_nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
+        if (addResult == BucketAddResult.Added)
+        {
+            OnNodeAdded?.Invoke(this, node);
+        }
+        if (addResult == BucketAddResult.Full)
         {
             if (toRefresh != null) TryRefresh(toRefresh);
         }
@@ -627,6 +632,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             }
         }
     }
+
+    public event EventHandler<TNode>? OnNodeAdded;
 
     private IEnumerable<int> EnumerateBucket(int startingDistance)
     {
