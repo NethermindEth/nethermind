@@ -10,13 +10,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private const int ForkHashLength = 5;
 
-        private readonly bool _includeTd;
+        private readonly bool _includeTotalDifficulty;
 
         public StatusMessageSerializer() : this(true) { }
 
-        protected StatusMessageSerializer(bool includeTd)
+        protected StatusMessageSerializer(bool includeTotalDifficulty)
         {
-            _includeTd = includeTd;
+            _includeTotalDifficulty = includeTotalDifficulty;
         }
 
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.Encode(message.ProtocolVersion);
             rlpStream.Encode(message.NetworkId);
 
-            if (_includeTd)
+            if (_includeTotalDifficulty)
                 rlpStream.Encode(message.TotalDifficulty);
 
             rlpStream.Encode(message.BestHash);
@@ -67,7 +67,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Rlp.LengthOf(message.GenesisHash) +
                 forkIdSequenceLength;
 
-            if (_includeTd)
+            if (_includeTotalDifficulty)
                 contentLength += Rlp.LengthOf(message.TotalDifficulty);
 
             return Rlp.LengthOfSequence(contentLength);
@@ -82,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             statusMessage.ProtocolVersion = rlpStream.DecodeByte();
             statusMessage.NetworkId = rlpStream.DecodeUInt256();
 
-            if (_includeTd)
+            if (_includeTotalDifficulty)
                 statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
 
             statusMessage.BestHash = rlpStream.DecodeKeccak();

@@ -9,7 +9,7 @@ public class StatusMessageSerializer69 :
     V62.Messages.StatusMessageSerializer,
     IZeroInnerMessageSerializer<StatusMessage69>
 {
-    public StatusMessageSerializer69() : base(includeTd: false) { }
+    public StatusMessageSerializer69() : base(includeTotalDifficulty: false) { }
 
     void IZeroMessageSerializer<StatusMessage69>.Serialize(IByteBuffer byteBuffer, StatusMessage69 message) => base.Serialize(byteBuffer, message);
 
