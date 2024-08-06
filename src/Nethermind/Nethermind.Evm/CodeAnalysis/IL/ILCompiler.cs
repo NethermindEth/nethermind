@@ -1269,19 +1269,19 @@ internal class ILCompiler
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                     break;
                 case Instruction.LOG0:
-                    EmitLogMethod(method, (stack, head), 0 , evmExceptionLabels, uint256A, uint256B, gasAvailable, hash256, localReadOnlyMemory);
+                    EmitLogMethod(method, (stack, head), 0 , evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
                     break;
                 case Instruction.LOG1:
-                    EmitLogMethod(method, (stack, head), 1 , evmExceptionLabels, uint256A, uint256B, gasAvailable, hash256, localReadOnlyMemory);
+                    EmitLogMethod(method, (stack, head), 1 , evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
                     break;
                 case Instruction.LOG2:
-                    EmitLogMethod(method, (stack, head), 2, evmExceptionLabels, uint256A, uint256B, gasAvailable, hash256, localReadOnlyMemory);
+                    EmitLogMethod(method, (stack, head), 2, evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
                     break;
                 case Instruction.LOG3:
-                    EmitLogMethod(method, (stack, head), 3 , evmExceptionLabels, uint256A, uint256B, gasAvailable, hash256, localReadOnlyMemory);
+                    EmitLogMethod(method, (stack, head), 3 , evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
                     break;
                 case Instruction.LOG4:
-                    EmitLogMethod(method, (stack, head), 4 , evmExceptionLabels, uint256A, uint256B, gasAvailable, hash256, localReadOnlyMemory);
+                    EmitLogMethod(method, (stack, head), 4 , evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
                     break;
                 case Instruction.TSTORE:
                     method.LoadArgument(0);
@@ -2053,7 +2053,7 @@ internal class ILCompiler
         (Local span, Local idx) stack,
         sbyte topicsCount,
         Dictionary<EvmExceptionType, Label> exceptions,
-        Local uint256A, Local uint256B, Local gasAvailable, Local hash256, Local localReadOnlyMemory
+        Local uint256A, Local uint256B, Local int64A, Local gasAvailable, Local hash256, Local localReadOnlyMemory
     )
     {
         Action loadExecutingAccount = () =>
@@ -2122,9 +2122,7 @@ internal class ILCompiler
         );
         il.BranchIfFalse(exceptions[EvmExceptionType.OutOfGas]);
 
-        // update gasAvailable
-        using (var cost = il.DeclareLocal<long>())
-        {
+            // update gasAvailable
             il.LoadLocal(gasAvailable);
             // Handeling for LOG* cases
             switch (topicsCount)
@@ -2153,17 +2151,16 @@ internal class ILCompiler
             il.Multiply();
             il.Add();
             il.Convert<long>();
-            il.StoreLocal(cost);
-            //  Check gasAvailable > gasCost;
-            il.LoadLocal(cost);
+            il.StoreLocal(int64A); //gas cost
+            il.LoadLocal(int64A);
+            //  Check gasAvailable > gasCost
             il.CompareGreaterThan();
             il.BranchIfFalse(exceptions[EvmExceptionType.OutOfGas]);
             // update gasAvailable
             il.LoadLocal(gasAvailable);
-            il.LoadLocal(cost);
+            il.LoadLocal(int64A); // gas cost
             il.Subtract();
             il.StoreLocal(gasAvailable); // gasAvailable -= gasCost
-        }
 
         // Handeling for LOG* cases
         switch (topicsCount)
