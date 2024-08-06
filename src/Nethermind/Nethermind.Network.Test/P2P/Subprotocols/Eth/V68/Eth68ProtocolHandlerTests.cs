@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
@@ -17,6 +18,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -89,6 +91,11 @@ public class Eth68ProtocolHandlerTests
     [TearDown]
     public void TearDown()
     {
+        // Dispose received messages
+        _session?.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))
+            .ForEach(c => (c.GetArguments()[0] as P2PMessage)?.Dispose());
+
         _handler?.Dispose();
         _session?.Dispose();
         _syncManager?.Dispose();
@@ -114,7 +121,7 @@ public class Eth68ProtocolHandlerTests
 
         GenerateLists(txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
 
-        var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -138,7 +145,7 @@ public class Eth68ProtocolHandlerTests
             types.RemoveAt(sizes.Count - 1);
         }
 
-        var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -151,7 +158,7 @@ public class Eth68ProtocolHandlerTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
             .WithHash(TestItem.KeccakA).TestObject;
 
-        var msg = new NewPooledTransactionHashesMessage68(new ArrayPoolList<byte>(1) { (byte)tx.Type },
+        using var msg = new NewPooledTransactionHashesMessage68(new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { tx.GetLength() }, new ArrayPoolList<Hash256>(1) { tx.Hash });
 
         HandleIncomingStatusMessage();
@@ -235,9 +242,9 @@ public class Eth68ProtocolHandlerTests
         int maxNumberOfTxsInOneMsg = sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1;
         int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
 
-        ArrayPoolList<byte> types = new(numberOfTransactions);
-        ArrayPoolList<int> sizes = new(numberOfTransactions);
-        ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+        using ArrayPoolList<byte> types = new(numberOfTransactions);
+        using ArrayPoolList<int> sizes = new(numberOfTransactions);
+        using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
 
         for (int i = 0; i < numberOfTransactions; i++)
         {

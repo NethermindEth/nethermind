@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -89,6 +90,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TearDown]
         public void TearDown()
         {
+            // Dispose received messages
+            _session?.ReceivedCalls()
+                .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))
+                .ForEach(c => (c.GetArguments()[0] as P2PMessage)?.Dispose());
+
             _handler?.Dispose();
             _session?.Dispose();
             _syncManager?.Dispose();
@@ -431,12 +437,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
+            getMsg.Dispose();
 
             getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
             HandleZeroMessage(largeMsg, Eth62MessageCode.BlockBodies);
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(6));
+            getMsg.Dispose();
 
             getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
@@ -479,7 +487,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             using BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
 
-            ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None)
+                .ContinueWith(t => t.Result?.Dispose());
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders);
         }
@@ -603,7 +612,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private void HandleIncomingStatusMessage()
         {
-            var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
             IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
             statusPacket.ReadByte();
