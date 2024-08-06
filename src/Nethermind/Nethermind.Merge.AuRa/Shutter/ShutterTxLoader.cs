@@ -39,17 +39,15 @@ public class ShutterTxLoader(
     private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
-    private readonly List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
+    private List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     private bool _firstLoad = true;
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
         Block? head = readOnlyBlockTree.Head;
         List<SequencedTransaction>? sequencedTransactions = null;
-        lock (_transactionSubmittedEvents)
-        {
-            sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
-        }
+        sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
+
         long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot} at time {offsetText} slot start...");
@@ -190,39 +188,46 @@ public class ShutterTxLoader(
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        List<ISequencerContract.TransactionSubmitted> events = _firstLoad ? _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).ToList() : _transactionSubmittedEvents;
-        _firstLoad = false;
-        if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
-
-        UInt256 totalGas = 0;
-        int index = 0;
-
-        foreach (ISequencerContract.TransactionSubmitted e in events)
+        lock (_transactionSubmittedEvents)
         {
-            if (totalGas + e.GasLimit > _encryptedGasLimit)
+            if (_firstLoad)
             {
-                if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
-                yield break;
+                _transactionSubmittedEvents = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).ToList();
+                _firstLoad = false;
             }
+            List<ISequencerContract.TransactionSubmitted> events = _transactionSubmittedEvents;
+            if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
 
-            byte[] identityPreimage = new byte[52];
-            e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
-            e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
+            UInt256 totalGas = 0;
+            int index = 0;
 
-            _transactionSubmittedEvents.Remove(e);
-
-            SequencedTransaction sequencedTransaction = new()
+            foreach (ISequencerContract.TransactionSubmitted e in events)
             {
-                Index = index++,
-                Eon = eon,
-                EncryptedTransaction = e.EncryptedTransaction,
-                GasLimit = e.GasLimit,
-                Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
-                IdentityPreimage = identityPreimage
-            };
+                if (totalGas + e.GasLimit > _encryptedGasLimit)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
+                    yield break;
+                }
 
-            totalGas += e.GasLimit;
-            yield return sequencedTransaction;
+                byte[] identityPreimage = new byte[52];
+                e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
+                e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
+
+                _transactionSubmittedEvents.Remove(e);
+
+                SequencedTransaction sequencedTransaction = new()
+                {
+                    Index = index++,
+                    Eon = eon,
+                    EncryptedTransaction = e.EncryptedTransaction,
+                    GasLimit = e.GasLimit,
+                    Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
+                    IdentityPreimage = identityPreimage
+                };
+
+                totalGas += e.GasLimit;
+                yield return sequencedTransaction;
+            }
         }
     }
 
