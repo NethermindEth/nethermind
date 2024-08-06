@@ -773,16 +773,16 @@ namespace Nethermind.TxPool
         private sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
-            private readonly LruCache<AddressAsKey, AccountStruct>[] _caches;
+            private readonly ClockCache<AddressAsKey, AccountStruct>[] _caches;
 
             public AccountCache(IAccountStateProvider provider)
             {
                 _provider = provider;
-                _caches = new LruCache<AddressAsKey, AccountStruct>[16];
+                _caches = new ClockCache<AddressAsKey, AccountStruct>[16];
                 for (int i = 0; i < _caches.Length; i++)
                 {
                     // Cache per nibble to reduce contention as TxPool is very parallel
-                    _caches[i] = new LruCache<AddressAsKey, AccountStruct>(1_024, "");
+                    _caches[i] = new ClockCache<AddressAsKey, AccountStruct>(1_024);
                 }
             }
 
@@ -800,7 +800,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    Db.Metrics.IncrementTreeCacheHits();
+                    Db.Metrics.IncrementStateTreeCacheHits();
                 }
 
                 return true;
@@ -809,10 +809,10 @@ namespace Nethermind.TxPool
             public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
             {
                 Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
-                    (n) =>
+                    n =>
                     {
-                        var cache = _caches[n.Key];
-                        foreach (Address a in n)
+                        ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
+                        foreach (AddressAsKey a in n)
                         {
                             cache.Delete(a);
                         }

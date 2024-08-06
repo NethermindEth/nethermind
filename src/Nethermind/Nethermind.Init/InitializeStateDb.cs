@@ -10,6 +10,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -52,6 +53,7 @@ public class InitializeStateDb : IStep
         ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
+        IBlocksConfig blockConfig = getApi.Config<IBlocksConfig>();
 
         _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
 
@@ -134,15 +136,29 @@ public class InitializeStateDb : IStep
         // TODO: Needed by node serving. Probably should use `StateReader` instead.
         setApi.TrieStore = trieStore;
 
+        ITrieStore mainWorldTrieStore = trieStore;
+        PreBlockCaches? preBlockCaches = null;
+        if (blockConfig.PreWarmStateOnBlockProcessing)
+        {
+            preBlockCaches = new PreBlockCaches();
+            mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
+        }
+
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
-                trieStore,
+                mainWorldTrieStore,
                 codeDb,
-                getApi.LogManager)
+                getApi.LogManager,
+                preBlockCaches,
+                // Main thread should only read from prewarm caches, not spend extra time updating them.
+                populatePreBlockCache: false)
             : new WorldState(
-                trieStore,
+                mainWorldTrieStore,
                 codeDb,
-                getApi.LogManager);
+                getApi.LogManager,
+                preBlockCaches,
+                // Main thread should only read from prewarm caches, not spend extra time updating them.
+                populatePreBlockCache: false);
 
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
@@ -154,7 +170,7 @@ public class InitializeStateDb : IStep
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
-        getApi.DisposeStack.Push(trieStore);
+        getApi.DisposeStack.Push(mainWorldTrieStore);
 
         setApi.WorldState = stateManager.GlobalWorldState;
         setApi.StateReader = stateManager.GlobalStateReader;

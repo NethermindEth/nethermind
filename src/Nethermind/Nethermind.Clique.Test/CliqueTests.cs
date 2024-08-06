@@ -13,7 +13,9 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
+using System.Threading.Tasks;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Clique.Test
@@ -89,6 +91,37 @@ namespace Nethermind.Clique.Test
             bool validSeal = _sealValidator.ValidateSeal(block.Header, true);
             Assert.False(validHeader);
             Assert.True(validSeal);
+        }
+
+        [TestCase(Block4Rlp)]
+        public async Task SealBlock_SignerCanSignHeader_FullHeaderIsUsedToSign(string blockRlp)
+        {
+            IHeaderSigner signer = Substitute.For<IHeaderSigner>();
+            signer.CanSignHeader.Returns(true);
+            signer.CanSign.Returns(true);
+            signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
+            signer.Sign(Arg.Any<BlockHeader>()).Returns(new Signature(new byte[65]));
+            CliqueSealer sut = new CliqueSealer(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
+            Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+
+            await sut.SealBlock(block, System.Threading.CancellationToken.None);
+
+            signer.Received().Sign(Arg.Any<BlockHeader>());
+        }
+
+        [TestCase(Block4Rlp)]
+        public async Task SealBlock_SignerCannotSignHeader_HashIsUsedToSign(string blockRlp)
+        {
+            ISigner signer = Substitute.For<ISigner>();
+            signer.CanSign.Returns(true);
+            signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
+            signer.Sign(Arg.Any<Hash256>()).Returns(new Signature(new byte[65]));
+            CliqueSealer sut = new CliqueSealer(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
+            Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+
+            await sut.SealBlock(block, System.Threading.CancellationToken.None);
+
+            signer.Received().Sign(Arg.Any<Hash256>());
         }
 
         public static Block GetGenesis()

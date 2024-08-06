@@ -7,8 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading;
-
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -33,6 +31,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected ISpecProvider SpecProvider { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
+        private readonly ICodeInfoRepository _codeInfoRepository;
 
         [Flags]
         protected enum ExecutionOptions
@@ -67,17 +66,21 @@ namespace Nethermind.Evm.TransactionProcessing
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
+            ICodeInfoRepository? codeInfoRepository,
             ILogManager? logManager)
         {
             ArgumentNullException.ThrowIfNull(logManager, nameof(logManager));
             ArgumentNullException.ThrowIfNull(specProvider, nameof(specProvider));
             ArgumentNullException.ThrowIfNull(worldState, nameof(worldState));
             ArgumentNullException.ThrowIfNull(virtualMachine, nameof(virtualMachine));
+            ArgumentNullException.ThrowIfNull(codeInfoRepository, nameof(codeInfoRepository));
 
             Logger = logManager.GetClassLogger();
             SpecProvider = specProvider;
             WorldState = worldState;
             VirtualMachine = virtualMachine;
+            _codeInfoRepository = codeInfoRepository;
+
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -182,9 +185,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
+
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
                 Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
 
@@ -409,7 +413,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+                : _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -521,7 +525,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
+                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
                             unspentGas -= codeDepositGasCost;
                         }
@@ -577,26 +581,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress))
+            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, WorldState))
             {
-                CodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
-                bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
-                bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
+                if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
-                // TODO: verify what should happen if code info is a precompile
-                // (but this would generally be a hash collision)
-                if (codeIsNotEmpty || accountNonceIsNotZero)
-                {
-                    if (Logger.IsTrace)
-                    {
-                        Logger.Trace($"Contract collision at {contractAddress}");
-                    }
-
-                    ThrowTransactionCollisionException();
-                }
-
-                // we clean any existing storage (in case of a previously called self destruct)
-                WorldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                ThrowTransactionCollisionException();
             }
         }
 
@@ -657,5 +646,6 @@ namespace Nethermind.Evm.TransactionProcessing
         public bool Success => Error is null;
         public static implicit operator TransactionResult(string? error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.Success;
+        public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
     }
 }

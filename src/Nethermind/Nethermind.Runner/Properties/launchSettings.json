@@ -56,23 +56,30 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "OP Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c op-mainnet -dd %NETHERMIND_DATA_DIR%",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "OP Sepolia": {
       "commandName": "Project",
-      "commandLineArgs": "-c op-sepolia -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
+      "commandLineArgs": "-c op-sepolia -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Base Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c base-mainnet -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
+      "commandLineArgs": "-c base-mainnet -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Base Goerli": {
+    "Base Sepolia": {
       "commandName": "Project",
-      "commandLineArgs": "-c base-goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
+      "commandLineArgs": "-c base-sepolia -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -100,7 +107,7 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet -dd .data",
+      "commandLineArgs": "-c mainnet -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
