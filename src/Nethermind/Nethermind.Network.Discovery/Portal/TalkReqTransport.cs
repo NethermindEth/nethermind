@@ -58,7 +58,7 @@ public class TalkReqTransport(
         _protocolHandlers[protocol] = protocolHandler;
     }
 
-    public Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
+    public Task<TalkReqMessage> SendTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
     {
         return rawTalkReqSender.SentTalkReq(receiver, protocol, message, token);
     }
@@ -68,7 +68,7 @@ public class TalkReqTransport(
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         cts.CancelAfter(HardCallTimeout);
 
-        TalkReqMessage talkReqMessage = await SentTalkReq(receiver, protocol, message, token);
+        TalkReqMessage talkReqMessage = await SendTalkReq(receiver, protocol, message, token);
         ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(talkReqMessage.RequestId);
 
         try

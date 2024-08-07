@@ -34,8 +34,7 @@ public interface ITalkReqTransport
     /// <param name="message"></param>
     /// <param name="token"></param>
     /// <returns></returns>
-    Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token);
-
+    Task<TalkReqMessage> SendTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token);
 
     /// <summary>
     /// For handling TalkReq. Very similar to lantern's ITalkReqAndRespHandler, except it passes in sender.

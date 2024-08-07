@@ -180,7 +180,7 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         if (_logger.IsTrace) _logger.Trace($"Sending utp message to {meta.ConnectionId} {meta}.");
 
         var dataArray = UTPPacketHeader.EncodePacket(meta, data, new byte[2047]).ToArray();
-        return _talkReqTransport.SentTalkReq(targetNode, UtpProtocolByte, dataArray, token);
+        return _talkReqTransport.SendTalkReq(targetNode, UtpProtocolByte, dataArray, token);
     }
 
     private class UTPToMsgReqAdapter(IEnr node, TalkReqUtpManager manager): IUTPTransfer
