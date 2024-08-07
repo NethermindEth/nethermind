@@ -800,14 +800,11 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
     {
         _returnData = null;
         ref readonly ExecutionEnvironment env = ref _vmState.Env;
-        ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
-        ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
 
         int programCounter = _vmState.ProgramCounter;
         _sectionIndex = _vmState.FunctionIndex;
 
         ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
-        ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
 
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
@@ -816,9 +813,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
 #endif
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
-        SkipInit(out UInt256 c);
-        SkipInit(out UInt256 result);
-        SkipInit(out StorageCell storageCell);
 
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
