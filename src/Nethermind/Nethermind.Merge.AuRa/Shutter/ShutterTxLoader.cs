@@ -224,13 +224,20 @@ public class ShutterTxLoader(
                 // todo: make debug
                 if (_logger.IsInfo) _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from recent blocks up to {headBlockNumber}, current TxIndex is {_loadedTxIndex}.");
             }
-            List<ISequencerContract.TransactionSubmitted> events = _transactionSubmittedEvents;
+            List<ISequencerContract.TransactionSubmitted> events = _transactionSubmittedEvents.ToList();
 
             UInt256 totalGas = 0;
             int index = 0;
 
             foreach (ISequencerContract.TransactionSubmitted e in events)
             {
+                if (e.TxIndex < txPointer)
+                {
+                    // skip and delete outdated events
+                    _transactionSubmittedEvents.Remove(e);
+                    continue;
+                }
+
                 if (totalGas + e.GasLimit > _encryptedGasLimit)
                 {
                     if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
