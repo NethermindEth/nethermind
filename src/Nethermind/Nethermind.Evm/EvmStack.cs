@@ -219,12 +219,14 @@ public ref struct EvmStack<TTracing>
         PushUInt256(Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
     }
 
-    public void PopLimbo()
+    public bool PopLimbo()
     {
         if (Head-- == 0)
         {
-            EvmStack.ThrowEvmStackUnderflowException();
+            return false;
         }
+
+        return true;
     }
 
     /// <summary>
@@ -320,6 +322,18 @@ public ref struct EvmStack<TTracing>
         return new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
     }
 
+    public bool PopAddress(out Address address)
+    {
+        if (Head-- == 0)
+        {
+            address = null;
+            return false;
+        }
+
+        address = new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+        return true;
+    }
+
     public ref byte PopBytesByRef()
     {
         if (Head-- == 0)
@@ -338,6 +352,18 @@ public ref struct EvmStack<TTracing>
         }
 
         return _bytes.Slice(Head * WordSize, WordSize);
+    }
+
+    public bool PopWord256(out Span<byte> word)
+    {
+        if (Head-- == 0)
+        {
+            word = default;
+            return false;
+        }
+
+        word = _bytes.Slice(Head * WordSize, WordSize);
+        return true;
     }
 
     public byte PopByte()
@@ -425,6 +451,28 @@ public ref struct EvmStack<TTracing>
         return true;
     }
 
+    public readonly bool Exchange(int n, int m)
+    {
+        int maxDepth = Math.Max(n, m);
+        if (!EnsureDepth(maxDepth)) return false;
+
+        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+
+        ref byte first = ref Unsafe.Add(ref bytes, (Head - n) * WordSize);
+        ref byte second = ref Unsafe.Add(ref bytes, (Head - m) * WordSize);
+
+        Word buffer = Unsafe.ReadUnaligned<Word>(ref first);
+        Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
+        Unsafe.WriteUnaligned(ref second, buffer);
+
+        if (typeof(TTracing) == typeof(IsTracing))
+        {
+            Trace(maxDepth);
+        }
+
+        return true;
+    }
+
     private readonly void Trace(int depth)
     {
         for (int i = depth; i > 0; i--)
@@ -444,7 +492,7 @@ public static class EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
-    public const int ReturnStackSize = 1023;
+    public const int ReturnStackSize = 1025;
     public const int WordSize = 32;
     public const int AddressSize = 20;
 

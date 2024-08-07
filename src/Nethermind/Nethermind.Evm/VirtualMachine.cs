@@ -4,8 +4,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,8 +18,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.Intrinsics;
+using Nethermind.Evm.EOF;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -32,8 +34,9 @@ using Int256;
 
 public class VirtualMachine : IVirtualMachine
 {
-    public const int MaxCallDepth = 1024;
-    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    public const int MaxCallDepth = EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT;
+    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(EvmObjectFormat.MAGIC);
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
     internal static readonly UInt256 BigInt32 = 32;
@@ -86,43 +89,57 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-        public static CallResult Empty => new(default, null);
+        public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
         public static object BoxedEmpty { get; } = new object();
+        public static CallResult Empty(int fromVersion) => new(default, null, fromVersion);
 
         public CallResult(EvmState stateToExecute)
         {
             StateToExecute = stateToExecute;
-            Output = Array.Empty<byte>();
+            Output = (null, Array.Empty<byte>());
             PrecompileSuccess = null;
             ShouldRevert = false;
             ExceptionType = EvmExceptionType.None;
         }
 
+        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        {
+            StateToExecute = null;
+            Output = (null, output);
+            PrecompileSuccess = precompileSuccess;
+            ShouldRevert = shouldRevert;
+            ExceptionType = exceptionType;
+            FromVersion = fromVersion;
+        }
+
+        public CallResult(ICodeInfo container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        {
+            StateToExecute = null;
+            Output = (container, output);
+            PrecompileSuccess = precompileSuccess;
+            ShouldRevert = shouldRevert;
+            ExceptionType = exceptionType;
+            FromVersion = fromVersion;
+        }
+
         private CallResult(EvmExceptionType exceptionType)
         {
             StateToExecute = null;
-            Output = StatusCode.FailureBytes;
+            Output = (null, StatusCode.FailureBytes);
             PrecompileSuccess = null;
             ShouldRevert = false;
             ExceptionType = exceptionType;
         }
 
-        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-        {
-            StateToExecute = null;
-            Output = output;
-            PrecompileSuccess = precompileSuccess;
-            ShouldRevert = shouldRevert;
-            ExceptionType = exceptionType;
-        }
-
         public EvmState? StateToExecute { get; }
-        public ReadOnlyMemory<byte> Output { get; }
+        public (ICodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
         public bool IsReturn => StateToExecute is null;
         public bool IsException => ExceptionType != EvmExceptionType.None;
+
+        public int FromVersion { get; }
     }
 
     public interface IIsTracing { }
@@ -244,7 +261,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             return new TransactionSubstate(callResult.ExceptionType, isTracing);
                         }
 
-                        previousCallResult = StatusCode.FailureBytes;
+                        previousCallResult = currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
                         previousCallOutputDestination = UInt256.Zero;
                         _returnDataBuffer = Array.Empty<byte>();
                         previousCallOutput = ZeroPaddedSpan.Empty;
@@ -260,7 +277,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 {
                     if (typeof(TTracingActions) == typeof(IsTracing))
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
                         if (callResult.IsException)
                         {
@@ -271,7 +288,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             _txTracer.ReportActionRevert(currentState.ExecutionType.IsAnyCreate()
                                     ? currentState.GasAvailable - codeDepositGasCost
                                     : currentState.GasAvailable,
-                                callResult.Output);
+                                callResult.Output.Bytes);
                         }
                         else
                         {
@@ -283,11 +300,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 }
                                 else
                                 {
-                                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output);
+                                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output.Bytes);
                                 }
                             }
                             // Reject code starting with 0xEF if EIP-3541 is enabled.
-                            else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
+                            else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output.Bytes, callResult.FromVersion))
                             {
                                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                             }
@@ -295,7 +312,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             {
                                 if (currentState.ExecutionType.IsAnyCreate())
                                 {
-                                    _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
+                                    _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output.Bytes);
                                 }
                                 else
                                 {
@@ -331,48 +348,120 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         previousCallOutputDestination = UInt256.Zero;
                         _returnDataBuffer = Array.Empty<byte>();
                         previousCallOutput = ZeroPaddedSpan.Empty;
-
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                        bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
-                        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+                        if (previousState.ExecutionType.IsAnyCreateLegacy())
                         {
-                            ReadOnlyMemory<byte> code = callResult.Output;
-                            _codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
-
-                            currentState.GasAvailable -= codeDepositGasCost;
-
-                            if (typeof(TTracingActions) == typeof(IsTracing))
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+                            bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes.Span);
+                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
-                                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
+                                ReadOnlyMemory<byte> code = callResult.Output.Bytes;
+                                _codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
+                                currentState.GasAvailable -= codeDepositGasCost;
+
+                                if (_txTracer.IsTracingActions)
+                                {
+                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+                                }
+                            }
+                            else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                            {
+                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                                worldState.Restore(previousState.Snapshot);
+                                if (!previousState.IsCreateOnPreExistingAccount)
+                                {
+                                    _state.DeleteAccount(callCodeOwner);
+                                }
+
+                                previousCallResult = BytesZero;
+                                previousStateSucceeded = false;
+
+                                if (_txTracer.IsTracingActions)
+                                {
+                                    _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                                }
+                            }
+                            else if (_txTracer.IsTracingActions)
+                            {
+                                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
                             }
                         }
-                        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                        else if (previousState.ExecutionType.IsAnyCreateEof())
                         {
-                            currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                            worldState.Restore(previousState.Snapshot);
-                            if (!previousState.IsCreateOnPreExistingAccount)
-                            {
-                                _state.DeleteAccount(callCodeOwner);
-                            }
+                            // ReturnContract was called with a container index and auxdata
+                            // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+                            ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
+                            EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
+                            byte[] bytecodeResultArray = null;
 
-                            previousCallResult = BytesZero;
-                            previousStateSucceeded = false;
+                            // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
+                            Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
+                            // 2 - 1 - 1 - copy old container
+                            deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+                            // 2 - 1 - 2 - copy aux data to dataSection
+                            auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
 
-                            if (typeof(TTracingActions) == typeof(IsTracing))
+                            // 2 - 2 - update data section size in the header u16
+                            int dataSubheaderSectionStart =
+                                EvmObjectFormat.VERSION_OFFSET // magic + version
+                                + EvmObjectFormat.Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
+                                + EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * deployCodeInfo.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+                                + (deployCodeInfo.Header.ContainerSections is null
+                                    ? 0 // container section :  (0 bytes if no container section is available)
+                                    : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * deployCodeInfo.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                                + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
+
+                            ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
+                            bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
+                            bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
+
+                            bytecodeResultArray = bytecodeResult.ToArray();
+
+                            // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
+                            bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
+                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
-                                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                                // 4 - set state[new_address].code to the updated deploy container
+                                // push new_address onto the stack (already done before the ifs)
+                                _codeInfoRepository.InsertCode(_state, bytecodeResultArray, callCodeOwner, spec);
+                                currentState.GasAvailable -= codeDepositGasCost;
+
+                                if (_txTracer.IsTracingActions)
+                                {
+                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
+                                }
                             }
-                        }
-                        else if (typeof(TTracingActions) == typeof(IsTracing))
-                        {
-                            _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output);
+                            else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                            {
+                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                                worldState.Restore(previousState.Snapshot);
+                                if (!previousState.IsCreateOnPreExistingAccount)
+                                {
+                                    _state.DeleteAccount(callCodeOwner);
+                                }
+
+                                previousCallResult = BytesZero;
+                                previousStateSucceeded = false;
+
+                                if (_txTracer.IsTracingActions)
+                                {
+                                    _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                                }
+                            }
+                            else if (_txTracer.IsTracingActions)
+                            {
+                                _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
+                            }
                         }
                     }
                     else
                     {
-                        _returnDataBuffer = callResult.Output;
-                        previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                        previousCallOutput = callResult.Output.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                        _returnDataBuffer = callResult.Output.Bytes;
+                        previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
+                            callResult.PrecompileSuccess.HasValue
+                            ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
+                            : StatusCode.SuccessBytes;
+                        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
                         if (previousState.IsPrecompile)
                         {
@@ -397,15 +486,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 else
                 {
                     worldState.Restore(previousState.Snapshot);
-                    _returnDataBuffer = callResult.Output;
-                    previousCallResult = StatusCode.FailureBytes;
-                    previousCallOutput = callResult.Output.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                    _returnDataBuffer = callResult.Output.Bytes;
+                    previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.RevertBytes : StatusCode.FailureBytes;
+                    previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
                     previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
 
                     if (typeof(TTracingActions) == typeof(IsTracing))
                     {
-                        _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output);
+                        _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output.Bytes);
                     }
                 }
             }
@@ -434,7 +523,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, isTracing);
                 }
 
-                previousCallResult = StatusCode.FailureBytes;
+                previousCallResult = currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
                 previousCallOutputDestination = UInt256.Zero;
                 _returnDataBuffer = Array.Empty<byte>();
                 previousCallOutput = ZeroPaddedSpan.Empty;
@@ -587,7 +676,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         try
         {
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-            CallResult callResult = new(output, success, !success);
+            CallResult callResult = new(output, success, 0, !success);
             return callResult;
         }
         catch (DllNotFoundException exception)
@@ -598,7 +687,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-            CallResult callResult = new(default, false, true);
+            CallResult callResult = new(default, false, 0, true);
             return callResult;
         }
     }
@@ -678,7 +767,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
     Empty:
-        return CallResult.Empty;
+        return CallResult.Empty(vmState.Env.CodeInfo.Version);
     OutOfGas:
         return CallResult.OutOfGasException;
     }
@@ -689,11 +778,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        int programCounter = vmState.ProgramCounter;
+
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
-        ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
+
+        int programCounter = vmState.ProgramCounter;
+        int sectionIndex = vmState.FunctionIndex;
+
+        ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
+
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -707,13 +802,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         object returnData;
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
-        uint codeLength = (uint)code.Length;
+        uint codeLength = (uint)codeSection.Length;
         while ((uint)programCounter < codeLength)
         {
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-            Instruction instruction = (Instruction)code[programCounter];
+            Instruction instruction = (Instruction)codeSection[programCounter];
 
             if (isCancelable && _txTracer.IsCancelled)
             {
@@ -730,6 +825,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 case Instruction.STOP:
                     {
+                        if (vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+                        {
+                            goto InvalidInstruction;
+                        }
                         goto EmptyReturn;
                     }
                 case Instruction.ADD:
@@ -880,8 +979,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Metrics.ExpOpcode++;
 
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        if (!stack.PopUInt256(out a) || !stack.PopWord256(out bytes)) goto StackUnderflow;
 
                         int leadingZeros = bytes.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -1218,7 +1316,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = (UInt256)code.Length;
+                        result = (UInt256)env.CodeInfo.MachineCode.Length;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1233,7 +1331,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            slice = code.SliceWithZeroPadding(in b, (int)result);
+                            slice = env.CodeInfo.MachineCode.SliceWithZeroPadding(in b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, in slice);
                         }
@@ -1257,10 +1355,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
+                        if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < codeSection.Length)
                         {
                             bool optimizeAccess = false;
-                            Instruction nextInstruction = (Instruction)code[programCounter];
+                            Instruction nextInstruction = (Instruction)codeSection[programCounter];
                             // code.length is zero
                             if (nextInstruction == Instruction.ISZERO)
                             {
@@ -1271,7 +1369,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                     stack.PeekUInt256IsZero())
                             {
                                 optimizeAccess = true;
-                                stack.PopLimbo();
+                                if (!stack.PopLimbo()) goto StackUnderflow;
                             }
 
                             if (optimizeAccess)
@@ -1323,11 +1421,21 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!result.IsZero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             ReadOnlyMemory<byte> externalCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
-                            slice = externalCode.SliceWithZeroPadding(b, (int)result);
+
+                            if (spec.IsEofEnabled && EvmObjectFormat.IsEof(externalCode.Span, out _))
+                            {
+                                slice = EOF.EvmObjectFormat.MAGIC.SliceWithZeroPadding(b, (int)result);
+                            }
+                            else
+                            {
+                                slice = externalCode.SliceWithZeroPadding(b, (int)result);
+                            }
+
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
                             vmState.Memory.Save(in a, in slice);
+
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportMemoryChange((long)a, in slice);
@@ -1352,26 +1460,39 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
+                        if (!stack.PopUInt256(out c)) goto StackUnderflow;
+                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c);
 
-                        if (UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
+
+                        if (env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out result) || result > _returnDataBuffer.Length))
                         {
                             goto AccessViolation;
                         }
 
-                        if (!result.IsZero)
+                        if (!c.IsZero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, c)) goto OutOfGas;
 
-                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)result);
+                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)c);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportMemoryChange((long)a, in slice);
                             }
                         }
+                        break;
+                    }
+                case Instruction.RETURNDATALOAD:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
 
+                        gasAvailable -= GasCostOf.VeryLow;
+
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+
+                        slice = _returnDataBuffer.Span.SliceWithZeroPadding(a, 32);
+                        stack.PushBytes(slice);
                         break;
                     }
                 case Instruction.BLOCKHASH:
@@ -1504,7 +1625,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        stack.PopLimbo();
+                        if (!stack.PopLimbo()) goto StackUnderflow;
                         break;
                     }
                 case Instruction.MLOAD:
@@ -1563,7 +1684,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Mid;
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
+                        if (!Jump(env.CodeInfo as CodeInfo, result, ref programCounter, in env)) goto InvalidJumpDestination;
                         break;
                     }
                 case Instruction.JUMPI:
@@ -1574,7 +1695,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = stack.PopWord256();
                         if (!bytes.SequenceEqual(BytesZero32))
                         {
-                            if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
+                            if (!Jump(env.CodeInfo as CodeInfo, result, ref programCounter, in env)) goto InvalidJumpDestination;
                         }
 
                         break;
@@ -1622,14 +1743,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        int programCounterInt = programCounter;
-                        if (programCounterInt >= code.Length)
+                        if (programCounter >= codeSection.Length)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            stack.PushByte(code[programCounterInt]);
+                            stack.PushByte(codeSection[programCounter]);
                         }
 
                         programCounter++;
@@ -1670,8 +1790,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         int length = instruction - Instruction.PUSH1 + 1;
-                        int usedFromCode = Math.Min(code.Length - programCounter, length);
-                        stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                        int usedFromCode = Math.Min(codeSection.Length - programCounter, length);
+                        stack.PushLeftPaddedBytes(codeSection.Slice(programCounter, usedFromCode), length);
 
                         programCounter += length;
                         break;
@@ -1698,6 +1818,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.Dup(instruction - Instruction.DUP1 + 1)) goto StackUnderflow;
                         break;
                     }
+                case Instruction.DUPN:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                            goto OutOfGas;
+
+                        byte imm = codeSection[programCounter];
+                        stack.Dup(imm + 1);
+
+                        programCounter += 1;
+                        break;
+                    }
                 case Instruction.SWAP1:
                 case Instruction.SWAP2:
                 case Instruction.SWAP3:
@@ -1718,6 +1852,36 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.Swap(instruction - Instruction.SWAP1 + 2)) goto StackUnderflow;
+                        break;
+                    }
+                case Instruction.SWAPN:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                            goto OutOfGas;
+
+                        int n = 1 + codeSection[programCounter];
+                        if (!stack.Swap(n + 1)) goto StackUnderflow;
+
+                        programCounter += 1;
+                        break;
+                    }
+                case Instruction.EXCHANGE:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                            goto OutOfGas;
+
+                        int n = 1 + (int)(codeSection[programCounter] >> 0x04);
+                        int m = 1 + (int)(codeSection[programCounter] & 0x0f);
+
+                        stack.Exchange(n + 1, m + n + 1);
+
+                        programCounter += 1;
                         break;
                     }
                 case Instruction.LOG0:
@@ -1747,8 +1911,29 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         goto DataReturnNoTrace;
                     }
+                case Instruction.EOFCREATE:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        if (vmState.IsStatic) goto StaticCallViolation;
+
+                        (exceptionType, returnData) = InstructionEofCreate(vmState, ref programCounter, ref codeSection, ref stack, ref gasAvailable, spec, instruction);
+
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                        if (returnData is null) break;
+
+                        goto DataReturnNoTrace;
+                    }
                 case Instruction.RETURN:
                     {
+                        if (vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+                        {
+                            goto InvalidInstruction;
+                        }
                         exceptionType = InstructionReturn(vmState, ref stack, ref gasAvailable, out returnData);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -1813,7 +1998,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a >= 256UL)
                         {
-                            stack.PopLimbo();
+                            if (!stack.PopLimbo()) goto StackUnderflow;
                             stack.PushZero();
                         }
                         else
@@ -1834,7 +2019,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a >= 256)
                         {
-                            stack.PopLimbo();
+                            if (!stack.PopLimbo()) goto StackUnderflow;
                             stack.PushZero();
                         }
                         else
@@ -1889,7 +2074,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                            Span<byte> account = _state.GetCode(address);
+                            if (spec.IsEofEnabled && EvmObjectFormat.IsEof(account, out _))
+                            {
+                                stack.PushBytes(EofHash256);
+                            }
+                            else
+                            {
+                                stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                            }
                         }
 
                         break;
@@ -1963,6 +2156,229 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             break;
                         }
                     }
+                case Instruction.RJUMP:
+                    {
+                        if (spec.IsEofEnabled && env.CodeInfo.Version > 0)
+                        {
+                            if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
+                            break;
+                        }
+                        goto InvalidInstruction;
+                    }
+                case Instruction.RJUMPI:
+                    {
+                        if (spec.IsEofEnabled && env.CodeInfo.Version > 0)
+                        {
+                            if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
+                            Span<byte> condition = stack.PopWord256();
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                            if (!condition.SequenceEqual(BytesZero32))
+                            {
+                                programCounter += offset;
+                            }
+                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
+                            break;
+                        }
+                        goto InvalidInstruction;
+                    }
+                case Instruction.RJUMPV:
+                    {
+                        if (spec.IsEofEnabled && env.CodeInfo.Version > 0)
+                        {
+                            if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
+
+                            stack.PopUInt256(out a);
+                            var count = codeSection[programCounter] + 1;
+                            var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
+                            if (a < count)
+                            {
+                                int case_v = programCounter + EvmObjectFormat.ONE_BYTE_LENGTH + (int)a * EvmObjectFormat.TWO_BYTE_LENGTH;
+                                int offset = codeSection.Slice(case_v, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                                programCounter += offset;
+                            }
+                            programCounter += immediates;
+                            break;
+                        }
+                        goto InvalidInstruction;
+                    }
+                case Instruction.CALLF:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
+                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
+
+                        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
+                        {
+                            goto StackOverflow;
+                        }
+
+                        if (vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
+                            goto InvalidSubroutineEntry;
+
+                        vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                        {
+                            Index = sectionIndex,
+                            Height = stack.Head - inputCount,
+                            Offset = programCounter + EvmObjectFormat.TWO_BYTE_LENGTH
+                        };
+
+                        sectionIndex = index;
+                        programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
+                        break;
+                    }
+
+                case Instruction.JUMPF:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) goto OutOfGas;
+                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
+
+                        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
+                        {
+                            goto StackOverflow;
+                        }
+
+                        sectionIndex = index;
+                        programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
+                        break;
+                    }
+                case Instruction.RETF:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
+                        (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
+
+                        var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
+                        sectionIndex = stackFrame.Index;
+                        programCounter = stackFrame.Offset;
+                        break;
+                    }
+                case Instruction.EXTCALL:
+                case Instruction.EXTDELEGATECALL:
+                case Instruction.EXTSTATICCALL:
+                    {
+                        exceptionType = InstructionEofCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                        if (returnData is null)
+                        {
+                            break;
+                        }
+                        if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                        {
+                            // Result pushed to stack
+                            continue;
+                        }
+
+                        goto DataReturn;
+                    }
+                case Instruction.RETURNCONTRACT:
+                    {
+                        if (!spec.IsEofEnabled || !vmState.ExecutionType.IsAnyCreateEof())
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
+
+                        byte sectionIdx = codeSection[programCounter++];
+                        ReadOnlyMemory<byte> deployCode = env.CodeInfo.ContainerSection[(Range)env.CodeInfo.ContainerSectionOffset(sectionIdx)];
+                        EofCodeInfo deploycodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
+
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
+
+                        int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
+                        if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
+                        {
+                            goto AccessViolation;
+                        }
+
+                        auxData = vmState.Memory.Load(a, b);
+
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
+                        return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
+                    }
+                case Instruction.DATASIZE:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
+
+                        stack.PushUInt32(dataSection.Length);
+                        break;
+                    }
+                case Instruction.DATALOAD:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
+
+                        stack.PopUInt256(out a);
+                        ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(a, 32);
+                        stack.PushBytes(zpbytes);
+                        break;
+                    }
+                case Instruction.DATALOADN:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
+
+                        var offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(offset, 32);
+                        stack.PushBytes(zpbytes);
+
+                        programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
+                        break;
+                    }
+                case Instruction.DATACOPY:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        stack.PopUInt256(out UInt256 memOffset);
+                        stack.PopUInt256(out UInt256 offset);
+                        stack.PopUInt256(out UInt256 size);
+
+                        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
+                            goto OutOfGas;
+
+                        if (size > UInt256.Zero)
+                        {
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in memOffset, size))
+                                goto OutOfGas;
+
+                            ZeroPaddedSpan dataSectionSlice = dataSection.SliceWithZeroPadding(offset, (int)size);
+                            vmState.Memory.Save(in memOffset, dataSectionSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
+                            }
+                        }
+
+                        break;
+                    }
                 default:
                     {
                         goto InvalidInstruction;
@@ -1988,23 +2404,23 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         EmptyReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-        return CallResult.Empty;
+        return CallResult.Empty(env.CodeInfo.Version);
     DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
         DataReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
 
         if (returnData is EvmState state)
         {
             return new CallResult(state);
         }
-        return new CallResult((byte[])returnData, null, shouldRevert: isRevert);
+        return new CallResult((byte[])returnData, null, env.CodeInfo.Version, shouldRevert: isRevert);
 
     OutOfGas:
         exceptionType = EvmExceptionType.OutOfGas;
@@ -2025,7 +2441,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
-
+    InvalidSubroutineEntry:
+        exceptionType = EvmExceptionType.InvalidSubroutineEntry;
+        goto ReturnFailure;
+    StackOverflow:
+        exceptionType = EvmExceptionType.StackOverflow;
+        goto ReturnFailure;
         [DoesNotReturn]
         static void ThrowOperationCanceledException() =>
             throw new OperationCanceledException("Cancellation Requested");
@@ -2036,8 +2457,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
         ReadOnlyMemory<byte> accountCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
-        UInt256 result = (UInt256)accountCode.Span.Length;
-        stack.PushUInt256(in result);
+        if (spec.IsEofEnabled && EvmObjectFormat.IsEof(accountCode.Span, out _))
+        {
+            stack.PushUInt256(2);
+        }
+        else
+        {
+            UInt256 result = (UInt256)accountCode.Length;
+            stack.PushUInt256(in result);
+        }
     }
 
     [SkipLocalsInit]
@@ -2046,10 +2474,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
     {
+        Metrics.IncrementCalls();
+
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
-
-        Metrics.IncrementCalls();
 
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
@@ -2113,7 +2541,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
+        ICodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)
@@ -2231,6 +2659,171 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
+    private EvmExceptionType InstructionEofCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec,
+        Instruction instruction, out object returnData)
+        where TTracingInstructions : struct, IIsTracing
+        where TTracingRefunds : struct, IIsTracing
+    {
+        Metrics.IncrementCalls();
+
+        const int MIN_RETAINED_GAS = 5000;
+
+        returnData = null;
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+
+        // Instruction is undefined in legacy code and only available in EOF
+        if (!spec.IsEofEnabled ||
+            env.CodeInfo.Version == 0 ||
+            (instruction == Instruction.EXTDELEGATECALL && !spec.DelegateCallEnabled) ||
+            (instruction == Instruction.EXTSTATICCALL && !spec.StaticCallEnabled))
+            return EvmExceptionType.BadInstruction;
+
+        // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
+        stack.PopWord256(out Span<byte> targetBytes);
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataLength);
+
+        UInt256 callValue;
+        switch (instruction)
+        {
+            case Instruction.EXTSTATICCALL:
+                callValue = UInt256.Zero;
+                break;
+            case Instruction.EXTDELEGATECALL:
+                callValue = env.Value;
+                break;
+            default: // Instruction.EXTCALL
+                stack.PopUInt256(out callValue);
+                break;
+        }
+
+        // 3. If value is non-zero:
+        //  a: Halt with exceptional failure if the current frame is in static-mode.
+        if (vmState.IsStatic && !callValue.IsZero) return EvmExceptionType.StaticCallViolation;
+        //  b. Charge CALL_VALUE_COST gas.
+        if (!callValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        // 4. If target_address has any of the high 12 bytes set to a non-zero value
+        // (i.e. it does not contain a 20-byte address)
+        if (!targetBytes[0..12].IsZero())
+        {
+            //  then halt with an exceptional failure.
+            return EvmExceptionType.AddressOutOfRange;
+        }
+
+        Address caller = instruction == Instruction.EXTDELEGATECALL ? env.Caller : env.ExecutingAccount;
+        Address codeSource = new Address(targetBytes[12..].ToArray());
+        Address target = instruction == Instruction.EXTDELEGATECALL
+            ? env.ExecutingAccount
+            : codeSource;
+
+        // 5. Perform (and charge for) memory expansion using [input_offset, input_size].
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
+        // 1. Charge WARM_STORAGE_READ_COST (100) gas.
+        // 6. If target_address is not in the warm_account_list, charge COLD_ACCOUNT_ACCESS - WARM_STORAGE_READ_COST (2500) gas.
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
+
+        if ((!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(codeSource))
+            || (spec.ClearEmptyAccountWhenTouched && callValue != 0 && _state.IsDeadAccount(codeSource)))
+        {
+            // 7. If target_address is not in the state and the call configuration would result in account creation,
+            //    charge ACCOUNT_CREATION_COST (25000) gas. (The only such case in this EIP is if value is non-zero.)
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        }
+
+        // 8. Calculate the gas available to callee as caller’s remaining gas reduced by max(floor(gas/64), MIN_RETAINED_GAS).
+        long callGas = gasAvailable - Math.Max(gasAvailable / 64, MIN_RETAINED_GAS);
+
+        // 9. Fail with status code 1 returned on stack if any of the following is true (only gas charged until this point is consumed):
+        //  a: Gas available to callee at this point is less than MIN_CALLEE_GAS.
+        //  b: Balance of the current account is less than value.
+        //  c: Current call stack depth equals 1024.
+        if (callGas < GasCostOf.CallStipend ||
+            (!callValue.IsZero && _state.GetBalance(env.ExecutingAccount) < callValue) ||
+            env.CallDepth >= MaxCallDepth)
+        {
+            returnData = CallResult.BoxedEmpty;
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushOne();
+
+            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+            {
+                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
+                _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
+                _txTracer.ReportOperationRemainingGas(gasAvailable);
+                _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                _txTracer.ReportGasUpdateForVmTrace(callGas, gasAvailable);
+            }
+
+            return EvmExceptionType.None;
+        }
+
+        if (typeof(TLogger) == typeof(IsTracing))
+        {
+            _logger.Trace($"caller {caller}");
+            _logger.Trace($"target {codeSource}");
+            _logger.Trace($"value {callValue}");
+        }
+
+        ICodeInfo targetCodeInfo = _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
+        targetCodeInfo.AnalyseInBackgroundIfRequired();
+
+        if (instruction is Instruction.EXTDELEGATECALL
+            && targetCodeInfo.Version == 0)
+        {
+            // https://github.com/ipsilon/eof/blob/main/spec/eof.md#new-behavior
+            // EXTDELEGATECALL to a non-EOF contract (legacy contract, EOA, empty account) is disallowed,
+            // and it returns 1 (same as when the callee frame reverts) to signal failure.
+            // Only initial gas cost of EXTDELEGATECALL is consumed (similarly to the call depth check)
+            // and the target address still becomes warm.
+            returnData = CallResult.BoxedEmpty;
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushOne();
+            return EvmExceptionType.None;
+        }
+
+        // 10. Perform the call with the available gas and configuration.
+        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
+
+        Snapshot snapshot = _state.TakeSnapshot();
+        _state.SubtractFromBalance(caller, callValue, spec);
+
+        ExecutionEnvironment callEnv = new
+        (
+            txExecutionContext: in env.TxExecutionContext,
+            callDepth: env.CallDepth + 1,
+            caller: caller,
+            codeSource: codeSource,
+            executingAccount: target,
+            transferValue: callValue,
+            value: callValue,
+            inputData: callData,
+            codeInfo: targetCodeInfo
+        );
+        if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {callGas}");
+
+        ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
+        returnData = new EvmState(
+            callGas,
+            callEnv,
+            executionType,
+            isTopLevel: false,
+            snapshot,
+            (long)0,
+            (long)0,
+            isStatic: instruction == Instruction.EXTSTATICCALL || vmState.IsStatic,
+            vmState,
+            isContinuation: false,
+            isCreateOnPreExistingAccount: false);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
     private static EvmExceptionType InstructionRevert<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
         where TTracing : struct, IIsTracing
     {
@@ -2311,6 +2904,140 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.SubtractFromBalance(executingAccount, result, spec);
         return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    private (EvmExceptionType exceptionType, EvmState? callState) InstructionEofCreate<TTracing>(EvmState vmState, ref int pc, ref ReadOnlySpan<byte> codeSection, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+        where TTracing : struct, IIsTracing
+    {
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+        EofCodeInfo container = env.CodeInfo as EofCodeInfo;
+        var currentContext = ExecutionType.EOFCREATE;
+
+        // 1 - deduct TX_CREATE_COST gas
+        if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
+            return (EvmExceptionType.OutOfGas, null);
+
+        // 2 - read immediate operand initcontainer_index, encoded as 8-bit unsigned value
+        int initcontainerIndex = codeSection[pc++];
+
+        // 3 - pop value, salt, input_offset, input_size from the operand stack
+        // no stack checks becaue EOF guarantees no stack undeflows
+        stack.PopUInt256(out UInt256 value);
+        stack.PopWord256(out Span<byte> salt);
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataSize);
+
+        // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataSize)) return (EvmExceptionType.OutOfGas, null);
+
+        // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
+        // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
+        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initcontainerIndex).Value];
+        // Eip3860
+        if (spec.IsEip3860Enabled)
+        {
+            //if (!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
+            //    return (EvmExceptionType.OutOfGas, null);
+            if (initContainer.Length > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
+        }
+
+        // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
+        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length);
+        long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
+        if (!UpdateGas(hashCost, ref gasAvailable))
+            return (EvmExceptionType.OutOfGas, null);
+
+        // 7 - check that current call depth is below STACK_DEPTH_LIMIT and that caller balance is enough to transfer value
+        // in case of failure return 0 on the stack, caller’s nonce is not updated and gas for initcode execution is not consumed.
+        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+        if (env.CallDepth >= MaxCallDepth || value > balance)
+        {
+            // TODO: need a test for this
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (EvmExceptionType.None, null);
+        }
+
+        // 8 - caller’s memory slice [input_offset:input_size] is used as calldata
+        Span<byte> calldata = vmState.Memory.LoadSpan(dataOffset, dataSize);
+
+        // 9 - execute the container and deduct gas for execution. The 63/64th rule from EIP-150 applies.
+        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
+
+        // 10 - increment sender account’s nonce
+        UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
+        UInt256 maxNonce = ulong.MaxValue;
+        if (accountNonce >= maxNonce)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (EvmExceptionType.None, null);
+        }
+        _state.IncrementNonce(env.ExecutingAccount);
+
+        // 11 - calculate new_address as keccak256(0xff || sender || salt || keccak256(initcontainer))[12:]
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer);
+        if (spec.UseHotAndColdStorage)
+        {
+            // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
+            vmState.WarmUp(contractAddress);
+        }
+
+
+        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState?.Memory.Size ?? 0);
+        // todo: === below is a new call - refactor / move
+
+        Snapshot snapshot = _state.TakeSnapshot();
+
+        bool accountExists = _state.AccountExists(contractAddress);
+
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, _state))
+        {
+            /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
+            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (EvmExceptionType.None, null);
+        }
+
+        if (_state.IsDeadAccount(contractAddress))
+        {
+            _state.ClearStorage(contractAddress);
+        }
+
+        _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+
+
+        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+
+        ExecutionEnvironment callEnv = new
+        (
+            txExecutionContext: in env.TxExecutionContext,
+            callDepth: env.CallDepth + 1,
+            caller: env.ExecutingAccount,
+            executingAccount: contractAddress,
+            codeSource: null,
+            codeInfo: codeinfo,
+            inputData: calldata.ToArray(),
+            transferValue: value,
+            value: value
+        );
+        EvmState callState = new(
+            callGas,
+            callEnv,
+            currentContext,
+            false,
+            snapshot,
+            0L,
+            0L,
+            vmState.IsStatic,
+            vmState,
+            false,
+            accountExists);
+
+        return (EvmExceptionType.None, callState);
     }
 
     [SkipLocalsInit]
@@ -2396,7 +3123,21 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.WarmUp(contractAddress);
         }
 
+        // Do not add the initCode to the cache as it is
+        // pointing to data in this tx and will become invalid
+        // for another tx as returned to pool.
+        if (spec.IsEofEnabled && initCode.Span.StartsWith(EvmObjectFormat.MAGIC))
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            UpdateGasUp(callGas, ref gasAvailable);
+            return (EvmExceptionType.None, null);
+        }
+
         _state.IncrementNonce(env.ExecutingAccount);
+
+        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
+        codeinfo.AnalyseInBackgroundIfRequired();
 
         Snapshot snapshot = _state.TakeSnapshot();
 
@@ -2418,12 +3159,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        // Do not add the initCode to the cache as it is
-        // pointing to data in this tx and will become invalid
-        // for another tx as returned to pool.
-        CodeInfo codeInfo = new(initCode);
-        codeInfo.AnalyseInBackgroundIfRequired();
-
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,
@@ -2431,7 +3166,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
             codeSource: null,
-            codeInfo: codeInfo,
+            codeInfo: codeinfo,
             inputData: default,
             transferValue: value,
             value: value
@@ -2439,7 +3174,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         EvmState callState = new(
             callGas,
             callEnv,
-            instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
+            instruction switch
+            {
+                Instruction.CREATE => ExecutionType.CREATE,
+                Instruction.CREATE2 => ExecutionType.CREATE2,
+                _ => throw new UnreachableException()
+            },
             false,
             snapshot,
             0L,
@@ -2673,15 +3413,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
+            EvmExceptionType.AddressOutOfRange => CallResult.InvalidAddressRange,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }
 
-    private static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
+    private static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead, int sectionId)
     {
         state.ProgramCounter = pc;
         state.GasAvailable = gas;
         state.DataStackHead = stackHead;
+        state.FunctionIndex = sectionId;
     }
 
     private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
@@ -2698,7 +3440,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return true;
     }
 
-    private static bool Jump(in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env)
+    private static bool Jump(CodeInfo codeinfo, in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env)
     {
         if (jumpDest > int.MaxValue)
         {
@@ -2708,7 +3450,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         int jumpDestInt = (int)jumpDest;
-        if (!env.CodeInfo.ValidateJump(jumpDestInt))
+        if (!codeinfo.ValidateJump(jumpDestInt))
         {
             // https://github.com/NethermindEth/nethermind/issues/140
             // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
@@ -2751,29 +3493,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
-    {
-        ExecutionType executionType;
-        if (instruction == Instruction.CALL)
+        => instruction switch
         {
-            executionType = ExecutionType.CALL;
-        }
-        else if (instruction == Instruction.DELEGATECALL)
-        {
-            executionType = ExecutionType.DELEGATECALL;
-        }
-        else if (instruction == Instruction.STATICCALL)
-        {
-            executionType = ExecutionType.STATICCALL;
-        }
-        else if (instruction == Instruction.CALLCODE)
-        {
-            executionType = ExecutionType.CALLCODE;
-        }
-        else
-        {
-            throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
-        }
-
-        return executionType;
-    }
+            Instruction.CALL => ExecutionType.CALL,
+            Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
+            Instruction.STATICCALL => ExecutionType.STATICCALL,
+            Instruction.CALLCODE => ExecutionType.CALLCODE,
+            Instruction.EXTCALL => ExecutionType.EOFCALL,
+            Instruction.EXTDELEGATECALL => ExecutionType.EOFDELEGATECALL,
+            Instruction.EXTSTATICCALL => ExecutionType.EOFSTATICCALL,
+            _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
+        };
 }

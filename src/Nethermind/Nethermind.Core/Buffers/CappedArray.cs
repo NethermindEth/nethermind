@@ -4,6 +4,8 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Buffers;
 
@@ -14,6 +16,7 @@ namespace Nethermind.Core.Buffers;
 /// if it represent null.
 /// </summary>
 public readonly struct CappedArray<T>
+    where T : struct
 {
     private readonly static CappedArray<T> _null = default;
     private readonly static CappedArray<T> _empty = new CappedArray<T>(Array.Empty<T>());
@@ -109,6 +112,16 @@ public readonly struct CappedArray<T>
         if (array.Length == 0) return Array.Empty<T>();
         if (_length == array.Length) return array;
         return AsSpan().ToArray();
+    }
+
+    public override string? ToString()
+    {
+        if (typeof(T) == typeof(byte))
+        {
+            return SpanExtensions.ToHexString(MemoryMarshal.AsBytes(AsSpan()), withZeroX: true);
+        }
+
+        return base.ToString();
     }
 
     public readonly ArraySegment<T> AsArraySegment()

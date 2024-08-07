@@ -44,7 +44,7 @@ namespace Ethereum.Test.Base
     {
         private static InterfaceLogger _logger = new NUnitLogger(LogLevel.Trace);
         // private static ILogManager _logManager = new OneLoggerLogManager(_logger);
-        private static ILogManager _logManager = LimboLogs.Instance;
+        private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static ISealValidator Sealer { get; }
         private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 

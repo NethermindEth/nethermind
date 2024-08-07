@@ -19,6 +19,7 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        public byte[] EofMagic = [0xEF, 0x00];
         public const int BaseTxGasCost = 21000;
 
         public ulong? ChainId { get; set; }
@@ -53,6 +54,8 @@ namespace Nethermind.Core
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
+        public bool IsEofContractCreation => IsContractCreation && (Data?.Span.StartsWith(EofMagic) ?? false);
+        public bool IsLegacyContractCreation => IsContractCreation && !IsEofContractCreation;
         public bool IsMessageCall => To is not null;
 
         private Hash256? _hash;

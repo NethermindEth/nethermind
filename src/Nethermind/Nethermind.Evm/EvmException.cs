@@ -22,12 +22,13 @@ namespace Nethermind.Evm
         InvalidSubroutineReturn,
         InvalidJumpDestination,
         AccessViolation,
+        AddressOutOfRange,
         StaticCallViolation,
         PrecompileFailure,
         TransactionCollision,
         NotEnoughBalance,
         Other,
         Revert,
-        InvalidCode
+        InvalidCode,
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -20,6 +19,13 @@ namespace Nethermind.Evm
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
     public class EvmState : IDisposable // TODO: rename to CallState
     {
+        public struct ReturnState
+        {
+            public int Index;
+            public int Offset;
+            public int Height;
+        }
+
         private class StackPool
         {
             private readonly int _maxCallStackDepth;
@@ -31,7 +37,7 @@ namespace Nethermind.Evm
             }
 
             private readonly Stack<byte[]> _dataStackPool = new(32);
-            private readonly Stack<int[]> _returnStackPool = new(32);
+            private readonly Stack<ReturnState[]> _returnStackPool = new(32);
 
             private int _dataStackPoolDepth;
             private int _returnStackPoolDepth;
@@ -42,7 +48,7 @@ namespace Nethermind.Evm
             /// </summary>
             /// <param name="dataStack"></param>
             /// <param name="returnStack"></param>
-            public void ReturnStacks(byte[] dataStack, int[] returnStack)
+            public void ReturnStacks(byte[] dataStack, ReturnState[] returnStack)
             {
                 _dataStackPool.Push(dataStack);
                 _returnStackPool.Push(returnStack);
@@ -64,9 +70,9 @@ namespace Nethermind.Evm
                 return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
             }
 
-            private int[] RentReturnStack()
+            private ReturnState[] RentReturnStack()
             {
-                if (_returnStackPool.TryPop(out int[] result))
+                if (_returnStackPool.TryPop(out ReturnState[] result))
                 {
                     return result;
                 }
@@ -77,10 +83,10 @@ namespace Nethermind.Evm
                     EvmStack.ThrowEvmStackOverflowException();
                 }
 
-                return new int[EvmStack.ReturnStackSize];
+                return new ReturnState[EvmStack.ReturnStackSize];
             }
 
-            public (byte[], int[]) RentStacks()
+            public (byte[], ReturnState[]) RentStacks()
             {
                 return (RentDataStack(), RentReturnStack());
             }
@@ -89,7 +95,7 @@ namespace Nethermind.Evm
 
         public byte[]? DataStack;
 
-        public int[]? ReturnStack;
+        public ReturnState[]? ReturnStack;
 
         /// <summary>
         /// EIP-2929 accessed addresses
@@ -216,6 +222,8 @@ namespace Nethermind.Evm
                     case ExecutionType.CALLCODE:
                     case ExecutionType.CREATE:
                     case ExecutionType.CREATE2:
+                    case ExecutionType.EOFCREATE:
+                    case ExecutionType.TXCREATE:
                     case ExecutionType.TRANSACTION:
                         return Env.Caller;
                     case ExecutionType.DELEGATECALL:
@@ -228,6 +236,7 @@ namespace Nethermind.Evm
 
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
+        public int FunctionIndex { get; set; }
         public long Refund { get; set; }
 
         public Address To => Env.CodeSource ?? Env.ExecutingAccount;
