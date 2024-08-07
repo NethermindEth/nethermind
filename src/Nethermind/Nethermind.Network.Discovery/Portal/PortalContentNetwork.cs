@@ -26,6 +26,7 @@ public class PortalContentNetwork : IPortalContentNetwork
     private readonly IKademlia<IEnr, byte[], LookupContentResult> _kademlia;
     private readonly IMessageSender<IEnr, byte[], LookupContentResult> _messageSender;
     private readonly IContentDistributor _contentDistributor;
+    private readonly TimeSpan _lookupContentHardTimeout;
     private readonly ILogger _logger1;
 
     public PortalContentNetwork(
@@ -45,6 +46,7 @@ public class PortalContentNetwork : IPortalContentNetwork
         _contentDistributor = contentDistributor;
         _logger1 = logManager.GetClassLogger<PortalContentNetwork>();
         _kademlia.OnNodeAdded += KademliaOnOnNodeAdded;
+        _lookupContentHardTimeout = config.LookupContentHardTimeout;
 
         foreach (IEnr bootNode in config.BootNodes)
         {
@@ -65,7 +67,7 @@ public class PortalContentNetwork : IPortalContentNetwork
     public async Task<byte[]?> LookupContent(byte[] key, CancellationToken token)
     {
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cts.CancelAfter(TimeSpan.FromSeconds(60));
+        cts.CancelAfter(_lookupContentHardTimeout);
         token = cts.Token;
 
         Stopwatch sw = Stopwatch.StartNew();
@@ -89,6 +91,10 @@ public class PortalContentNetwork : IPortalContentNetwork
 
     public async Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token)
     {
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cts.CancelAfter(_lookupContentHardTimeout);
+        token = cts.Token;
+
         var content = await _messageSender.FindValue(node, contentKey, token);
         if (!content.hasValue)
         {

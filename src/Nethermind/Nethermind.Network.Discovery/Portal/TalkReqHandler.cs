@@ -30,7 +30,11 @@ public class TalkReqHandler(
 ) : ITalkReqProtocolHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TalkReqHandler>();
-    private readonly TimeSpan OfferAcceptTimeout = TimeSpan.FromSeconds(10);
+
+    private readonly TimeSpan _offerAcceptTimeout = config.OfferAcceptTimeout;
+
+    private readonly TimeSpan _streamSenderTimeout = config.StreamSenderTimeout;
+
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
 
     public async Task<byte[]?> OnMsgReq(IEnr sender, TalkReqMessage talkReqMessage)
@@ -163,7 +167,7 @@ public class TalkReqHandler(
             // But we cancel it after 10 second.
             // The peer will need to download it within 10 second.
             using CancellationTokenSource cts = new CancellationTokenSource();
-            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            cts.CancelAfter(_streamSenderTimeout);
 
             MemoryStream inputStream = new MemoryStream(valuePayload);
             await utpManager.WriteContentToUtp(nodeId, false, connectionId, inputStream, cts.Token);
@@ -208,7 +212,7 @@ public class TalkReqHandler(
     private async Task RunOfferAccept(IEnr enr, Offer offer, BitArray accepted, ushort connectionId)
     {
         using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(OfferAcceptTimeout);
+        cts.CancelAfter(_offerAcceptTimeout);
         var token =  cts.Token;
 
         MemoryStream stream = new MemoryStream(); // TODO: Must it wait for all of it to download?

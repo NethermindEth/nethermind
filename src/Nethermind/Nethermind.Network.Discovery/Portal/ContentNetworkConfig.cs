@@ -48,4 +48,29 @@ public class ContentNetworkConfig
     /// Maximum size of content before needing to use UTP to transfer content.
     /// </summary>
     public int MaxContentSizeForTalkReq { get; set; } = 500;
+
+    /// <summary>
+    /// Timeout for task that download offer and process offer
+    /// </summary>
+    public TimeSpan OfferAcceptTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Timeout for task that open a utp connection connection and stream content to receiver
+    /// </summary>
+    public TimeSpan StreamSenderTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Timeout for task that send offer to a peer and write content to it
+    /// </summary>
+    public TimeSpan OfferAndSendContentTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Timeout for looking up content and downloading them
+    /// </summary>
+    public TimeSpan LookupContentHardTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Hard timeout for each call and wait for response.
+    /// </summary>
+    public TimeSpan HardCallTimeout { get; set; } = TimeSpan.FromMilliseconds(500);
 };

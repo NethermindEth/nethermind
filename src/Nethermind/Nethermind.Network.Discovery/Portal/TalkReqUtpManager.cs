@@ -106,21 +106,15 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
 
         try
         {
-            // So we open a task that push the data.
-            // But we cancel it after 10 second.
-            // The peer will need to download it within 10 second.
-            using CancellationTokenSource cts = new CancellationTokenSource();
-            cts.CancelAfter(TimeSpan.FromSeconds(10));
-
             if (isInitiator)
             {
-                await stream.InitiateHandshake(cts.Token, ourConnectionId);
+                await stream.InitiateHandshake(token, ourConnectionId);
             }
             else
             {
-                await stream.HandleHandshake(cts.Token);
+                await stream.HandleHandshake(token);
             }
-            await stream.WriteStream(input, cts.Token);
+            await stream.WriteStream(input, token);
         }
         finally
         {

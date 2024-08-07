@@ -14,9 +14,6 @@ namespace Nethermind.Network.Discovery.Portal;
 
 public class ContentDistributor : IContentDistributor
 {
-    private TimeSpan OfferAndSendContentTimeout = TimeSpan.FromSeconds(10);
-
-    private readonly UInt256 _defaultRadius;
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
     private readonly LruCache<ValueHash256, UInt256> _distanceCache = new(1000, "");
     private readonly IKademlia<IEnr, byte[], LookupContentResult> _kad;
@@ -24,6 +21,9 @@ public class ContentDistributor : IContentDistributor
     private readonly IUtpManager _utpManager;
     private readonly IEnrProvider _enrProvider;
     private readonly ContentNetworkConfig _config;
+
+    private readonly UInt256 _defaultRadius;
+    private readonly TimeSpan _offerAndSendContentTimeout;
 
     public ContentDistributor(
         IKademlia<IEnr, byte[], LookupContentResult> kad,
@@ -38,6 +38,7 @@ public class ContentDistributor : IContentDistributor
         _transport = transport;
         _utpManager = utpManager;
         _defaultRadius = config.DefaultPeerRadius;
+        _offerAndSendContentTimeout = config.OfferAndSendContentTimeout;
     }
 
     public void UpdatePeerRadius(IEnr node, UInt256 radius)
@@ -119,7 +120,7 @@ public class ContentDistributor : IContentDistributor
     private async Task OfferAndSendContent(IEnr enr, byte[] contentKey, byte[] content, CancellationToken token)
     {
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cts.CancelAfter(OfferAndSendContentTimeout);
+        cts.CancelAfter(_offerAndSendContentTimeout);
 
         token = cts.Token;
 

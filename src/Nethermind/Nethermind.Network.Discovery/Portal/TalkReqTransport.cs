@@ -18,12 +18,13 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 /// <param name="logManager"></param>
 public class TalkReqTransport(
+    ContentNetworkConfig config,
     IRawTalkReqSender rawTalkReqSender,
     ILogManager logManager
 ): ITalkReqTransport
 {
-    private ILogger _logger = logManager.GetClassLogger<TalkReqTransport>();
-    private readonly TimeSpan HardCallTimeout = TimeSpan.FromMilliseconds(500);
+    private readonly ILogger _logger = logManager.GetClassLogger<TalkReqTransport>();
+    private readonly TimeSpan _hardCallTimeout = config.HardCallTimeout;
 
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
     private readonly SpanDictionary<byte, ITalkReqProtocolHandler> _protocolHandlers = new(Bytes.SpanEqualityComparer);
@@ -66,7 +67,7 @@ public class TalkReqTransport(
     public async Task<byte[]> CallAndWaitForResponse(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
     {
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cts.CancelAfter(HardCallTimeout);
+        cts.CancelAfter(_hardCallTimeout);
 
         TalkReqMessage talkReqMessage = await SendTalkReq(receiver, protocol, message, token);
         ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(talkReqMessage.RequestId);
