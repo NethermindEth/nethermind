@@ -25,6 +25,7 @@ public class TalkReqHandler(
     IContentDistributor contentDistributor,
     IEnrProvider enrProvider,
     IUtpManager utpManager,
+    ContentNetworkConfig config,
     ILogManager logManager
 ) : ITalkReqProtocolHandler
 {
@@ -124,7 +125,7 @@ public class TalkReqHandler(
             // it always return the full payload without any connection id.
             // But at transport/lantern/discv5 layer, we need to translate it to UTP, or it would be too big.
             LookupContentResult value = findValueResult.value!;
-            if (value.Payload!.Length >  utpManager.MaxContentByteSize)
+            if (value.Payload!.Length > config.MaxContentSizeForTalkReq)
             {
                 value.ConnectionId = InitiateUtpStreamSender(sender, value.Payload);
                 value.Payload = null;

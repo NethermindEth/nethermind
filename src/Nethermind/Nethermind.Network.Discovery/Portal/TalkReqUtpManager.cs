@@ -18,7 +18,6 @@ namespace Nethermind.Network.Discovery.Portal;
 public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
 {
     private static readonly byte[] UtpProtocolByte = Bytes.FromHexString("0x757470");
-    public int MaxContentByteSize => 1000;
 
     private readonly ITalkReqTransport _talkReqTransport;
     private readonly ILogManager _logManager;
@@ -26,12 +25,10 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
 
     // TODO: Maybe use Lru?
     private readonly ConcurrentDictionary<(ValueHash256, ushort), UTPStream> _utpStreams = new();
-    private readonly IEnrProvider _enrProvider;
 
-    public TalkReqUtpManager(ITalkReqTransport transport, IEnrProvider enrProvider, ILogManager logManager)
+    public TalkReqUtpManager(ITalkReqTransport transport, ILogManager logManager)
     {
         transport.RegisterProtocol(UtpProtocolByte, this);
-        _enrProvider = enrProvider;
         _talkReqTransport = transport;
         _logger = logManager.GetClassLogger<TalkReqUtpManager>();
         _logManager = logManager;

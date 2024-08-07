@@ -43,4 +43,9 @@ public class ContentNetworkConfig
     /// The radius of peer when we don't know what is its radius. We assume it always want to store.
     /// </summary>
     public UInt256 DefaultPeerRadius { get; set; } = UInt256.MaxValue;
+
+    /// <summary>
+    /// Maximum size of content before needing to use UTP to transfer content.
+    /// </summary>
+    public int MaxContentSizeForTalkReq { get; set; } = 500;
 };
