@@ -144,9 +144,9 @@ namespace Nethermind.Init.Steps
 
             CensorshipDetector censorshipDetector = new CensorshipDetector(
                 txPool,
+                CreateTxPoolTxComparer(),
                 mainBlockProcessor,
                 _api.BlockTree!,
-                chainHeadInfoProvider.AccountStateProvider,
                 _api.LogManager
             );
             setApi.CensorshipDetector = censorshipDetector;

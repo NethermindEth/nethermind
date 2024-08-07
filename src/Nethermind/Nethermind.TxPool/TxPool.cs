@@ -731,7 +731,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public IEnumerable<Transaction> GetBestTxOfEachSender() => _transactions.GetFirsts();
+        public Transaction GetBestTx() => _transactions.GetBest() ?? new();
 
         public bool IsKnown(Hash256? hash) => hash is not null ? _hashCache.Get(hash) : false;
 

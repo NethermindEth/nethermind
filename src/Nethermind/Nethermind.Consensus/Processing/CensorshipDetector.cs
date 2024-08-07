@@ -8,8 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -18,34 +16,33 @@ namespace Nethermind.Consensus.Processing;
 public class CensorshipDetector : IDisposable
 {
     private readonly ITxPool _txPool;
+    private readonly IComparer<Transaction> _comparer;
     private readonly IBlockProcessor _blockProcessor;
     private readonly IBlockTree _blockTree;
-    private readonly IAccountStateProvider _accounts;
     private readonly ILogger _logger;
-
-    private const int UnconfirmedBlocksCacheSize = 64;
-    private readonly LruCache<long, bool>
-        _unconfirmedBlocksCensorshipDetector = new(
-            UnconfirmedBlocksCacheSize, UnconfirmedBlocksCacheSize, "unconfirmedBlocksCensorshipDetector"
-            );
-    private const int CacheSize = 4;
-    private readonly LruCache<long, bool>
-        _censorshipDetector = new(CacheSize, CacheSize, "censorshipDetector");
+    private readonly LruCache<long, bool> _temporaryCensorshipDetector;
+    private readonly LruCache<long, bool> _censorshipDetector;
+    private const int _temporaryCacheSize = 16;
+    private const int _cacheSize = 4;
 
     public CensorshipDetector(
         ITxPool txPool,
+        IComparer<Transaction> comparer,
         IBlockProcessor blockProcessor,
         IBlockTree blockTree,
-        IAccountStateProvider accounts,
         ILogManager logManager)
     {
         _txPool = txPool;
+        _comparer = comparer;
         _blockProcessor = blockProcessor;
         _blockTree = blockTree;
-        _accounts = accounts;
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _temporaryCensorshipDetector = new(
+            _temporaryCacheSize, _temporaryCacheSize, "temporaryCensorshipDetector"
+            );
+        _censorshipDetector = new(_cacheSize, _cacheSize, "censorshipDetector");
         _blockProcessor.BlockProcessing += OnBlockProcessing;
-        _blockTree.BlockAddedToMain += OnBlockAdded;
+        _blockTree.BlockAddedToMain += OnBlockAddedToMain;
     }
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
@@ -53,42 +50,42 @@ public class CensorshipDetector : IDisposable
         Task.Run(() => PreCachingOperation(e.Block));
     }
 
-    private void OnBlockAdded(object? sender, BlockEventArgs e)
+    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
         Task.Run(() => Cache(e.Block));
     }
 
     private void PreCachingOperation(Block block)
     {
-        UInt256 maxGasPriceInBlock = 0;
-        Transaction[] blockTransactions = block.Transactions;
-        foreach (Transaction tx in blockTransactions)
+        Transaction bestTxInBlock = new Transaction();
+
+        foreach (Transaction tx in block.Transactions)
         {
-            if (!tx.SupportsBlobs)
+            if (!tx.SupportsBlobs && _comparer.Compare(bestTxInBlock, tx) > 0)
             {
-                if (tx.Supports1559)
-                {
-                    maxGasPriceInBlock = UInt256.Max(maxGasPriceInBlock, tx.GasPrice);
-                }
-                else
-                {
-                    maxGasPriceInBlock = UInt256.Max(maxGasPriceInBlock, tx.GasPrice + block.BaseFeePerGas);
-                }
+                bestTxInBlock = tx;
             }
         }
 
-        Transaction bestTx = _txPool.GetBestTxOfEachSender().First();
-        UInt256 maxGasPriceInPool = bestTx.Supports1559 ? bestTx.GasPrice + block.BaseFeePerGas : bestTx.GasPrice;
+        Transaction bestTxInPool = _txPool.GetBestTx();
 
-        _unconfirmedBlocksCensorshipDetector.Set(block.Number, maxGasPriceInBlock < maxGasPriceInPool);
+        bool unconfirmedBlockPotentialCensorship = _comparer.Compare(bestTxInBlock, bestTxInPool) > 0;
+
+        _temporaryCensorshipDetector.Set(block.Number, unconfirmedBlockPotentialCensorship);
     }
 
     private void Cache(Block block)
     {
-        _censorshipDetector.Set(block.Number, _unconfirmedBlocksCensorshipDetector.Get(block.Number));
-        if (_logger.IsInfo)
+        if (_temporaryCensorshipDetector.TryGet(block.Number, out bool potentialCensorship))
         {
-            _logger.Info($"Potential Censorship detected for Block No. {block.Number}");
+            _censorshipDetector.Set(block.Number, potentialCensorship);
+            if (potentialCensorship)
+            {
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Potential Censorship detected for Block No. {block.Number}");
+                }
+            }
         }
     }
 
@@ -100,9 +97,17 @@ public class CensorshipDetector : IDisposable
         }
     }
 
+    public bool GetTemporaryCensorshipStatus(long blockNumber) => _temporaryCensorshipDetector.Get(blockNumber);
+
+    public bool GetCensorshipStatus(long blockNumber) => _censorshipDetector.Get(blockNumber);
+
+    public bool TemporaryCacheContainsBlock(long blockNumber) => _temporaryCensorshipDetector.Contains(blockNumber);
+
+    public bool CacheContainsBlock(long blockNumber) => _censorshipDetector.Contains(blockNumber);
+
     public void Dispose()
     {
         _blockProcessor.BlockProcessing -= OnBlockProcessing;
-        _blockTree.NewHeadBlock -= OnBlockAdded;
+        _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
     }
 }
