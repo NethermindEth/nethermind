@@ -28,7 +28,7 @@ public class TalkReqTransportTests
     {
         IRawTalkReqSender sender = Substitute.For<IRawTalkReqSender>();
         ITalkReqTransport transport = new TalkReqTransport(sender, LimboLogs.Instance);
-        IEnr enr = CreateEnr(TestItem.PrivateKeyA);
+        IEnr enr = TestUtils.CreateEnr(TestItem.PrivateKeyA);
 
         byte[] protocol = [1, 2];
         byte[] message = [1, 2, 3, 4];
@@ -47,7 +47,7 @@ public class TalkReqTransportTests
         IRawTalkReqSender sender = Substitute.For<IRawTalkReqSender>();
         ITalkReqTransport transport = new TalkReqTransport(sender, LimboLogs.Instance);
 
-        IEnr enr = CreateEnr(TestItem.PrivateKeyA);
+        IEnr enr = TestUtils.CreateEnr(TestItem.PrivateKeyA);
 
         byte[] protocol = [1, 2];
         byte[] message = [3, 4];
@@ -71,7 +71,7 @@ public class TalkReqTransportTests
     {
         IRawTalkReqSender sender = Substitute.For<IRawTalkReqSender>();
         ITalkReqTransport transport = new TalkReqTransport(sender, LimboLogs.Instance);
-        IEnr enr = CreateEnr(TestItem.PrivateKeyA);
+        IEnr enr = TestUtils.CreateEnr(TestItem.PrivateKeyA);
 
         byte[] protocol = [1, 2];
         byte[] message = [1, 2, 3, 4];
@@ -82,23 +82,5 @@ public class TalkReqTransportTests
             .CallAndWaitForResponse(enr, protocol, message, cts.Token);
 
         task.Should().Throws<OperationCanceledException>();
-    }
-
-    private IEnr CreateEnr(PrivateKey privateKey)
-    {
-        SessionOptions sessionOptions = new SessionOptions
-        {
-            Signer = new IdentitySignerV4(privateKey.KeyBytes),
-            Verifier = new IdentityVerifierV4(),
-            SessionKeys = new SessionKeys(privateKey.KeyBytes),
-        };
-
-        return new EnrBuilder()
-            .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
-            .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(
-                NBitcoin.Secp256k1.Context.Instance.CreatePubKey(privateKey.PublicKey.PrefixedBytes).ToBytes(false)
-            ))
-            .Build();
     }
 }

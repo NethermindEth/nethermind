@@ -45,7 +45,7 @@ public class KademliaTalkReqMessageSenderTests
             _enrProvider,
             LimboLogs.Instance);
 
-        _testReceiverEnr = CreateEnr(TestItem.PrivateKeyA);
+        _testReceiverEnr = TestUtils.CreateEnr(TestItem.PrivateKeyA);
     }
 
     [Test]
@@ -78,7 +78,7 @@ public class KademliaTalkReqMessageSenderTests
     [Test]
     public async Task OnFindNeighbours_ShouldSendTalkReqAndParseResponseCorrectly()
     {
-        var target = new ValueHash256(CreateEnr(TestItem.PrivateKeys[0]).NodeId);
+        var target = new ValueHash256(TestUtils.CreateEnr(TestItem.PrivateKeys[0]).NodeId);
         ushort dist = (ushort)Hash256XORUtils.CalculateDistance(new ValueHash256(_testReceiverEnr.NodeId), target);
         ushort[] queryDistances = [dist, (ushort)(dist + 1), (ushort)(dist - 1), (ushort)(dist + 2), (ushort)(dist - 2)];
 
@@ -91,11 +91,11 @@ public class KademliaTalkReqMessageSenderTests
         });
 
         byte[][] resultEnrs = new IEnr[] {
-            CreateEnr(TestItem.PrivateKeyA),
-            CreateEnr(TestItem.PrivateKeyB),
-            CreateEnr(TestItem.PrivateKeyC),
-            CreateEnr(TestItem.PrivateKeyD),
-            CreateEnr(TestItem.PrivateKeyE),
+            TestUtils.CreateEnr(TestItem.PrivateKeyA),
+            TestUtils.CreateEnr(TestItem.PrivateKeyB),
+            TestUtils.CreateEnr(TestItem.PrivateKeyC),
+            TestUtils.CreateEnr(TestItem.PrivateKeyD),
+            TestUtils.CreateEnr(TestItem.PrivateKeyE),
         }.Select((enr) => enr.EncodeRecord()).ToArray();
         byte[] resultBytes = SlowSSZ.Serialize(new MessageUnion()
         {
@@ -111,23 +111,5 @@ public class KademliaTalkReqMessageSenderTests
 
         IEnr[] result = await _messageSender.FindNeighbours(_testReceiverEnr, target, default);
         result.Select((enr) => enr.EncodeRecord()).ToArray().Should().BeEquivalentTo(resultEnrs);
-    }
-
-    private IEnr CreateEnr(PrivateKey privateKey)
-    {
-        SessionOptions sessionOptions = new SessionOptions
-        {
-            Signer = new IdentitySignerV4(privateKey.KeyBytes),
-            Verifier = new IdentityVerifierV4(),
-            SessionKeys = new SessionKeys(privateKey.KeyBytes),
-        };
-
-        return new EnrBuilder()
-            .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
-            .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(
-                NBitcoin.Secp256k1.Context.Instance.CreatePubKey(privateKey.PublicKey.PrefixedBytes).ToBytes(false)
-            ))
-            .Build();
     }
 }
