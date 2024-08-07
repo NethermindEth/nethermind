@@ -123,6 +123,10 @@ namespace Nethermind.TxPool
         public static float Eip1559TransactionsRatio { get; set; }
 
         [GaugeMetric]
+        [Description("Ratio of 1559-type transactions in the block.")]
+        public static long Eip7702TransactionsInBlock { get; set; }
+
+        [GaugeMetric]
         [Description("Number of blob transactions in the block.")]
         public static long BlobTransactionsInBlock { get; set; }
 

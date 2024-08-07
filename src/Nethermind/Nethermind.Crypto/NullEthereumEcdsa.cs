@@ -54,5 +54,10 @@ namespace Nethermind.Crypto
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
+
+        public Address? RecoverAddress(AuthorizationTuple tuple)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
     }
 }

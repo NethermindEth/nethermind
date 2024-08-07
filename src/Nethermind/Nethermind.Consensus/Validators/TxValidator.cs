@@ -47,7 +47,8 @@ namespace Nethermind.Consensus.Validators
                    && ValidateChainId(transaction, ref error)
                    && ValidateWithError(Validate1559GasFields(transaction, releaseSpec), TxErrorMessages.InvalidMaxPriorityFeePerGas, ref error)
                    && ValidateWithError(Validate3860Rules(transaction, releaseSpec), TxErrorMessages.ContractSizeTooBig, ref error)
-                   && Validate4844Fields(transaction, ref error);
+                   && Validate4844Fields(transaction, ref error)
+                   && ValidateAuthorityList(transaction, ref error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -61,6 +62,7 @@ namespace Nethermind.Consensus.Validators
                 TxType.AccessList => releaseSpec.UseTxAccessLists,
                 TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
                 TxType.Blob => releaseSpec.IsEip4844Enabled,
+                TxType.SetCode => releaseSpec.IsEip7702Enabled,
                 _ => false
             };
 
@@ -289,6 +291,24 @@ namespace Nethermind.Consensus.Validators
 
             }
 
+            return true;
+        }
+
+        private bool ValidateAuthorityList(Transaction tx, ref string error)
+        {
+            if (tx.Type != TxType.SetCode)
+            {
+                if (tx.AuthorizationList is not null)
+                {
+                    error = TxErrorMessages.NotAllowedAuthorizationList;
+                    return false;
+                }
+            }
+            else if (tx.AuthorizationList is null)
+            {
+                error = TxErrorMessages.MissingAuthorizationList;
+                return false;
+            }
             return true;
         }
     }

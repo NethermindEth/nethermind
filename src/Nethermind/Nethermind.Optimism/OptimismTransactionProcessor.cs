@@ -131,13 +131,12 @@ public class OptimismTransactionProcessor(
         return TransactionResult.Ok;
     }
 
-    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult ValidateNonce(Transaction tx)
     {
-        if (!tx.IsDeposit())
-            return base.IncrementNonce(tx, header, spec, tracer, opts);
+        if (tx.IsDeposit())
+            return TransactionResult.Ok;
 
-        WorldState.IncrementNonce(tx.SenderAddress!);
-        return TransactionResult.Ok;
+        return base.ValidateNonce(tx);
     }
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
