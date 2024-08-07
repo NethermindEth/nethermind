@@ -18,13 +18,16 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 /// <param name="logManager"></param>
 public class TalkReqTransport(
-    ContentNetworkConfig config,
     IRawTalkReqSender rawTalkReqSender,
     ILogManager logManager
 ): ITalkReqTransport
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TalkReqTransport>();
-    private readonly TimeSpan _hardCallTimeout = config.HardCallTimeout;
+
+    /// <summary>
+    /// Hard timeout for each call and wait for response.
+    /// </summary>
+    private readonly TimeSpan _hardCallTimeout = TimeSpan.FromMilliseconds(500);
 
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
     private readonly SpanDictionary<byte, ITalkReqProtocolHandler> _protocolHandlers = new(Bytes.SpanEqualityComparer);

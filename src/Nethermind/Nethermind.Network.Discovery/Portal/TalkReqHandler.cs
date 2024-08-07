@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.IO.Pipelines;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Nethermind.Core.Crypto;

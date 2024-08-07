@@ -68,9 +68,4 @@ public class ContentNetworkConfig
     /// Timeout for looking up content and downloading them
     /// </summary>
     public TimeSpan LookupContentHardTimeout { get; set; } = TimeSpan.FromSeconds(60);
-
-    /// <summary>
-    /// Hard timeout for each call and wait for response.
-    /// </summary>
-    public TimeSpan HardCallTimeout { get; set; } = TimeSpan.FromMilliseconds(500);
 };
