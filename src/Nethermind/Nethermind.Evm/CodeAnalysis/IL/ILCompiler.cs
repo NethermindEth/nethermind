@@ -1330,7 +1330,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetSpan);
                     method.StoreLocal(localReadonOnlySpan);
-                    method.StackPop(head,evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
@@ -1757,13 +1757,13 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R);
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(skipPop);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
         il.CleanWord(stack.span, stack.idx);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
 
         il.MarkLabel(endOfOpcode);
     }
@@ -1792,16 +1792,16 @@ internal class ILCompiler
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.RightShift), [typeof(int), typeof(Int256.Int256).MakeByRefType()]));
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
         il.CleanWord(stack.span, stack.idx);
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R);
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(skipPop);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         il.LoadLocalAddress(locals[0]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
@@ -1839,7 +1839,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[1]);
@@ -1863,7 +1863,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[1]);
@@ -1893,7 +1893,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[1]);
@@ -1903,7 +1903,7 @@ internal class ILCompiler
         il.LoadObject<Int256.Int256>();
         il.Call(operation, null);
         il.LoadConstant(0);
-        if(isGreaterThan)
+        if (isGreaterThan)
         {
             il.BranchIfLess(pushZerohandling);
         }
@@ -1939,7 +1939,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -1958,7 +1958,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
     }
 
     private static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1972,7 +1972,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -1994,7 +1994,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
     }
 
     private static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -2011,7 +2011,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 3);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[2]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 3);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 3);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);

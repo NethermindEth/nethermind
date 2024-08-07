@@ -161,7 +161,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ISZERO(0)
                     .ISZERO(7)
                     .Done);
-            yield return(Instruction.SUB, Prepare.EvmCode
+            yield return (Instruction.SUB, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .SUB()
@@ -180,57 +180,57 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ADDMOD()
                     .Done);
 
-            yield return(Instruction.MUL, Prepare.EvmCode
+            yield return (Instruction.MUL, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .MUL()
                     .Done);
 
-            yield return(Instruction.EXP, Prepare.EvmCode
+            yield return (Instruction.EXP, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .EXP()
                     .Done);
 
-            yield return(Instruction.MOD, Prepare.EvmCode
+            yield return (Instruction.MOD, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .MOD()
                     .Done);
 
-            yield return(Instruction.DIV, Prepare.EvmCode
+            yield return (Instruction.DIV, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .DIV()
                     .Done);
 
-            yield return(Instruction.MSTORE, Prepare.EvmCode
+            yield return (Instruction.MSTORE, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .Done);
 
-            yield return(Instruction.MLOAD, Prepare.EvmCode
+            yield return (Instruction.MLOAD, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .MLOAD(0)
                     .Done);
 
-            yield return(Instruction.MCOPY, Prepare.EvmCode
+            yield return (Instruction.MCOPY, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .MCOPY(32, 0, 32)
                     .Done);
 
-            yield return(Instruction.EQ, Prepare.EvmCode
+            yield return (Instruction.EQ, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .EQ()
                     .Done);
 
-            yield return(Instruction.GT, Prepare.EvmCode
+            yield return (Instruction.GT, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .GT()
                     .Done);
 
-            yield return(Instruction.LT, Prepare.EvmCode
+            yield return (Instruction.LT, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .LT()
@@ -310,7 +310,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .CHAINID()
                     .Done);
 
-            yield return (Instruction.GAS,Prepare.EvmCode
+            yield return (Instruction.GAS, Prepare.EvmCode
                     .GAS()
                     .Done);
 
@@ -500,7 +500,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.Method(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance , ctx.Data);
+            ctx.Method(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 
