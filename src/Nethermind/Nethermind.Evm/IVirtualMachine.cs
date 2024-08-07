@@ -24,8 +24,9 @@ namespace Nethermind.Evm
         IWorldState WorldState { get; }
         ReadOnlySpan<byte> ChainId { get; }
         ICodeInfoRepository CodeInfoRepository { get; }
-        ReadOnlyMemory<byte> ReturnDataBuffer { get; }
+        ReadOnlyMemory<byte> ReturnDataBuffer { get; set; }
         IBlockhashProvider BlockhashProvider { get; }
         int SectionIndex { get; set; }
+        object ReturnData { get; set; }
     }
 }

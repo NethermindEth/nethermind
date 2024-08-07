@@ -3,13 +3,16 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EOF;
+using Nethermind.State;
 
 namespace Nethermind.Evm;
 using Int256;
 
-using Nethermind.Core;
+using static Nethermind.Evm.VirtualMachine;
 
 internal sealed partial class EvmInstructions
 {
@@ -319,6 +322,149 @@ internal sealed partial class EvmInstructions
         stack.Exchange(n + 1, m + n + 1);
 
         programCounter += 1;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEofCreate(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        vm.ReturnData = null;
+        var spec = vm.Spec;
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (vm.State.IsStatic) return EvmExceptionType.StaticCallViolation;
+
+        ref readonly ExecutionEnvironment env = ref vm.State.Env;
+        EofCodeInfo container = env.CodeInfo as EofCodeInfo;
+        var currentContext = ExecutionType.EOFCREATE;
+
+        // 1 - deduct TX_CREATE_COST gas
+        if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
+            return EvmExceptionType.OutOfGas;
+
+        var codeSection = codeInfo.CodeSection.Span;
+        // 2 - read immediate operand initcontainer_index, encoded as 8-bit unsigned value
+        int initcontainerIndex = codeSection[programCounter++];
+
+        // 3 - pop value, salt, input_offset, input_size from the operand stack
+        // no stack checks becaue EOF guarantees no stack undeflows
+        stack.PopUInt256(out UInt256 value);
+        stack.PopWord256(out Span<byte> salt);
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataSize);
+
+        // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
+        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in dataOffset, dataSize)) return EvmExceptionType.OutOfGas;
+
+        // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
+        // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
+        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initcontainerIndex).Value];
+        // Eip3860
+        if (spec.IsEip3860Enabled)
+        {
+            //if (!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
+            //    return (EvmExceptionType.OutOfGas, null);
+            if (initContainer.Length > spec.MaxInitCodeSize) return EvmExceptionType.OutOfGas;
+        }
+
+        // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
+        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length);
+        long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
+        if (!UpdateGas(hashCost, ref gasAvailable))
+            return EvmExceptionType.OutOfGas;
+
+        var state = vm.WorldState;
+        // 7 - check that current call depth is below STACK_DEPTH_LIMIT and that caller balance is enough to transfer value
+        // in case of failure return 0 on the stack, caller’s nonce is not updated and gas for initcode execution is not consumed.
+        UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        if (env.CallDepth >= MaxCallDepth || value > balance)
+        {
+            // TODO: need a test for this
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return EvmExceptionType.None;
+        }
+
+        // 8 - caller’s memory slice [input_offset:input_size] is used as calldata
+        Span<byte> calldata = vm.State.Memory.LoadSpan(dataOffset, dataSize);
+
+        // 9 - execute the container and deduct gas for execution. The 63/64th rule from EIP-150 applies.
+        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        // 10 - increment sender account’s nonce
+        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
+        UInt256 maxNonce = ulong.MaxValue;
+        if (accountNonce >= maxNonce)
+        {
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return EvmExceptionType.None;
+        }
+        state.IncrementNonce(env.ExecutingAccount);
+
+        // 11 - calculate new_address as keccak256(0xff || sender || salt || keccak256(initcontainer))[12:]
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer);
+        if (spec.UseHotAndColdStorage)
+        {
+            // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
+            vm.State.WarmUp(contractAddress);
+        }
+
+
+        // if (vm.TxTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vm.State?.Memory.Size ?? 0);
+        // todo: === below is a new call - refactor / move
+
+        Snapshot snapshot = state.TakeSnapshot();
+
+        bool accountExists = state.AccountExists(contractAddress);
+
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        {
+            /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
+            //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return EvmExceptionType.None;
+        }
+
+        if (state.IsDeadAccount(contractAddress))
+        {
+            state.ClearStorage(contractAddress);
+        }
+
+        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+
+
+        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+
+        ExecutionEnvironment callEnv = new
+        (
+            txExecutionContext: in env.TxExecutionContext,
+            callDepth: env.CallDepth + 1,
+            caller: env.ExecutingAccount,
+            executingAccount: contractAddress,
+            codeSource: null,
+            codeInfo: codeinfo,
+            inputData: calldata.ToArray(),
+            transferValue: value,
+            value: value
+        );
+        vm.ReturnData = new EvmState(
+            callGas,
+            callEnv,
+            currentContext,
+            false,
+            snapshot,
+            0L,
+            0L,
+            vm.State.IsStatic,
+            vm.State,
+            false,
+            accountExists);
 
         return EvmExceptionType.None;
     }

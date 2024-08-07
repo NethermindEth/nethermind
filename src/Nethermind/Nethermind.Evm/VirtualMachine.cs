@@ -171,7 +171,9 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _state;
     public ReadOnlySpan<byte> ChainId => _chainId;
-    ReadOnlyMemory<byte> IEvm.ReturnDataBuffer => _returnDataBuffer;
+    ReadOnlyMemory<byte> IEvm.ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
+    object IEvm.ReturnData { get => _returnData; set => _returnData = value; }
+    object _returnData;
     IBlockhashProvider IEvm.BlockhashProvider => _blockhashProvider;
 
     public VirtualMachine(
@@ -796,7 +798,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-
+        _returnData = null;
         ref readonly ExecutionEnvironment env = ref _vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
@@ -817,7 +819,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         SkipInit(out UInt256 c);
         SkipInit(out UInt256 result);
         SkipInit(out StorageCell storageCell);
-        object returnData;
+
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)codeSection.Length;
@@ -847,7 +849,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 }
                 goto EmptyReturn;
             }
-            else if (instruction < Instruction.EOFCREATE)
+            else if (instruction < Instruction.RETURNCONTRACT)
             {
                 exceptionType = CalliJmpTable[(int)instruction](this, ref stack, ref gasAvailable, ref programCounter);
             }
@@ -855,23 +857,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
             {
                 switch (instruction)
                 {
-                    case Instruction.EOFCREATE:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            {
-                                goto InvalidInstruction;
-                            }
-
-                            if (_vmState.IsStatic) goto StaticCallViolation;
-
-                            (exceptionType, returnData) = InstructionEofCreate(_vmState, ref programCounter, ref codeSection, ref stack, ref gasAvailable, instruction);
-
-                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                            if (returnData is null) break;
-
-                            goto DataReturnNoTrace;
-                        }
                     case Instruction.RETURNCONTRACT:
                         {
                             if (!_spec.IsEofEnabled || !_vmState.ExecutionType.IsAnyCreateEof())
@@ -908,10 +893,10 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
 
                             if (_vmState.IsStatic) goto StaticCallViolation;
 
-                            (exceptionType, returnData) = InstructionCreate(_vmState, ref stack, ref gasAvailable, instruction);
+                            (exceptionType, _returnData) = InstructionCreate(_vmState, ref stack, ref gasAvailable, instruction);
                             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
-                            if (returnData is null) break;
+                            if (_returnData is null) break;
 
                             goto DataReturnNoTrace;
                         }
@@ -921,7 +906,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                             {
                                 goto InvalidInstruction;
                             }
-                            exceptionType = InstructionReturn(_vmState, ref stack, ref gasAvailable, out returnData);
+                            exceptionType = InstructionReturn(_vmState, ref stack, ref gasAvailable, out _returnData);
                             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                             goto DataReturn;
@@ -931,14 +916,14 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                     case Instruction.DELEGATECALL:
                     case Instruction.STATICCALL:
                         {
-                            exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                            exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out _returnData);
                             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
-                            if (returnData is null)
+                            if (_returnData is null)
                             {
                                 break;
                             }
-                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                            if (ReferenceEquals(_returnData, CallResult.BoxedEmpty))
                             {
                                 // Non contract call continue rather than constructing a new frame
                                 continue;
@@ -963,14 +948,14 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                     case Instruction.EXTDELEGATECALL:
                     case Instruction.EXTSTATICCALL:
                         {
-                            exceptionType = InstructionEofCall<TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                            exceptionType = InstructionEofCall<TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out _returnData);
                             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
-                            if (returnData is null)
+                            if (_returnData is null)
                             {
                                 break;
                             }
-                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                            if (ReferenceEquals(_returnData, CallResult.BoxedEmpty))
                             {
                                 // Result pushed to stack
                                 continue;
@@ -982,7 +967,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                         {
                             if (!_spec.RevertOpcodeEnabled) goto InvalidInstruction;
 
-                            exceptionType = InstructionRevert(_vmState, ref stack, ref gasAvailable, out returnData);
+                            exceptionType = InstructionRevert(_vmState, ref stack, ref gasAvailable, out _returnData);
                             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                             isRevert = true;
@@ -1006,6 +991,15 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
             if (gasAvailable < 0)
             {
                 goto OutOfGas;
+            }
+            if (_returnData is not null)
+            {
+                if (ReferenceEquals(_returnData, CallResult.BoxedEmpty))
+                {
+                    // Non contract call continue rather than constructing a new frame
+                    continue;
+                }
+                goto DataReturnNoTrace;
             }
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1034,11 +1028,11 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, _sectionIndex);
 
-        if (returnData is EvmState state)
+        if (_returnData is EvmState state)
         {
             return new CallResult(state);
         }
-        return new CallResult((byte[])returnData, null, env.CodeInfo.Version, shouldRevert: isRevert);
+        return new CallResult((byte[])_returnData, null, env.CodeInfo.Version, shouldRevert: isRevert);
 
     OutOfGas:
         exceptionType = EvmExceptionType.OutOfGas;
@@ -1503,139 +1497,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
 
         _state.SubtractFromBalance(executingAccount, result, _spec);
         return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    private (EvmExceptionType exceptionType, EvmState? callState) InstructionEofCreate(EvmState vmState, ref int pc, ref ReadOnlySpan<byte> codeSection, ref EvmStack stack, ref long gasAvailable, Instruction instruction)
-    {
-        ref readonly ExecutionEnvironment env = ref vmState.Env;
-        EofCodeInfo container = env.CodeInfo as EofCodeInfo;
-        var currentContext = ExecutionType.EOFCREATE;
-
-        // 1 - deduct TX_CREATE_COST gas
-        if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
-            return (EvmExceptionType.OutOfGas, null);
-
-        // 2 - read immediate operand initcontainer_index, encoded as 8-bit unsigned value
-        int initcontainerIndex = codeSection[pc++];
-
-        // 3 - pop value, salt, input_offset, input_size from the operand stack
-        // no stack checks becaue EOF guarantees no stack undeflows
-        stack.PopUInt256(out UInt256 value);
-        stack.PopWord256(out Span<byte> salt);
-        stack.PopUInt256(out UInt256 dataOffset);
-        stack.PopUInt256(out UInt256 dataSize);
-
-        // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataSize)) return (EvmExceptionType.OutOfGas, null);
-
-        // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
-        // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
-        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initcontainerIndex).Value];
-        // Eip3860
-        if (_spec.IsEip3860Enabled)
-        {
-            //if (!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
-            //    return (EvmExceptionType.OutOfGas, null);
-            if (initContainer.Length > _spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
-        }
-
-        // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
-        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length);
-        long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
-        if (!UpdateGas(hashCost, ref gasAvailable))
-            return (EvmExceptionType.OutOfGas, null);
-
-        // 7 - check that current call depth is below STACK_DEPTH_LIMIT and that caller balance is enough to transfer value
-        // in case of failure return 0 on the stack, caller’s nonce is not updated and gas for initcode execution is not consumed.
-        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-        if (env.CallDepth >= MaxCallDepth || value > balance)
-        {
-            // TODO: need a test for this
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
-        }
-
-        // 8 - caller’s memory slice [input_offset:input_size] is used as calldata
-        Span<byte> calldata = vmState.Memory.LoadSpan(dataOffset, dataSize);
-
-        // 9 - execute the container and deduct gas for execution. The 63/64th rule from EIP-150 applies.
-        long callGas = _spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
-
-        // 10 - increment sender account’s nonce
-        UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
-        UInt256 maxNonce = ulong.MaxValue;
-        if (accountNonce >= maxNonce)
-        {
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
-        }
-        _state.IncrementNonce(env.ExecutingAccount);
-
-        // 11 - calculate new_address as keccak256(0xff || sender || salt || keccak256(initcontainer))[12:]
-        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer);
-        if (_spec.UseHotAndColdStorage)
-        {
-            // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-            vmState.WarmUp(contractAddress);
-        }
-
-
-        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState?.Memory.Size ?? 0);
-        // todo: === below is a new call - refactor / move
-
-        Snapshot snapshot = _state.TakeSnapshot();
-
-        bool accountExists = _state.AccountExists(contractAddress);
-
-        if (accountExists && contractAddress.IsNonZeroAccount(_spec, _codeInfoRepository, _state))
-        {
-            /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
-            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
-        }
-
-        if (_state.IsDeadAccount(contractAddress))
-        {
-            _state.ClearStorage(contractAddress);
-        }
-
-        _state.SubtractFromBalance(env.ExecutingAccount, value, _spec);
-
-
-        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), _spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
-
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
-            executingAccount: contractAddress,
-            codeSource: null,
-            codeInfo: codeinfo,
-            inputData: calldata.ToArray(),
-            transferValue: value,
-            value: value
-        );
-        EvmState callState = new(
-            callGas,
-            callEnv,
-            currentContext,
-            false,
-            snapshot,
-            0L,
-            0L,
-            vmState.IsStatic,
-            vmState,
-            false,
-            accountExists);
-
-        return (EvmExceptionType.None, callState);
     }
 
     [SkipLocalsInit]
