@@ -58,6 +58,21 @@ public struct VerkleProofSerialized
         return encoded.ToArray();
     }
 
+    public byte[] EncodeOld()
+    {
+        var encoded = new List<byte>(VerifyHint.Encode());
+
+        encoded.AddRange(CommsSorted.Length.ToByteArrayLittleEndian());
+        foreach (byte[] comm in CommsSorted)
+        {
+            encoded.AddRange(Banderwagon.FromBytesUncompressedUnchecked(comm, isBigEndian: false).ToBytesLittleEndian().Reverse());
+        }
+
+        encoded.AddRange(Proof.Encode());
+
+        return encoded.ToArray();
+    }
+
     public static VerkleProofSerialized Decode(byte[] proof)
     {
         return new VerkleProofSerialized();
