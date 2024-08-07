@@ -42,10 +42,21 @@ public class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_currentPreWarm.IsCompleted)
         {
+            _logger.Info("Starting pre-warming caches.");
             using CancellationTokenRegistration cancellationAction = cancellationToken.Register(_finishTask);
             if (_targetWorldState is not null)
             {
-                if (_parentStateRoot != parentStateRoot && _targetWorldState.ClearCache())
+                bool stateRootChanged = _parentStateRoot != parentStateRoot;
+                if (stateRootChanged)
+                {
+                    _logger.Info("New state root detected.");
+                }
+                else
+                {
+                    return _currentPreWarm;
+                }
+
+                if (stateRootChanged && _targetWorldState.ClearCache())
                 {
                     if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
                 }
@@ -54,11 +65,16 @@ public class BlockCachePreWarmer : IBlockCachePreWarmer
                     && Environment.ProcessorCount > 2
                     && !cancellationToken.IsCancellationRequested)
                 {
+                    _logger.Info("Pre-warming caches in parallel.");
                     _parentStateRoot = parentStateRoot;
                     // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
                     return _currentPreWarm = Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot!, cancellationToken));
                 }
             }
+        }
+        else
+        {
+            _logger.Info("Pre-warming caches already in progress.");
         }
 
         return _currentPreWarm;
