@@ -27,11 +27,11 @@ public class ValidatorRegistryContract(
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
 
-    public UInt256 GetNumUpdates(BlockHeader blockHeader) => (UInt256)Call(blockHeader, getNumUpdates, Address.Zero, [])[0];
+    public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, getNumUpdates, Address.Zero, [])[0];
 
-    public Update GetUpdate(BlockHeader blockHeader, in UInt256 i)
+    public Update GetUpdate(BlockHeader header, in UInt256 i)
     {
-        var res = (ValueTuple<byte[], byte[]>)Call(blockHeader, getUpdate, Address.Zero, [i])[0];
+        var res = (ValueTuple<byte[], byte[]>)Call(header, getUpdate, Address.Zero, [i])[0];
         Update update = new()
         {
             Message = res.Item1,
@@ -40,8 +40,7 @@ public class ValidatorRegistryContract(
         return update;
     }
 
-
-    public bool IsRegistered(BlockHeader blockHeader, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered)
+    public bool IsRegistered(BlockHeader header, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered)
     {
         Dictionary<ulong, ulong?> nonces = [];
         unregistered = [];
@@ -51,10 +50,10 @@ public class ValidatorRegistryContract(
             unregistered.Add(validatorInfo.Key);
         }
 
-        uint updates = (uint)GetNumUpdates(blockHeader);
+        uint updates = (uint)GetNumUpdates(header);
         for (uint i = 0; i < updates; i++)
         {
-            Update update = GetUpdate(blockHeader, updates - i - 1);
+            Update update = GetUpdate(header, updates - i - 1);
             Message msg = new(update.Message.AsSpan()[..46]);
 
             // skip untracked validators

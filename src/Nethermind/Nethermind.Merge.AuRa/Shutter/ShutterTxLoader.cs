@@ -30,8 +30,8 @@ public class ShutterTxLoader(
     ILogFinder logFinder,
     IShutterConfig shutterConfig,
     ISpecProvider specProvider,
-    IEthereumEcdsa ethereumEcdsa,
-    IReadOnlyBlockTree readOnlyBlockTree,
+    IEthereumEcdsa ecdsa,
+    IReadOnlyBlockTree blockTree,
     ILogManager logManager)
 {
     private readonly TxValidator _txValidator = new(specProvider.ChainId);
@@ -42,12 +42,12 @@ public class ShutterTxLoader(
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        Block? head = readOnlyBlockTree.Head;
+        Block? head = blockTree.Head;
 
         List<SequencedTransaction> sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
         long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter mempool for slot {slot} at time {offsetText} slot start...");
+        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {slot} at time {offsetText} slot start...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
@@ -141,7 +141,7 @@ public class ShutterTxLoader(
 
             // N.B. does not work with encodedTransaction.AsSpan()
             Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction);
-            transaction.SenderAddress = ethereumEcdsa.RecoverAddress(transaction, true);
+            transaction.SenderAddress = ecdsa.RecoverAddress(transaction, true);
 
             return transaction;
         }
@@ -172,7 +172,7 @@ public class ShutterTxLoader(
     private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
         IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber);
-        if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} events in Shutter sequencer contract.");
+        if (_logger.IsDebug) _logger.Debug($"Found {events.Count()} Shutter events in sequencer contract.");
 
         UInt256 totalGas = 0;
         int index = 0;

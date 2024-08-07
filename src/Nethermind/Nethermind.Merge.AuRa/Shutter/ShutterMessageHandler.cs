@@ -44,7 +44,7 @@ public class ShutterMessageHandler(
 
         if (CheckDecryptionKeys(decryptionKeys, eonInfo.Value))
         {
-            if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}");
+            if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
 
             List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
             txSource.LoadTransactions(decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer, decryptionKeys.Gnosis.Slot, keys);

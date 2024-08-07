@@ -4,14 +4,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Microsoft.IdentityModel.Tokens;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -70,7 +68,7 @@ public class SequencerContract : Contract
             }
             catch (ResourceNotFoundException e)
             {
-                if (_logger.IsDebug) _logger.Warn($"Cannot fetch Shutter transactions from logs: {e}");
+                if (_logger.IsWarn) _logger.Warn($"Cannot fetch Shutter events from logs: {e}");
                 break;
             }
 

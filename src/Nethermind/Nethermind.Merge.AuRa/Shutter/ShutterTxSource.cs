@@ -23,7 +23,7 @@ public class ShutterTxSource(
     ILogManager logManager)
     : ITxSource, IShutterTxSignal
 {
-    private readonly LruCache<ulong, ShutterTransactions?> _transactionCache = new(5, "Shutter tx cache");
+    private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private ulong _highestLoadedSlot = 0;
@@ -34,13 +34,13 @@ public class ShutterTxSource(
     {
         if (!shutterConfig.Validator)
         {
-            if (_logger.IsDebug) _logger.Debug($"Not building Shutter block since running in non-validator mode.");
+            if (_logger.IsDebug) _logger.Debug($"Not building Shutterized block since running in non-validator mode.");
             return [];
         }
 
         if (payloadAttributes is null)
         {
-            if (_logger.IsError) _logger.Error($"Not building Shutter block since payload attributes was null.");
+            if (_logger.IsError) _logger.Error($"Not building Shutterized block since payload attributes was null.");
         }
 
         ulong buildingSlot;
@@ -54,7 +54,7 @@ public class ShutterTxSource(
             return [];
         }
 
-        ShutterTransactions? shutterTransactions = _transactionCache.Get(buildingSlot);
+        ShutterTransactions? shutterTransactions = _txCache.Get(buildingSlot);
         if (shutterTransactions is null)
         {
             if (_logger.IsDebug) _logger.Debug($"No Shutter transactions currently loaded for slot {buildingSlot}.");
@@ -62,7 +62,7 @@ public class ShutterTxSource(
         }
 
         int txCount = shutterTransactions.Value.Transactions.Length;
-        if (_logger.IsInfo) _logger.Info($"Preparing Shutter block for slot {buildingSlot} with {txCount} transactions.");
+        if (_logger.IsInfo) _logger.Info($"Preparing Shutterized block {parent.Number + 1} for slot {buildingSlot} with {txCount} decrypted transactions.");
         return shutterTransactions.Value.Transactions;
     }
 
@@ -71,7 +71,7 @@ public class ShutterTxSource(
         TaskCompletionSource? tcs = null;
         lock (_syncObject)
         {
-            if (_transactionCache.Contains(slot))
+            if (_txCache.Contains(slot))
             {
                 return;
             }
@@ -86,7 +86,7 @@ public class ShutterTxSource(
 
     public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        _transactionCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
+        _txCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
 
         if (_highestLoadedSlot < slot)
         {

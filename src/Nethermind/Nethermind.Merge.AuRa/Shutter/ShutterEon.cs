@@ -15,8 +15,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterEon(
-    IReadOnlyBlockTree readOnlyBlockTree,
-    ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+    IReadOnlyBlockTree blockTree,
+    ReadOnlyTxProcessingEnvFactory envFactory,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
     ILogger logger)
@@ -29,8 +29,8 @@ public class ShutterEon(
 
     public void Update(BlockHeader header)
     {
-        Hash256 stateRoot = readOnlyBlockTree.Head!.StateRoot!;
-        IReadOnlyTxProcessingScope scope = readOnlyTxProcessingEnvFactory.Create().Build(stateRoot);
+        Hash256 stateRoot = blockTree.Head!.StateRoot!;
+        IReadOnlyTxProcessingScope scope = envFactory.Create().Build(stateRoot);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         try
@@ -49,7 +49,7 @@ public class ShutterEon(
                     Address[] addresses = keyperSetContract.GetMembers(header);
 
                     KeyBroadcastContract keyBroadcastContract = new(processor, abiEncoder, _keyBroadcastContractAddress);
-                    byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(readOnlyBlockTree.Head!.Header, eon);
+                    byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(blockTree.Head!.Header, eon);
                     Bls.P2 key = new(eonKeyBytes);
 
                     // update atomically
@@ -61,7 +61,7 @@ public class ShutterEon(
                         Addresses = addresses
                     };
 
-                    if (logger.IsInfo) logger.Info($"Shutter eon: {_currentInfo.Value.Eon} threshold: {_currentInfo.Value.Threshold} #keypers: {_currentInfo.Value.Addresses.Length}");
+                    if (logger.IsInfo) logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
                 }
                 else
                 {
@@ -71,7 +71,7 @@ public class ShutterEon(
         }
         catch (AbiException e)
         {
-            if (logger.IsError) logger.Error($"Error when calling Shutter Keyper contracts", e);
+            if (logger.IsError) logger.Error($"Error when calling Shutter Keyper contracts.", e);
         }
         catch (Bls.Exception e)
         {

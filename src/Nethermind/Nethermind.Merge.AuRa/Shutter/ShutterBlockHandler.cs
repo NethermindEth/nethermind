@@ -16,7 +16,7 @@ public class ShutterBlockHandler(
     ulong chainId,
     string validatorRegistryContractAddress,
     ulong validatorRegistryMessageVersion,
-    ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder,
+    ReadOnlyTxProcessingEnvFactory envFactory, IAbiEncoder abiEncoder,
     Dictionary<ulong, byte[]> validatorsInfo,
     ShutterEon eon,
     ILogManager logManager) : IShutterBlockHandler
@@ -30,14 +30,14 @@ public class ShutterBlockHandler(
         {
             if (!_haveCheckedRegistered)
             {
-                CheckRegistered(head.Header, validatorsInfo, readOnlyTxProcessingEnvFactory);
+                CheckAllValidatorsRegistered(head.Header, validatorsInfo);
                 _haveCheckedRegistered = true;
             }
             eon.Update(head.Header);
         }
     }
 
-    private void CheckRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory)
+    private void CheckAllValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo)
     {
         if (validatorsInfo.Count == 0)
         {
@@ -50,7 +50,7 @@ public class ShutterBlockHandler(
         ValidatorRegistryContract validatorRegistryContract = new(processor, abiEncoder, new(validatorRegistryContractAddress), _logger, chainId, validatorRegistryMessageVersion);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
-            if (_logger.IsInfo) _logger.Info($"All Shutter validators are registered.");
+            if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");
         }
         else
         {

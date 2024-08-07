@@ -14,20 +14,20 @@ public interface IValidatorRegistryContract
     /// </summary>
     /// <param name="message"></param>
     /// <param name="signature"></param>
-    bool IsRegistered(BlockHeader blockHeader, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered);
+    bool IsRegistered(BlockHeader header, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered);
 
     /// <summary>
     /// Returns the number of previous updates to the registry.
     /// </summary>
     /// <param name="blockHeader"></param>
-    UInt256 GetNumUpdates(BlockHeader blockHeader);
+    UInt256 GetNumUpdates(BlockHeader header);
 
     /// <summary>
     /// Retrieves the ith update to the registry.
     /// </summary>
     /// <param name="blockHeader"></param>
     /// <param name="i"></param>
-    Update GetUpdate(BlockHeader blockHeader, in UInt256 i);
+    Update GetUpdate(BlockHeader header, in UInt256 i);
 
     struct Update
     {
