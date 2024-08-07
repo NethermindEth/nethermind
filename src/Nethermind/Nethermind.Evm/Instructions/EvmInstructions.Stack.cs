@@ -87,7 +87,7 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.VeryLow;
 
-        ReadOnlySpan<byte> code = vm.State.Env.CodeInfo.MachineCode.Span;
+        ReadOnlySpan<byte> code = vm.State.Env.CodeInfo.CodeSection.Span;
 
         int length = TOpCount.Count;
         int usedFromCode = Math.Min(code.Length - programCounter, length);
