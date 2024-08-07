@@ -9,6 +9,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Abi;
+using Nethermind.Core.Caching;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -25,6 +26,8 @@ public class ShutterBlockHandler(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(10);
     private bool _haveCheckedRegistered = false;
+    private readonly LruCache<Core.Crypto.Hash256, TxReceipt[]> _receiptsCache = new(10, "Receipts cache");
+
     public void OnNewHeadBlock(Block head)
     {
         if (IsBlockUpToDate(head))
@@ -35,14 +38,28 @@ public class ShutterBlockHandler(
                 _haveCheckedRegistered = true;
             }
             eon.Update(head.Header);
+
+            if (head.Hash is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Head block hash was null, cannot load Shutter transactions.");
+                return;
+            }
+
+            if (!_receiptsCache.TryGet(head.Hash, out TxReceipt[] receipts))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Could not find receipts in cache for new head block ({head.Hash}), cannot load Shutter events.");
+                return;
+            }
+
+            txLoader.OnNewHeadBlock(head, receipts);
         }
     }
 
-    public void OnBlockProcessed(Block head, TxReceipt[] receipts)
+    public void OnBlockProcessed(Block block, TxReceipt[] receipts)
     {
-        if (IsBlockUpToDate(head))
+        if (IsBlockUpToDate(block) && block.Hash is not null)
         {
-            txLoader.OnReceiptsProcessed(receipts, head.Number);
+            _receiptsCache.Set(block.Hash, receipts);
         }
     }
 

@@ -19,6 +19,7 @@ using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Caching;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -41,9 +42,8 @@ public class ShutterTxLoader(
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     private ulong _loadedTxIndex = ulong.MaxValue;
-    private long _loadedBlockNumber = long.MaxValue;
+    private Core.Crypto.Hash256? _loadedBlockHash;
     private bool _firstLoad = true;
-
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
@@ -72,21 +72,20 @@ public class ShutterTxLoader(
         return shutterTransactions;
     }
 
-    public void OnReceiptsProcessed(TxReceipt[] receipts, long blockNumber)
+    public void OnNewHeadBlock(Block head, TxReceipt[] receipts)
     {
         lock (_transactionSubmittedEvents)
         {
-            Block? head = readOnlyBlockTree.Head;
-            if (!_firstLoad && head is not null && head.Number == blockNumber && blockNumber != _loadedBlockNumber)
+            if (!_firstLoad && head is not null && head.Hash is not null && head.Hash != _loadedBlockHash)
             {
-                _loadedBlockNumber = blockNumber;
+                _loadedBlockHash = head.Hash;
 
                 int count = 0;
                 foreach(TxReceipt receipt in receipts)
                 {
                     foreach (LogEntry log in receipt.Logs!)
                     {
-                        if (_sequencerContract.FilterAccepts(log, blockNumber))
+                        if (_sequencerContract.FilterAccepts(log, head.Number))
                         {
                             ISequencerContract.TransactionSubmitted e = _sequencerContract.ParseTransactionSubmitted(log);
                             if (e.TxIndex != _loadedTxIndex + 1 && _logger.IsWarn)
@@ -100,7 +99,7 @@ public class ShutterTxLoader(
                     }
                 }
                 // todo: make debug
-                if (_logger.IsInfo) _logger.Info($"Found {count} Shutter events in block {blockNumber}, current TxIndex is {_loadedTxIndex}.");
+                if (_logger.IsInfo) _logger.Info($"Found {count} Shutter events in block {head.Number}, current TxIndex is {_loadedTxIndex}.");
             }
         }
     }
