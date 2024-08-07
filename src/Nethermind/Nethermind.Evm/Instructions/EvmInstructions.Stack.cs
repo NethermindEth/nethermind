@@ -92,7 +92,7 @@ internal sealed partial class EvmInstructions
         int length = TOpCount.Count;
         int usedFromCode = Math.Min(code.Length - programCounter, length);
         stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
-        
+
         programCounter += length;
 
         return EvmExceptionType.None;

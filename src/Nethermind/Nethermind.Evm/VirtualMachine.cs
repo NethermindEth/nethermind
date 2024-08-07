@@ -845,7 +845,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 }
                 goto EmptyReturn;
             }
-            else if (instruction < Instruction.DATALOAD)
+            else if (instruction < Instruction.RJUMP)
             {
                 exceptionType = CalliJmpTable[(int)instruction](this, ref stack, ref gasAvailable, ref programCounter);
             }
@@ -853,193 +853,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
             {
                 switch (instruction)
                 {
-                    case Instruction.DUPN:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
-                                goto OutOfGas;
-
-                            byte imm = codeSection[programCounter];
-                            stack.Dup(imm + 1);
-
-                            programCounter += 1;
-                            break;
-                        }
-                    case Instruction.SWAPN:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
-                                goto OutOfGas;
-
-                            int n = 1 + codeSection[programCounter];
-                            if (!stack.Swap(n + 1)) goto StackUnderflow;
-
-                            programCounter += 1;
-                            break;
-                        }
-                    case Instruction.EXCHANGE:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
-                                goto OutOfGas;
-
-                            int n = 1 + (int)(codeSection[programCounter] >> 0x04);
-                            int m = 1 + (int)(codeSection[programCounter] & 0x0f);
-
-                            stack.Exchange(n + 1, m + n + 1);
-
-                            programCounter += 1;
-                            break;
-                        }
-                    case Instruction.DATALOAD:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out a);
-                            ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(a, 32);
-                            stack.PushBytes(zpbytes);
-                            break;
-                        }
-                    case Instruction.DATALOADN:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
-
-                            var offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
-                            ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(offset, 32);
-                            stack.PushBytes(zpbytes);
-
-                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
-                            break;
-                        }
-                    case Instruction.DATASIZE:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PushUInt32(dataSection.Length);
-                            break;
-                        }
-                    case Instruction.DATACOPY:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            stack.PopUInt256(out UInt256 memOffset);
-                            stack.PopUInt256(out UInt256 offset);
-                            stack.PopUInt256(out UInt256 size);
-
-                            if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
-                                goto OutOfGas;
-
-                            if (size > UInt256.Zero)
-                            {
-                                if (!UpdateMemoryCost(_vmState, ref gasAvailable, in memOffset, size))
-                                    goto OutOfGas;
-
-                                ZeroPaddedSpan dataSectionSlice = dataSection.SliceWithZeroPadding(offset, (int)size);
-                                _vmState.Memory.Save(in memOffset, dataSectionSlice);
-                                if (_txTracer.IsTracingInstructions)
-                                {
-                                    _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
-                                }
-                            }
-
-                            break;
-                        }
-                    case Instruction.CREATE:
-                    case Instruction.CREATE2:
-                        {
-                            Metrics.IncrementCreates();
-                            if (!_spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
-
-                            if (_vmState.IsStatic) goto StaticCallViolation;
-
-                            (exceptionType, returnData) = InstructionCreate(_vmState, ref stack, ref gasAvailable, instruction);
-                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                            if (returnData is null) break;
-
-                            goto DataReturnNoTrace;
-                        }
-                    case Instruction.EOFCREATE:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            {
-                                goto InvalidInstruction;
-                            }
-
-                            if (_vmState.IsStatic) goto StaticCallViolation;
-
-                            (exceptionType, returnData) = InstructionEofCreate(_vmState, ref programCounter, ref codeSection, ref stack, ref gasAvailable, instruction);
-
-                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                            if (returnData is null) break;
-
-                            goto DataReturnNoTrace;
-                        }
-                    case Instruction.RETURN:
-                        {
-                            if (_vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-                            {
-                                goto InvalidInstruction;
-                            }
-                            exceptionType = InstructionReturn(_vmState, ref stack, ref gasAvailable, out returnData);
-                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                            goto DataReturn;
-                        }
-                    case Instruction.CALL:
-                    case Instruction.CALLCODE:
-                    case Instruction.DELEGATECALL:
-                    case Instruction.STATICCALL:
-                        {
-                            exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
-                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                            if (returnData is null)
-                            {
-                                break;
-                            }
-                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
-                            {
-                                // Non contract call continue rather than constructing a new frame
-                                continue;
-                            }
-
-                            goto DataReturn;
-                        }
-                    case Instruction.REVERT:
-                        {
-                            if (!_spec.RevertOpcodeEnabled) goto InvalidInstruction;
-
-                            exceptionType = InstructionRevert(_vmState, ref stack, ref gasAvailable, out returnData);
-                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-
-                            isRevert = true;
-                            goto DataReturn;
-                        }
-                    case Instruction.INVALID:
-                        exceptionType = InstructionInvalid(this, ref stack, ref gasAvailable, ref programCounter);
-                        break;
-                    case Instruction.SELFDESTRUCT:
-                        exceptionType = InstructionSelfDestruct(this, ref stack, ref gasAvailable, ref programCounter);
-                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                        goto EmptyReturn;
                     case Instruction.RJUMP:
                         {
                             if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
@@ -1117,7 +930,21 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                             programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
                             break;
                         }
+                    case Instruction.RETF:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            {
+                                goto InvalidInstruction;
+                            }
 
+                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
+                            (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
+
+                            var stackFrame = _vmState.ReturnStack[--_vmState.ReturnStackHead];
+                            sectionIndex = stackFrame.Index;
+                            programCounter = stackFrame.Offset;
+                            break;
+                        }
                     case Instruction.JUMPF:
                         {
                             if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
@@ -1138,39 +965,66 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                             programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
                             break;
                         }
-                    case Instruction.RETF:
+                    case Instruction.DUPN:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            byte imm = codeSection[programCounter];
+                            stack.Dup(imm + 1);
+
+                            programCounter += 1;
+                            break;
+                        }
+                    case Instruction.SWAPN:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            int n = 1 + codeSection[programCounter];
+                            if (!stack.Swap(n + 1)) goto StackUnderflow;
+
+                            programCounter += 1;
+                            break;
+                        }
+                    case Instruction.EXCHANGE:
+                        {
+                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            int n = 1 + (int)(codeSection[programCounter] >> 0x04);
+                            int m = 1 + (int)(codeSection[programCounter] & 0x0f);
+
+                            stack.Exchange(n + 1, m + n + 1);
+
+                            programCounter += 1;
+                            break;
+                        }
+                    case Instruction.EOFCREATE:
                         {
                             if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
                             {
                                 goto InvalidInstruction;
                             }
 
-                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
-                            (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
+                            if (_vmState.IsStatic) goto StaticCallViolation;
 
-                            var stackFrame = _vmState.ReturnStack[--_vmState.ReturnStackHead];
-                            sectionIndex = stackFrame.Index;
-                            programCounter = stackFrame.Offset;
-                            break;
-                        }
-                    case Instruction.EXTCALL:
-                    case Instruction.EXTDELEGATECALL:
-                    case Instruction.EXTSTATICCALL:
-                        {
-                            exceptionType = InstructionEofCall<TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                            (exceptionType, returnData) = InstructionEofCreate(_vmState, ref programCounter, ref codeSection, ref stack, ref gasAvailable, instruction);
+
                             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
-                            if (returnData is null)
-                            {
-                                break;
-                            }
-                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
-                            {
-                                // Result pushed to stack
-                                continue;
-                            }
+                            if (returnData is null) break;
 
-                            goto DataReturn;
+                            goto DataReturnNoTrace;
                         }
                     case Instruction.RETURNCONTRACT:
                         {
@@ -1200,6 +1054,52 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                             UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                             return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
                         }
+                    case Instruction.CREATE:
+                    case Instruction.CREATE2:
+                        {
+                            Metrics.IncrementCreates();
+                            if (!_spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
+
+                            if (_vmState.IsStatic) goto StaticCallViolation;
+
+                            (exceptionType, returnData) = InstructionCreate(_vmState, ref stack, ref gasAvailable, instruction);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            if (returnData is null) break;
+
+                            goto DataReturnNoTrace;
+                        }
+                    case Instruction.RETURN:
+                        {
+                            if (_vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+                            {
+                                goto InvalidInstruction;
+                            }
+                            exceptionType = InstructionReturn(_vmState, ref stack, ref gasAvailable, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            goto DataReturn;
+                        }
+                    case Instruction.CALL:
+                    case Instruction.CALLCODE:
+                    case Instruction.DELEGATECALL:
+                    case Instruction.STATICCALL:
+                        {
+                            exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            if (returnData is null)
+                            {
+                                break;
+                            }
+                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                            {
+                                // Non contract call continue rather than constructing a new frame
+                                continue;
+                            }
+
+                            goto DataReturn;
+                        }
                     case Instruction.RETURNDATALOAD:
                         {
                             if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
@@ -1213,6 +1113,42 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                             stack.PushBytes(slice);
                             break;
                         }
+                    case Instruction.EXTCALL:
+                    case Instruction.EXTDELEGATECALL:
+                    case Instruction.EXTSTATICCALL:
+                        {
+                            exceptionType = InstructionEofCall<TTracingRefunds>(_vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            if (returnData is null)
+                            {
+                                break;
+                            }
+                            if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                            {
+                                // Result pushed to stack
+                                continue;
+                            }
+
+                            goto DataReturn;
+                        }
+                    case Instruction.REVERT:
+                        {
+                            if (!_spec.RevertOpcodeEnabled) goto InvalidInstruction;
+
+                            exceptionType = InstructionRevert(_vmState, ref stack, ref gasAvailable, out returnData);
+                            if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                            isRevert = true;
+                            goto DataReturn;
+                        }
+                    case Instruction.INVALID:
+                        exceptionType = InstructionInvalid(this, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.SELFDESTRUCT:
+                        exceptionType = InstructionSelfDestruct(this, ref stack, ref gasAvailable, ref programCounter);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+                        goto EmptyReturn;
                     default:
                         {
                             goto InvalidInstruction;

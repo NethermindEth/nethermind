@@ -3,9 +3,13 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.EOF;
 
 namespace Nethermind.Evm;
 using Int256;
+
+using Nethermind.Core;
 
 internal sealed partial class EvmInstructions
 {
@@ -16,7 +20,8 @@ internal sealed partial class EvmInstructions
 
         gasAvailable -= GasCostOf.Base;
 
-        stack.PushUInt32(vm.ReturnDataBuffer.Length);
+        UInt256 result = (UInt256)vm.ReturnDataBuffer.Length;
+        stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
     }
@@ -47,6 +52,85 @@ internal sealed partial class EvmInstructions
                 vm.TxTracer.ReportMemoryChange((long)a, in slice);
             }
         }
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDataLoad(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        stack.PopUInt256(out var a);
+        ZeroPaddedSpan zpbytes = codeInfo.DataSection.SliceWithZeroPadding(a, 32);
+        stack.PushBytes(zpbytes);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDataLoadN(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        var offset = codeInfo.CodeSection.Span.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+        ZeroPaddedSpan zpbytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
+        stack.PushBytes(zpbytes);
+
+        programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDataSize(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        stack.PushUInt32(codeInfo.DataSection.Length);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDataCopy(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        stack.PopUInt256(out UInt256 memOffset);
+        stack.PopUInt256(out UInt256 offset);
+        stack.PopUInt256(out UInt256 size);
+
+        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
+            return EvmExceptionType.OutOfGas;
+
+        if (!size.IsZero)
+        {
+            if (!UpdateMemoryCost(vm.State, ref gasAvailable, in memOffset, size))
+                return EvmExceptionType.OutOfGas;
+            ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
+            vm.State.Memory.Save(in memOffset, dataSectionSlice);
+            if (vm.TxTracer.IsTracingInstructions)
+            {
+                vm.TxTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
+            }
+        }
+
+        stack.PushUInt32(codeInfo.DataSection.Length);
 
         return EvmExceptionType.None;
     }

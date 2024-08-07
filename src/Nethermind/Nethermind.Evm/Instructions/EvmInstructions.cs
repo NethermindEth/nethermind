@@ -102,7 +102,7 @@ internal sealed partial class EvmInstructions
         lookup[(int)Instruction.TLOAD] = &InstructionTLoad;
         lookup[(int)Instruction.TSTORE] = &InstructionTStore;
         lookup[(int)Instruction.MCOPY] = &InstructionMCopy;
-        
+
         lookup[(int)Instruction.PUSH0] = &InstructionPush0;
         lookup[(int)Instruction.PUSH1] = &InstructionPush<Op1>;
         lookup[(int)Instruction.PUSH2] = &InstructionPush<Op2>;
@@ -176,25 +176,12 @@ internal sealed partial class EvmInstructions
         lookup[(int)Instruction.LOG2] = &InstructionLog<Op2>;
         lookup[(int)Instruction.LOG3] = &InstructionLog<Op3>;
         lookup[(int)Instruction.LOG4] = &InstructionLog<Op4>;
-        
-        lookup[(int)Instruction.DATALOAD] = &InstructionBadInstruction;
-        lookup[(int)Instruction.DATALOADN] = &InstructionBadInstruction;
-        lookup[(int)Instruction.DATASIZE] = &InstructionBadInstruction;
-        lookup[(int)Instruction.DATACOPY] = &InstructionBadInstruction;
 
-        lookup[(int)Instruction.CREATE] = &InstructionBadInstruction;
-        lookup[(int)Instruction.CALL] = &InstructionBadInstruction;
-        lookup[(int)Instruction.CALLCODE] = &InstructionBadInstruction;
-        lookup[(int)Instruction.RETURN] = &InstructionBadInstruction;
-        lookup[(int)Instruction.DELEGATECALL] = &InstructionBadInstruction;
-        lookup[(int)Instruction.CREATE2] = &InstructionBadInstruction;
-        lookup[(int)Instruction.STATICCALL] = &InstructionBadInstruction;
-        lookup[(int)Instruction.REVERT] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DATALOAD] = &InstructionDataLoad;
+        lookup[(int)Instruction.DATALOADN] = &InstructionDataLoadN;
+        lookup[(int)Instruction.DATASIZE] = &InstructionDataSize;
+        lookup[(int)Instruction.DATACOPY] = &InstructionDataCopy;
 
-        lookup[(int)Instruction.INVALID] = &InstructionInvalid;
-
-        lookup[(int)Instruction.SELFDESTRUCT] = &InstructionBadInstruction;
-        
         lookup[(int)Instruction.RJUMP] = &InstructionBadInstruction;
         lookup[(int)Instruction.RJUMPI] = &InstructionBadInstruction;
         lookup[(int)Instruction.RJUMPV] = &InstructionBadInstruction;
@@ -204,14 +191,26 @@ internal sealed partial class EvmInstructions
         lookup[(int)Instruction.DUPN] = &InstructionBadInstruction;
         lookup[(int)Instruction.SWAPN] = &InstructionBadInstruction;
         lookup[(int)Instruction.EXCHANGE] = &InstructionBadInstruction;
-
         lookup[(int)Instruction.EOFCREATE] = &InstructionBadInstruction;
-        
         lookup[(int)Instruction.RETURNCONTRACT] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.CREATE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.CALL] = &InstructionBadInstruction;
+        lookup[(int)Instruction.CALLCODE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RETURN] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DELEGATECALL] = &InstructionBadInstruction;
+        lookup[(int)Instruction.CREATE2] = &InstructionBadInstruction;
+        lookup[(int)Instruction.STATICCALL] = &InstructionBadInstruction;
+
         lookup[(int)Instruction.RETURNDATALOAD] = &InstructionBadInstruction;
         lookup[(int)Instruction.EXTCALL] = &InstructionBadInstruction;
         lookup[(int)Instruction.EXTDELEGATECALL] = &InstructionBadInstruction;
         lookup[(int)Instruction.EXTSTATICCALL] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.REVERT] = &InstructionBadInstruction;
+
+        lookup[(int)Instruction.INVALID] = &InstructionInvalid;
+        lookup[(int)Instruction.SELFDESTRUCT] = &InstructionBadInstruction;
 
         return lookup;
     }

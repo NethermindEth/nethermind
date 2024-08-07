@@ -35,7 +35,7 @@ internal sealed partial class EvmInstructions
             vm.State.Memory.Save(in a, in slice);
             if (vm.TxTracer.IsTracingInstructions)
             {
-              vm.TxTracer.ReportMemoryChange((long)a, in slice);
+                vm.TxTracer.ReportMemoryChange((long)a, in slice);
             }
         }
 

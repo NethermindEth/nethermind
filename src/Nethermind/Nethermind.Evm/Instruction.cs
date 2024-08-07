@@ -167,17 +167,6 @@ namespace Nethermind.Evm
         DATASIZE = 0xd2,
         DATACOPY = 0xd3,
 
-        CREATE = 0xf0,
-        CALL = 0xf1,
-        CALLCODE = 0xf2,
-        RETURN = 0xf3,
-        DELEGATECALL = 0xf4,
-        CREATE2 = 0xf5,
-        STATICCALL = 0xfa,
-        REVERT = 0xfd,
-        INVALID = 0xfe,
-        SELFDESTRUCT = 0xff,
-
         RJUMP = 0xe0,
         RJUMPI = 0xe1,
         RJUMPV = 0xe2,
@@ -192,11 +181,22 @@ namespace Nethermind.Evm
 
         RETURNCONTRACT = 0xee,
 
+
+        CREATE = 0xf0,
+        CALL = 0xf1,
+        CALLCODE = 0xf2,
+        RETURN = 0xf3,
+        DELEGATECALL = 0xf4,
+        CREATE2 = 0xf5,
+        STATICCALL = 0xfa,
         RETURNDATALOAD = 0xf7,
         // opcode value not spec-ed 
         EXTCALL = 0xf8,
         EXTDELEGATECALL = 0xf9, // DelegateCallEnabled
         EXTSTATICCALL = 0xfb, // StaticCallEnabled
+        REVERT = 0xfd,
+        INVALID = 0xfe,
+        SELFDESTRUCT = 0xff,
 
     }
     public static class InstructionExtensions
