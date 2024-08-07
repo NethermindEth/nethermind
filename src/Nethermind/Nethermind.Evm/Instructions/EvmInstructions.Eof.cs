@@ -134,4 +134,138 @@ internal sealed partial class EvmInstructions
 
         return EvmExceptionType.None;
     }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionRelativeJump(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        short offset = codeInfo.CodeSection.Span.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+        programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionRelativeJumpIf(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        Span<byte> condition = stack.PopWord256();
+        short offset = codeInfo.CodeSection.Span.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+        if (!condition.IsZero())
+        {
+            programCounter += offset;
+        }
+        programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionJumpTable(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        stack.PopUInt256(out var a);
+        var codeSection = codeInfo.CodeSection.Span;
+
+        var count = codeSection[programCounter] + 1;
+        var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
+        if (a < count)
+        {
+            int case_v = programCounter + EvmObjectFormat.ONE_BYTE_LENGTH + (int)a * EvmObjectFormat.TWO_BYTE_LENGTH;
+            int offset = codeSection.Slice(case_v, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+            programCounter += offset;
+        }
+        programCounter += immediates;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionCallFunction(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        var codeSection = codeInfo.CodeSection.Span;
+        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+        (int inputCount, _, int maxStackHeight) = codeInfo.GetSectionMetadata(index);
+
+        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        if (vm.State.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
+            return EvmExceptionType.InvalidSubroutineEntry;
+
+        vm.State.ReturnStack[vm.State.ReturnStackHead++] = new EvmState.ReturnState
+        {
+            Index = vm.SectionIndex,
+            Height = stack.Head - inputCount,
+            Offset = programCounter + EvmObjectFormat.TWO_BYTE_LENGTH
+        };
+
+        vm.SectionIndex = index;
+        programCounter = codeInfo.CodeSectionOffset(index).Start;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionReturnFunction(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        (_, int outputCount, _) = codeInfo.GetSectionMetadata(vm.SectionIndex);
+
+        var stackFrame = vm.State.ReturnStack[--vm.State.ReturnStackHead];
+        vm.SectionIndex = stackFrame.Index;
+        programCounter = stackFrame.Offset;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionJumpFunction(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        var index = (int)codeInfo.CodeSection.Span.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+        (int inputCount, _, int maxStackHeight) = codeInfo.GetSectionMetadata(index);
+
+        if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+        vm.SectionIndex = index;
+        programCounter = codeInfo.CodeSectionOffset(index).Start;
+
+        return EvmExceptionType.None;
+    }
 }

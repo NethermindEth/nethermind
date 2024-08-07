@@ -182,12 +182,12 @@ internal sealed partial class EvmInstructions
         lookup[(int)Instruction.DATASIZE] = &InstructionDataSize;
         lookup[(int)Instruction.DATACOPY] = &InstructionDataCopy;
 
-        lookup[(int)Instruction.RJUMP] = &InstructionBadInstruction;
-        lookup[(int)Instruction.RJUMPI] = &InstructionBadInstruction;
-        lookup[(int)Instruction.RJUMPV] = &InstructionBadInstruction;
-        lookup[(int)Instruction.CALLF] = &InstructionBadInstruction;
-        lookup[(int)Instruction.RETF] = &InstructionBadInstruction;
-        lookup[(int)Instruction.JUMPF] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RJUMP] = &InstructionRelativeJump;
+        lookup[(int)Instruction.RJUMPI] = &InstructionRelativeJumpIf;
+        lookup[(int)Instruction.RJUMPV] = &InstructionJumpTable;
+        lookup[(int)Instruction.CALLF] = &InstructionCallFunction;
+        lookup[(int)Instruction.RETF] = &InstructionReturnFunction;
+        lookup[(int)Instruction.JUMPF] = &InstructionJumpFunction;
         lookup[(int)Instruction.DUPN] = &InstructionBadInstruction;
         lookup[(int)Instruction.SWAPN] = &InstructionBadInstruction;
         lookup[(int)Instruction.EXCHANGE] = &InstructionBadInstruction;

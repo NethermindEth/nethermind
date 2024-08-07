@@ -787,6 +787,8 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
 
     EvmState IEvm.State => _vmState;
     EvmState _vmState;
+    int IEvm.SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
+    int _sectionIndex;
 
     [SkipLocalsInit]
     private unsafe CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(scoped ref EvmStack stack, long gasAvailable)
@@ -800,7 +802,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
 
         int programCounter = _vmState.ProgramCounter;
-        int sectionIndex = _vmState.FunctionIndex;
+        _sectionIndex = _vmState.FunctionIndex;
 
         ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
         ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
@@ -845,7 +847,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 }
                 goto EmptyReturn;
             }
-            else if (instruction < Instruction.RJUMP)
+            else if (instruction < Instruction.DUPN)
             {
                 exceptionType = CalliJmpTable[(int)instruction](this, ref stack, ref gasAvailable, ref programCounter);
             }
@@ -853,118 +855,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
             {
                 switch (instruction)
                 {
-                    case Instruction.RJUMP:
-                        {
-                            if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
-                            {
-                                if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
-                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
-                                programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
-                                break;
-                            }
-                            goto InvalidInstruction;
-                        }
-                    case Instruction.RJUMPI:
-                        {
-                            if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
-                            {
-                                if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
-                                Span<byte> condition = stack.PopWord256();
-                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
-                                if (!condition.SequenceEqual(BytesZero32))
-                                {
-                                    programCounter += offset;
-                                }
-                                programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
-                                break;
-                            }
-                            goto InvalidInstruction;
-                        }
-                    case Instruction.RJUMPV:
-                        {
-                            if (_spec.IsEofEnabled && env.CodeInfo.Version > 0)
-                            {
-                                if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
-
-                                stack.PopUInt256(out a);
-                                var count = codeSection[programCounter] + 1;
-                                var immediates = (ushort)(count * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH);
-                                if (a < count)
-                                {
-                                    int case_v = programCounter + EvmObjectFormat.ONE_BYTE_LENGTH + (int)a * EvmObjectFormat.TWO_BYTE_LENGTH;
-                                    int offset = codeSection.Slice(case_v, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
-                                    programCounter += offset;
-                                }
-                                programCounter += immediates;
-                                break;
-                            }
-                            goto InvalidInstruction;
-                        }
-                    case Instruction.CALLF:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            {
-                                goto InvalidInstruction;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
-                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
-                            (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
-
-                            if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
-                            {
-                                goto StackOverflow;
-                            }
-
-                            if (_vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
-                                goto InvalidSubroutineEntry;
-
-                            _vmState.ReturnStack[_vmState.ReturnStackHead++] = new EvmState.ReturnState
-                            {
-                                Index = sectionIndex,
-                                Height = stack.Head - inputCount,
-                                Offset = programCounter + EvmObjectFormat.TWO_BYTE_LENGTH
-                            };
-
-                            sectionIndex = index;
-                            programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
-                            break;
-                        }
-                    case Instruction.RETF:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            {
-                                goto InvalidInstruction;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
-                            (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
-
-                            var stackFrame = _vmState.ReturnStack[--_vmState.ReturnStackHead];
-                            sectionIndex = stackFrame.Index;
-                            programCounter = stackFrame.Offset;
-                            break;
-                        }
-                    case Instruction.JUMPF:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                            {
-                                goto InvalidInstruction;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) goto OutOfGas;
-                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
-                            (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
-
-                            if (EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
-                            {
-                                goto StackOverflow;
-                            }
-
-                            sectionIndex = index;
-                            programCounter = env.CodeInfo.CodeSectionOffset(index).Start;
-                            break;
-                        }
                     case Instruction.DUPN:
                         {
                             if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
@@ -1051,7 +941,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
 
                             auxData = _vmState.Memory.Load(a, b);
 
-                            UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
+                            UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, _sectionIndex);
                             return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
                         }
                     case Instruction.CREATE:
@@ -1176,7 +1066,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         EmptyReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
+        UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, _sectionIndex);
 #if DEBUG
         debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
@@ -1186,7 +1076,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         DataReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
+        UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, _sectionIndex);
 
         if (returnData is EvmState state)
         {
@@ -1210,12 +1100,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
-    InvalidSubroutineEntry:
-        exceptionType = EvmExceptionType.InvalidSubroutineEntry;
-        goto ReturnFailure;
-    StackOverflow:
-        exceptionType = EvmExceptionType.StackOverflow;
-        goto ReturnFailure;
+
         [DoesNotReturn]
         static void ThrowOperationCanceledException() =>
             throw new OperationCanceledException("Cancellation Requested");

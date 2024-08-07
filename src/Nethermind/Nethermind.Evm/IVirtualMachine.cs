@@ -26,5 +26,6 @@ namespace Nethermind.Evm
         ICodeInfoRepository CodeInfoRepository { get; }
         ReadOnlyMemory<byte> ReturnDataBuffer { get; }
         IBlockhashProvider BlockhashProvider { get; }
+        int SectionIndex { get; set; }
     }
 }
