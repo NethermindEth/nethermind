@@ -111,7 +111,7 @@ public class ShutterTxLoader(
 
             if (_logger.IsDebug)
             {
-                if (!wellFormed) _logger.Debug($"Decrypted Shutter transactions was not well-formed{(error is null ? "." : ": " + error)}");
+                if (!wellFormed) _logger.Debug($"Decrypted Shutter transaction was not well-formed{(error is null ? "." : ": " + error)}");
                 if (tx.Type == TxType.Blob) _logger.Debug("Decrypted Shutter transaction was blob, cannot include.");
             }
 
