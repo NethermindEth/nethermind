@@ -18,45 +18,56 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, IWorldState? targetWorldState = null) : IBlockCachePreWarmer
+public class BlockCachePreWarmer : IBlockCachePreWarmer
 {
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
+    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
-    private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private readonly ILogger _logger;
     private Task _currentPreWarm = Task.CompletedTask;
+    private Hash256? _parentStateRoot;
+    private readonly Action _finishTask;
+    private readonly ISpecProvider _specProvider;
+    private readonly IWorldState? _targetWorldState;
+
+    public BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, IWorldState? targetWorldState = null)
+    {
+        _specProvider = specProvider;
+        _targetWorldState = targetWorldState;
+        _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
+        _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+        _finishTask = () => _currentPreWarm = Task.CompletedTask;
+    }
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, CancellationToken cancellationToken = default)
     {
-        void FinishTask() => _currentPreWarm = Task.CompletedTask;
-
         if (_currentPreWarm.IsCompleted)
         {
-            using CancellationTokenRegistration cancellationAction = cancellationToken.Register(FinishTask);
-            if (targetWorldState is not null)
+            using CancellationTokenRegistration cancellationAction = cancellationToken.Register(_finishTask);
+            if (_targetWorldState is not null)
             {
-                if (targetWorldState.ClearCache())
+                if (_parentStateRoot != parentStateRoot && _targetWorldState.ClearCache())
                 {
-                    if (_logger.IsWarn) _logger.Warn("Cashes are not empty. Clearing them.");
+                    if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
                 }
 
-                if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 &&
-                    !cancellationToken.IsCancellationRequested)
+                if (!IsGenesisBlock(parentStateRoot)
+                    && Environment.ProcessorCount > 2
+                    && !cancellationToken.IsCancellationRequested)
                 {
+                    _parentStateRoot = parentStateRoot;
                     // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
                     return _currentPreWarm = Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot!, cancellationToken));
                 }
             }
         }
 
-        return _currentPreWarm = Task.CompletedTask;
+        return _currentPreWarm;
     }
-
-
 
     // Parent state root is null for genesis block
     private bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
-    public void ClearCaches() => targetWorldState?.ClearCache();
+    public void ClearCaches() => _targetWorldState?.ClearCache();
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken)
     {
@@ -67,7 +78,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, RuntimeInformation.PhysicalCoreCount - 2), CancellationToken = cancellationToken };
-            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+            IReleaseSpec spec = _specProvider.GetSpec(suggestedBlock.Header);
 
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
             WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parentStateRoot);
