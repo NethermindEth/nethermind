@@ -51,7 +51,7 @@ public class ShutterBlockHandler(
                 return;
             }
 
-            txLoader.OnNewHeadBlock(head, receipts);
+            txLoader.LoadFromReceipts(head, receipts);
         }
     }
 

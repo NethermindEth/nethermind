@@ -72,7 +72,7 @@ public class ShutterTxLoader(
         return shutterTransactions;
     }
 
-    public void OnNewHeadBlock(Block head, TxReceipt[] receipts)
+    public void LoadFromReceipts(Block head, TxReceipt[] receipts)
     {
         lock (_transactionSubmittedEvents)
         {
