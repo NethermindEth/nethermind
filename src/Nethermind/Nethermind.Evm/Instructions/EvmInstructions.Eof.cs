@@ -268,4 +268,58 @@ internal sealed partial class EvmInstructions
 
         return EvmExceptionType.None;
     }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDupN(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        int imm = (int)codeInfo.CodeSection.Span[programCounter];
+        stack.Dup(imm + 1);
+
+        programCounter += 1;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSwapN(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        int n = 1 + (int)codeInfo.CodeSection.Span[programCounter];
+        if (!stack.Swap(n + 1)) return EvmExceptionType.StackUnderflow;
+
+        programCounter += 1;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionExchange(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        var codeInfo = vm.State.Env.CodeInfo;
+        if (!vm.Spec.IsEofEnabled || codeInfo.Version == 0)
+            return EvmExceptionType.BadInstruction;
+
+        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        var codeSection = codeInfo.CodeSection.Span;
+        int n = 1 + (int)(codeSection[programCounter] >> 0x04);
+        int m = 1 + (int)(codeSection[programCounter] & 0x0f);
+
+        stack.Exchange(n + 1, m + n + 1);
+
+        programCounter += 1;
+
+        return EvmExceptionType.None;
+    }
 }

@@ -847,7 +847,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 }
                 goto EmptyReturn;
             }
-            else if (instruction < Instruction.DUPN)
+            else if (instruction < Instruction.EOFCREATE)
             {
                 exceptionType = CalliJmpTable[(int)instruction](this, ref stack, ref gasAvailable, ref programCounter);
             }
@@ -855,50 +855,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
             {
                 switch (instruction)
                 {
-                    case Instruction.DUPN:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
-                                goto OutOfGas;
-
-                            byte imm = codeSection[programCounter];
-                            stack.Dup(imm + 1);
-
-                            programCounter += 1;
-                            break;
-                        }
-                    case Instruction.SWAPN:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
-                                goto OutOfGas;
-
-                            int n = 1 + codeSection[programCounter];
-                            if (!stack.Swap(n + 1)) goto StackUnderflow;
-
-                            programCounter += 1;
-                            break;
-                        }
-                    case Instruction.EXCHANGE:
-                        {
-                            if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
-                                goto OutOfGas;
-
-                            int n = 1 + (int)(codeSection[programCounter] >> 0x04);
-                            int m = 1 + (int)(codeSection[programCounter] & 0x0f);
-
-                            stack.Exchange(n + 1, m + n + 1);
-
-                            programCounter += 1;
-                            break;
-                        }
                     case Instruction.EOFCREATE:
                         {
                             if (!_spec.IsEofEnabled || env.CodeInfo.Version == 0)

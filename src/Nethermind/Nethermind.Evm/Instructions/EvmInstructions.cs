@@ -188,9 +188,9 @@ internal sealed partial class EvmInstructions
         lookup[(int)Instruction.CALLF] = &InstructionCallFunction;
         lookup[(int)Instruction.RETF] = &InstructionReturnFunction;
         lookup[(int)Instruction.JUMPF] = &InstructionJumpFunction;
-        lookup[(int)Instruction.DUPN] = &InstructionBadInstruction;
-        lookup[(int)Instruction.SWAPN] = &InstructionBadInstruction;
-        lookup[(int)Instruction.EXCHANGE] = &InstructionBadInstruction;
+        lookup[(int)Instruction.DUPN] = &InstructionDupN;
+        lookup[(int)Instruction.SWAPN] = &InstructionSwapN;
+        lookup[(int)Instruction.EXCHANGE] = &InstructionExchange;
         lookup[(int)Instruction.EOFCREATE] = &InstructionBadInstruction;
         lookup[(int)Instruction.RETURNCONTRACT] = &InstructionBadInstruction;
 
