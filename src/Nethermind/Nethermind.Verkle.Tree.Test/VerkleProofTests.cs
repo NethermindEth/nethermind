@@ -126,7 +126,7 @@ public class VerkleProofTest
                                      "50a858999ef45cba91cbbb2fc3aa85f4874a519813b771ad0e91f16665f9aff6b79f23d5aecff065e4362190459fc2551340ac112" +
                                      "0001c921a36dd8c2d441a93f4fa4fd6a71d54f0f862340cf9e401b";
 
-        Assert.That(proof.Encode().ToHexString().SequenceEqual(expectedProof), Is.True);
+        Assert.That(proof.EncodeOld().ToHexString().SequenceEqual(expectedProof), Is.True);
         bool verified = VerkleTree.VerifyVerkleProof(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
     }
@@ -180,7 +180,7 @@ public class VerkleProofTest
                                      "2a90bed52bedba033bcd8c1034e61e4740c65d22853b04a3b8733987e93e1c77dffac49f50d09de4ecaf835f94f3877e6" +
                                      "480f9d8844fc5fa98f2ec370e18b24da702840f21f71e24ca999bbce608ca5f507";
 
-        Assert.That(proof.Encode().ToHexString().SequenceEqual(expectedProof), Is.True);
+        Assert.That(proof.EncodeOld().ToHexString().SequenceEqual(expectedProof), Is.True);
 
         bool verified = VerkleTree.VerifyVerkleProof(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
