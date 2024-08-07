@@ -13,7 +13,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <summary>
 /// Adapter from TalkReq/Resp to Kademlia's IMessageSender, which is its outgoing transport.
 /// </summary>
-/// <param name="protocol"></param>
+/// <param name="config"></param>
 /// <param name="talkReqTransport"></param>
 /// <param name="enrProvider"></param>
 /// <param name="logManager"></param>
@@ -77,7 +77,7 @@ public class KademliaTalkReqMessageSender(
             }
         }
 
-        byte[] pingBytes = SlowSSZ.Serialize(new MessageUnion()
+        byte[] findNodesBytes = SlowSSZ.Serialize(new MessageUnion()
         {
             FindNodes = new FindNodes()
             {
@@ -85,7 +85,7 @@ public class KademliaTalkReqMessageSender(
             }
         });
 
-        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
+        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, findNodesBytes, token);
 
         Nodes message = SlowSSZ.Deserialize<MessageUnion>(response).Nodes!;
 
