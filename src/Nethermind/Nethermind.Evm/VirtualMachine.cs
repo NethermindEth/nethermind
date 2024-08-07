@@ -1273,7 +1273,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.EXTCODESIZE:
-                    {   
+                    {
                         gasAvailable -= spec.GetExtCodeCost();
 
                         Address address = stack.PopAddress();
@@ -1577,7 +1577,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.SSTORE:
                     {
-                        if(stack.PopUInt256(out result)) goto OutOfGas;
+                        if (stack.PopUInt256(out result)) goto OutOfGas;
                         ReadOnlySpan<byte> bytesSpan = stack.PopWord256();
                         exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, _state, ref gasAvailable, ref result, ref bytesSpan, spec, _txTracer);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
