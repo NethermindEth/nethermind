@@ -213,23 +213,28 @@ public class TalkReqHandler(
     private async Task RunOfferAccept(IEnr enr, Offer offer, BitArray accepted, ushort connectionId)
     {
         using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(_offerAcceptTimeout);
+        // cts.CancelAfter(_offerAcceptTimeout);
         var token =  cts.Token;
 
-        MemoryStream stream = new MemoryStream(); // TODO: Must it wait for all of it to download?
-        await utpManager.ReadContentFromUtp(enr, false, connectionId, stream, token);
-        stream = new MemoryStream(stream.ToArray()); // Wait... how to use this exactly?
-
-        for (var i = 0; i < offer.ContentKeys.Length; i++)
+        var pipe = new Pipe();
+        var writeTask = utpManager.ReadContentFromUtp(enr, false, connectionId, pipe.Writer.AsStream(), token);
+        var readTask = Task.Run(async () =>
         {
-            var contentKey = offer.ContentKeys[i];
-            if (!accepted[i]) continue;
+            var stream = pipe.Reader.AsStream();
 
-            ulong length = stream.ReadLEB128Unsigned();
-            byte[] buffer = new byte[length];
-            await stream.ReadAsync(buffer, token);
+            for (var i = 0; i < offer.ContentKeys.Length; i++)
+            {
+                var contentKey = offer.ContentKeys[i];
+                if (!accepted[i]) continue;
 
-            store.Store(contentKey, buffer);
-        }
+                ulong length = stream.ReadLEB128Unsigned();
+                byte[] buffer = new byte[length];
+                await stream.ReadExactlyAsync(buffer, token);
+
+                store.Store(contentKey, buffer);
+            }
+        }, token);
+
+        await Task.WhenAll(writeTask, readTask);
     }
 }

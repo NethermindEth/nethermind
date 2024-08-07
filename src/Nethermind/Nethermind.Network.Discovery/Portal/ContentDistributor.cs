@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Pipelines;
 using Lantern.Discv5.Enr;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -134,15 +135,19 @@ public class ContentDistributor : IContentDistributor
 
         var responseByte = await _transport.CallAndWaitForResponse(enr, _config.ProtocolId, message, token);
 
-        var accept = SlowSSZ.Deserialize<MessageUnion>(responseByte).Accept;
+        Accept? accept = SlowSSZ.Deserialize<MessageUnion>(responseByte).Accept;
         if (accept == null) return;
         if (accept.AcceptedBits.Length == 0 || !accept.AcceptedBits[0]) return;
 
-        MemoryStream toSendStream = new MemoryStream();
-        toSendStream.WriteLEB128Unsigned((ulong)content.Length);
-        toSendStream.Write(content);
-        toSendStream = new MemoryStream(toSendStream.ToArray());
+        var pipe = new Pipe();
+        var writeTask = Task.Run(() =>
+        {
+            Stream stream = pipe.Writer.AsStream();
+            stream.WriteLEB128Unsigned((ulong)content.Length);
+            stream.Write(content);
+        }, cts.Token);
 
-        await _utpManager.WriteContentToUtp(enr, true, accept.ConnectionId, toSendStream, token);
+        Task readTask = _utpManager.WriteContentToUtp(enr, true, accept.ConnectionId, pipe.Reader.AsStream(), token);
+        await Task.WhenAll(writeTask, readTask);
     }
 }
