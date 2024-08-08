@@ -19,6 +19,8 @@ namespace Nethermind.Network.Discovery;
 /// </summary>
 public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
 {
+    private const int MaxMessagesBuffered = 1024;
+
     private readonly ILogger _logger;
     private readonly Channel<UdpReceiveResult> _inboundQueue;
 
@@ -27,7 +29,7 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
     public NettyDiscoveryV5Handler(ILogManager loggerManager) : base(loggerManager)
     {
         _logger = loggerManager.GetClassLogger<NettyDiscoveryV5Handler>();
-        _inboundQueue = Channel.CreateUnbounded<UdpReceiveResult>();
+        _inboundQueue = Channel.CreateBounded<UdpReceiveResult>(MaxMessagesBuffered);
     }
 
     public void InitializeChannel(IChannel channel) => _nettyChannel = channel;
@@ -35,12 +37,13 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
         var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
-        _inboundQueue.Writer.TryWrite(udpPacket);
+        if (!_inboundQueue.Writer.TryWrite(udpPacket) && _logger.IsWarn)
+            _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
     }
 
     public async Task SendAsync(byte[] data, IPEndPoint destination)
     {
-        if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized.");
+        if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized");
 
         var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), destination);
 
@@ -50,7 +53,7 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
         }
         catch (SocketException exception)
         {
-            if (_logger.IsError) _logger.Error($"Error sending data", exception);
+            if (_logger.IsError) _logger.Error("Error sending data", exception);
             throw;
         }
     }
