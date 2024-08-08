@@ -42,7 +42,7 @@ public class ShutterBlockHandler(
 
             if (head.Hash is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Head block hash was null, cannot load Shutter transactions.");
+                _logger.Warn("Head block hash was null, cannot load Shutter transactions.");
                 return;
             }
 
@@ -66,11 +66,11 @@ public class ShutterBlockHandler(
         ValidatorRegistryContract validatorRegistryContract = new(processor, abiEncoder, new(validatorRegistryContractAddress), _logger, chainId, validatorRegistryMessageVersion);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
-            if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");
+            _logger.Info($"All Shutter validator keys are registered.");
         }
         else
         {
-            if (_logger.IsError) _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
+            _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
         }
     }
 

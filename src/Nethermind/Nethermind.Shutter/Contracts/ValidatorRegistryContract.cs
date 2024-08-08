@@ -64,31 +64,31 @@ public class ValidatorRegistryContract(
 
             if (msg.Version != messageVersion)
             {
-                if (logger.IsDebug) logger.Debug($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
+                logger.Debug($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
                 continue;
             }
 
             if (msg.ChainId != chainId)
             {
-                if (logger.IsDebug) logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
+                logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
                 continue;
             }
 
             if (!msg.ContractAddress.SequenceEqual(ContractAddress!.Bytes))
             {
-                if (logger.IsDebug) logger.Debug($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
+                logger.Debug($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
                 continue;
             }
 
             if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
             {
-                if (logger.IsDebug) logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
+                logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
                 continue;
             }
 
             if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo[msg.ValidatorIndex], update.Signature, update.Message))
             {
-                if (logger.IsDebug) logger.Debug("Registration message has invalid signature.");
+                logger.Debug("Registration message has invalid signature.");
                 continue;
             }
 

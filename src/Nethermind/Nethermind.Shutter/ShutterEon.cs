@@ -61,21 +61,21 @@ public class ShutterEon(
                         Addresses = addresses
                     };
 
-                    if (logger.IsInfo) logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
+                    logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
                 }
                 else
                 {
-                    if (logger.IsError) logger.Error("Cannot use unfinalised Shutter keyper set contract.");
+                    logger.Error("Cannot use unfinalised Shutter keyper set contract.");
                 }
             }
         }
         catch (AbiException e)
         {
-            if (logger.IsError) logger.Error($"Error when calling Shutter Keyper contracts.", e);
+            logger.Error($"Error when calling Shutter Keyper contracts.", e);
         }
         catch (Bls.Exception e)
         {
-            if (logger.IsError) logger.Error($"Invalid Shutter Eon key ", e);
+            logger.Error($"Invalid Shutter Eon key ", e);
         }
     }
 

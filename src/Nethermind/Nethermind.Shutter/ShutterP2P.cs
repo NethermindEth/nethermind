@@ -66,7 +66,7 @@ public class ShutterP2P(
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
         ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + shutterConfig.P2PPort);
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {peer.Address}");
+        _logger.Info($"Started Shutter P2P: {peer.Address}");
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
         ITopic topic = _router.Subscribe("decryptionKeys");
@@ -74,7 +74,7 @@ public class ShutterP2P(
         topic.OnMessage += (byte[] msg) =>
         {
             _msgQueue.Writer.TryWrite(msg);
-            if (_logger.IsTrace) _logger.Trace("Received Shutter P2P message.");
+            _logger.Trace("Received Shutter P2P message.");
         };
 
         MyProto proto = new();
@@ -101,18 +101,18 @@ public class ShutterP2P(
                 {
                     if (_cancellationTokenSource.IsCancellationRequested)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
+                        _logger.Info($"Shutting down Shutter P2P...");
                         break;
                     }
                     else
                     {
                         long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-                        if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
+                        _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                     }
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error("Shutter processing thread error", e);
+                    _logger.Error("Shutter processing thread error", e);
                     throw new ShutterP2PException("Shutter processing thread error", e);
                 }
             }
@@ -143,7 +143,7 @@ public class ShutterP2P(
 
     internal void ProcessP2PMessage(byte[] msg)
     {
-        if (_logger.IsTrace) _logger.Trace("Processing Shutter P2P message.");
+        _logger.Trace("Processing Shutter P2P message.");
 
         try
         {
@@ -154,12 +154,12 @@ public class ShutterP2P(
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Could not parse Shutter decryption keys: protobuf type names did not match.");
+                _logger.Debug($"Could not parse Shutter decryption keys: protobuf type names did not match.");
             }
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Could not parse Shutter decryption keys: {e}");
+            _logger.Debug($"Could not parse Shutter decryption keys: {e}");
         }
     }
 

@@ -86,7 +86,7 @@ public class SequencerContract : Contract
             }
             catch (ResourceNotFoundException e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot fetch Shutter events from logs: {e}");
+                _logger.Warn($"Cannot fetch Shutter events from logs: {e}");
                 break;
             }
 
@@ -126,7 +126,7 @@ public class SequencerContract : Contract
             logCount++;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Found {eventCount} Shutter events from {logCount} logs in block range {startBlock} - {endBlock}");
+        _logger.Debug($"Found {eventCount} Shutter events from {logCount} logs in block range {startBlock} - {endBlock}");
 
         return events;
     }

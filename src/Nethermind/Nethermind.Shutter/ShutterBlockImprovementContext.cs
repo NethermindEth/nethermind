@@ -102,19 +102,19 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             catch (ShutterHelpers.ShutterSlotCalulationException e)
             {
 
-                if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
+                _logger.Warn($"Could not calculate Shutter building slot: {e}");
                 return CurrentBestBlock;
             }
 
             long waitTime = shutterConfig.MaxKeyDelay - offset;
             if (waitTime <= 0)
             {
-                if (_logger.IsDebug) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
+                _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
                 return CurrentBestBlock;
             }
             waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
 
-            if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
+            _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
             using var timeoutSource = new CancellationTokenSource((int)waitTime);
             using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
