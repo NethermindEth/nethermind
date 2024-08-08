@@ -52,7 +52,7 @@ public class ShutterTxLoader(
 
         long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
-        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {slot} at time {offsetText} slot start...");
+        _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {slot} at time {offsetText} slot start...");
 
         Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
 
@@ -98,7 +98,7 @@ public class ShutterTxLoader(
                     }
                 }
                 // todo: make debug
-                if (_logger.IsInfo) _logger.Info($"Found {count} Shutter events in block {head.Number}, local tx pointer is {_txPointer}.");
+                _logger.Info($"Found {count} Shutter events in block {head.Number}, local tx pointer is {_txPointer}.");
             }
         }
     }
@@ -129,13 +129,13 @@ public class ShutterTxLoader(
 
         if (txCount < keyCount)
         {
-            if (_logger.IsError) _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
+            _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
             return [];
         }
 
         if (txCount > keyCount)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not decrypt all Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
+            _logger.Warn($"Could not decrypt all Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
             sequencedTransactions = sequencedTransactions[..keyCount];
             txCount = keyCount;
         }
@@ -168,13 +168,13 @@ public class ShutterTxLoader(
 
             if (!identity.is_equal(sequencedTransaction.Identity))
             {
-                if (_logger.IsDebug) _logger.Debug("Could not decrypt Shutter transaction: Transaction identity did not match decryption key.");
+                _logger.Debug("Could not decrypt Shutter transaction: Transaction identity did not match decryption key.");
                 return null;
             }
 
             byte[] encodedTransaction = ShutterCrypto.Decrypt(encryptedMessage, key);
 
-            if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
+            _logger.Debug($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
 
             // N.B. does not work with encodedTransaction.AsSpan()
             Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction);
@@ -216,12 +216,12 @@ public class ShutterTxLoader(
                 _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
                 _firstLoad = false;
                 // todo: make debug
-                if (_logger.IsInfo) _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
+                _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             else
             {
                 // todo: make debug
-                if (_logger.IsInfo) _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
+                _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             List<ISequencerContract.TransactionSubmitted> events = _transactionSubmittedEvents.ToList();
 
@@ -239,7 +239,7 @@ public class ShutterTxLoader(
 
                 if (totalGas + e.GasLimit > _encryptedGasLimit)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
+                    _logger.Debug("Shutter gas limit reached.");
                     yield break;
                 }
 
