@@ -28,13 +28,15 @@ namespace Nethermind.Core
         /// </summary>
         public TxType Type { get; set; }
 
-        // Optimism deposit transaction fields
-        // SourceHash uniquely identifies the source of the deposit
-        public Hash256? SourceHash { get; set; }
-        // Mint is minted on L2, locked on L1, nil if no minting.
-        public UInt256 Mint { get; set; }
-        // Field indicating if this transaction is exempt from the L2 gas limit.
-        public bool IsOPSystemTransaction { get; set; }
+        #region Optimism
+        // // Optimism deposit transaction fields
+        // // SourceHash uniquely identifies the source of the deposit
+        // public Hash256? SourceHash { get; set; }
+        // // Mint is minted on L2, locked on L1, nil if no minting.
+        // public UInt256 Mint { get; set; }
+        // // Field indicating if this transaction is exempt from the L2 gas limit.
+        // public bool IsOPSystemTransaction { get; set; }
+        #endregion
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
@@ -189,7 +191,7 @@ namespace Nethermind.Core
             return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray()?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
-        public string ToString(string indent)
+        public virtual string ToString(string indent)
         {
             StringBuilder builder = new();
             builder.AppendLine($"{indent}Hash:      {Hash}");
@@ -206,9 +208,9 @@ namespace Nethermind.Core
                 builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             }
 
-            builder.AppendLine($"{indent}SourceHash: {SourceHash}");
-            builder.AppendLine($"{indent}Mint:      {Mint}");
-            builder.AppendLine($"{indent}OpSystem:  {IsOPSystemTransaction}");
+            // builder.AppendLine($"{indent}SourceHash: {SourceHash}");
+            // builder.AppendLine($"{indent}Mint:      {Mint}");
+            // builder.AppendLine($"{indent}OpSystem:  {IsOPSystemTransaction}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
@@ -271,9 +273,9 @@ namespace Nethermind.Core
         {
             tx.ChainId = ChainId;
             tx.Type = Type;
-            tx.SourceHash = SourceHash;
-            tx.Mint = Mint;
-            tx.IsOPSystemTransaction = IsOPSystemTransaction;
+            // tx.SourceHash = SourceHash;
+            // tx.Mint = Mint;
+            // tx.IsOPSystemTransaction = IsOPSystemTransaction;
             tx.Nonce = Nonce;
             tx.GasPrice = GasPrice;
             tx.GasBottleneck = GasBottleneck;

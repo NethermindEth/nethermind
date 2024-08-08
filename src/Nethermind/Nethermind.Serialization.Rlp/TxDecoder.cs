@@ -6,7 +6,9 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Optimism;
 using Nethermind.Serialization.Rlp.Eip2930;
+using Nethermind.Serialization.Rlp.Optimism;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -61,7 +63,11 @@ namespace Nethermind.Serialization.Rlp
 
             Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
 
-            T transaction = NewTx();
+            T transaction = txType switch
+            {
+                TxType.DepositTx => new DepositTransaction() as T,
+                _ => NewTx()
+            };
             transaction.Type = txType;
 
             int positionAfterNetworkWrapper = 0;
@@ -91,7 +97,7 @@ namespace Nethermind.Serialization.Rlp
                     DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
-                    TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+                    OptimismTxDecoder.DecodeDepositPayloadWithoutSig(transaction as DepositTransaction, rlpStream, rlpBehaviors);
                     break;
             }
 
@@ -238,18 +244,6 @@ namespace Nethermind.Serialization.Rlp
             transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
         }
 
-        private static void DecodeDepositPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-        {
-            transaction.SourceHash = rlpStream.DecodeKeccak();
-            transaction.SenderAddress = rlpStream.DecodeAddress();
-            transaction.To = rlpStream.DecodeAddress();
-            transaction.Mint = rlpStream.DecodeUInt256();
-            transaction.Value = rlpStream.DecodeUInt256();
-            transaction.GasLimit = rlpStream.DecodeLong();
-            transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
-            transaction.Data = rlpStream.DecodeByteArray();
-        }
-
         private static void DecodeLegacyPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.Nonce = decoderContext.DecodeUInt256();
@@ -308,18 +302,6 @@ namespace Nethermind.Serialization.Rlp
             transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
         }
 
-        private static void DecodeDepositPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
-        {
-            transaction.SourceHash = decoderContext.DecodeKeccak();
-            transaction.SenderAddress = decoderContext.DecodeAddress();
-            transaction.To = decoderContext.DecodeAddress();
-            transaction.Mint = decoderContext.DecodeUInt256();
-            transaction.Value = decoderContext.DecodeUInt256();
-            transaction.GasLimit = decoderContext.DecodeLong();
-            transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
-            transaction.Data = decoderContext.DecodeByteArray();
-        }
-
         private static void EncodeLegacyWithoutPayload(T item, RlpStream stream)
         {
             stream.Encode(item.Nonce);
@@ -370,18 +352,6 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.BlobVersionedHashes);
         }
 
-        private static void EncodeDepositTxPayloadWithoutPayload(T item, RlpStream stream)
-        {
-            stream.Encode(item.SourceHash);
-            stream.Encode(item.SenderAddress);
-            stream.Encode(item.To);
-            stream.Encode(item.Mint);
-            stream.Encode(item.Value);
-            stream.Encode(item.GasLimit);
-            stream.Encode(item.IsOPSystemTransaction);
-            stream.Encode(item.Data);
-        }
-
         // b9018201f9017e86796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f90111f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144
         // b8__ca01f8__c786796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f8__5bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144000000
 
@@ -406,12 +376,10 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            transaction ??= NewTx();
-            transaction.Type = TxType.Legacy;
-
             int txSequenceStart = decoderContext.Position;
             ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
+            TxType txType = TxType.Legacy;
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
                 byte firstByte = decoderContext.PeekByte();
@@ -419,7 +387,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     txSequenceStart = decoderContext.Position;
                     transactionSequence = decoderContext.Peek(decoderContext.Length);
-                    transaction.Type = (TxType)decoderContext.ReadByte();
+                    txType = (TxType)decoderContext.ReadByte();
                 }
             }
             else
@@ -430,9 +398,16 @@ namespace Nethermind.Serialization.Rlp
                         decoderContext.ReadPrefixAndContentLength();
                     txSequenceStart = decoderContext.Position;
                     transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
-                    transaction.Type = (TxType)decoderContext.ReadByte();
+                    txType = (TxType)decoderContext.ReadByte();
                 }
             }
+
+            transaction = txType switch
+            {
+                TxType.DepositTx => new DepositTransaction() as T,
+                _ => NewTx()
+            };
+            transaction.Type = txType;
 
             int networkWrapperCheck = 0;
             if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
@@ -462,7 +437,7 @@ namespace Nethermind.Serialization.Rlp
                     DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
-                    TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+                    OptimismTxDecoder.DecodeDepositPayloadWithoutSig(transaction as DepositTransaction, ref decoderContext, rlpBehaviors);
                     break;
             }
 
@@ -660,7 +635,7 @@ namespace Nethermind.Serialization.Rlp
                     EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
-                    TxDecoder<T>.EncodeDepositTxPayloadWithoutPayload(item, stream);
+                    OptimismTxDecoder.EncodeDepositTxPayloadWithoutPayload(item as DepositTransaction, stream);
                     break;
             }
 
@@ -776,18 +751,6 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(networkWrapper.Proofs);
         }
 
-        private static int GetDepositTxContentLength(T item)
-        {
-            return Rlp.LengthOf(item.SourceHash)
-                   + Rlp.LengthOf(item.SenderAddress)
-                   + Rlp.LengthOf(item.To)
-                   + Rlp.LengthOf(item.Mint)
-                   + Rlp.LengthOf(item.Value)
-                   + Rlp.LengthOf(item.GasLimit)
-                   + Rlp.LengthOf(item.IsOPSystemTransaction)
-                   + Rlp.LengthOf(item.Data);
-        }
-
         private int GetContentLength(T item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0,
             bool withNetworkWrapper = false)
         {
@@ -808,7 +771,7 @@ namespace Nethermind.Serialization.Rlp
                     contentLength = GetShardBlobContentLength(item);
                     break;
                 case TxType.DepositTx:
-                    contentLength = TxDecoder<T>.GetDepositTxContentLength(item);
+                    OptimismTxDecoder.GetDepositTxContentLength(item as DepositTransaction);
                     break;
             }
 
