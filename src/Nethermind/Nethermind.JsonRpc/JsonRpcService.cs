@@ -148,7 +148,7 @@ public class JsonRpcService : IJsonRpcService
         bool hasMissing = false;
         if (method.ExpectedParameters.Length > 0)
         {
-            (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParameters, missingParamsCount);
+            (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, missingParamsCount);
             if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
@@ -318,22 +318,25 @@ public class JsonRpcService : IJsonRpcService
         return executionParam;
     }
 
-    private (object[]? parameters, bool hasMissing) DeserializeParameters(ExpectedParameter[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
+    private (object[]? parameters, bool hasMissing) DeserializeParameters(
+        ExpectedParameter[] expectedParameters,
+        int providedParametersLength,
+        JsonElement providedParameters,
+        int missingParamsCount)
     {
         const int parallelThreshold = 4;
         try
         {
             bool hasMissing = false;
-            int arrayLength = providedParameters.GetArrayLength();
-            int totalLength = arrayLength + missingParamsCount;
+            int totalLength = providedParametersLength + missingParamsCount;
 
             if (totalLength == 0) return (Array.Empty<object>(), false);
 
             object[] executionParameters = new object[totalLength];
 
-            if (arrayLength <= parallelThreshold)
+            if (providedParametersLength <= parallelThreshold)
             {
-                for (int i = 0; i < arrayLength; i++)
+                for (int i = 0; i < providedParametersLength; i++)
                 {
                     JsonElement providedParameter = providedParameters[i];
                     ExpectedParameter expectedParameter = expectedParameters[i];
@@ -346,9 +349,9 @@ public class JsonRpcService : IJsonRpcService
                     }
                 }
             }
-            else if (arrayLength > parallelThreshold)
+            else if (providedParametersLength > parallelThreshold)
             {
-                Parallel.For(0, arrayLength, (int i) =>
+                Parallel.For(0, providedParametersLength, (int i) =>
                 {
                     JsonElement providedParameter = providedParameters[i];
                     ExpectedParameter expectedParameter = expectedParameters[i];
@@ -362,11 +365,11 @@ public class JsonRpcService : IJsonRpcService
                 });
             }
 
-            for (int i = arrayLength; i < totalLength; i++)
+            for (int i = providedParametersLength; i < totalLength; i++)
             {
                 executionParameters[i] = Type.Missing;
             }
-            hasMissing |= arrayLength < totalLength;
+            hasMissing |= providedParametersLength < totalLength;
             return (executionParameters, hasMissing);
         }
         catch (Exception e)
