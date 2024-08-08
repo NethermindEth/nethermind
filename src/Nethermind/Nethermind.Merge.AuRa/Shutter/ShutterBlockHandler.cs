@@ -9,6 +9,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Receipts;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -16,17 +17,21 @@ public class ShutterBlockHandler(
     ulong chainId,
     string validatorRegistryContractAddress,
     ulong validatorRegistryMessageVersion,
-    ReadOnlyTxProcessingEnvFactory envFactory, IAbiEncoder abiEncoder,
+    ReadOnlyTxProcessingEnvFactory envFactory,
+    IAbiEncoder abiEncoder,
+    IReceiptFinder receiptFinder,
     Dictionary<ulong, byte[]> validatorsInfo,
     ShutterEon eon,
+    ShutterTxLoader txLoader,
     ILogManager logManager) : IShutterBlockHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(10);
     private bool _haveCheckedRegistered = false;
+
     public void OnNewHeadBlock(Block head)
     {
-        int headerAge = (int)(head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds());
-        if (headerAge < 10)
+        if (IsBlockUpToDate(head))
         {
             if (!_haveCheckedRegistered)
             {
@@ -34,8 +39,19 @@ public class ShutterBlockHandler(
                 _haveCheckedRegistered = true;
             }
             eon.Update(head.Header);
+
+            if (head.Hash is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Head block hash was null, cannot load Shutter transactions.");
+                return;
+            }
+
+            txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
         }
     }
+
+    private bool IsBlockUpToDate(Block head)
+        => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < _upToDateCutoff.TotalSeconds;
 
     private void CheckAllValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo)
     {

@@ -22,9 +22,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Consensus.Processing;
 using Multiformats.Address;
 using Nethermind.Serialization.Json;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Merge.AuRa.Shutter.Contracts;
-using Nethermind.Logging;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -137,14 +134,14 @@ namespace Nethermind.Merge.AuRa
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
                 ShutterEon eon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, logger);
-                ShutterBlockHandler blockHandler = new(_api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryContractAddress!, _shutterConfig.ValidatorRegistryMessageVersion, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, validatorsInfo, eon, _api.LogManager);
+                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
+                ShutterBlockHandler blockHandler = new(_api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryContractAddress!, _shutterConfig.ValidatorRegistryMessageVersion, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _api.ReceiptFinder!, validatorsInfo, eon, txLoader, _api.LogManager);
                 _newHeadBlockHandler = (_, e) =>
                 {
                     blockHandler.OnNewHeadBlock(e.Block);
                 };
                 _api.BlockTree!.NewHeadBlock += _newHeadBlockHandler;
 
-                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
                 _shutterTxSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
                 ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, eon, _api.LogManager);
