@@ -14,13 +14,18 @@ public static class ConfigExtensions
 
     public static string GetCategoryName(Type type)
     {
+        if (type.IsAssignableTo(typeof(INoCategoryConfig)))
+            return null;
+
         string categoryName = type.Name.RemoveEnd("Config");
         if (type.IsInterface) categoryName = categoryName.RemoveStart('I');
         return categoryName;
     }
 
     public static void AddPortOptionName(Type categoryType, string optionName) =>
-        PortOptions.Add($"{GetCategoryName(categoryType)}.{optionName}");
+        PortOptions.Add(GetCategoryName(categoryType) is { } categoryName
+            ? $"{categoryName}.{optionName}"
+            : optionName);
 
     public static IEnumerable<string> GetPortOptionNames() =>
         PortOptions;
