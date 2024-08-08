@@ -6,10 +6,8 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Shutter.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Serialization.Json;
 using Multiformats.Address;
 

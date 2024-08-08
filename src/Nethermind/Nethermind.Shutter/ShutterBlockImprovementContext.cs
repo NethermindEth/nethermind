@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Specs;
 using System;
 using System.Threading;
