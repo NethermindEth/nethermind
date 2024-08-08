@@ -19,9 +19,9 @@ public static class NetworkHelper
         switch (exception)
         {
             case SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied }:
-                return ports != null ? new(ports) : new(urls!);
+                return ports != null ? new(exception, ports) : new(exception, urls!);
             case IOException { Source: "Grpc.Core" } when exception.Message.Contains("Failed to bind port"):
-                return ports != null ? new(ports) : new(urls!);
+                return ports != null ? new(exception, ports) : new(exception, urls!);
             default:
                 ExceptionDispatchInfo.Throw(exception);
                 throw exception; // Make compiler happy, should never execute

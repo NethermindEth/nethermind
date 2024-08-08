@@ -10,14 +10,15 @@ namespace Nethermind.Network;
 
 public class PortInUseException : IOException
 {
-    public PortInUseException(params int[] ports) : base(
+    public PortInUseException(Exception exception, params int[] ports) : base(
         $"{GetReason(ports)} " +
         "If you intend to run 2 or more nodes on one machine, ensure you have changed all configured ports under: " +
-        $"{"\n\t" + string.Join("\n\t", ConfigExtensions.GetPortOptionNames())}"
+        $"{"\n\t" + string.Join("\n\t", ConfigExtensions.GetPortOptionNames())}",
+        exception
     )
     { }
 
-    public PortInUseException(params string[] urls) : this(GetPorts(urls)) { }
+    public PortInUseException(Exception exception, params string[] urls) : this(exception, GetPorts(urls)) { }
 
     private static int[] GetPorts(string[] urls) => urls.Select(u => new Uri(u).Port).ToArray();
 
