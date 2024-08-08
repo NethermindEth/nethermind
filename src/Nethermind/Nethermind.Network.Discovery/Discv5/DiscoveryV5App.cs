@@ -31,7 +31,7 @@ namespace Nethermind.Network.Discovery;
 public class DiscoveryV5App : IDiscoveryApp
 {
     private readonly IDiscv5Protocol _discv5Protocol;
-    private readonly IApiWithNetwork _api;
+    private readonly IPeerManager? _peerManager;
     private readonly Logging.ILogger _logger;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly IDb _discoveryDb;
@@ -40,12 +40,14 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, IPeerManager? peerManager, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
     {
+        ArgumentNullException.ThrowIfNull(ipResolver);
+
         _logger = logManager.GetClassLogger();
         _discoveryConfig = discoveryConfig;
         _discoveryDb = discoveryDb;
-        _api = api;
+        _peerManager = peerManager;
 
         IdentityVerifierV4 identityVerifier = new();
 
@@ -78,7 +80,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
             .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
-            .WithEntry(EnrEntryKey.Ip, new EntryIp(_api.IpResolver!.ExternalIp))
+            .WithEntry(EnrEntryKey.Ip, new EntryIp(ipResolver.ExternalIp))
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
 
@@ -294,7 +296,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
             }
 
-            if (_api.PeerManager?.ActivePeers is { Count: > 0 })
+            if (_peerManager?.ActivePeers is { Count: > 0 })
             {
                 await Task.Delay(_discoveryConfig.DiscoveryInterval, _appShutdownSource.Token);
             }
@@ -303,12 +305,12 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public async Task StopAsync()
     {
-        if (_api.PeerManager is null)
+        if (_peerManager is null)
         {
             return;
         }
 
-        HashSet<EntrySecp256K1> activeNodes = _api.PeerManager.ActivePeers.Select(x => new EntrySecp256K1(Context.Instance.CreatePubKey(x.Node.Id.PrefixedBytes).ToBytes(false)))
+        HashSet<EntrySecp256K1> activeNodes = _peerManager.ActivePeers.Select(x => new EntrySecp256K1(Context.Instance.CreatePubKey(x.Node.Id.PrefixedBytes).ToBytes(false)))
                                                                           .ToHashSet(new EntrySecp256K1EqualityComparer());
 
         IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes.Where(x => activeNodes.Contains(x.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1)));

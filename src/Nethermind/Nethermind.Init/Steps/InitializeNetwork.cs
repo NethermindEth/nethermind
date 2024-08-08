@@ -298,9 +298,13 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
+        _api.DiscoveryApp = new CompositeDiscoveryApp(_api.NodeKey,
+            _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
+            _api.EthereumEcdsa, _api.MessageSerializationService,
+            _api.LogManager, _api.Timestamper, _api.CryptoRandom,
+            _api.NodeStatsManager, _api.IpResolver, _api.PeerManager
+        );
 
-        _api.DiscoveryApp = new CompositeDiscoveryApp(_api, _logger, privateKeyProvider);
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
     }
 
