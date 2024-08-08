@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Linq;
 using System.Reflection;
 
 namespace Nethermind.Config;
 public static class ConfigExtensions
 {
-    // TODO Check if all usages are thread safe
-    private static readonly HashSet<string> PortOptions = new();
+    private static readonly ConcurrentDictionary<string, bool> PortOptions = new();
 
     public static string GetCategoryName(Type type)
     {
@@ -23,12 +23,13 @@ public static class ConfigExtensions
     }
 
     public static void AddPortOptionName(Type categoryType, string optionName) =>
-        PortOptions.Add(GetCategoryName(categoryType) is { } categoryName
-            ? $"{categoryName}.{optionName}"
-            : optionName);
+        PortOptions.TryAdd(
+            GetCategoryName(categoryType) is { } categoryName ? $"{categoryName}.{optionName}" : optionName,
+            true
+        );
 
-    public static IEnumerable<string> GetPortOptionNames() =>
-        PortOptions;
+    public static string[] GetPortOptionNames() =>
+        PortOptions.Keys.OrderByDescending(x => x).ToArray();
 
     public static T GetDefaultValue<T>(this IConfig config, string propertyName)
     {
