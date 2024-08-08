@@ -7,12 +7,15 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Shutter;
 using Nethermind.Shutter.Config;
 using Nethermind.Merge.AuRa;
+using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Consensus.Processing;
 using Multiformats.Address;
@@ -23,63 +26,71 @@ using Nethermind.Logging;
 
 namespace Nethermind.Shutter
 {
-    /// <summary>
-    /// Plugin for AuRa -> PoS migration
-    /// </summary>
-    /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class ShutterMergePlugin : AuRaMergePlugin
+    public class ShutterPlugin : IConsensusWrapperPlugin
     {
+        public string Name => "Shutter";
+        public string Description => "Shutter plugin for AuRa post-merge chains";
+        public string Author => "Nethermind";
+        public bool Enabled => _shutterConfig!.Enabled && _mergeConfig!.Enabled &&
+                                           _api!.ChainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
+
+        private INethermindApi? _api = null!;
+        private IMergeConfig? _mergeConfig = null!;
         private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
         private EventHandler<BlockEventArgs>? _eonUpdateHandler;
         private ShutterTxSource? _shutterTxSource = null;
 
-        public override string Name => "ShutterMerge";
-        public override string Description => "Shutter Merge plugin for AuRa";
-        protected override bool MergeEnabled => ShouldRunSteps(_api);
-
         public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-        public override async Task Init(INethermindApi nethermindApi)
+        public Task Init(INethermindApi nethermindApi)
         {
-            await base.Init(nethermindApi);
+            _api = nethermindApi;
+            _mergeConfig = _api.Config<IMergeConfig>();
             _shutterConfig = _api.Config<IShutterConfig>();
+            return Task.CompletedTask;
         }
 
-        public new Task InitRpcModules()
+        public Task InitRpcModules()
         {
-            IBlockImprovementContextFactory? blockImprovementContextFactory = null;
-            if (_shutterConfig!.Enabled)
-            {
-                blockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
-                    _api.BlockProducer!,
-                    _shutterTxSource!,
-                    _shutterConfig,
-                    _api.SpecProvider!,
-                    _api.LogManager);
-            }
-            base.InitRpcModulesInternal(blockImprovementContextFactory, false);
+            // todo: how to do this?
+            // IBlockImprovementContextFactory? blockImprovementContextFactory = null;
+            // if (_shutterConfig!.Enabled)
+            // {
+            //     blockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
+            //         _api.BlockProducer!,
+            //         _shutterTxSource!,
+            //         _shutterConfig,
+            //         _api.SpecProvider!,
+            //         _api.LogManager);
+            // }
+            // base.InitRpcModulesInternal(blockImprovementContextFactory, false);
             return Task.CompletedTask;
         }
 
 
-        protected override BlockProducerEnv CreateBlockProducerEnv()
+        public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
-            Debug.Assert(_api?.BlockProducerEnvFactory is not null,
-                $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
-
-            Logging.ILogger logger = _api.LogManager.GetClassLogger();
-
-            if (_shutterConfig!.Enabled)
+            if (Enabled)
             {
-                ShutterHelpers.ValidateConfig(_shutterConfig);
+                if (_api!.AbiEncoder is null) throw new ArgumentNullException(nameof(_api.AbiEncoder));
+                if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_api.LogFinder is null) throw new ArgumentNullException(nameof(_api.LogFinder));
+                if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
+                if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
+
+                Logging.ILogger logger = _api.LogManager.GetClassLogger();
+
+                ShutterHelpers.ValidateConfig(_shutterConfig!);
 
                 Dictionary<ulong, byte[]> validatorsInfo = [];
-                if (_shutterConfig.ValidatorInfoFile is not null)
+                if (_shutterConfig!.ValidatorInfoFile is not null)
                 {
                     try
                     {
-                        validatorsInfo = ShutterHelpers.LoadValidatorInfo(_shutterConfig.ValidatorInfoFile);
+                        validatorsInfo = ShutterHelpers.LoadValidatorInfo(_shutterConfig!.ValidatorInfoFile);
                     }
                     catch (Exception e)
                     {
@@ -115,17 +126,17 @@ namespace Nethermind.Shutter
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses!);
             }
 
-            return _api.BlockProducerEnvFactory.Create(_shutterTxSource);
+            return consensusPlugin.InitBlockProducer(_shutterTxSource.Then(txSource));
         }
 
-        public override async ValueTask DisposeAsync()
+
+        public async ValueTask DisposeAsync()
         {
             if (_eonUpdateHandler is not null)
             {
-                _api.BlockTree!.NewHeadBlock -= _eonUpdateHandler;
+                _api!.BlockTree!.NewHeadBlock -= _eonUpdateHandler;
             }
             await (_shutterP2P?.DisposeAsync() ?? default);
-            await base.DisposeAsync();
         }
 
         private void CheckValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo, ReadOnlyTxProcessingEnvFactory envFactory, ILogger logger)
@@ -138,7 +149,7 @@ namespace Nethermind.Shutter
             IReadOnlyTxProcessingScope scope = envFactory.Create().Build(parent.StateRoot!);
             ITransactionProcessor processor = scope.TransactionProcessor;
 
-            ValidatorRegistryContract validatorRegistryContract = new(processor, _api.AbiEncoder!, new(_shutterConfig!.ValidatorRegistryContractAddress!), logger, _api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryMessageVersion);
+            ValidatorRegistryContract validatorRegistryContract = new(processor, _api!.AbiEncoder!, new(_shutterConfig!.ValidatorRegistryContractAddress!), logger, _api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryMessageVersion);
             if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
             {
                 if (logger.IsInfo) logger.Info($"All Shutter validators are registered.");

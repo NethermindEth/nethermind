@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -31,12 +31,9 @@ namespace Nethermind.Merge.AuRa
 
         public override async Task Init(INethermindApi nethermindApi)
         {
-            _api = nethermindApi;
-            _mergeConfig = _api.Config<IMergeConfig>();
-
             if (MergeEnabled)
             {
-                await base.Init(_api);
+                await base.Init(nethermindApi);
                 _auraApi = (AuRaNethermindApi)_api;
                 _auraApi.PoSSwitcher = _poSSwitcher;
 
@@ -73,14 +70,6 @@ namespace Nethermind.Merge.AuRa
                 _manualTimestamper!,
                 _blocksConfig,
                 _api.LogManager);
-
-        protected override BlockProducerEnv CreateBlockProducerEnv()
-        {
-            Debug.Assert(_api?.BlockProducerEnvFactory is not null,
-                $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
-
-            return _api.BlockProducerEnvFactory.Create();
-        }
 
         public bool ShouldRunSteps(INethermindApi api)
         {
