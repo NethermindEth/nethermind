@@ -30,7 +30,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    [TestFixture, Parallelizable(ParallelScope.All), FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+    [TestFixture, Parallelizable(ParallelScope.Self)]
     public class Eth63ProtocolHandlerTests
     {
         private Context _ctx = null!;
@@ -41,11 +41,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             _ctx = new();
             _disposables = new();
-
-            // Dispose received messages
-            _ctx.Session
-                .When(s => s.DeliverMessage(Arg.Any<P2PMessage>()))
-                .Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
+            _ctx.Session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         }
 
         [TearDown]

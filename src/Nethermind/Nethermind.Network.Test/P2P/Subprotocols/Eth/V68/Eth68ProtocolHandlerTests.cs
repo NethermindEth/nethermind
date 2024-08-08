@@ -50,6 +50,7 @@ public class Eth68ProtocolHandlerTests
     private Eth68ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
     private ITimerFactory _timerFactory = null!;
+    private CompositeDisposable _disposables = null!;
 
     [SetUp]
     public void Setup()
@@ -58,9 +59,11 @@ public class Eth68ProtocolHandlerTests
 
         NetworkDiagTracer.IsEnabled = true;
 
+        _disposables = new();
         _session = Substitute.For<ISession>();
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
         _session.Node.Returns(node);
+        _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
         _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
@@ -99,6 +102,7 @@ public class Eth68ProtocolHandlerTests
         _handler?.Dispose();
         _session?.Dispose();
         _syncManager?.Dispose();
+        _disposables.Dispose();
     }
 
     [Test]

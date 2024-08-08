@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
@@ -62,6 +63,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private ISpecProvider _specProvider = null!;
         private Block _genesisBlock = null!;
         private Eth66ProtocolHandler _handler = null!;
+        private CompositeDisposable _disposables = null!;
 
         [SetUp]
         public void Setup()
@@ -70,9 +72,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             NetworkDiagTracer.IsEnabled = true;
 
+            _disposables = new();
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
+            _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
             _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
@@ -99,14 +103,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [TearDown]
         public void TearDown()
         {
-            // Dispose received messages
-            _session?.ReceivedCalls()
-                .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))
-                .ForEach(c => (c.GetArguments()[0] as P2PMessage)?.Dispose());
-
             _handler?.Dispose();
             _session?.Dispose();
             _syncManager?.Dispose();
+            _disposables?.Dispose();
         }
 
         [Test]
@@ -125,8 +125,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_block_headers()
         {
-            var msg62 = new GetBlockHeadersMessage();
-            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(1111, msg62);
+            using var msg62 = new GetBlockHeadersMessage();
+            using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
@@ -134,10 +134,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Can_handle_block_headers()
+        public async Task Can_handle_block_headers()
         {
-            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
-            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
+            using var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
+            using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockHeadersMessage>>())).Do(callInfo =>
             {
@@ -145,10 +145,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 msg66.RequestId = message.RequestId;
             });
 
-            ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None)
-                .ContinueWith(t => t.Result?.Dispose());
+            Task task = ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None).AddResultTo(_disposables);
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.BlockHeaders);
+            await task;
         }
 
         [Test]
@@ -174,7 +174,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Can_handle_block_bodies()
+        public async Task Can_handle_block_bodies()
         {
             using var msg62 = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage(1111, msg62);
@@ -186,9 +186,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             });
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None)
-                .ContinueWith(t => t.Result?.Dispose());
+            Task task = ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None).AddResultTo(_disposables);
             HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
+            await task;
         }
 
         [Test]
@@ -236,7 +236,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Can_handle_node_data()
+        public async Task Can_handle_node_data()
         {
             using var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
@@ -248,9 +248,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             });
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None)
-                .ContinueWith(t => t.Result?.Dispose());
+            Task task = ((ISyncPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None).AddResultTo(_disposables);
             HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
+            await task;
         }
 
         [Test]
@@ -276,7 +276,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Can_handle_receipts()
+        public async Task Can_handle_receipts()
         {
             using var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
@@ -288,16 +288,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             });
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetReceipts(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None)
-                .ContinueWith(t => t.Result?.Dispose());
+            Task task = ((ISyncPeer)_handler).GetReceipts(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None).AddResultTo(_disposables);
             HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
+            await task;
         }
 
         [Test]
         public void Should_throw_when_receiving_unrequested_receipts()
         {
-            var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
-            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
+            using var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
+            using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
@@ -327,7 +327,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);
 
-            ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+            using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
 
             for (int i = 0; i < numberOfTransactions; i++)
             {
@@ -354,7 +354,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
         private void HandleIncomingStatusMessage()
         {
-            var statusMsg = new StatusMessage();
+            using var statusMsg = new StatusMessage();
             statusMsg.GenesisHash = _genesisBlock.Hash;
             statusMsg.BestHash = _genesisBlock.Hash;
 
