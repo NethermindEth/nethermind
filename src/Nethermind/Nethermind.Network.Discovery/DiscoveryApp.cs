@@ -149,18 +149,21 @@ public class DiscoveryApp : IDiscoveryApp
         NetworkChange.NetworkAvailabilityChanged += ResetUnreachableStatus;
 
         IPAddress ip = IPAddress.Parse(_networkConfig.LocalIp!);
-        _bindingTask = bootstrap.BindAsync(ip, _networkConfig.DiscoveryPort)
-            .ContinueWith(
-                t
-                    =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error($"Error when establishing discovery connection on Address: {ip}({_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort})", t.Exception);
-                    }
+        _bindingTask = NetworkHelper.HandlePortTakenError(
+            () => bootstrap.BindAsync(ip, _networkConfig.DiscoveryPort),
+            _networkConfig.DiscoveryPort
+        ).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                _logger.Error(
+                    $"Error when establishing discovery connection on Address: {ip}({_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort})",
+                    t.Exception);
+                return null;
+            }
 
-                    return _channel = t.Result;
-                });
+            return _channel = t.Result;
+        });
     }
 
     private void ResetUnreachableStatus(object? sender, NetworkAvailabilityEventArgs e)

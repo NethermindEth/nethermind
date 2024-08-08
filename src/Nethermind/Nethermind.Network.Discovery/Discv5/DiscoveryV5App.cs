@@ -86,7 +86,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
 
-        _discv5Protocol = new Discv5ProtocolBuilder(services)
+        var builder = new Discv5ProtocolBuilder(services)
             .WithConnectionOptions(new ConnectionOptions
             {
                 UdpPort = networkConfig.DiscoveryPort,
@@ -94,9 +94,9 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
-            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
-            .Build();
+            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true));
 
+        _discv5Protocol = NetworkHelper.HandlePortTakenError(builder.Build, networkConfig.DiscoveryPort);
 
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
