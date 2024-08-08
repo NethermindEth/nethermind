@@ -10,6 +10,7 @@ using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Abi;
 using Nethermind.Core.Caching;
+using Nethermind.Blockchain.Receipts;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -17,7 +18,9 @@ public class ShutterBlockHandler(
     ulong chainId,
     string validatorRegistryContractAddress,
     ulong validatorRegistryMessageVersion,
-    ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder,
+    ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+    IAbiEncoder abiEncoder,
+    IReceiptFinder receiptFinder,
     Dictionary<ulong, byte[]> validatorsInfo,
     ShutterEon eon,
     ShutterTxLoader txLoader,
@@ -26,7 +29,6 @@ public class ShutterBlockHandler(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(10);
     private bool _haveCheckedRegistered = false;
-    private readonly LruCache<Core.Crypto.Hash256, TxReceipt[]> _receiptsCache = new(10, "Receipts cache");
 
     public void OnNewHeadBlock(Block head)
     {
@@ -45,21 +47,7 @@ public class ShutterBlockHandler(
                 return;
             }
 
-            if (!_receiptsCache.TryGet(head.Hash, out TxReceipt[] receipts))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Could not find receipts in cache for new head block ({head.Hash}), cannot load Shutter events.");
-                return;
-            }
-
-            txLoader.LoadFromReceipts(head, receipts);
-        }
-    }
-
-    public void OnBlockProcessed(Block block, TxReceipt[] receipts)
-    {
-        if (IsBlockUpToDate(block) && block.Hash is not null)
-        {
-            _receiptsCache.Set(block.Hash, receipts);
+            txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
         }
     }
 
