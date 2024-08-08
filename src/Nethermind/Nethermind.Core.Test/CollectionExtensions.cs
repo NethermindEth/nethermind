@@ -15,13 +15,13 @@ public static class CollectionExtensions
         return value;
     }
 
-    public static Task<TValue> AddResultTo<TValue, TCollection>(this Task<TValue> task, ICollection<TCollection> disposables)
+    public static Task<TValue> AddResultTo<TValue, TCollection>(this Task<TValue> task, ICollection<TCollection> collection)
         where TValue : TCollection
     {
         return task.ContinueWith(t =>
         {
             if (t is { IsCompletedSuccessfully: true, Result: { } value })
-                value.AddTo(disposables);
+                value.AddTo(collection);
             return t.Result;
         });
     }
