@@ -63,15 +63,18 @@ public interface IRawState : IReadOnlyState
     void SetStorage(ValueHash256 accountHash, ValueHash256 storageSlotHash, ReadOnlySpan<byte> encodedValue);
     void SetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
     void Commit(bool ensureHash);
-    ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength);
+    ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength, bool ignoreCache);
     ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength);
-    void CheckBoundaryProof(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength);
+    void RemoveBoundaryProof(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength);
+    void RemoveBoundaryProof(ReadOnlySpan<byte> path, int pathLength);
 
     void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
         byte[] childNibbles, Hash256[] childHashes);
 
     void CreateProofExtension(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
         int extPathLength);
+
+    void CreateProofLeaf(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, int leafKeyIndex);
 
     void Finalize(uint blockNumber);
     string DumpTrie();

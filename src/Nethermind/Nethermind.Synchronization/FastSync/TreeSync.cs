@@ -386,10 +386,12 @@ namespace Nethermind.Synchronization.FastSync
                 // it finished downloading
                 rootNodeKeyExists = _nodeStorage.KeyExists(null, TreePath.Empty, _rootNode);
                 //rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
-                //using var rawState = _stateFactory.GetRaw();
-                //var hash = rawState.GetHash(ReadOnlySpan<byte>.Empty, 0);
+                {
+                    using var rawState = _stateFactory.GetRaw();
+                    var hash = rawState.GetHash(ReadOnlySpan<byte>.Empty, 0, false);
+                    rootNodeKeyExists = hash == _rootNode;
+                }
                 //rootNodeKeyExists = hash != Keccak.EmptyTreeHash;
-                rootNodeKeyExists = false;
             }
             catch (ObjectDisposedException)
             {
@@ -560,7 +562,7 @@ namespace Nethermind.Synchronization.FastSync
                             syncItem.PathNibbles.CopyTo(fullPath);
 
                             using var rawState = _stateFactory.GetRaw();
-                            var hash = rawState.GetHash(Nibbles.ToBytes(fullPath), syncItem.PathNibbles.Length);
+                            var hash = rawState.GetHash(Nibbles.ToBytes(fullPath), syncItem.PathNibbles.Length, true);
                             keyExists = hash == syncItem.Hash;
                         }
                         else if (syncItem.NodeDataType == NodeDataType.Storage)
@@ -704,10 +706,56 @@ namespace Nethermind.Synchronization.FastSync
                                         rawState.SetAccount(new ValueHash256(Nibbles.ToBytes(fullPath)), account);
                                     }
                                 }
-                                rawState.Commit(true);
+                                if (node.Key.Length > 0)
+                                    rawState.CreateProofLeaf(Keccak.Zero, Nibbles.ToBytes(fullPath), syncItem.Level, 0);
+                                rawState.Commit(false);
+                            } else if (node.NodeType == NodeType.Branch)
+                            {
+                                Span<byte> fullPath = stackalloc byte[64];
+                                syncItem.PathNibbles.CopyTo(fullPath);
+
+                                List<byte> children = new List<byte>();
+                                List<Hash256?> childHashes = new List<Hash256?>();
+
+                                int pathIndex = syncItem.Level;
+                                for (int i = 0; i < 16; i++)
+                                {
+                                    fullPath[pathIndex] = (byte)i;
+                                    if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                                    {
+                                        TreePath p = TreePath.Empty;
+                                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref p, i);
+                                        if (childNode is not null)
+                                        {
+                                            children.Add((byte)i);
+                                            childHashes.Add(null);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        children.Add((byte)i);
+                                        childHashes.Add(childHash.ToCommitment());
+                                    }
+                                }
+
+                                using var rawState = _stateFactory.GetRaw();
+
+                                rawState.CreateProofBranch(Keccak.Zero, Nibbles.ToBytes(fullPath), syncItem.Level,
+                                    children.ToArray(), childHashes.ToArray());
+                                rawState.Commit(false);
+                            } else if (node.NodeType == NodeType.Extension)
+                            {
+                                Span<byte> fullPath = stackalloc byte[64];
+                                syncItem.PathNibbles.CopyTo(fullPath);
+                                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
+
+                                using var rawState = _stateFactory.GetRaw();
+
+                                rawState.CreateProofExtension(Keccak.Zero, Nibbles.ToBytes(fullPath), syncItem.Level,
+                                    node.Key.Length);
+                                rawState.Commit(false);
                             }
                             //_stateDb.Set(syncItem.Hash, data);
-
                             //_nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                         }
                         finally
@@ -742,6 +790,45 @@ namespace Nethermind.Synchronization.FastSync
 
                                 rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), rlpContext.DecodeByteArray());
                                 //no hash recalc
+                                rawState.Commit(false);
+                            }
+                            else if (node.NodeType == NodeType.Branch)
+                            {
+                                Span<byte> fullPath = stackalloc byte[64];
+                                syncItem.PathNibbles.CopyTo(fullPath);
+
+                                ValueHash256 accountHash = new ValueHash256(Nibbles.ToBytes(syncItem.AccountPathNibbles));
+
+                                List<byte> children = new List<byte>();
+                                List<Hash256?> childHashes = new List<Hash256?>();
+
+                                int pathIndex = syncItem.Level;
+                                for (int i = 0; i < 16; i++)
+                                {
+                                    fullPath[pathIndex] = (byte)i;
+                                    if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash)) continue;
+                                    children.Add((byte)i);
+                                    childHashes.Add(childHash.ToCommitment());
+                                }
+
+                                using var rawState = _stateFactory.GetRaw();
+
+                                rawState.CreateProofBranch(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
+                                    children.ToArray(), childHashes.ToArray());
+                                rawState.Commit(false);
+                            }
+                            else if (node.NodeType == NodeType.Extension)
+                            {
+                                ValueHash256 accountHash =
+                                    new ValueHash256(Nibbles.ToBytes(syncItem.AccountPathNibbles));
+                                Span<byte> fullPath = stackalloc byte[64];
+                                syncItem.PathNibbles.CopyTo(fullPath);
+                                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
+
+                                using var rawState = _stateFactory.GetRaw();
+
+                                rawState.CreateProofExtension(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
+                                    node.Key.Length);
                                 rawState.Commit(false);
                             }
                             //_stateDb.Set(syncItem.Hash, data);
