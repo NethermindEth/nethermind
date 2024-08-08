@@ -36,6 +36,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private readonly LruCache<TNode, int> _peerFailures;
     private readonly TimeSpan _refreshInterval;
     private readonly ILogger _logger;
+    private readonly ILogManager _logManager;
 
     private bool _useTreeImplementation = true;
 
@@ -53,6 +54,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _nodeHashProvider = nodeHashProvider;
         _store = store;
         _messageSender = new MessageSenderMonitor(sender, this);
+        _logManager = logManager;
         _logger = logManager.GetClassLogger<Kademlia<TNode, TContentKey, TContent>>();
 
         _currentNodeId = currentNodeId;
@@ -62,13 +64,12 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _refreshInterval = refreshInterval;
 
         _peerFailures = new LruCache<TNode, int>(1024, "peer failure");
-        // Note: It does not have to be this much. In practice, only like 16 of these bucket get populated.
         _buckets = new KBucket<TNode>[Hash256XORUtils.MaxDistance + 1];
         for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
         {
             _buckets[i] = new KBucket<TNode>(kSize);
         }
-        _bucketTree = new KBucketTree<TNode, TContentKey>(kSize, _currentNodeIdAsHash, _nodeHashProvider);
+        _bucketTree = new KBucketTree<TNode, TContentKey>(kSize, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
     }
 
     public void UseTreeImplementation(bool useTree)
