@@ -17,7 +17,7 @@ public class ExecutionWitnessConverter : System.Text.Json.Serialization.JsonConv
         StemStateDiff[] stateDiff = JsonSerializer.Deserialize<StemStateDiff[]>(ref reader, options);
         reader.Read();
         reader.Read();
-        WitnessVerkleProof proof = JsonSerializer.Deserialize<WitnessVerkleProof>(ref reader, options);
+        WitnessVerkleProofSerialized proof = JsonSerializer.Deserialize<WitnessVerkleProofSerialized>(ref reader, options);
         reader.Read();
         return new ExecutionWitness(stateDiff, proof);
     }

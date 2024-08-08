@@ -11,11 +11,10 @@ using Nethermind.Verkle.Proofs;
 
 namespace Nethermind.Core.Verkle;
 
-
 public class ExecutionWitness
 {
     public StemStateDiff[] StateDiff { get; }
-    public WitnessVerkleProof? VerkleProof { get; }
+    public WitnessVerkleProofSerialized? VerkleProof { get; }
 
     public ExecutionWitness()
     {
@@ -23,27 +22,29 @@ public class ExecutionWitness
         VerkleProof = null;
     }
 
-    public ExecutionWitness(StemStateDiff[] stateDiff, WitnessVerkleProof proof)
+    public ExecutionWitness(StemStateDiff[] stateDiff, WitnessVerkleProofSerialized proof)
     {
         StateDiff = stateDiff;
         VerkleProof = proof;
     }
 }
 
-public class WitnessVerkleProof
+public class WitnessVerkleProofSerialized
 {
     public Stem[]? OtherStems { get; set; }
     public byte[] DepthExtensionPresent { get; set; }
-    public Banderwagon[] CommitmentsByPath { get; set; }
-    public Banderwagon D { get; set; }
-    public IpaProofStruct IpaProof { get; set; }
+    public byte[][] CommitmentsByPath { get; set; }
+    public byte[] D { get; set; }
 
-    public WitnessVerkleProof(
+    public IpaProofStructSerialized IpaProof { get; set; }
+
+    public WitnessVerkleProofSerialized(
         Stem[] otherStems,
         byte[] depthExtensionPresent,
-        Banderwagon[] commitmentsByPath,
-        Banderwagon d,
-        IpaProofStruct ipaProof)
+        byte[][] commitmentsByPath,
+        byte[] d,
+        IpaProofStructSerialized ipaProof
+    )
     {
         OtherStems = otherStems;
         DepthExtensionPresent = depthExtensionPresent;
@@ -52,7 +53,7 @@ public class WitnessVerkleProof
         IpaProof = ipaProof;
     }
 
-    public static implicit operator WitnessVerkleProof(VerkleProof proof)
+    public static implicit operator WitnessVerkleProofSerialized(VerkleProofSerialized proof)
     {
         Stem[] otherStems = proof.VerifyHint.DifferentStemNoProof.Select(x => new Stem(x)).ToArray();
 
@@ -64,15 +65,14 @@ public class WitnessVerkleProof
                 (byte)(depthExtensionPresent[i] | (proof.VerifyHint.ExtensionPresent[i].ToByte()));
         }
 
-        return new WitnessVerkleProof(otherStems,
+        return new WitnessVerkleProofSerialized(otherStems,
             depthExtensionPresent,
             proof.CommsSorted,
             proof.Proof.D,
-            proof.Proof.IpaProof
+            proof.Proof.IpaProofSerialized
         );
     }
 }
-
 
 public struct StateDiff
 {

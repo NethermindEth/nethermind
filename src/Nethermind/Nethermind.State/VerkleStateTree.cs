@@ -133,7 +133,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
         insertStem.Completion.Wait();
     }
 
-    public static VerkleStateTree CreateStatelessTreeFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root, ILogManager logManager)
+    public static VerkleStateTree CreateStatelessTreeFromExecutionWitness(ExecutionWitness? execWitness, byte[] root, ILogManager logManager)
     {
         VerkleTreeStore<PersistEveryBlock>? stateStore = new(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), logManager);
         VerkleStateTree? tree = new(stateStore, logManager);

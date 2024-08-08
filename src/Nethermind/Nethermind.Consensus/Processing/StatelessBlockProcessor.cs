@@ -70,7 +70,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
             block.Header.MaybeParent!.TryGetTarget(out BlockHeader maybeParent);
             Banderwagon stateRoot = Banderwagon.FromBytes(maybeParent!.StateRoot!.Bytes.ToArray())!.Value;
             _statelessWorldState.Reset();
-            _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
+            _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot.ToBytesUncompressedLittleEndian());
             worldState = _statelessWorldState;
             blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider(worldState);
         }

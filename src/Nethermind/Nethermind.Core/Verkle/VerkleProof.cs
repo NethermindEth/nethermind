@@ -20,6 +20,65 @@ public enum ExtPresent : byte
     Present = 2
 }
 
+public struct VerkleProofSerialized
+{
+    public VerificationHint VerifyHint;
+    public byte[][] CommsSorted;
+    public VerkleProofStructSerialized Proof;
+
+    public override string ToString()
+    {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.Append("\n####[Verkle Proof]####\n");
+        stringBuilder.Append("\n###[Verify Hint]###\n");
+        stringBuilder.Append(VerifyHint.ToString());
+        stringBuilder.Append("\n###[Comms Sorted]###\n");
+        foreach (byte[] comm in CommsSorted)
+        {
+            stringBuilder.AppendJoin(", ", comm.Reverse().ToArray());
+            stringBuilder.Append('\n');
+        }
+        stringBuilder.Append("\n###[Inner Proof]###\n");
+        stringBuilder.Append(Proof.ToString());
+        return stringBuilder.ToString();
+    }
+
+    public byte[] Encode()
+    {
+        var encoded = new List<byte>(VerifyHint.Encode());
+
+        encoded.AddRange(CommsSorted.Length.ToByteArrayLittleEndian());
+        foreach (byte[] comm in CommsSorted)
+        {
+            encoded.AddRange(comm.Reverse());
+        }
+
+        encoded.AddRange(Proof.Encode());
+
+        return encoded.ToArray();
+    }
+
+    public byte[] EncodeOld()
+    {
+        var encoded = new List<byte>(VerifyHint.Encode());
+
+        encoded.AddRange(CommsSorted.Length.ToByteArrayLittleEndian());
+        foreach (byte[] comm in CommsSorted)
+        {
+            encoded.AddRange(Banderwagon.FromBytesUncompressedUnchecked(comm, isBigEndian: false).ToBytesLittleEndian().Reverse());
+        }
+
+        encoded.AddRange(Proof.Encode());
+
+        return encoded.ToArray();
+    }
+
+    public static VerkleProofSerialized Decode(byte[] proof)
+    {
+        return new VerkleProofSerialized();
+    }
+}
+
 public struct VerkleProof
 {
     public VerificationHint VerifyHint;
@@ -111,7 +170,7 @@ public struct VerificationHint
 public struct UpdateHint
 {
     public Dictionary<Stem, (ExtPresent, byte)> DepthAndExtByStem { get; set; }
-    public SpanDictionary<byte, Banderwagon> CommByPath { get; set; }
+    public SpanDictionary<byte, byte[]> CommByPath { get; set; }
     public SortedDictionary<byte[], Stem> DifferentStemNoProof { get; set; }
 }
 

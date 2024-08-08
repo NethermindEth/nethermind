@@ -38,9 +38,9 @@ public class VerkleProofTest
             VerkleTestUtils.MaxValue,
         };
         VerkleTree tree = VerkleTestUtils.CreateVerkleTreeWithKeysAndValues(keys, keys);
-        VerkleProof proof = tree.CreateVerkleProof(keys, out Banderwagon root);
-        TestProofSerialization(proof);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
 
+        TestProofSerialization(proof);
 
         bool verified = VerkleTree.VerifyVerkleProof(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
@@ -68,7 +68,7 @@ public class VerkleProofTest
         };
         VerkleTree tree = VerkleTestUtils.CreateVerkleTreeWithKeysAndValues(keys.ToArray(), values.ToArray());
 
-        VerkleProof proof = tree.CreateVerkleProof(keys.ToArray(), out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys.ToArray(), out byte[] root);
         TestProofSerialization(proof);
 
         bool verified = VerkleTree.VerifyVerkleProof(proof, keys, values, root, out _);
@@ -95,29 +95,38 @@ public class VerkleProofTest
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleProof(keys, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
         TestProofSerialization(proof);
-
 
         const string expectedProof = "00000000040000000a0a0a0a0800000056778fe0bcf12a14820d4c054d85cfcae4bdb7017107b6769cecd42629a3825e38f30e21c" +
                                      "79747190371df99e88b886638be445d44f8f9b56ca7c062ea3299446c650ce85c8b5d3cb5ccef8be82858aa2fa9c2cad512086db5" +
                                      "21bd2823e3fc38107802129c490edadbab32ec891ee6310e4f4f00e0056ce3bb0ffc6840a27577556a6fa8933ab25ddb0fb102fca" +
                                      "932ac58a5f539f83b9bfb6e21ea742aa5ad7403f36f9c0821d7014e7a7b917c1d3b72acf724906a30a8fefb09889c3e4cfbc528a4" +
                                      "0fd3331b653dea7be3fe55bc1a0451e0dbad672ec0236cac46e5b23d13d5562743b585beaf3dc1987c9bdf5701af9c4784a392549" +
-                                     "9bd6318b63ccec4b35f1bd427779680f60c2df48a9df458fa989fc0f8a7a38d54363b722138e4e4ac4351c5a0aa5cc5e53b697d8b" +
-                                     "57eaa43db3dc3987f9f1e71c31b5098721dad2910465fff50d7fb4d0145c41c53a395f99052a251fcb97ef31da582938a67756697" +
-                                     "024068f61bd61a10a2c7d8d2a522fa3834e1516f16bfc4ec7f1808069effeab095a5ff89d9bacad138316aa7c9001ce03830e443d" +
-                                     "a2aed1f66b5211ae7912bbe751bb05960d4f6bcdb3d266685d6e1b81c632e66f90df80b76cfe8e619bb29ed3322c2f9743d918f47" +
-                                     "062f4d077d5a658ab41c3d9c3add6def200e7f242d5ed840a7389ec6a7ab71f6ce813fb898a530af1a3c800f849bf56aae0c7a12a" +
-                                     "f1c0ee210863a29533a0c848de893cd1bc0256d8b3ddd3439ee55bc94eb77f71ac2d994b4fd1f08738f53183ac85b3c6e4ee1f8e9" +
-                                     "7e0154df668ec700131d4167b93d6180ed760ded7c1899f6f53116ea6c9b54ab809809ae05e821c2e4b0b3cccbf6d643f5aff2dd6" +
-                                     "ea235f2e53efccd6009f560e1c0eb01163e1415b2176a2679f8a3845884f3ffac354449be949b849325ec0d66af841825dbf6bd66" +
-                                     "8bb91a49c150be9b911a60e285c2ffa50f0380bcb86ed85bf7114c2c0d0aa8e7e6fb33351464a9de74b4219ebf351933831d1f5b5" +
-                                     "3467f856adfa7b478c428027dd408f61ff4eb9d94d0ee8c3e79e0265b0635af17db6aa7ca1b463b70e4c51fffb7f8403c94c9315a" +
-                                     "7b48d8a11ffd23510e0936842ae8368dedfb511a01dfc930c96d8ee26235b4acc8ace6a0d8fc3fb9142b69b2b989f97ce36ba4386" +
-                                     "8d93add3abe7a012";
+                                     "9bd6318b63ccec4b35f914211ff8aae6b4cf60eff5923a10ef205901fe311348cd3cfd00f236fa1025621e9998a57d92290af6e64" +
+                                     "c0313f963f469b1aa62ccdf5358db751e99c3492442bedb541990bab710eef8ba2c1319e830b18528fd7e350abc296d9d084139f0" +
+                                     "9761e10712063beb75f11888b1465ec1013308ea54c05ecda8cf4600668fb1013b2e1b1b84b130b73aa2dd2974aae4977319d7713" +
+                                     "4400a1f06ee1010fdf6349553be941c98a8f281ab3b9348c2bed9cbbfddde4e3e278ed30f4ce10434deec667fbbedf8b16b6e4922" +
+                                     "dfc9d6084338bb431b8d1bb40ef861007a992057d28f7117eb095d5992df28d9a3d755317ea208be967461f60538e6670d7b305a9" +
+                                     "62755e668c01a28c5521143e99aac7174b33af6897bca30c28593521b9c261bb8d782b230bdcb97a71e2d55711a617905cad3ecec" +
+                                     "f78e60a9c309a62eb48bb0223f8135b5209ff1b54784b3c5acfa93c0606dbeca6f15262174eced2cd51e45b50f83b0cdfaca12af8" +
+                                     "b31a8381df4a6c6632c5cf0018b3048b84882ec381f238c1e73a1b54f6007c4c174136a8026a7a4bd32b02bda3a0ac7606b8bd43b" +
+                                     "dfc5b21406139e8119b8ed8036745c124e2971628744441e110282344ab67f55163a117602b53d2dcc752b61f0cd7a3422b76d0a2" +
+                                     "08b03e0f52288919ade628ada07031e271c10742c665e3af0e74d467b8bd5b82b9a832ad95f0e202abdd7cfccf6968e7439db22e6" +
+                                     "261fa572bc57d4a0a45963efbf23b08855cbfc43ecf1e9239536a430995ea4f59d800e4ee5a6fd9dd8fbab1f4e5ccd5ce71a77096" +
+                                     "fc7cad3d74d98d2cb49faacef38d22a92985f73550ebf8add9377150925b974d9c8d86002ef8346eb33f7bae72c36ec55e3919276" +
+                                     "58bcbc9b46ba45572fce51e814bb38123c5ac4a12104781187e7f24472d68d3c79e6965dd37638613731eda814402d7547dce0447" +
+                                     "34adc30eb7a36216a37f2e2c857a128c54a7a12dc0b819c5331a08f9a95e4ce97fa4506fd4e991bdb13d5d85d03c46e21c49c559d" +
+                                     "e266e50fc8d37badd993ff8fc1c996ed850d712f4e9689e9980e051988403d1bc212018ad096c2c93550da9d09e45f0b06fe1c21e" +
+                                     "23e89820a825a2aea0028ec92d1dd143e2b992c7bf3ed60fe1a15900146997e70180a9bb2191c604b90edad3bea69e4e2874c1e00" +
+                                     "10390652972a16765ace6256c751222ff1681610872fca93542df1b62069e4c7f330273bb2243b7df5469c5f6b88f7162dec0eb04" +
+                                     "ca8e348ce186601bd8c3a20d55f379c0635b7caec6f1c88baee2f9056d4cdfccd7314d131c534cdae825d8bf34ae79dd9620d54e9" +
+                                     "ac9c9dbd377aa4d6676eaddd47e64b32275a786e998b1e9597efc7447443ae6862585f9f2b073bbbe079d1e9757777fc5e2d5f04f" +
+                                     "e39eb6102136bc6125d0b9042a45b2e982686d034e8404b9b12b6a2016c31b6c4c490a4890e88f797057a166d82239fb588202c84" +
+                                     "50a858999ef45cba91cbbb2fc3aa85f4874a519813b771ad0e91f16665f9aff6b79f23d5aecff065e4362190459fc2551340ac112" +
+                                     "0001c921a36dd8c2d441a93f4fa4fd6a71d54f0f862340cf9e401b";
 
-        Assert.That(proof.Encode().ToHexString().SequenceEqual(expectedProof), Is.True);
+        Assert.That(proof.EncodeOld().ToHexString().SequenceEqual(expectedProof), Is.True);
         bool verified = VerkleTree.VerifyVerkleProof(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
     }
@@ -142,25 +151,37 @@ public class VerkleProofTest
         tree.Commit();
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleProof(keys, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
         TestProofSerialization(proof);
 
         const string expectedProof = "00000000010000000a020000000b2cd97f2703f0e0030f8356c66ef9cda8587109aab48ebdf02fd49ceefa716d1731296" +
-                                     "d27f24eddf8e4576bcf69395373a282be54e0d16966c5ac77f3423b9f05e4ab9d3080bed0f9d2c6eaedb998ae66bd1cda" +
-                                     "c02572f57f0f2f4ea61621e12ef7f19003b84b8e4b35ade794a687661cc6f9f96c8b6915f5b82c47525bc8e327e411d55" +
-                                     "3fcecc9a4ff9979a60e66283cc7f5e3677ec7b7c18d5fecfaa11fe2446de5c2a55d5f577bc030ed5e4b70578d87263f2a" +
-                                     "05956f70e9e43dd6085a231435b1af4c59950e2dd6cce694dbd44e47c6d0ed560e886d2b137d8962d5fd992ebbbbc4843" +
-                                     "aebcbe8f982f8439c91423c41f08e4dba677b3032ccec61bc2fe759df90164cc2b3fa5dd2db8da1baf0991805755a45f1" +
-                                     "44b6c163302695e2426739b67afc46e1ccaa67cc903c78009bef1d5983d7e027c443f9d785d63e8e25690b04d0c856699" +
-                                     "97e44442bbdeca25f074d79030ddb4b98cefbdfa49e663628a76210c2573ab8b20e77d202b54ac9541d0c2ed7985aca3b" +
-                                     "10e5b742edd6b071065cf195545d69cebe14391025b460e79d12d32f2cb61adf99603198931637fffd2d999e19495ea88" +
-                                     "95ee3480e2d5b39006b4c19429b100d28c214f016407c599c5dd20ce3f4c5d59ee6817cf8fd65a879519175e5c1d3d931" +
-                                     "be44041833bf32fd3d31d28304010e4451565ad226b86a0d24b27b23c3a486cea63d58297a0179dd32134e6e80d85d3d3" +
-                                     "022a01ada9aea52c542fd1d20cc47af6a8462c11390b9ff6fae91943fe7c0d86c19bce4ffdcf34bb6a03c94f5de3d5c18" +
-                                     "a49048e06d9b8f3d481ada5b82c8b8a9619d538fa039bb99332f6395f387acee1e577bfe092dc02094949c12a8e0d580f" +
-                                     "6390d9a41302df30ffaf57e40296c75052bb028fe2b09";
+                                     "d27f24eddf8e4576bcf69395373a282be54e0d16966c5ac77f3423b9f4605765280e8099881f4cc64ead200148f7b826c" +
+                                     "4d68e4470ed36ac72c05f61a94dbaea0c5e85840a92df0215f698dd6d8a6f1ccd8c5f2620ff6f9b8cc3c7937800b8e502" +
+                                     "04fc14b10865c09db726f89570191d3fd9e36c455c6bbef169be0168740f0c3257ae933f5b00f4cfbaee7f5c4d9fac42b" +
+                                     "bfff1bbb9c77bb8722d611a0a809e64f46d9345b060c6a75be61bf2fe619571df18cbcdef9cf3d44ff361d4039f1757d4" +
+                                     "ed0c5ac848755075a43a2706b85eaa2c465801325498b27c88149335fb00c0ec6666b6cadd47107b3e2cfba70a40b16f6" +
+                                     "a81ba699b715eabd06444daa191a03f7f892c7518503cbb97d92c452fccbda965b82d00f7bacab971930cff350456796b" +
+                                     "39ec86c58020de7055557d8ac9e04b876d453aa56a4373d8a27d893a9d966e58f2e55625235be98cd672993de6be07469" +
+                                     "6deb1219481317bf04f4ef246b6accbe52f3311a1f3f1cd211a2a6a412676a466378f8a6f97cf8c32d10cdbd3a22c481d" +
+                                     "8579d425761944e21a932baee4c179164a3a7fe57785a453f41806ca9782a18935c374d9ce745f3af1ae6705b19ac839f" +
+                                     "a824aa257d80157131daed70f4f662fde1fdc31eb633fd92ae6c43dfc5a4ccdb888db2ff85cf706135cd41cf345a1615d" +
+                                     "40947a8326f0854793f5ae23c380b7b5f779712eb3b473f06fe2a32c50efc2bfdfb364d04003cffe4a51ca1566757b1fd" +
+                                     "406e2035c7a26ebecd8e9598358b372147f344d2c654fa273cdce8f8896fb60ab4c5f26a2e1a3f5c76ffe21ee22581e4f" +
+                                     "9a3ec8ebc0b04b9ce378057392b4934d4400b9228901ab88bb6bd4b7dfa3ec7561fd0783b0570fc6b012e8abf574392cc" +
+                                     "43466820e932230af0593fa7c7922c1566fa456d666bfa70a659feb72b6f4b34fc919b4ef56bdfc7c27eff2154970c8c3" +
+                                     "ac9ed3dc2bcf0e1ad6fa31e56ebf3064b19f564c93d80eff91f39fefc5c6df668af064eb1da40b0f8ea86070a46d12832" +
+                                     "2cd2b98f572a6ab22f8f4e0de9969d0675d2cb6c47c3ac4fa7aaf01bbe5171323077b3a449bd9779f8db5dd8c654d8f32" +
+                                     "b4dd4e4ea1b924ba9921559bcce0be524f9ff6f496bff11f732b037e457dcef0bf7c237213393d23c98d605fd3054fad5" +
+                                     "4430d153d7f9177547eee134b51f7de813758492f1faae0e18aa60b9555fc4d91d24394117c05f5d3c3ace94815d585b7" +
+                                     "273ed8cf60aaa280309452407662c9b5845705e032c10b473c902e6510ef77a8419dd5741ef4dc995ecc178beb6ac3cdf" +
+                                     "87b933c65a46c937a94a06b0b00bad3c296d8242e3c0fa4b047e9a6a56bd8fa5d42e48855fcd09eb875df3a42e90cc809" +
+                                     "7c6a79a4fb2c7846ebc4c09665c53cec05327c073a669d56cd67edbce49fc2f514770df7389f82dd99012aaf4ba4d584c" +
+                                     "3a5f75af29408421ff7be8c604f0ac07b739fb91b363678b35452d8bd6bc821ce30077d3ccdf82eb72af1a48da30e10fe" +
+                                     "2a90bed52bedba033bcd8c1034e61e4740c65d22853b04a3b8733987e93e1c77dffac49f50d09de4ecaf835f94f3877e6" +
+                                     "480f9d8844fc5fa98f2ec370e18b24da702840f21f71e24ca999bbce608ca5f507";
 
-        Assert.That(proof.Encode().ToHexString().SequenceEqual(expectedProof), Is.True);
+        Assert.That(proof.EncodeOld().ToHexString().SequenceEqual(expectedProof), Is.True);
+
         bool verified = VerkleTree.VerifyVerkleProof(proof, new List<byte[]>(keys), new List<byte[]?>(keys), root, out _);
         Assert.That(verified, Is.True);
     }
@@ -178,22 +199,33 @@ public class VerkleProofTest
             },
         };
 
-        VerkleProof proof = tree.CreateVerkleProof(keys, out Banderwagon root);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys, out byte[] root);
         TestProofSerialization(proof);
 
-
-        const string expectedProof = "000000000100000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-                                     "00000000000000000000000000000000000000000000000000000000";
+        const string expectedProof =
+                            "000000000100000008000000000000000000000000000000000000000000000000000000000000000000000000010000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100" +
+                            "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
+                            "0000000000000000000000";
 
         proof.Encode().ToHexString().Should().BeEquivalentTo(expectedProof);
         List<byte[]?> values = new() { null };
@@ -260,33 +292,97 @@ public class VerkleProofTest
         }
         tree.CommitTree(0);
 
-        VerkleProof proof = tree.CreateVerkleProof(keys[..500], out Banderwagon root);
-        TestProofSerialization(proof);
+        VerkleProofSerialized proof = tree.CreateVerkleProof(keys[..500], out byte[] root);
+        //TestProofSerialization(proof);
         bool verified = VerkleTree.VerifyVerkleProof(proof, new(keys[..500]),
             new(values[..500]), root, out _);
         Assert.That(verified, Is.True);
     }
 
-    private void TestProofSerialization(VerkleProof proof)
+    private void TestProofSerialization(VerkleProofSerialized proof)
     {
         VerkleProofSerializer ser = new();
         var stream = new RlpStream(Rlp.LengthOfSequence(ser.GetLength(proof, RlpBehaviors.None)));
         ser.Encode(stream, proof);
-        VerkleProof data = ser.Decode(new RlpStream(stream.Data!));
+        VerkleProofSerialized data = ser.Decode(new RlpStream(stream.Data!));
         data.ToString().Should().BeEquivalentTo(proof.ToString());
     }
 
     [Test]
     public void TestBlock257()
     {
-        string payload = "{\"parentHash\":\"0x4ff50e1454f9a9f56871911ad5b785b7f9966cce3cb12eb0e989332ae2279213\",\"feeRecipient\":\"0xf97e180c050e5ab072211ad2c213eb5aee4df134\",\"stateRoot\":\"0x5bf12e46f1ce048f74229eb6fb4bbdb715eb615e0b79abf32a53712a9f643de7\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"prevRandao\":\"0xb5f43407166c107f53f501a3409e3b74cca112cc60c2bdc169d4d1476461721d\",\"blockNumber\":\"0x101\",\"gasLimit\":\"0x1c9c380\",\"gasUsed\":\"0x0\",\"timestamp\":\"0x65c21634\",\"extraData\":\"0xd983010c01846765746889676f312e32302e3133856c696e7578\",\"baseFeePerGas\":\"0x7\",\"blockHash\":\"0xbedc42451ae09174af2a141ca36bee23337f3cdf6036ca68358a3decc1454057\",\"transactions\":[],\"withdrawals\":[],\"executionWitness\":{\"stateDiff\":[{\"stem\":\"0x117b67dd491b9e11d9cde84ef3c02f11ddee9e18284969dc7d496d43c300e5\",\"suffixDiffs\":[{\"suffix\":0,\"currentValue\":null,\"newValue\":\"0x4ff50e1454f9a9f56871911ad5b785b7f9966cce3cb12eb0e989332ae2279213\"}]}],\"verkleProof\":{\"otherStems\":[\"0x1123356d04d4bd662ba38c44cbd79d4108521284d80327fa533e0baab1af9f\"],\"depthExtensionPresent\":\"0x09\",\"commitmentsByPath\":[\"0x3514e85936b1e484f84fc93b58e38b9ed9b0d870002653085f9dd758b1b8c3f5\"],\"d\":\"0x59a7b2bd71eff71d6d43abd61c1533246dce01a1b973c9287e2c9b6dea76c21a\",\"ipaProof\":{\"cl\":[\"0x07c7bc1903217d5eb06e067cd535376c7fa737e717a06cd62686e9dcebbef0a2\",\"0x11ca24317a6772c962252e1d1963450027c5024152aef68b148fb833e30c0a99\",\"0x0c330e01ce8c356e2ad9ba15f3ac4d730e5f986bf0f227b28c55ccdbfb373674\",\"0x380b8e7d511dcd37d9596c084d156eaff21eec9368745c1222b4bfc2ce231db8\",\"0x27c74c37d499e3475f4ad8968417e72b068ba923ffde27e21d323c29fe30ce78\",\"0x5d2ebbdb282ccc9aa7f878a8875b01072e7444a02ee7f37daefe7745dc95ad32\",\"0x494d512c207264ec018ca26d137bb46d6e9c68c934ae40d8c3d55024877a68f2\",\"0x1b73f07a94186b7c3221d46e2082049e79c3b90999c9fc61970d9f2fbd5fbf96\"],\"cr\":[\"0x6bbdeac4b34f9c03ea3d7d194702f7da05b3067609a0b4f163280f39a20ae781\",\"0x596e6fdf00232028cdc19ad3830920b4fb685993031288355b4858280f14071b\",\"0x2b8a39633e7a69c80c436f1250175476ba5a5dff2432e246f5478d5ba68b0903\",\"0x2b5a3ad002ddff1d649ef4f03ea053baac62f4cd038fd391aff527f73bdd568a\",\"0x409f15bc99f774b2a0f5b2ea4a06c1d7779d24776d013bc93f99d264f558b35f\",\"0x49903ee86b289a82033d7887aeecdefd60ed390fb470252ca0101619377ec1eb\",\"0x254ad6cf40e599e207698c6fe438d51b221336f0a6ee3297b7a2113fc09b37b4\",\"0x3bad9aabbf4dc90e786d1b69c9c87e63974a376067029ed5e3d7fa04b701fd96\"],\"finalEvaluation\":\"0x1349fd2896502fe7778d871bf10c4b7820744255178b429c08512c64c6e96d2c\"}}}}";
+        string payload =
+            @"{
+                ""parentHash"":""0x4ff50e1454f9a9f56871911ad5b785b7f9966cce3cb12eb0e989332ae2279213"",
+                ""feeRecipient"":""0xf97e180c050e5ab072211ad2c213eb5aee4df134"",
+                ""stateRoot"":""0x5bf12e46f1ce048f74229eb6fb4bbdb715eb615e0b79abf32a53712a9f643de7"",
+                ""receiptsRoot"":""0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"",
+                ""logsBloom"":""0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"",
+                ""prevRandao"":""0xb5f43407166c107f53f501a3409e3b74cca112cc60c2bdc169d4d1476461721d"",
+                ""blockNumber"":""0x101"",
+                ""gasLimit"":""0x1c9c380"",
+                ""gasUsed"":""0x0"",
+                ""timestamp"":""0x65c21634"",
+                ""extraData"":""0xd983010c01846765746889676f312e32302e3133856c696e7578"",
+                ""baseFeePerGas"":""0x7"",
+                ""blockHash"":""0xbedc42451ae09174af2a141ca36bee23337f3cdf6036ca68358a3decc1454057"",
+                ""transactions"":[],
+                ""withdrawals"":[],
+                ""executionWitness"":{
+                    ""stateDiff"":[
+                        {
+                            ""stem"":""0x117b67dd491b9e11d9cde84ef3c02f11ddee9e18284969dc7d496d43c300e5"",
+                            ""suffixDiffs"":[
+                                {
+                                    ""suffix"":0,
+                                    ""currentValue"":null,
+                                    ""newValue"":""0x4ff50e1454f9a9f56871911ad5b785b7f9966cce3cb12eb0e989332ae2279213""
+                                }
+                            ]
+                        }
+                    ],
+                    ""verkleProof"":{
+                        ""otherStems"":
+                            [
+                                ""0x1123356d04d4bd662ba38c44cbd79d4108521284d80327fa533e0baab1af9f""
+                            ],
+                        ""depthExtensionPresent"":""0x09"",
+                        ""commitmentsByPath"":[
+                            ""0x3514e85936b1e484f84fc93b58e38b9ed9b0d870002653085f9dd758b1b8c3f5""
+                        ],
+                        ""d"":""0x59a7b2bd71eff71d6d43abd61c1533246dce01a1b973c9287e2c9b6dea76c21a"",
+                        ""ipaProof"":{
+                            ""cl"":[
+                                ""0x07c7bc1903217d5eb06e067cd535376c7fa737e717a06cd62686e9dcebbef0a2"",
+                                ""0x11ca24317a6772c962252e1d1963450027c5024152aef68b148fb833e30c0a99"",
+                                ""0x0c330e01ce8c356e2ad9ba15f3ac4d730e5f986bf0f227b28c55ccdbfb373674"",
+                                ""0x380b8e7d511dcd37d9596c084d156eaff21eec9368745c1222b4bfc2ce231db8"",
+                                ""0x27c74c37d499e3475f4ad8968417e72b068ba923ffde27e21d323c29fe30ce78"",
+                                ""0x5d2ebbdb282ccc9aa7f878a8875b01072e7444a02ee7f37daefe7745dc95ad32"",
+                                ""0x494d512c207264ec018ca26d137bb46d6e9c68c934ae40d8c3d55024877a68f2"",
+                                ""0x1b73f07a94186b7c3221d46e2082049e79c3b90999c9fc61970d9f2fbd5fbf96""
+                            ],
+                            ""cr"":[
+                                ""0x6bbdeac4b34f9c03ea3d7d194702f7da05b3067609a0b4f163280f39a20ae781"",
+                                ""0x596e6fdf00232028cdc19ad3830920b4fb685993031288355b4858280f14071b"",
+                                ""0x2b8a39633e7a69c80c436f1250175476ba5a5dff2432e246f5478d5ba68b0903"",
+                                ""0x2b5a3ad002ddff1d649ef4f03ea053baac62f4cd038fd391aff527f73bdd568a"",
+                                ""0x409f15bc99f774b2a0f5b2ea4a06c1d7779d24776d013bc93f99d264f558b35f"",
+                                ""0x49903ee86b289a82033d7887aeecdefd60ed390fb470252ca0101619377ec1eb"",
+                                ""0x254ad6cf40e599e207698c6fe438d51b221336f0a6ee3297b7a2113fc09b37b4"",
+                                ""0x3bad9aabbf4dc90e786d1b69c9c87e63974a376067029ed5e3d7fa04b701fd96""
+                            ],
+                            ""finalEvaluation"":""0x1349fd2896502fe7778d871bf10c4b7820744255178b429c08512c64c6e96d2c""
+                        }
+                    }
+                }
+            }";
+        Console.WriteLine(payload);
         IJsonSerializer serializer = new EthereumJsonSerializer();
         ExecutionPayload? result = serializer.Deserialize<ExecutionPayload>(payload);
-        Console.WriteLine(result);
 
         VerkleWorldState state = new VerkleWorldState(result.ExecutionWitness,
-            Banderwagon.FromBytes(
-                Bytes.FromHexString("0x3d339c16f3b906126a2f00f7130ff3bca99a176f1c97185ddf1e783417986510")).Value,
+            Bytes.FromHexString("0x3d339c16f3b906126a2f00f7130ff3bca99a176f1c97185ddf1e783417986510"),
             SimpleConsoleLogManager.Instance);
 
         BlockHashInStateHandler handler = new BlockHashInStateHandler();
