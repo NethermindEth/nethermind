@@ -468,4 +468,38 @@ internal sealed partial class EvmInstructions
 
         return EvmExceptionType.None;
     }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionReturnContract(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        if (!vm.Spec.IsEofEnabled || !vm.State.ExecutionType.IsAnyCreateEof())
+            return EvmExceptionType.BadInstruction;
+
+
+        if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        var spec = vm.Spec;
+        var codeInfo = vm.State.Env.CodeInfo;
+
+        byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
+        ReadOnlyMemory<byte> deployCode = codeInfo.ContainerSection[(Range)codeInfo.ContainerSectionOffset(sectionIdx)];
+        EofCodeInfo deploycodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+
+        stack.PopUInt256(out var a);
+        stack.PopUInt256(out var b);
+        ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
+
+        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in a, b)) return EvmExceptionType.OutOfGas;
+
+        int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
+        if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
+        {
+            return EvmExceptionType.AccessViolation;
+        }
+
+        vm.ReturnDataBuffer = vm.State.Memory.Load(a, b);
+        vm.ReturnData = deploycodeInfo;
+
+        return EvmExceptionType.None;
+    }
 }

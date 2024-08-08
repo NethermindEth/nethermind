@@ -192,7 +192,7 @@ internal sealed partial class EvmInstructions
         lookup[(int)Instruction.SWAPN] = &InstructionSwapN;
         lookup[(int)Instruction.EXCHANGE] = &InstructionExchange;
         lookup[(int)Instruction.EOFCREATE] = &InstructionEofCreate;
-        lookup[(int)Instruction.RETURNCONTRACT] = &InstructionBadInstruction;
+        lookup[(int)Instruction.RETURNCONTRACT] = &InstructionReturnContract;
 
         lookup[(int)Instruction.CREATE] = &InstructionBadInstruction;
         lookup[(int)Instruction.CALL] = &InstructionBadInstruction;

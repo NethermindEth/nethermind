@@ -95,7 +95,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
         public static object BoxedEmpty { get; } = new object();
-        public static CallResult Empty(int fromVersion) => new(default, null, fromVersion);
+        public static CallResult Empty(int fromVersion) => new(null, default, null, fromVersion);
 
         public CallResult(EvmState stateToExecute)
         {
@@ -106,17 +106,7 @@ public class VirtualMachine : IVirtualMachine
             ExceptionType = EvmExceptionType.None;
         }
 
-        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-        {
-            StateToExecute = null;
-            Output = (null, output);
-            PrecompileSuccess = precompileSuccess;
-            ShouldRevert = shouldRevert;
-            ExceptionType = exceptionType;
-            FromVersion = fromVersion;
-        }
-
-        public CallResult(ICodeInfo container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        public CallResult(ICodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
             Output = (container, output);
@@ -690,7 +680,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         try
         {
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, _spec);
-            CallResult callResult = new(output, success, 0, !success);
+            CallResult callResult = new(null, output, success, 0, !success);
             return callResult;
         }
         catch (DllNotFoundException exception)
@@ -701,7 +691,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-            CallResult callResult = new(default, false, 0, true);
+            CallResult callResult = new(null, default, false, 0, true);
             return callResult;
         }
     }
@@ -843,7 +833,7 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
                 }
                 goto EmptyReturn;
             }
-            else if (instruction < Instruction.RETURNCONTRACT)
+            else if (instruction < Instruction.CREATE)
             {
                 exceptionType = CalliJmpTable[(int)instruction](this, ref stack, ref gasAvailable, ref programCounter);
             }
@@ -851,34 +841,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
             {
                 switch (instruction)
                 {
-                    case Instruction.RETURNCONTRACT:
-                        {
-                            if (!_spec.IsEofEnabled || !_vmState.ExecutionType.IsAnyCreateEof())
-                                goto InvalidInstruction;
-
-                            if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
-
-                            byte sectionIdx = codeSection[programCounter++];
-                            ReadOnlyMemory<byte> deployCode = env.CodeInfo.ContainerSection[(Range)env.CodeInfo.ContainerSectionOffset(sectionIdx)];
-                            EofCodeInfo deploycodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, _spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
-
-                            stack.PopUInt256(out a);
-                            stack.PopUInt256(out b);
-                            ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
-
-                            if (!UpdateMemoryCost(_vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-
-                            int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
-                            if (projectedNewSize < deploycodeInfo.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
-                            {
-                                goto AccessViolation;
-                            }
-
-                            auxData = _vmState.Memory.Load(a, b);
-
-                            UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, _sectionIndex);
-                            return new CallResult(deploycodeInfo, auxData, null, env.CodeInfo.Version);
-                        }
                     case Instruction.CREATE:
                     case Instruction.CREATE2:
                         {
@@ -1026,7 +988,11 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
         {
             return new CallResult(state);
         }
-        return new CallResult((byte[])_returnData, null, env.CodeInfo.Version, shouldRevert: isRevert);
+        else if (_returnData is EofCodeInfo eofCodeInfo)
+        {
+            return new CallResult(eofCodeInfo, _returnDataBuffer, null, env.CodeInfo.Version);
+        }
+        return new CallResult(null, (byte[])_returnData, null, env.CodeInfo.Version, shouldRevert: isRevert);
 
     OutOfGas:
         exceptionType = EvmExceptionType.OutOfGas;
