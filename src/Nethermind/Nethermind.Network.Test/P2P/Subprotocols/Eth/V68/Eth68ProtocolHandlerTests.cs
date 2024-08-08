@@ -94,11 +94,6 @@ public class Eth68ProtocolHandlerTests
     [TearDown]
     public void TearDown()
     {
-        // Dispose received messages
-        _session?.ReceivedCalls()
-            .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))
-            .ForEach(c => (c.GetArguments()[0] as P2PMessage)?.Dispose());
-
         _handler?.Dispose();
         _session?.Dispose();
         _syncManager?.Dispose();
