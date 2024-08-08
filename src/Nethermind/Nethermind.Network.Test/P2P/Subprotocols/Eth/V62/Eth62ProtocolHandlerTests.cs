@@ -480,7 +480,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             using BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
 
-            Task task = ((ISyncPeer) _handler).GetBlockHeaders(1, 1, 1, CancellationToken.None).AddResultTo(_disposables);
+            Task task = ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None).AddResultTo(_disposables);
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders);
             await task;
