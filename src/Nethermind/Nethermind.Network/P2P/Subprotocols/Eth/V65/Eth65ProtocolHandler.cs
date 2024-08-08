@@ -94,6 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected virtual void Handle(NewPooledTransactionHashesMessage msg)
         {
+            using var _ = msg;
             AddNotifiedTransactions(msg.Hashes);
 
             Stopwatch stopwatch = Stopwatch.StartNew();

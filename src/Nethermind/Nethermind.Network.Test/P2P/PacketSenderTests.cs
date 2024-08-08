@@ -25,7 +25,7 @@ namespace Nethermind.Network.Test.P2P
             IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
 
-            using TestMessage testMessage = new();
+            TestMessage testMessage = new();
             serializer.ZeroSerialize(testMessage).Returns(serialized);
             serialized.SafeRelease();
 
@@ -48,8 +48,11 @@ namespace Nethermind.Network.Test.P2P
         {
             IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
-            serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+
+            TestMessage testMessage = new();
+            serializer.ZeroSerialize(testMessage).Returns(serialized);
             serialized.SafeRelease();
+
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.IsWritable.Returns(true);
@@ -58,7 +61,8 @@ namespace Nethermind.Network.Test.P2P
 
             PacketSender packetSender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
             packetSender.HandlerAdded(context);
-            packetSender.Enqueue(PingMessage.Instance);
+            packetSender.Enqueue(testMessage);
+            testMessage.WasDisposed.Should().BeTrue();
 
             context.Received(0).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
         }
@@ -68,8 +72,11 @@ namespace Nethermind.Network.Test.P2P
         {
             IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
-            serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+
+            TestMessage testMessage = new();
+            serializer.ZeroSerialize(testMessage).Returns(serialized);
             serialized.SafeRelease();
+
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.IsWritable.Returns(true);
@@ -80,7 +87,8 @@ namespace Nethermind.Network.Test.P2P
 
             PacketSender packetSender = new(serializer, LimboLogs.Instance, delay);
             packetSender.HandlerAdded(context);
-            packetSender.Enqueue(PingMessage.Instance);
+            packetSender.Enqueue(testMessage);
+            testMessage.WasDisposed.Should().BeTrue();
 
             await context.Received(0).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
 
