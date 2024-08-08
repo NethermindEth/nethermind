@@ -1006,8 +1006,6 @@ internal sealed class VirtualMachine<TLogger> : IEvm where TLogger : struct, IIs
     StackUnderflow:
         exceptionType = EvmExceptionType.StackUnderflow;
         goto ReturnFailure;
-    AccessViolation:
-        exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
 
