@@ -216,7 +216,7 @@ public class ShutterTxLoader(
                 _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
                 _firstLoad = false;
                 // todo: make debug
-                if (_logger.IsInfo) _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer  is {_txPointer}.");
+                if (_logger.IsInfo) _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             else
             {
