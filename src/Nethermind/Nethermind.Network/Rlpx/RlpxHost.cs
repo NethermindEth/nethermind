@@ -132,14 +132,24 @@ namespace Nethermind.Network.Rlpx
                     }));
 
                 Task<IChannel> openTask = LocalIp is null
-                    ? bootstrap.BindFromConfigAsync<INetworkConfig>(LocalPort, nameof(INetworkConfig.P2PPort))
-                    : bootstrap.BindFromConfigAsync<INetworkConfig>(nameof(INetworkConfig.P2PPort), IPAddress.Parse(LocalIp), LocalPort);
+                    ? bootstrap.BindAsync(LocalPort)
+                    : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort);
 
                 _bootstrapChannel = await openTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
+                        AggregateException aggregateException = t.Exception;
+                        if (aggregateException?.InnerException is SocketException socketException
+                            && socketException.ErrorCode == 10048)
+                        {
+                            if (_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");
+                        }
+                        else
+                        {
+                            if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
+                        }
+
                         return null;
                     }
 

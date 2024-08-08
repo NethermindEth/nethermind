@@ -325,6 +325,10 @@ public static class Program
                     _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
 
                 }
+                if (configItemAttribute?.IsPortOption == true)
+                {
+                    ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
+                }
             }
         }
 
