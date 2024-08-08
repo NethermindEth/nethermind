@@ -26,7 +26,6 @@ public static class NetworkHelper
                 ExceptionDispatchInfo.Throw(exception);
                 throw exception; // Make compiler happy, should never execute
         }
-
     }
 
     public static void HandlePortTakenError(Action action, params int[] ports)
