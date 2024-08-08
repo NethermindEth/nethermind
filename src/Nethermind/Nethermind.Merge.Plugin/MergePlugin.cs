@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -270,9 +271,9 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
+    public virtual Task InitRpcModules()
     {
-        return InitRpcModulesInternal(null, true);
+        return InitRpcModulesInternal(_api.BlockImprovementContextFactory, true);
     }
 
     protected Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory, bool keepImproving)

@@ -31,6 +31,8 @@ namespace Nethermind.Merge.AuRa
 
         public override async Task Init(INethermindApi nethermindApi)
         {
+            _api = nethermindApi;
+            _mergeConfig = _api.Config<IMergeConfig>();
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);

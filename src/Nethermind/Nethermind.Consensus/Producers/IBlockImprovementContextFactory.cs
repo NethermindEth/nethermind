@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
-namespace Nethermind.Merge.Plugin.BlockProduction;
+namespace Nethermind.Consensus.Producers;
 
 public interface IBlockImprovementContextFactory
 {
