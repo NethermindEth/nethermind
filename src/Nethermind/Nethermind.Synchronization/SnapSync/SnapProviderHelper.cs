@@ -114,9 +114,10 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
+            StitchBoundaries(sortedBoundaryList, state);
+
             state.Commit(true);
 
-            //StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             //tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
 
@@ -223,6 +224,16 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             children.Add((byte)i);
                             childHashes.Add(childHash.ToCommitment());
+                        }
+                        else
+                        {
+                            TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i);
+                            if (childNode is not null)
+                            {
+                                children.Add((byte)i);
+                                //var k = Keccak.Compute(childNode.FullRlp.AsSpan());
+                                childHashes.Add(null);
+                            }
                         }
                     }
                     else
@@ -450,7 +461,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (ci >= left && ci <= right)
                         {
-                            node.SetChild(ci, null);
+                            //node.SetChild(ci, null);
                         }
 
                         if (hasKeccak && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
@@ -535,38 +546,6 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private static void ProcessBoundaries(ValueHash256 accountHash, List<(TrieNode, TreePath)> sortedBoundaryList, IRawState state)
-        {
-            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
-            {
-                return;
-            }
-
-            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
-            {
-                (TrieNode node, TreePath path) = sortedBoundaryList[i];
-
-                if (!node.IsPersisted)
-                {
-                    if (node.IsExtension)
-                    {
-                        state.CheckBoundaryProof(accountHash, path.Span, path.Length);
-                    }
-
-                    if (node.IsBranch)
-                    {
-                        state.CheckBoundaryProof(accountHash, path.Span, path.Length);
-                        //bool isBoundaryProofNode = false;
-                        //for (int ci = 0; ci <= 15; ci++)
-                        //{
-                        //}
-
-                        //node.IsBoundaryProofNode = isBoundaryProofNode;
-                    }
-                }
-            }
-        }
-
         private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IScopedTrieStore store)
         {
             TrieNode data = node.GetData(childIndex) as TrieNode;
@@ -584,6 +563,81 @@ namespace Nethermind.Synchronization.SnapSync
             try
             {
                 return store.IsPersisted(nodePath, childKeccak);
+            }
+            finally
+            {
+                nodePath.TruncateMut(previousPathLength);
+            }
+        }
+
+        private static void StitchBoundaries(List<(TrieNode, TreePath)> sortedBoundaryList, IRawState rawState)
+        {
+            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
+            {
+                (TrieNode node, TreePath path) = sortedBoundaryList[i];
+
+                if (!node.IsPersisted)
+                {
+                    if (node.IsExtension)
+                    {
+                        if (IsChildPersisted(node, ref path, 1, rawState))
+                        {
+                            node.IsBoundaryProofNode = false;
+                        }
+                        else
+                        {
+                            rawState.RemoveBoundaryProof(path.Span, path.Length);
+                        }
+                    }
+
+                    if (node.IsBranch)
+                    {
+                        if (path == TreePath.FromHexString("000000000000000000000000000000000000000000000000000000000000035"))
+                        {
+                            int b = 10;
+                            b++;
+                        }
+                        
+                        bool isBoundaryProofNode = false;
+                        for (int ci = 0; ci <= 15; ci++)
+                        {
+                            if (!IsChildPersisted(node, ref path, ci, rawState))
+                            {
+                                isBoundaryProofNode = true;
+                                rawState.RemoveBoundaryProof(path.Span, path.Length);
+                                break;
+                            }
+                        }
+
+                        node.IsBoundaryProofNode = isBoundaryProofNode;
+                    }
+                }
+            }
+        }
+
+        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IRawState rawState)
+        {
+            TrieNode data = node.GetData(childIndex) as TrieNode;
+            if (data is not null)
+            {
+                return data.IsBoundaryProofNode == false;
+            }
+
+            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
+            {
+                return true;
+            }
+
+            int previousPathLength = node.AppendChildPath(ref nodePath, childIndex);
+            try
+            {
+                var hash = rawState.GetHash(nodePath.Span, nodePath.Length, true);
+                return childKeccak == hash;
             }
             finally
             {
