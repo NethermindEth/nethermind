@@ -81,7 +81,6 @@ namespace Ethereum.Test.Base
         protected EthereumTestResult RunTest(GeneralStateTest test, bool isGnosis, ITxTracer txTracer)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Console.WriteLine("Passing over here");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
             IDb stateDb = new MemDb();
