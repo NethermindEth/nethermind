@@ -89,67 +89,18 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         _decoder.Encode(stream, item.AccessList, rlpBehaviors);
     }
 
-    public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Transaction Decode(int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
-        Transaction transaction = null;
-        Decode(ref decoderContext, ref transaction, rlpBehaviors);
-
-        return transaction;
-    }
-
-
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref Transaction? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
+        Transaction transaction = new()
         {
-            decoderContext.ReadByte();
-            transaction = null;
-            return;
-        }
-
-        int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
-
-        TxType txType = TxType.AccessList;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            byte firstByte = decoderContext.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
-            {
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(decoderContext.Length);
-                txType = (TxType)decoderContext.ReadByte();
-            }
-        }
-        else
-        {
-            if (!decoderContext.IsSequenceNext())
-            {
-                (int PrefixLength, int ContentLength) prefixAndContentLength = decoderContext.ReadPrefixAndContentLength();
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
-                txType = (TxType)decoderContext.ReadByte();
-            }
-        }
-
-        transaction = txType switch
-        {
-            TxType.AccessList => new(),
-            _ => throw new InvalidOperationException("Unexpected TxType")
+            Type = TxType.AccessList
         };
-        transaction.Type = txType;
 
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-            case TxType.AccessList:
-                DecodePayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodePayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+
 
         if (decoderContext.Position < lastCheck)
         {
@@ -185,6 +136,8 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
                 transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
+
+        return transaction;
     }
 
     private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
