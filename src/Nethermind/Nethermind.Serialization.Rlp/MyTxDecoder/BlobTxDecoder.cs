@@ -329,17 +329,17 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     public void Encode(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        EncodeTx(stream, item, rlpBehaviors);
+        Encode(item, stream, rlpBehaviors);
     }
 
     public Rlp EncodeTx(Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        EncodeTx(rlpStream, item, rlpBehaviors);
+        Encode(item, rlpStream, rlpBehaviors);
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    private void EncodeTx(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (item is null)
         {
