@@ -33,6 +33,8 @@ public class ShutterBlockHandler(
     {
         if (IsBlockUpToDate(head))
         {
+            // todo: made debug
+            _logger.Info($"Shutter block handler {head.Number}");
             if (!_haveCheckedRegistered)
             {
                 CheckAllValidatorsRegistered(head.Header, validatorsInfo);
@@ -47,6 +49,11 @@ public class ShutterBlockHandler(
             }
 
             txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
+        }
+        else
+        {
+            // todo: made debug
+            _logger.Warn($"Shutter block handler not running, outdated block {head.Number}");
         }
     }
 

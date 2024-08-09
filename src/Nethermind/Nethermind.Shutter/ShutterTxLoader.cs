@@ -41,8 +41,7 @@ public class ShutterTxLoader(
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
     private List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     private ulong _txPointer = ulong.MaxValue;
-    private Core.Crypto.Hash256? _loadedBlockHash;
-    private bool _firstLoad = true;
+    private bool _loadFromReceipts = false;
 
     public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
@@ -75,10 +74,8 @@ public class ShutterTxLoader(
     {
         lock (_transactionSubmittedEvents)
         {
-            if (!_firstLoad && head is not null && head.Hash is not null && head.Hash != _loadedBlockHash)
+            if (_loadFromReceipts && head is not null)
             {
-                _loadedBlockHash = head.Hash;
-
                 int count = 0;
                 foreach (TxReceipt receipt in receipts)
                 {
@@ -210,18 +207,18 @@ public class ShutterTxLoader(
     {
         lock (_transactionSubmittedEvents)
         {
-            if (_firstLoad)
-            {
-                _transactionSubmittedEvents = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).ToList();
-                _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
-                _firstLoad = false;
-                // todo: make debug
-                _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
-            }
-            else
+            if (_loadFromReceipts)
             {
                 // todo: make debug
                 _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
+            }
+            else
+            {
+                _transactionSubmittedEvents = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).ToList();
+                _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
+                _loadFromReceipts = true;
+                // todo: make debug
+                _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             List<ISequencerContract.TransactionSubmitted> events = _transactionSubmittedEvents.ToList();
 
