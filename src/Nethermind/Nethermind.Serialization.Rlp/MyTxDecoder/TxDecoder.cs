@@ -4,7 +4,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>
+public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
 {
     private static readonly Dictionary<byte, AbstractTxDecoder> _decoders = new()
     {
@@ -55,6 +55,49 @@ sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>
         }
 
         return decoder.Decode(transactionSequence, rlpStream, rlpBehaviors);
+    }
+
+    public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+
+        if (decoderContext.IsNextItemNull())
+        {
+            decoderContext.ReadByte();
+
+            return null;
+        }
+
+        int txSequenceStart = decoderContext.Position;
+        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
+
+        TxType txType = (TxType)0xFF; // TODO: UNKNOWN
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+        {
+            byte firstByte = decoderContext.PeekByte();
+            if (firstByte <= 0x7f) // it is typed transactions
+            {
+                txSequenceStart = decoderContext.Position;
+                transactionSequence = decoderContext.Peek(decoderContext.Length);
+                txType = (TxType)decoderContext.ReadByte();
+            }
+        }
+        else
+        {
+            if (!decoderContext.IsSequenceNext())
+            {
+                (int PrefixLength, int ContentLength) prefixAndContentLength = decoderContext.ReadPrefixAndContentLength();
+                txSequenceStart = decoderContext.Position;
+                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
+                txType = (TxType)decoderContext.ReadByte();
+            }
+        }
+
+        if (!_decoders.TryGetValue((byte)txType, out AbstractTxDecoder decoder))
+        {
+            throw new InvalidOperationException("Unexpected TxType");
+        }
+
+        return decoder.Decode(txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
     public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
