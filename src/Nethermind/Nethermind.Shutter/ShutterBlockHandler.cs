@@ -10,9 +10,12 @@ using Nethermind.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
+using System.Threading.Tasks;
 
 namespace Nethermind.Shutter;
 
+// todo: make block handler & receipt folding into more reusable class?
+// maybe ReceiptAccumulator with generic log scanning and receipt following
 public class ShutterBlockHandler(
     ulong chainId,
     string validatorRegistryContractAddress,
@@ -57,6 +60,15 @@ public class ShutterBlockHandler(
         }
     }
 
+    public async Task<(Block?, TxReceipt[])> WaitForBlock(long blockNumber, ulong slot, TimeSpan slotLength, TimeSpan cutoff)
+    {
+        _logger.Info($"Waiting for block {blockNumber} in {slot}");
+        await Task.Delay(100);
+        // wait for OnNewHeadBlock
+        return (null, []);
+    }
+
+    // todo: check if in current slot?
     private bool IsBlockUpToDate(Block head)
         => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < _upToDateCutoff.TotalSeconds;
 
