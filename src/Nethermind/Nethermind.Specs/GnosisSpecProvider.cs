@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -56,6 +57,7 @@ public class GnosisSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
     public ForkActivation[] TransitionActivations { get; }
+    public static TimeSpan SlotLength => TimeSpan.FromSeconds(5);
 
     public static GnosisSpecProvider Instance { get; } = new();
 }

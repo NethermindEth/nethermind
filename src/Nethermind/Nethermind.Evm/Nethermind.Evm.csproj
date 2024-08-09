@@ -17,7 +17,6 @@
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-arm64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-x64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" />
-    <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="Nethermind.Gmp" />
   </ItemGroup>
   <ItemGroup>

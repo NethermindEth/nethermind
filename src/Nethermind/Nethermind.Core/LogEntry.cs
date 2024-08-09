@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
-    public class LogEntry
+    public class LogEntry : ILogEntry
     {
         public LogEntry(Address address, byte[] data, Hash256[] topics)
         {

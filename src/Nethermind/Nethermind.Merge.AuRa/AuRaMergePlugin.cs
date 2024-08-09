@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin;
@@ -29,14 +28,15 @@ namespace Nethermind.Merge.AuRa
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
         protected override bool MergeEnabled => ShouldRunSteps(_api);
 
+
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
-            _mergeConfig = nethermindApi.Config<IMergeConfig>();
+            _mergeConfig = _api.Config<IMergeConfig>();
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
-                _auraApi = (AuRaNethermindApi)nethermindApi;
+                _auraApi = (AuRaNethermindApi)_api;
                 _auraApi.PoSSwitcher = _poSSwitcher;
 
                 // this runs before all init steps that use tx filters
@@ -49,7 +49,7 @@ namespace Nethermind.Merge.AuRa
         public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                (AuRaNethermindApi)_api,
+                _auraApi!,
                 _api.WorldStateManager!,
                 _api.BlockTree!,
                 _api.SpecProvider!,

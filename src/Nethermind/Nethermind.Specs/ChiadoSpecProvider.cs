@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -43,6 +44,7 @@ public class ChiadoSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;
     public ForkActivation[] TransitionActivations { get; }
+    public static TimeSpan SlotLength => TimeSpan.FromSeconds(5);
 
     public static ChiadoSpecProvider Instance { get; } = new();
 }

@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="Nethermind.Crypto.Pairings" />
+    <PackageReference Include="Nethermind.Crypto.Bls" />
   </ItemGroup>
 
   <ItemGroup>

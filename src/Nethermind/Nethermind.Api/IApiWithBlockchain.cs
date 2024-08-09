@@ -87,6 +87,7 @@ namespace Nethermind.Api
         IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 
