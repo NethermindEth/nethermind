@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
@@ -14,4 +13,3 @@ public abstract class AbstractTxDecoder
 
     public abstract int GetLength(Transaction item, RlpBehaviors rlpBehaviors);
 }
-
