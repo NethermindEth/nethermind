@@ -9,49 +9,22 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public class EIP1559TxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
+public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
     private readonly AccessListDecoder _accessListDecoder = new();
-    private readonly bool _lazyHash;
+    private readonly bool _lazyHash = lazyHash;
 
-    protected EIP1559TxDecoder(bool lazyHash = true)
+    public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        _lazyHash = lazyHash;
-    }
-
-    protected virtual Transaction NewTx()
-    {
-        return new();
-    }
-
-    public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
+        Transaction transaction = new()
         {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
-
-        Transaction transaction = txType switch
-        {
-            TxType.EIP1559 => NewTx(),
-            _ => throw new InvalidOperationException("Unexpected TxType")
+            Type = TxType.EIP1559
         };
-        transaction.Type = txType;
 
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-            case TxType.EIP1559:
-                DecodeEip1559PayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodeEip1559PayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -191,7 +164,7 @@ public class EIP1559TxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder
 
         transaction = txType switch
         {
-            TxType.EIP1559 => NewTx(),
+            TxType.EIP1559 => new(),
             _ => throw new InvalidOperationException("Unexpected TxType")
         };
         transaction.Type = txType;
