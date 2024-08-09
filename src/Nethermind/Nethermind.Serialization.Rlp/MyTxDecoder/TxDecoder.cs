@@ -59,11 +59,9 @@ public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecod
 
     public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-
         if (decoderContext.IsNextItemNull())
         {
             decoderContext.ReadByte();
-
             return null;
         }
 
@@ -85,9 +83,9 @@ public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecod
         {
             if (!decoderContext.IsSequenceNext())
             {
-                (int PrefixLength, int ContentLength) prefixAndContentLength = decoderContext.ReadPrefixAndContentLength();
+                (int _, int ContentLength) = decoderContext.ReadPrefixAndContentLength();
                 txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
+                transactionSequence = decoderContext.Peek(ContentLength);
                 txType = (TxType)decoderContext.ReadByte();
             }
         }
