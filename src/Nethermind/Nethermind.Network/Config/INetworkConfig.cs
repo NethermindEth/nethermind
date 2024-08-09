@@ -47,10 +47,10 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "10000")]
     int P2PPingInterval { get; }
 
-    [ConfigItem(Description = $"The UDP port number for incoming discovery connections. It's recommended to keep it the same as the TCP port (`{nameof(P2PPort)}`) because other values have not been tested yet.", DefaultValue = "30303")]
+    [ConfigItem(Description = $"The UDP port number for incoming discovery connections. It's recommended to keep it the same as the TCP port (`{nameof(P2PPort)}`) because other values have not been tested yet.", DefaultValue = "30303", IsPortOption = true)]
     int DiscoveryPort { get; set; }
 
-    [ConfigItem(Description = "The TCP port for incoming P2P connections.", DefaultValue = "30303")]
+    [ConfigItem(Description = "The TCP port for incoming P2P connections.", DefaultValue = "30303", IsPortOption = true)]
     int P2PPort { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "2000")]

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Grpc.Core;
 using Nethermind.Grpc;
 using Nethermind.Logging;
+using Nethermind.Network;
 
 namespace Nethermind.Runner.Ethereum
 {
@@ -30,7 +31,9 @@ namespace Nethermind.Runner.Ethereum
                 Services = { NethermindService.BindService(_service) },
                 Ports = { new ServerPort(_config.Host, _config.Port, ServerCredentials.Insecure) }
             };
-            _server.Start();
+            NetworkHelper.HandlePortTakenError(
+                _server.Start, _config.Port
+            );
             if (_logger.IsInfo) _logger.Info($"Started GRPC server on {_config.Host}:{_config.Port}.");
 
             return Task.CompletedTask;

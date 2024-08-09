@@ -15,6 +15,9 @@ namespace Nethermind.Config
         public static string RemoveEnd(this string thisString, char removeChar) =>
             thisString.EndsWith(removeChar) ? thisString[..^1] : thisString;
 
+        public static string RemoveEnd(this string thisString, string removeString) =>
+            thisString.EndsWith(removeString) ? thisString[..^removeString.Length] : thisString;
+
         public static bool Contains(this IEnumerable<string> collection, string value, StringComparison comparison) =>
             collection.Any(i => string.Equals(i, value, comparison));
     }
