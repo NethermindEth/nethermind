@@ -219,18 +219,21 @@ public sealed class OptimismTxDecoder : AbstractTxDecoder
 
     public void Encode(RlpStream stream, DepositTransaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        EncodeTx(stream, item, rlpBehaviors);
+        Encode(item, stream, rlpBehaviors);
     }
 
     public Rlp EncodeTx(DepositTransaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        EncodeTx(rlpStream, item);
+        Encode(item, rlpStream);
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    private void EncodeTx(RlpStream stream, DepositTransaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(Transaction i, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
+        // TODO: Deal with subtyping
+        DepositTransaction item = (DepositTransaction)i;
+
         if (item is null)
         {
             stream.WriteByte(Rlp.NullObjectByte);
