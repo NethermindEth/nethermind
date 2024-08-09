@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -13,6 +17,42 @@ namespace Nethermind.Blockchain.Filters
 
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
+        public static readonly IEnumerable<int> Any = [-1];
+
+        public IEnumerable<int> GetBlockNumbersFrom(LogIndexStorage logIndexStorage)
+        {
+            if (Addresses is not null)
+            {
+                var blocks = Addresses.Select(a => logIndexStorage.GetBlocksForAddress(a));
+                IEnumerator<int>[] enumerators = blocks.Select(b => b.GetEnumerator()).ToArray();
+
+                try
+                {
+                    IEnumerable<int> result = LogOperators<int>.Union(enumerators);
+                    foreach (int blockNumber in result)
+                    {
+                        yield return blockNumber;
+                    }
+                }
+
+                finally
+                {
+
+                    for (int i = 0; i < enumerators.Length; i++)
+                    {
+                        enumerators[i].Dispose();
+                    }
+                }
+
+                yield break;
+            }
+            if (Address is null)
+            {
+                yield return Any.First();
+                yield break;
+            }
+            yield return logIndexStorage.GetBlocksForAddress(Address).FirstOrDefault();
+        }
 
         public AddressFilter(Address address)
         {

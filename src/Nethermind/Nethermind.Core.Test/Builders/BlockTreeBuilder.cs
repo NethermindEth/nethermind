@@ -49,6 +49,7 @@ namespace Nethermind.Core.Test.Builders
             BlockInfoDb = new TestMemDb();
             MetadataDb = new TestMemDb();
             BadBlocksDb = new TestMemDb();
+            LogIndexDb = new TestMemDb();
 
             _genesisBlock = genesisBlock;
             _specProvider = specProvider;
@@ -86,7 +87,8 @@ namespace Nethermind.Core.Test.Builders
                         _specProvider,
                         BloomStorage,
                         SyncConfig,
-                        LimboLogs.Instance);
+                        LimboLogs.Instance,
+                        LogIndexDb);
                 }
 
                 return _blockTree;
@@ -109,6 +111,7 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb BlocksDb { get; set; }
         public IDb BadBlocksDb { get; set; }
+        public IDb LogIndexDb { get; set; }
 
         private IBlockStore? _blockStore;
         public IBlockStore BlockStore

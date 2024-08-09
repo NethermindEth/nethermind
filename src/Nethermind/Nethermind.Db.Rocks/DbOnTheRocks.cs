@@ -27,7 +27,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class DbOnTheRocks : IDb, ITunableDb
+public class DbOnTheRocks : IDbWithIterator, ITunableDb
 {
     protected ILogger _logger;
 
@@ -1006,7 +1006,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         return GetAllCore(iterator);
     }
 
-    protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
+    public Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
     {
         ReadOptions readOptions = new();
         readOptions.SetTailing(!ordered);
