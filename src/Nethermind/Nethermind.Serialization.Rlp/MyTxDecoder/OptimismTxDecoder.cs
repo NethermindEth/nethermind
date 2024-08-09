@@ -9,7 +9,7 @@ using Nethermind.Core.Optimism;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class OptimismTxDecoder
+public sealed class OptimismTxDecoder : AbstractTxDecoder
 {
     private readonly bool _lazyHash;
 
@@ -18,34 +18,17 @@ public sealed class OptimismTxDecoder
         _lazyHash = lazyHash;
     }
 
-    public DepositTransaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        if (rlpStream.IsNextItemNull())
+        DepositTransaction transaction = new()
         {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
-
-        DepositTransaction transaction = txType switch
-        {
-            TxType.DepositTx => new(),
-            _ => throw new InvalidOperationException("Unexpected TxType")
+            Type = TxType.DepositTx
         };
-        transaction.Type = txType;
 
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-            case TxType.DepositTx:
-                DecodeDepositPayloadWithoutSig(transaction, rlpStream);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodeDepositPayloadWithoutSig(transaction, rlpStream);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -72,33 +55,6 @@ public sealed class OptimismTxDecoder
         }
 
         return transaction;
-    }
-
-    private static Span<byte> DecodeTxTypeAndGetSequence(RlpStream rlpStream, RlpBehaviors rlpBehaviors, out TxType txType)
-    {
-        static Span<byte> DecodeTxType(RlpStream rlpStream, int length, out TxType txType)
-        {
-            Span<byte> sequence = rlpStream.Peek(length);
-            txType = (TxType)rlpStream.ReadByte();
-            return sequence;
-        }
-
-        Span<byte> transactionSequence = rlpStream.PeekNextItem();
-        txType = TxType.Legacy;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            byte firstByte = rlpStream.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
-            {
-                transactionSequence = DecodeTxType(rlpStream, rlpStream.Length, out txType);
-            }
-        }
-        else if (!rlpStream.IsSequenceNext())
-        {
-            transactionSequence = DecodeTxType(rlpStream, rlpStream.ReadPrefixAndContentLength().ContentLength, out txType);
-        }
-
-        return transactionSequence;
     }
 
     public DepositTransaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
