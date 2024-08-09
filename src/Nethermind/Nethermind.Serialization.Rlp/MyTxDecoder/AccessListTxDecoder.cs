@@ -24,7 +24,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        DecodeAccessListPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+        DecodePayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -53,7 +53,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         return transaction;
     }
 
-    private void DecodeAccessListPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    private void DecodePayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
         transaction.Nonce = rlpStream.DecodeUInt256();
@@ -77,7 +77,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         transaction.AccessList = _decoder.Decode(ref decoderContext, rlpBehaviors);
     }
 
-    private void EncodePayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
+    private void EncodePayloadWithoutSignature(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
     {
         stream.Encode(item.ChainId ?? 0);
         stream.Encode(item.Nonce);
@@ -283,7 +283,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         switch (item.Type)
         {
             case TxType.AccessList:
-                EncodePayloadWithoutPayload(item, stream, rlpBehaviors);
+                EncodePayloadWithoutSignature(item, stream, rlpBehaviors);
                 break;
             default:
                 throw new InvalidOperationException("Unexpected TxType");
