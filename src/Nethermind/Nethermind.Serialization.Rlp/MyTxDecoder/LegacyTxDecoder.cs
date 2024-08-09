@@ -52,27 +52,9 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return transaction;
     }
 
-    public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Transaction Decode(int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
-        Transaction transaction = null;
-        Decode(ref decoderContext, ref transaction, rlpBehaviors);
-
-        return transaction;
-    }
-
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref Transaction? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
-        {
-            decoderContext.ReadByte();
-            transaction = null;
-            return;
-        }
-
-        int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
-
-        transaction = new()
+        Transaction transaction = new()
         {
             Type = TxType.Legacy
         };
@@ -123,6 +105,8 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
                 transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
+
+        return transaction;
     }
 
     public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
