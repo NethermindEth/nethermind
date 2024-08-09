@@ -53,33 +53,6 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         return transaction;
     }
 
-    private static Span<byte> DecodeTxTypeAndGetSequence(RlpStream rlpStream, RlpBehaviors rlpBehaviors, out TxType txType)
-    {
-        static Span<byte> DecodeTxType(RlpStream rlpStream, int length, out TxType txType)
-        {
-            Span<byte> sequence = rlpStream.Peek(length);
-            txType = (TxType)rlpStream.ReadByte();
-            return sequence;
-        }
-
-        Span<byte> transactionSequence = rlpStream.PeekNextItem();
-        txType = TxType.AccessList;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            byte firstByte = rlpStream.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
-            {
-                transactionSequence = DecodeTxType(rlpStream, rlpStream.Length, out txType);
-            }
-        }
-        else if (!rlpStream.IsSequenceNext())
-        {
-            transactionSequence = DecodeTxType(rlpStream, rlpStream.ReadPrefixAndContentLength().ContentLength, out txType);
-        }
-
-        return transactionSequence;
-    }
-
     private void DecodeAccessListPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
