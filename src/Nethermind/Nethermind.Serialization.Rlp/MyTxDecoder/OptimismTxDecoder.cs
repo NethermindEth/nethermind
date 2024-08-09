@@ -9,14 +9,9 @@ using Nethermind.Core.Optimism;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class OptimismTxDecoder : AbstractTxDecoder
+public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
-    private readonly bool _lazyHash;
-
-    public OptimismTxDecoder(bool lazyHash = true)
-    {
-        _lazyHash = lazyHash;
-    }
+    private readonly bool _lazyHash = lazyHash;
 
     public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -57,68 +52,17 @@ public sealed class OptimismTxDecoder : AbstractTxDecoder
         return transaction;
     }
 
-    public DepositTransaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override DepositTransaction Decode(int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
-        DepositTransaction transaction = null;
-        Decode(ref decoderContext, ref transaction, rlpBehaviors);
-
-        return transaction;
-    }
-
-
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref DepositTransaction? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
+        DepositTransaction transaction = new()
         {
-            decoderContext.ReadByte();
-            transaction = null;
-            return;
-        }
-
-        int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
-
-        TxType txType = TxType.Legacy;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            byte firstByte = decoderContext.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
-            {
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(decoderContext.Length);
-                txType = (TxType)decoderContext.ReadByte();
-            }
-        }
-        else
-        {
-            if (!decoderContext.IsSequenceNext())
-            {
-                (int PrefixLength, int ContentLength) prefixAndContentLength =
-                    decoderContext.ReadPrefixAndContentLength();
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
-                txType = (TxType)decoderContext.ReadByte();
-            }
-        }
-
-        transaction = txType switch
-        {
-            TxType.DepositTx => new(),
-            _ => throw new InvalidOperationException("Unexpected TxType")
+            Type = TxType.DepositTx
         };
-        transaction.Type = txType;
 
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-            case TxType.DepositTx:
-                DecodeDepositPayloadWithoutSig(transaction, ref decoderContext);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodeDepositPayloadWithoutSig(transaction, ref decoderContext);
 
         if (decoderContext.Position < lastCheck)
         {
@@ -154,6 +98,8 @@ public sealed class OptimismTxDecoder : AbstractTxDecoder
                 transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
+
+        return transaction;
     }
 
     private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, DepositTransaction transaction)
