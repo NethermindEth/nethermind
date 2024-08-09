@@ -92,76 +92,26 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
     }
 
-    public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Transaction Decode(int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors)
     {
-        Transaction transaction = null;
-        Decode(ref decoderContext, ref transaction, rlpBehaviors);
-
-        return transaction;
-    }
-
-
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref Transaction? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
+        Transaction transaction = new()
         {
-            decoderContext.ReadByte();
-            transaction = null;
-            return;
-        }
-
-        int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
-
-        TxType txType = TxType.Legacy;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            byte firstByte = decoderContext.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
-            {
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(decoderContext.Length);
-                txType = (TxType)decoderContext.ReadByte();
-            }
-        }
-        else
-        {
-            if (!decoderContext.IsSequenceNext())
-            {
-                (int PrefixLength, int ContentLength) prefixAndContentLength = decoderContext.ReadPrefixAndContentLength();
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
-                txType = (TxType)decoderContext.ReadByte();
-            }
-        }
-
-        transaction = txType switch
-        {
-            TxType.EIP1559 => new(),
-            _ => throw new InvalidOperationException("Unexpected TxType")
+            Type = TxType.EIP1559
         };
-        transaction.Type = txType;
 
-        int transactionLength = decoderContext.ReadSequenceLength();
-        int lastCheck = decoderContext.Position + transactionLength;
+        int transactionLength = context.ReadSequenceLength();
+        int lastCheck = context.Position + transactionLength;
 
-        switch (transaction.Type)
+        DecodeEip1559PayloadWithoutSig(transaction, ref context, rlpBehaviors);
+
+        if (context.Position < lastCheck)
         {
-            case TxType.EIP1559:
-                DecodeEip1559PayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
-
-        if (decoderContext.Position < lastCheck)
-        {
-            DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
+            DecodeSignature(ref context, rlpBehaviors, transaction);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
-            decoderContext.Check(lastCheck);
+            context.Check(lastCheck);
         }
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
@@ -169,13 +119,13 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
             if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
-                if (decoderContext.ShouldSliceMemory)
+                if (context.ShouldSliceMemory)
                 {
                     // Do not copy the memory in this case.
-                    int currentPosition = decoderContext.Position;
-                    decoderContext.Position = txSequenceStart;
-                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
-                    decoderContext.Position = currentPosition;
+                    int currentPosition = context.Position;
+                    context.Position = txSequenceStart;
+                    transaction.SetPreHashMemoryNoLock(context.ReadMemory(transactionSequence.Length));
+                    context.Position = currentPosition;
                 }
                 else
                 {
@@ -188,6 +138,8 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
                 transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
+
+        return transaction;
     }
 
     private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
