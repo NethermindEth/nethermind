@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Transactions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -14,10 +16,12 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.State;
 using Transaction = Nethermind.Core.Transaction;
 
@@ -58,14 +62,16 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
     public bool TrySimulate(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
+        SimulateBlockTracer simulateOutputTracer,
         IBlockTracer tracer,
         [NotNullWhen(false)] out string? error) =>
-        TrySimulate(parent, payload, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
+        TrySimulate(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
 
 
     private bool TrySimulate(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
+        SimulateBlockTracer simulateOutputTracer,
         IBlockTracer tracer,
         SimulateReadOnlyBlocksProcessingEnv env,
         [NotNullWhen(false)] out string? error)
@@ -84,6 +90,8 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
             {
                 nonceCache.Clear();
                 BlockHeader callHeader = GetCallHeader(blockCall, parent, payload.Validation, spec); //currentSpec is still parent spec
+
+
                 spec = env.SpecProvider.GetSpec(callHeader);
                 PrepareState(callHeader, parent, blockCall, env.WorldState, env.CodeInfoRepository, spec);
 
@@ -95,9 +103,24 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 {
                     callHeader.BaseFeePerGas = 0;
                 }
+
+                env.SetBlockBlobBaseFee(blockCall.BlockOverrides?.BlobBaseFee);
+
                 callHeader.Hash = callHeader.CalculateHash();
 
                 Transaction[] transactions = CreateTransactions(payload, blockCall, callHeader, stateProvider, nonceCache);
+
+
+                if (spec.IsEip4844Enabled)
+                {
+                    foreach (Transaction transaction in transactions)
+                    {
+                        callHeader.BlobGasUsed += BlobGasCalculator.CalculateBlobGas(transaction);
+                    }
+
+                    callHeader.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+                }
+
                 if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
                 {
                     return false;
@@ -117,6 +140,22 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                         processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
+                var current = simulateOutputTracer.Results.Last();
+
+                current.StateRoot = processedBlock.StateRoot ?? new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000"); ;
+
+                current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ??
+                                                new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000");
+
+                current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ??
+                                          new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000");
+
+                current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
+
+                current.Withdrawals = processedBlock.Withdrawals ?? [];
+
+                current.Author = null;
+
                 parent = processedBlock.Header;
             }
         }
@@ -223,7 +262,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-        transaction.To ??= Address.Zero;
+        //transaction.To ??= Address.Zero;
         transaction.Data ??= Memory<byte>.Empty;
 
         if (!transactionDetails.HadNonceInRequest)

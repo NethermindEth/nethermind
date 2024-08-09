@@ -84,7 +84,8 @@ public class BlockForRpc
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
     }
 
-    public Address Author { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
     public long GasLimit { get; set; }

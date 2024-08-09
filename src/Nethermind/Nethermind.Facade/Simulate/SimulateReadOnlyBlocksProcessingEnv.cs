@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
@@ -72,6 +73,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
     }
 
+
+
     public IWorldStateManager WorldStateManager { get; }
     public IVirtualMachine VirtualMachine { get; }
     public IReadOnlyDbProvider DbProvider { get; }
@@ -82,6 +85,11 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     public void Dispose()
     {
         DbProvider.Dispose();
+    }
+
+    public void SetBlockBlobBaseFee(UInt256? BlobBaseFee)
+    {
+        ((SimulateTransactionProcessor)_transactionProcessor).BlobBaseFee = BlobBaseFee;
     }
 
     private SimulateBlockValidatorProxy CreateValidator()
