@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -181,6 +182,8 @@ namespace Nethermind.TxPool
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
+
+        public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => _blobTransactions.GetBlobIndex;
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {

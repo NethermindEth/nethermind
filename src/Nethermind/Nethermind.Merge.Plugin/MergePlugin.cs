@@ -280,6 +280,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
             if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
             if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+            if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
@@ -354,6 +355,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
+                new GetBlobsHandler(_api.TxPool),
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);
