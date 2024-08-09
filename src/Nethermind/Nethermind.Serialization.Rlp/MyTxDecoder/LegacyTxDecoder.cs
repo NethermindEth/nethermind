@@ -8,11 +8,11 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class LegacyTxDecoder(bool lazyHash = true)
+public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
     private readonly bool _lazyHash = lazyHash;
 
-    public Transaction Decode(byte[] transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         Transaction transaction = new()
         {
@@ -49,11 +49,6 @@ public sealed class LegacyTxDecoder(bool lazyHash = true)
         }
 
         return transaction;
-    }
-
-    public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        throw new NotImplementedException();
     }
 
     public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
