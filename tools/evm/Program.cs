@@ -36,6 +36,7 @@ namespace Evm
             var traceOpt = new Option<bool>("--trace", description: "Configures the use of the JSON opcode tracer. This tracer emits traces to files as trace-<txIndex>-<txHash>.jsonl", getDefaultValue: () => false);
             var traceNoStackOpt = new Option<bool>("--trace.noStack", description: "Trace no stack", getDefaultValue: () => false);
             var traceReturnDataOpt = new Option<bool>("--trace.returnData", description: "Trace return data", getDefaultValue: () => false);
+            var isGnosisTests = new Option<bool>("--run.gnosis", description: "If set to true, will run under Gnosis spec", getDefaultValue: () => false);
 
             var cmd = new Command("t8n", "EVM State Transition command")
             {
@@ -53,6 +54,7 @@ namespace Evm
                 traceMemoryOpt,
                 traceNoStackOpt,
                 traceReturnDataOpt,
+                isGnosisTests
             };
 
             cmd.AddAlias("transition");
@@ -86,6 +88,7 @@ namespace Evm
                             context.ParseResult.GetValueForOption(stateChainIdOpt),
                             context.ParseResult.GetValueForOption(stateForkOpt),
                             context.ParseResult.GetValueForOption(stateRewardOpt),
+                            context.ParseResult.GetValueForOption(isGnosisTests),
                             traceOpts
                         );
                         Environment.ExitCode = output.ExitCode;

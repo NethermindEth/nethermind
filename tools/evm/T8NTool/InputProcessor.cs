@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 
@@ -23,6 +24,7 @@ public class InputProcessor
         string stateFork,
         string? stateReward,
         ulong stateChainId,
+        bool isGnosis,
         TraceOptions traceOptions)
     {
         GethTraceOptions gethTraceOptions = new GethTraceOptions
@@ -30,7 +32,8 @@ public class InputProcessor
             EnableMemory = traceOptions.Memory,
             DisableStack = traceOptions.NoStack
         };
-        Dictionary<Address, AccountState> allocJson = EthereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
+        Dictionary<Address, AccountState> allocJson =
+            EthereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = EthereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
 
         Transaction[] transactions;
@@ -61,11 +64,12 @@ public class InputProcessor
             throw new T8NException(e, ExitCodes.ErrorConfig);
         }
 
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, spec));
+        ISpecProvider specProvider = GnosisSpecProvider.Instance;
         if (spec is Paris)
         {
             specProvider.UpdateMergeTransitionInfo(envInfo.CurrentNumber, 0);
         }
+
         envInfo.ApplyChecks(specProvider, spec);
 
         GeneralStateTest generalStateTest = new();
@@ -73,12 +77,12 @@ public class InputProcessor
         generalStateTest.Fork = spec;
         generalStateTest.Pre = allocJson;
         generalStateTest.Transactions = transactions;
+        generalStateTest.StateChainId = isGnosis ? GnosisSpecProvider.Instance.ChainId : FrontierSpecProvider.Instance.ChainId;
 
         generalStateTest.CurrentCoinbase = envInfo.CurrentCoinbase;
         generalStateTest.CurrentGasLimit = envInfo.CurrentGasLimit;
         generalStateTest.CurrentTimestamp = envInfo.CurrentTimestamp;
         generalStateTest.CurrentNumber = envInfo.CurrentNumber;
-        generalStateTest.Withdrawals = envInfo.Withdrawals;
         generalStateTest.Withdrawals = envInfo.Withdrawals;
         generalStateTest.CurrentRandom = envInfo.GetCurrentRandomHash256();
         generalStateTest.ParentTimestamp = envInfo.ParentTimestamp;

@@ -64,7 +64,7 @@ namespace Nethermind.Core
 
     public static class TestBlockchainIds
     {
-        public const int NetworkId = 4261;
-        public const int ChainId = 1;
+        public const int NetworkId = 100;
+        public const int ChainId = 100;
     }
 }
