@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Init.Steps;
@@ -50,7 +51,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     jsonRpcService,
                     jsonRpcConfig,
                     _api.FileSystem,
-                    _api.LogManager);
+                    _api.LogManager,
+                    _api.Config<ISyncConfig>());
 
 
                 if (initConfig.WebSocketsEnabled)
