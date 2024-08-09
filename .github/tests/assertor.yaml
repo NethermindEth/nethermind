@@ -1,0 +1,10 @@
+participants:
+  - el_type: nethermind
+    cl_type: prysm
+  - el_type: nethermind
+    cl_type: nimbus
+additional_services:
+  - assertoor
+assertoor_params:
+  run_stability_check: true
+  run_block_proposal_check: true

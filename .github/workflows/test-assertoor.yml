@@ -1,0 +1,23 @@
+name: Assertoor tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches: [kch/assertoor]
+
+jobs:
+  get_tests:
+    name: "Run assertoor tests on Nethermind pairs"
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Kurtosis Assertoor GitHub Action
+      uses: ethpandaops/kurtosis-assertoor-github-action@v1
+      with:
+        ethereum_package_url: "github.com/ethpandaops/ethereum-package"
+        ethereum_package_branch: ""
+        ethereum_package_args: .github/tests/assertor.yaml
