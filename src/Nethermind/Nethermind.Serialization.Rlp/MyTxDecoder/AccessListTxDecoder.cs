@@ -9,49 +9,22 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public class AccessListTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
+public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
     private readonly AccessListDecoder _decoder = new();
-    private readonly bool _lazyHash;
+    private readonly bool _lazyHash = lazyHash;
 
-    protected AccessListTxDecoder(bool lazyHash = true)
+    public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        _lazyHash = lazyHash;
-    }
-
-    protected virtual Transaction NewTx()
-    {
-        return new Transaction();
-    }
-
-    public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
+        Transaction transaction = new()
         {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
-
-        Transaction transaction = txType switch
-        {
-            TxType.AccessList => NewTx(),
-            _ => throw new InvalidOperationException("Unexpected TxType")
+            Type = TxType.AccessList
         };
-        transaction.Type = txType;
 
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-            case TxType.AccessList:
-                DecodeAccessListPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodeAccessListPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -188,7 +161,7 @@ public class AccessListTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDeco
 
         transaction = txType switch
         {
-            TxType.AccessList => NewTx(),
+            TxType.AccessList => new(),
             _ => throw new InvalidOperationException("Unexpected TxType")
         };
         transaction.Type = txType;
