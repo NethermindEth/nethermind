@@ -458,7 +458,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return contentLength;
     }
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
         int txContentLength = GetContentLength(tx, withNetworkWrapper: (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);

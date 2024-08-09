@@ -371,7 +371,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         return contentLength;
     }
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
         int txContentLength = GetContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);

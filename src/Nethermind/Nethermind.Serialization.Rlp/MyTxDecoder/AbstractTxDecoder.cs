@@ -11,5 +11,7 @@ public abstract class AbstractTxDecoder
     public abstract Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors);
 
     public abstract void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors);
+
+    public abstract int GetLength(Transaction item, RlpBehaviors rlpBehaviors);
 }
 

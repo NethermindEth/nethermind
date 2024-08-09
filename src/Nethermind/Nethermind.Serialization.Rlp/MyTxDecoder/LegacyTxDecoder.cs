@@ -1,3 +1,4 @@
+
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -239,7 +240,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return contentLength;
     }
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
         int txContentLength = GetContentLength(tx, false);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);

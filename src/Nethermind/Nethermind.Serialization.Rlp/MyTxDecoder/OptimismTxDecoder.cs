@@ -273,9 +273,10 @@ public sealed class OptimismTxDecoder : AbstractTxDecoder
         return contentLength;
     }
 
-
-    public int GetLength(DepositTransaction tx, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Transaction _wrongType, RlpBehaviors rlpBehaviors)
     {
+        // TODO: Deal with subtyping
+        DepositTransaction tx = (DepositTransaction)_wrongType;
         int txContentLength = GetContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 

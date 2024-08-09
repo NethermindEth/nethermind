@@ -347,7 +347,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return contentLength;
     }
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
         int txContentLength = GetContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
