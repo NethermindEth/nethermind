@@ -142,6 +142,16 @@ namespace Nethermind.Init.Steps
             setApi.BackgroundTaskScheduler = backgroundTaskScheduler;
             _api.DisposeStack.Push(backgroundTaskScheduler);
 
+            CensorshipDetector censorshipDetector = new CensorshipDetector(
+                txPool,
+                CreateTxPoolTxComparer(),
+                mainBlockProcessor,
+                _api.BlockTree!,
+                _api.LogManager
+            );
+            setApi.CensorshipDetector = censorshipDetector;
+            _api.DisposeStack.Push(censorshipDetector);
+
             return Task.CompletedTask;
         }
 

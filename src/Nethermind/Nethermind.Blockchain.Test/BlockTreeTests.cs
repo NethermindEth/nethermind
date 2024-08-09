@@ -1800,8 +1800,6 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             AddToMain(blockTree, block0);
-            blockTree.SuggestBlock(block0);
-            blockTree.UpdateMainChain(new[] { block0 }, true);
 
             long blockAddedToMainHeadNumber = 0;
             blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainHeadNumber = blockTree.Head!.Header.Number; };
