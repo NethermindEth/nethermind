@@ -15,6 +15,15 @@ public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecod
         { (byte)TxType.DepositTx, new OptimismTxDecoder() }
     };
 
+    private static AbstractTxDecoder DecoderFor(TxType txType)
+    {
+        if (!_decoders.TryGetValue((byte)txType, out AbstractTxDecoder decoder))
+        {
+            throw new InvalidOperationException("Unexpected TxType");
+        }
+        return decoder;
+    }
+
     public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
@@ -49,11 +58,7 @@ public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecod
 
         }
 
-        if (!_decoders.TryGetValue((byte)txType, out AbstractTxDecoder decoder))
-        {
-            throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        AbstractTxDecoder decoder = DecoderFor(txType);
         return decoder.Decode(transactionSequence, rlpStream, rlpBehaviors);
     }
 
@@ -90,31 +95,27 @@ public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecod
             }
         }
 
-        if (!_decoders.TryGetValue((byte)txType, out AbstractTxDecoder decoder))
-        {
-            throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        AbstractTxDecoder decoder = DecoderFor(txType);
         return decoder.Decode(txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
     public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (!_decoders.TryGetValue((byte)item.Type, out AbstractTxDecoder decoder))
-        {
-            throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        AbstractTxDecoder decoder = DecoderFor(item.Type);
         decoder.Encode(item, stream, rlpBehaviors);
+    }
+
+    public static Rlp Encode(Transaction item, RlpBehaviors behaviors = RlpBehaviors.None)
+    {
+        AbstractTxDecoder decoder = DecoderFor(item.Type);
+        RlpStream stream = new(decoder.GetLength(item, behaviors));
+        decoder.Encode(item, stream, behaviors);
+        return new Rlp(stream.Data.ToArray());
     }
 
     public int GetLength(Transaction item, RlpBehaviors rlpBehaviors)
     {
-        if (!_decoders.TryGetValue((byte)item.Type, out AbstractTxDecoder decoder))
-        {
-            throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        AbstractTxDecoder decoder = DecoderFor(item.Type);
         return decoder.GetLength(item, rlpBehaviors);
     }
 }
