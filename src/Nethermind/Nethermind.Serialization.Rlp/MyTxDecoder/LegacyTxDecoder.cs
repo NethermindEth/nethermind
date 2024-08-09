@@ -62,14 +62,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-            case TxType.Legacy:
-                DecodePayloadWithoutSig(transaction, ref decoderContext);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodePayloadWithoutSig(transaction, ref decoderContext);
 
         if (decoderContext.Position < lastCheck)
         {
