@@ -25,12 +25,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         if (!spec.WithdrawalsEnabled)
-        {
-            Console.WriteLine("Withdrawals not enabled");
             return;
-        }
-
-        Console.WriteLine("Withdrawals enabled");
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
