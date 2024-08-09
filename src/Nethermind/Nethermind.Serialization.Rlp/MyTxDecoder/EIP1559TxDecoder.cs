@@ -24,7 +24,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        DecodeEip1559PayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+        DecodePayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -53,34 +53,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return transaction;
     }
 
-    private static Span<byte> DecodeTxTypeAndGetSequence(RlpStream rlpStream, RlpBehaviors rlpBehaviors, out TxType txType)
-    {
-        static Span<byte> DecodeTxType(RlpStream rlpStream, int length, out TxType txType)
-        {
-            Span<byte> sequence = rlpStream.Peek(length);
-            txType = (TxType)rlpStream.ReadByte();
-            return sequence;
-        }
-
-        Span<byte> transactionSequence = rlpStream.PeekNextItem();
-        txType = TxType.Legacy;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            byte firstByte = rlpStream.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
-            {
-                transactionSequence = DecodeTxType(rlpStream, rlpStream.Length, out txType);
-            }
-        }
-        else if (!rlpStream.IsSequenceNext())
-        {
-            transactionSequence = DecodeTxType(rlpStream, rlpStream.ReadPrefixAndContentLength().ContentLength, out txType);
-        }
-
-        return transactionSequence;
-    }
-
-    private void DecodeEip1559PayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    private void DecodePayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
         transaction.Nonce = rlpStream.DecodeUInt256();
