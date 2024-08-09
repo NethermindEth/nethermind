@@ -155,23 +155,6 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
 
         int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
-        int sequenceLength = Rlp.LengthOfSequence(contentLength);
-
-        if (item.Type != TxType.Legacy)
-        {
-            if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
-            {
-                stream.StartByteArray(sequenceLength + 1, false);
-            }
-
-            stream.WriteByte((byte)item.Type);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
-        {
-            stream.StartSequence(contentLength);
-            contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
-        }
 
         stream.StartSequence(contentLength);
 
