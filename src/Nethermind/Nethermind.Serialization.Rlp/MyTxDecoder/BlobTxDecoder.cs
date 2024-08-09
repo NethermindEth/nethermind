@@ -9,37 +9,17 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public class BlobTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
+public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
     private readonly AccessListDecoder _accessListDecoder = new();
-    private readonly bool _lazyHash;
+    private readonly bool _lazyHash = lazyHash;
 
-    protected BlobTxDecoder(bool lazyHash = true)
+    public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        _lazyHash = lazyHash;
-    }
-
-    protected virtual Transaction NewTx()
-    {
-        return new();
-    }
-
-    public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
+        Transaction transaction = new()
         {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
-
-        Transaction transaction = txType switch
-        {
-            TxType.Blob => NewTx(),
-            _ => throw new InvalidOperationException("Unexpected TxType")
+            Type = TxType.Blob
         };
-        transaction.Type = txType;
 
         int positionAfterNetworkWrapper = 0;
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
@@ -53,15 +33,7 @@ public class BlobTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Tr
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-
-            case TxType.Blob:
-                DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -102,33 +74,6 @@ public class BlobTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Tr
         }
 
         return transaction;
-    }
-
-    private static Span<byte> DecodeTxTypeAndGetSequence(RlpStream rlpStream, RlpBehaviors rlpBehaviors, out TxType txType)
-    {
-        static Span<byte> DecodeTxType(RlpStream rlpStream, int length, out TxType txType)
-        {
-            Span<byte> sequence = rlpStream.Peek(length);
-            txType = (TxType)rlpStream.ReadByte();
-            return sequence;
-        }
-
-        Span<byte> transactionSequence = rlpStream.PeekNextItem();
-        txType = TxType.Legacy;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            byte firstByte = rlpStream.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
-            {
-                transactionSequence = DecodeTxType(rlpStream, rlpStream.Length, out txType);
-            }
-        }
-        else if (!rlpStream.IsSequenceNext())
-        {
-            transactionSequence = DecodeTxType(rlpStream, rlpStream.ReadPrefixAndContentLength().ContentLength, out txType);
-        }
-
-        return transactionSequence;
     }
 
     private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, ReadOnlySpan<byte> transactionSequence)
@@ -246,7 +191,7 @@ public class BlobTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Tr
 
         transaction = txType switch
         {
-            TxType.Blob => NewTx(),
+            TxType.Blob => new(),
             _ => throw new InvalidOperationException("Unexpected TxType")
         };
         transaction.Type = txType;
