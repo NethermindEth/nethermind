@@ -724,7 +724,7 @@ namespace Nethermind.Serialization.Rlp
                     contentLength = GetShardBlobContentLength(item);
                     break;
                 case TxType.DepositTx:
-                    OptimismTxDecoder.GetDepositTxContentLength(item as DepositTransaction);
+                    contentLength = OptimismTxDecoder.GetDepositTxContentLength(item as DepositTransaction);
                     break;
             }
 
