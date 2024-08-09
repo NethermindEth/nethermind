@@ -251,17 +251,17 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     public void Encode(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        EncodeTx(item, stream, rlpBehaviors);
+        Encode(item, stream, rlpBehaviors);
     }
 
     public Rlp EncodeTx(Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        EncodeTx(item, rlpStream, rlpBehaviors);
+        Encode(item, rlpStream, rlpBehaviors);
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    private void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (item is null)
         {
