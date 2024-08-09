@@ -277,6 +277,12 @@ public class DiscoveryApp : IDiscoveryApp
                 break;
             }
 
+            if (!_discoveryManager.NodesFilter.Set(networkNode.HostIp))
+            {
+                // Already seen this node ip recently
+                continue;
+            }
+
             Node node;
             try
             {

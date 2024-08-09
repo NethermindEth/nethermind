@@ -192,10 +192,20 @@ namespace Nethermind.Network.Discovery.Test
 
             for (int i = 0; i < message.Nodes.Length; i++)
             {
-                Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
-                Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));
-                Assert.That(deserializedMessage.Nodes[i].IdHash, Is.EqualTo(message.Nodes[i].IdHash));
-                Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
+                var deserializedNode = deserializedMessage.Nodes[i];
+                var messageNode = message.Nodes[i];
+                if (deserializedNode is null)
+                {
+                    Assert.That(messageNode, Is.Null);
+                    continue;
+                }
+                Assert.That(messageNode, Is.Not.Null);
+
+
+                Assert.That(deserializedNode.Host, Is.EqualTo(message.Nodes[i]!.Host));
+                Assert.That(deserializedNode.Port, Is.EqualTo(message.Nodes[i]!.Port));
+                Assert.That(deserializedNode.IdHash, Is.EqualTo(message.Nodes[i]!.IdHash));
+                Assert.That(deserializedNode, Is.EqualTo(message.Nodes[i]));
             }
         }
     }
