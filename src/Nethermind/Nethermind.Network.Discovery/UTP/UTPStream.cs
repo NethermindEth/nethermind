@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using MathNet.Numerics.Random;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.UTP;
@@ -23,7 +24,9 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
     private readonly ILogger _logger = logManager.GetClassLogger<UTPStream>();
     private const uint PayloadSize = 508;
     private const int MAX_PAYLOAD_SIZE = 64000;
-    private const uint RECEIVE_WINDOW_SIZE = 128000;
+    private readonly uint RECEIVE_WINDOW_SIZE = (uint)500.KiB();
+    private const int SELACK_MAX_RESEND = 4;
+    private const int DUPLICATE_ACKS_BEFORE_RESEND = 4;
 
     private uint _lastReceivedMicrosecond = 0;
     private UTPPacketHeader? _lastPacketHeaderFromPeer;
@@ -35,12 +38,12 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
     // The head's Header.SeqNumber is analogous to m_acked_seq_nr
 
     private readonly UTPSynchronizer _utpSynchronizer = new UTPSynchronizer();
-    private readonly InflightDataCalculator _inflightDataCalculator = new InflightDataCalculator();
-    private readonly LEDBAT _trafficControl = new LEDBAT();
+    private readonly UnackedWindows _unackedWindows = new UnackedWindows(logManager.GetClassLogger<UTPStream>());
+    private readonly LEDBAT _trafficControl = new LEDBAT(logManager);
 
     // TODO: Use LRU instead. Need a special expiry handling so that the _incomingBufferSize is correct.
     private ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
-    private ulong _incomingBufferSize = 0;
+    private int _incomingBufferSize = 0;
 
     public async Task InitiateHandshake(CancellationToken token, ushort? synConnectionId = null)
     {
@@ -122,7 +125,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
                 if (!ShouldNotHandleSequence(packageHeader, data))
                 {
                     // TODO: Fast path without going to receive buffer?
-                    _incomingBufferSize += (ulong)data.Length;
+                    Interlocked.Add(ref _incomingBufferSize, data.Length);
                     _receiveBuffer[packageHeader.SeqNumber] = data.ToArray();
                 }
 
@@ -190,6 +193,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
         bool finished = false;
         while (!finished && _state != ConnectionState.CsEnded)
         {
+            if (_logger.IsTrace) _logger.Trace($"R loop. Available window {_unackedWindows.GetCurrentInflightData() - _trafficControl.WindowSize}");
             token.ThrowIfCancellationRequested();
 
             ushort curAck = _receiverAck_nr.seq_nr;
@@ -198,6 +202,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
             while (_receiveBuffer.TryRemove(UTPUtil.WrappedAddOne(curAck), out Memory<byte>? packetData))
             {
                 curAck++;
+                if (_logger.IsTrace) _logger.Trace($"R ingest {curAck}");
 
                 if (packetData == null)
                 {
@@ -217,21 +222,19 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
                 }
 
                 await output.WriteAsync(packetData.Value, token);
-                _incomingBufferSize -= (ulong)packetData.Value.Length;
+                Interlocked.Add(ref _incomingBufferSize, -packetData.Value.Length);
             }
 
             // Assembling ack.
-            byte[]? selectiveAck = null;
-            if (_receiveBuffer.Count >= 2) // If its only one, then the logic on the receiver is kinda useless
-            {
-                selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
-            }
+            byte[]? selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
 
             _receiverAck_nr = new AckInfo(curAck, selectiveAck);
+            if (_logger.IsTrace) _logger.Trace($"R ack set to {curAck}. Bufsixe is {_receiveBuffer.Count()}");
 
             await SendStatePacket(token);
 
-            await _utpSynchronizer.WaitForReceiverToSync();
+            if (_logger.IsTrace) _logger.Trace($"R wait");
+            await _utpSynchronizer.WaitForReceiverToSync(100);
         }
     }
 
@@ -240,48 +243,77 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
         bool streamFinished = false;
         while (true)
         {
+            if (_logger.IsTrace) _logger.Trace("S loop start");
             token.ThrowIfCancellationRequested();
 
+            uint now = UTPUtil.GetTimestamp();
             if (_lastPacketHeaderFromPeer != null)
             {
-                ulong initialWindowSize = _inflightDataCalculator.GetCurrentUInflightData();
-                _inflightDataCalculator.CalculateInflightData(_lastPacketHeaderFromPeer);
-                ulong ackedBytes = initialWindowSize - _inflightDataCalculator.GetCurrentUInflightData();
+                ulong initialWindowSize = _unackedWindows.GetCurrentUInflightData();
+                ulong ackedBytes = (ulong) _unackedWindows.ProcessAck(_lastPacketHeaderFromPeer, now);
                 _trafficControl.OnAck(ackedBytes, initialWindowSize, _lastPacketHeaderFromPeer.TimestampDeltaMicros, UTPUtil.GetTimestamp());
-
             }
 
-            await Retransmit(_inflightDataCalculator.getUnAckedWindow(), token);
+            if (_unackedWindows.rtoTimeout > 0 && now > _unackedWindows.rtoTimeout)
+            {
+                if (_logger.IsTrace) _logger.Trace($"S rto timeout");
+                _unackedWindows.OnRtoTimeout();
+                // Retransmit everything
+            }
+            else
+            {
+                Retransmit(_unackedWindows.getUnAckedWindow());
+            }
 
+            if (_logger.IsTrace) _logger.Trace($"S Space available {isSpaceAvailableOnStream()}, {_unackedWindows.GetCurrentInflightData()}, {_trafficControl.WindowSize} F {streamFinished}");
             while (!streamFinished && isSpaceAvailableOnStream())
             {
+                if (_logger.IsTrace) _logger.Trace($"S send {_seq_nr}");
                 byte[] buffer = new byte[PayloadSize];
                 int readLength = await input.ReadAsync(buffer, token);
 
                 if (readLength != 0) {  // Note: We assume ReadAsync will return 0 multiple time.
-                    await SendPacket(UTPPacketType.StData, buffer.AsMemory()[..readLength], token);
+                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
+                    _unackedWindows.trackPacket(buffer.AsMemory()[..readLength], header, UTPUtil.GetTimestamp());
                     _seq_nr++;
                 }else {
-                    await SendPacket(UTPPacketType.StFin, Memory<byte>.Empty, token);
+                    UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
+                    _unackedWindows.trackPacket(Memory<byte>.Empty, header, UTPUtil.GetTimestamp());
                     streamFinished = true;
                 }
             }
-            if (streamFinished && _inflightDataCalculator.isUnackedWindowEmpty()) break;
+
+            await FlushPackets(token);
+            if (streamFinished && _unackedWindows.isUnackedWindowEmpty()) break;
             await _utpSynchronizer.WaitForReceiverToSync();
+        }
+    }
+
+    private async Task FlushPackets(CancellationToken token)
+    {
+        var linkedListNode = _unackedWindows.getUnAckedWindow().First;
+        while (linkedListNode != null)
+        {
+            var entry = linkedListNode.Value;
+            if (entry.NeedResent || entry.TransmitCount == 0)
+            {
+                entry.TransmitCount++;
+
+                var header = entry.Header;
+                uint timestamp = UTPUtil.GetTimestamp();
+                header.TimestampMicros = timestamp;
+                header.TimestampDeltaMicros = timestamp - _lastReceivedMicrosecond; // TODO: double check m_reply_micro logic
+                header.AckNumber = _receiverAck_nr.seq_nr;
+                header.SelectiveAck = _receiverAck_nr.selectiveAckData;
+                await peer.ReceiveMessage(header, entry.Buffer.Span, token);
+            }
+            linkedListNode = linkedListNode.Next;
         }
     }
 
     private bool isSpaceAvailableOnStream()
     {
-        return _inflightDataCalculator.GetCurrentInflightData() + PayloadSize < _trafficControl.WindowSize;
-    }
-
-    private async Task SendPacket(UTPPacketType type, Memory<byte> asMemory, CancellationToken token)
-    {
-        UTPPacketHeader header = CreateBaseHeader(type);
-        _inflightDataCalculator.trackPacket(asMemory, header);
-        await peer.ReceiveMessage(header, asMemory.Span, token);
-        _inflightDataCalculator.IncrementInflightData(asMemory.Length);
+        return _unackedWindows.GetCurrentInflightData() + PayloadSize < _trafficControl.WindowSize;
     }
 
     private async Task SendStatePacket(CancellationToken token)
@@ -313,8 +345,8 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
         }
 
         // No space in buffer UNLESS its the next needed sequence, in which case, we still process it, otherwise
-        // it can get stuck.
-        if (_incomingBufferSize + (ulong)data.Length > RECEIVE_WINDOW_SIZE &&
+
+        if (_incomingBufferSize + data.Length > RECEIVE_WINDOW_SIZE &&
             meta.SeqNumber != UTPUtil.WrappedAddOne(receiverAck))
         {
             // Attempt to clean incoming buffer.
@@ -328,36 +360,24 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
                 {
                     if (_receiveBuffer.TryRemove(keptBuffer, out Memory<byte>? mem))
                     {
-                        if (mem != null) _incomingBufferSize -= (ulong)mem.Value.Length;
+                        if (mem != null) _incomingBufferSize -= mem.Value.Length;
                     }
                 }
             }
 
-            if (_incomingBufferSize + (ulong)data.Length > RECEIVE_WINDOW_SIZE)
+            if (_incomingBufferSize + data.Length > RECEIVE_WINDOW_SIZE)
             {
-                // Sort them by its distance from receiverAck in descending order
-                keptBuffers.Sort((it1, it2) => (it2 - receiverAck) - (it1 - receiverAck));
-
-                ulong targetSize = _incomingBufferSize / 2;
-                ushort minKept = (ushort)(_seq_nr + 65);
-                int i = 0;
-                while (i < keptBuffers.Count && _incomingBufferSize > targetSize)
+                if (_logger.IsTrace)
                 {
-                    if (UTPUtil.IsLess(keptBuffers[i], minKept))
-                        continue; // Must keep at least 65 items as we could ack them via selective ack
-                    if (_receiveBuffer.TryRemove(keptBuffers[i], out Memory<byte>? mem))
-                    {
-                        if (mem != null) _incomingBufferSize -= (ulong)mem.Value.Length;
-                    }
-
-                    i++;
+                    _logger.Trace($"Receive buffer full for seq {meta.SeqNumber}");
+                    var it = _receiveBuffer.Select(kv => kv.Key).ToList();
+                    _logger.Trace("The nums " + string.Join(", ", it));
                 }
-            }
 
-            return true;
+                return true;
+            }
         }
 
-        if (_logger.IsTrace) _logger.Trace($"ok data {meta.SeqNumber}");
         return false;
     }
 
@@ -366,17 +386,20 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
         await peer.ReceiveMessage(header, ReadOnlySpan<byte>.Empty, token);
     }
 
-    private async Task Retransmit(LinkedList<UnackedItem> unackedWindow, CancellationToken token)
+    private void Retransmit(LinkedList<UnackedItem> unackedWindow)
     {
+        if (_logger.IsTrace) _logger.Trace($"S Retransmit");
         UTPPacketHeader? lastPacketFromPeer = _lastPacketHeaderFromPeer;
         if (lastPacketFromPeer == null)
         {
             return;
         }
 
+
         var nextUnackedEntry = unackedWindow.First;
         if (nextUnackedEntry == null)
         {
+            if (_logger.IsTrace) _logger.Trace($"S No unacked window");
             return;
         }
 
@@ -386,8 +409,11 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
         {
             // Something weird happen here. Could be a new ack that just come in at point curUnackedWindowHead is updated,
             // in which case, just exit, the send loop will re-ingest it again.
+            if (_logger.IsTrace) _logger.Trace($"S strange case {curUnackedWindowHead.Value.Header.SeqNumber} {lastPacketFromPeer.AckNumber}");
             return;
         }
+
+        int retransmitCount = 0;
 
         if (lastPacketFromPeer.SelectiveAck == null)
         {
@@ -395,18 +421,17 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
             ushort ackNumber = lastPacketFromPeer.AckNumber;
             if (UTPUtil.WrappedAddOne(ackNumber) == nextHeader.SeqNumber)
             {
-                await MaybeRetransmit(nextUnackedEntry.Value, 1);
+                MaybeRetransmit(nextUnackedEntry.Value, 1);
             }
         }
         else
         {
-            await ProcessSelectiveAck();
+            ProcessSelectiveAck();
         }
 
         // TODO: In libtorrent there is a logic within tick that retransmit sequence of unacked packet instead checking
         // them one by one.
-
-        async Task ProcessSelectiveAck()
+        void ProcessSelectiveAck()
         {
             // TODO: Optimize these
             byte[] selectiveAcks = lastPacketFromPeer.SelectiveAck;
@@ -429,77 +454,51 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
             }
 
             // The ackNumber+1 is always unacked when SelectiveAck is set.
+            // 0 here then refers to ack+2
+            if (UTPUtil.IsLess((ushort)(lastPacketFromPeer.AckNumber + 1), curUnackedWindowHead.Value.Header.SeqNumber)) throw new Exception("haha! I mess up!");
             if (ackedAfterCumul[0] >= 3)
             {
-                await MaybeRetransmit(curUnackedWindowHead.Value, ackedAfterCumul[0]);
+                MaybeRetransmit(curUnackedWindowHead.Value, ackedAfterCumul[0]);
             }
 
             curUnackedWindowHead = curUnackedWindowHead.Next;
-            for (int i = 0; i < totalBits && curUnackedWindowHead != null; i++)
+            for (int i = 0; i < totalBits && curUnackedWindowHead != null && retransmitCount < SELACK_MAX_RESEND; i++)
             {
                 ushort seqNum = (ushort)(lastPacketFromPeer.AckNumber + 2 + i);
 
                 if (UTPUtil.IsLess(seqNum, curUnackedWindowHead.Value.Header.SeqNumber)) continue;
-                Debug.Assert(curUnackedWindowHead.Value.Header.SeqNumber ==
-                             seqNum); // It should not be more. Or else something is broken.
+
+                Debug.Assert(curUnackedWindowHead.Value.Header.SeqNumber == seqNum);
 
                 bool wasAcked = (selectiveAcks[i / 8] & (1 << (i % 8))) > 0;
-
-                if (!wasAcked &&
-                    ackedAfterCumul[i] >= 3) // Note: include self. But when !wasAcked, it does not add one.
+                if (!wasAcked && ackedAfterCumul[i] >= DUPLICATE_ACKS_BEFORE_RESEND) // Note: include self. But when !wasAcked, it does not add one.
                 {
-                    if (!await MaybeRetransmit(curUnackedWindowHead.Value, ackedAfterCumul[i]))
-                    {
-                        // Window limit reached
-                        break;
-                    }
+                    MaybeRetransmit(curUnackedWindowHead.Value, ackedAfterCumul[i]);
                 }
 
                 curUnackedWindowHead = curUnackedWindowHead.Next;
             }
         }
 
-        async Task<bool> MaybeRetransmit(UnackedItem unackedItem, int unackedCount)
+        void MaybeRetransmit(UnackedItem unackedItem, int unackedCount)
         {
-            unackedItem.UnackedCounter += unackedCount;
-            if (unackedItem.UnackedCounter < 3)
+            var result = _unackedWindows.OnUnack(unackedItem, unackedCount, _trafficControl.WindowSize);
+            if (result == UnackedWindows.OnUnackResult.No)
             {
-                // Fast Retransmit.
-                // TODO: check this logic https://github.com/arvidn/libtorrent/blob/9aada93c982a2f0f76b129857bec3f885a37c437/include/libtorrent/aux_/utp_stream.hpp#L948
-                return true;
+                return;
             }
 
-            if (!unackedItem.AssumedLoss)
+            if (result == UnackedWindows.OnUnackResult.WindowFull)
             {
-                _inflightDataCalculator.DecrementInflightData(unackedItem.Buffer.Length);
-                unackedItem.AssumedLoss = true;
+                return;
             }
 
-            // TODO: Think again about using a delay to prevent resending ack too early. Think about the inflight data
-            // may have just throttle it fine probably.
-            // TODO: make overflow safe
+            // Retransmit
             UTPPacketHeader header = unackedItem.Header;
-            if (_inflightDataCalculator.GetCurrentInflightData() + unackedItem.Buffer.Length >= _trafficControl.WindowSize)
-            {
-                return false;
-            }
-
-            uint timestamp = UTPUtil.GetTimestamp();
-            header.TimestampMicros = timestamp;
-            header.TimestampDeltaMicros =
-                timestamp - _lastReceivedMicrosecond; // TODO: double check m_reply_micro logic
-            header.AckNumber = _receiverAck_nr.seq_nr;
-            header.SelectiveAck = _receiverAck_nr.selectiveAckData;
-
-            // Resend it
-            _inflightDataCalculator.IncrementInflightData(unackedItem.Buffer.Length);
-            unackedItem.AssumedLoss = false;
-            unackedItem.UnackedCounter = 0;
-            await peer.ReceiveMessage(header, unackedItem.Buffer.Span, token);
-
+            if (_logger.IsTrace) _logger.Trace($"S Retransmit {header.SeqNumber}");
             _trafficControl.OnDataLoss(UTPUtil.GetTimestamp());
-
-            return true;
+            unackedItem.NeedResent = true;
+            retransmitCount++;
         }
     }
 
@@ -511,8 +510,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
             PacketType = type,
             Version = 1,
             ConnectionId = connectionId,
-            // WindowSize = _trafficControl.WindowSize, //Otherwise its really slow
-            WindowSize = 1_000_000,
+            WindowSize = _trafficControl.WindowSize, //Otherwise its really slow
             SeqNumber = _seq_nr,
             AckNumber = _receiverAck_nr.seq_nr,
             SelectiveAck = _receiverAck_nr.selectiveAckData,

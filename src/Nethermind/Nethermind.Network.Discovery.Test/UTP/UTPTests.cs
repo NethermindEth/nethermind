@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.UTP;
 using NUnit.Framework;
@@ -13,6 +15,7 @@ namespace Nethermind.Network.Discovery.Tests;
 
 public class UTPTests
 {
+    internal static TestLogManager logManager = new TestLogManager(LogLevel.Trace);
 
     // ChatGPT generated
     private static byte[] HexStringToByteArray(string hex)
@@ -150,13 +153,13 @@ public class UTPTests
     public static IEnumerable<(string, Func<IUTPTransfer, IUTPTransfer>)> TransferMutators()
     {
         yield return ("no proxy", (t) => t);
-        yield return ("noop proxy", (t) => new Randomizer(t, 0.00, 0, 0));
-        yield return ("drop 5%", (t) => new Randomizer(t, 0.05, 0, 0));
-        // yield return ("random delay 10ms", (t) => new Randomizer(t, 0.0, 10, 0));
-        // yield return ("random delay 10ms and drop 5%", (t) => new Randomizer(t, 0.05, 10, 0));
-        // yield return ("drop 5% 2", (t) => new Randomizer(t, 0.05, 0, 1));
-        // yield return ("random delay 10ms 2", (t) => new Randomizer(t, 0.0, 10, 1));
-        // yield return ("random delay 10ms and drop 5% 2", (t) => new Randomizer(t, 0.05, 10, 1));
+        yield return ("noop proxy", (t) => new Randomizer(t, 0.00, 0, 0, 0));
+        yield return ("drop 5%", (t) => new Randomizer(t, 0.05, 0, 0, 0));
+        yield return ("random delay 10ms", (t) => new Randomizer(t, 0.0, 10, 3, 0));
+        yield return ("random delay 10ms and drop 5%", (t) => new Randomizer(t, 0.05, 10, 3, 0));
+        yield return ("drop 5% 2", (t) => new Randomizer(t, 0.05, 0, 0, 1));
+        yield return ("random delay 10ms 2", (t) => new Randomizer(t, 0.0, 10, 3, 1));
+        yield return ("random delay 10ms and drop 5% 2", (t) => new Randomizer(t, 0.05, 10, 3, 1));
     }
 
 
@@ -165,40 +168,39 @@ public class UTPTests
     {
         (string _, Func<IUTPTransfer, IUTPTransfer> transferMutator) = test;
 
-        byte[] data = new byte[25000];
+        int payloadSize = 1000000;
+        byte[] data = new byte[payloadSize];
         new Random(0).NextBytes(data);
 
         MemoryStream input = new MemoryStream(data);
         MemoryStream output = new MemoryStream();
 
-        PeerProxy proxy = new PeerProxy();
-        UTPStream sender = new UTPStream(transferMutator.Invoke(proxy), 0, LimboLogs.Instance);
-        UTPStream receiver = new UTPStream(transferMutator.Invoke(sender), 0, LimboLogs.Instance);
-        proxy._implementation = receiver;
+        PeerProxy receiverProxy = new PeerProxy();
+        UTPStream sender = new UTPStream(receiverProxy, 0, logManager);
+        PeerProxy senderProxy = new PeerProxy();
+        senderProxy._implementation = transferMutator.Invoke(sender);
+        UTPStream receiver = new UTPStream(senderProxy, 0, logManager);
+        receiverProxy._implementation = transferMutator.Invoke(receiver);
 
-        CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
         CancellationToken token = cts.Token;
+
+        Stopwatch sw = Stopwatch.StartNew();
 
         Task senderTask = Task.Run(async () =>
         {
-            try
-            {
             await sender.InitiateHandshake(token);
             await sender.WriteStream(input, token);
-            }
-            catch (Exception e)
-            {
-             Console.Error.WriteLine($"Err {e}");
-             throw;
-            }
         }, token);
 
         Task receiverTask = Task.Run(async () =>
         {
+            await receiver.HandleHandshake(token);
             await receiver.ReadStream(output, token);
         }, token);
 
         await Task.WhenAll(senderTask, receiverTask);
+        Console.Error.WriteLine($"Took {sw.Elapsed}. Resend ratio {(double)senderProxy._totalBytesSent / (double)payloadSize}, {(double)receiverProxy._totalBytesSent / (double)payloadSize}");
 
         Assert.That(data, Is.EqualTo(output.ToArray()));
     }
@@ -206,16 +208,20 @@ public class UTPTests
     internal class PeerProxy : IUTPTransfer
     {
         internal IUTPTransfer? _implementation;
+        internal int _totalBytesSent = 0;
 
         public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
         {
+            _totalBytesSent += data.Length;
             return _implementation!.ReceiveMessage(meta, data, token);
         }
     }
 
-    internal class Randomizer(IUTPTransfer actual, double dropPercentage, int randomDelayMs, int seed) : IUTPTransfer
+    internal class Randomizer(IUTPTransfer actual, double dropPercentage, int baseDelayMs, int randomDelayMs, int seed) : IUTPTransfer
     {
+        private ILogger _logger = logManager.GetClassLogger<Randomizer>();
         private Random _random = new Random(seed);
+        private SpinLock _lock = new SpinLock();
 
         public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
         {
@@ -227,15 +233,26 @@ public class UTPTests
                 // skipped
                 if (_random.NextDouble() < dropPercentage)
                 {
-                    Console.Error.WriteLine($"Drop {meta}");
+                    if (_logger.IsTrace) _logger.Trace($"T Drop {meta}");
                     return;
                 }
 
+                if (baseDelayMs != 0)
+                    await Task.Delay(baseDelayMs, token);
                 if (randomDelayMs != 0)
-                    await Task.Delay(_random.Next() % randomDelayMs, token);
+                    await Task.Delay( _random.Next() % randomDelayMs, token);
 
-                Console.Error.WriteLine($"Send {meta}");
-                await actual.ReceiveMessage(meta, dataArr, token);
+                if (_logger.IsTrace) _logger.Trace($"T Send {meta}");
+                bool lockTaken = false;
+                try
+                {
+                    _lock.Enter(ref lockTaken);
+                    await actual.ReceiveMessage(meta, dataArr, token);
+                }
+                finally
+                {
+                    _lock.Exit();
+                }
             }, token);
 
             return Task.CompletedTask;

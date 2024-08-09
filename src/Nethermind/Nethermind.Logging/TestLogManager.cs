@@ -83,7 +83,7 @@ namespace Nethermind.Logging
 
             private static void Log(string text, Exception ex = null)
             {
-                Console.WriteLine(text);
+                Console.WriteLine($"{DateTime.Now.Second}.{DateTime.Now.Millisecond:D4}" + ": " + text);
 
                 if (ex is not null)
                 {

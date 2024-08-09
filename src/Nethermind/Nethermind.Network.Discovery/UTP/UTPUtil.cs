@@ -49,12 +49,6 @@ public class UTPUtil
             }
         }
 
-        if (counted == 0)
-        {
-            Console.Error.WriteLine($"Counted zero selective ack {curAck} {string.Join(", ", receiveBuffer.Keys)}");
-            return null;
-        }
-
         return selectiveAck;
     }
 }

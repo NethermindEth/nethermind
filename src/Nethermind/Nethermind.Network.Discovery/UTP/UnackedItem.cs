@@ -3,10 +3,13 @@
 
 namespace Nethermind.Network.Discovery;
 
-public class UnackedItem(UTPPacketHeader header, Memory<byte> buffer)
+public class UnackedItem(UTPPacketHeader header, Memory<byte> buffer, uint sentTime)
 {
     public UTPPacketHeader Header => header;
     public bool AssumedLoss { get; set; }
     public int UnackedCounter { get; set; }
+    public int TransmitCount { get; set; }
+    public uint SentTime { get; set; } = sentTime;
+    public bool NeedResent { get; set; }
     public Memory<byte> Buffer => buffer;
 }

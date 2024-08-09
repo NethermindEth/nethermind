@@ -1,4 +1,5 @@
 using System;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Tests;
@@ -7,7 +8,7 @@ public class LEDBATTests
 {
     [Test]
     public void TestRolling() {
-        LEDBAT ledbat = new LEDBAT();
+        LEDBAT ledbat = new LEDBAT(LimboLogs.Instance);
 
         ledbat.OnAck(1000,500,500, 0);
 
@@ -16,7 +17,7 @@ public class LEDBATTests
 
     [Test]
     public void TestSlowStartAndSsThres() {
-        LEDBAT ledbat = new LEDBAT(true, 1000 * 500);
+        LEDBAT ledbat = new LEDBAT(true, 1000 * 500, LimboLogs.Instance);
 
         ledbat.OnAck(500,0,150_000, 200_00);
 
@@ -26,7 +27,7 @@ public class LEDBATTests
 
     [Test]
     public void TestWindowIncrementeDueToSlowStartActivated() {
-        LEDBAT ledbat = new LEDBAT();
+        LEDBAT ledbat = new LEDBAT(LimboLogs.Instance);
         uint initialWindowSize = ledbat.WindowSize;
         ledbat.OnAck(5000,250000,0, 0);
         Assert.Greater(ledbat.WindowSize, initialWindowSize);
@@ -34,7 +35,7 @@ public class LEDBATTests
 
     [Test]
     public void TestLimitWindowSizeWhenCwndSaturated() {
-        LEDBAT ledbat = new LEDBAT(false, 32*500 );
+        LEDBAT ledbat = new LEDBAT(false, 32*500 , LimboLogs.Instance);
         ledbat.OnAck(500, 500_000, 0, 0);
 
         uint maxAllowedCwnd = (uint)(500_000 + ledbat.getALLOWED_INCREASE() * ledbat.getMSS());
@@ -45,7 +46,7 @@ public class LEDBATTests
     [Test]
     public void TestWindowSizeReducedToHalfOrMinOnDataLossT()
     {
-        LEDBAT ledbat = new LEDBAT();
+        LEDBAT ledbat = new LEDBAT(LimboLogs.Instance);
         ledbat.OnDataLoss(200_000);
 
         uint expectedWindowSize = Math.Max(ledbat.WindowSize / 2, ledbat.getMIN_CWND() * ledbat.getMSS());

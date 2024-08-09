@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Logging;
+
 namespace Nethermind.Network.Discovery;
 
 // The congestion mechanism of uTP.
@@ -28,17 +30,21 @@ public class LEDBAT
     private uint _lastBaseDelayAdj = 0;
     private uint _lastDataLossAdjustment = 0;
 
+    private readonly ILogger _logger;
+
     public uint WindowSize { get; private set; }// m_cwnd = amount of data that is allowed to be outstanding in a RTT. Defined in bytes.
-    public LEDBAT(bool isSlowStart, uint initialWindowSize)
+    public LEDBAT(bool isSlowStart, uint initialWindowSize, ILogManager logManager)
     {
         currentDelays = new FixedRollingAvg(100, 1_000_000, RTT);
         baseDelays = new FixedRollingAvg(10, 1_000_000, 1_000_000);
         WindowSize = initialWindowSize;
         CTO = RTT * 2; // or 1 second
         IsSlowStart = isSlowStart;
+
+        _logger = logManager.GetClassLogger<LEDBAT>();
     }
 
-    public LEDBAT() : this(true, INIT_CWND * MSS) {
+    public LEDBAT(ILogManager logManager) : this(true, INIT_CWND * MSS, logManager) {
 
     }
 
@@ -53,7 +59,7 @@ public class LEDBAT
         int delay = currentDelays.GetAvgFixed16Precision(nowMicros);
         int baseDelay = baseDelays.GetAvgFixed16Precision(nowMicros);
 
-        Console.Error.WriteLine($"Current delay {delay} , Base delay: {baseDelay}");
+        if (_logger.IsTrace) _logger.Trace($"Current delay {delay} , Base delay: {baseDelay}");
 
         if (delay > baseDelay && IsSlowStart)
         {
@@ -101,7 +107,7 @@ public class LEDBAT
             MIN_CWND * MSS); //Does not fall below the minimum congestion window size. MIN_CWND * MSS converts this minimum window size to bytes.
         newWindow = Math.Min(newWindow, MAX_WINDOW_SIZE); //Does not exceed the maximum congestion window size.
 
-        Console.Error.WriteLine($"TC Window adjusted {WindowSize} -> {newWindow}, {IsSlowStart}, {cwndSaturated}");
+        if (_logger.IsTrace) _logger.Trace($"TC Window adjusted {WindowSize} -> {newWindow}, {IsSlowStart}, {cwndSaturated}");
         WindowSize = newWindow;
 
         UpdateCTO();
@@ -130,7 +136,7 @@ public class LEDBAT
 
     public void OnDataLoss(uint nowMicros)
     {
-        Console.Error.WriteLine($"TC Data loss");
+        if (_logger.IsTrace) _logger.Trace($"TC Data loss");
         if (_lastDataLossAdjustment / RTT != nowMicros / RTT)
         {
             _lastDataLossAdjustment = nowMicros;
