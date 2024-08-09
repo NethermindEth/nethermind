@@ -287,7 +287,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

@@ -229,7 +229,7 @@ public sealed class OptimismTxDecoder : AbstractTxDecoder
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(Transaction _wrongType, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public override void Encode(Transaction? _wrongType, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         // TODO: Deal with subtyping
         DepositTransaction item = (DepositTransaction)_wrongType;
