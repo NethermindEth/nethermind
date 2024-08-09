@@ -4,11 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO.Abstractions;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -26,6 +27,12 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
+using Ethereum.Test.Base.T8NUtils;
+using Microsoft.IdentityModel.Tokens;
+using Nethermind.Consensus.BeaconBlockRoot;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Evm.Tracing.GethStyle;
 
 namespace Ethereum.Test.Base
 {
@@ -35,6 +42,7 @@ namespace Ethereum.Test.Base
         private static ILogManager _logManager = LimboLogs.Instance;
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
         private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
+        private readonly BeaconBlockRootHandler _beaconBlockRootHandler = new();
 
         [SetUp]
         public void Setup()
@@ -71,10 +79,24 @@ namespace Ethereum.Test.Base
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+
+            BlockHeader header = test.GetBlockHeader();
+            BlockHeader? parentHeader = test.GetParentBlockHeader();
+
+            if (test.Fork.IsEip1559Enabled)
+            {
+                test.CurrentBaseFee = header.BaseFeePerGas = CalculateBaseFeePerGas(test, parentHeader);
+            }
+            if (parentHeader != null)
+            {
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
+            }
+
+            var blockhashProvider = GetBlockHashProvider(test, header, parentHeader);
 
             TrieStore trieStore = new(stateDb, _logManager);
             WorldState stateProvider = new(trieStore, codeDb, _logManager);
-            IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
@@ -89,59 +111,95 @@ namespace Ethereum.Test.Base
                 codeInfoRepository,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, specProvider);
+            InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
-            BlockHeader header = new(
-                test.PreviousHash,
-                Keccak.OfAnEmptySequenceRlp,
-                test.CurrentCoinbase,
-                test.CurrentDifficulty,
-                test.CurrentNumber,
-                test.CurrentGasLimit,
-                test.CurrentTimestamp,
-                []);
-            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
-            header.StateRoot = test.PostHash;
-            header.Hash = header.CalculateHash();
-            header.IsPostMerge = test.CurrentRandom is not null;
-            header.MixHash = test.CurrentRandom;
-            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
-            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
-            header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
+            var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            foreach (var transaction in test.Transactions)
+            {
+                transaction.ChainId ??= test.StateChainId;
+                transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
+            }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
-            if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
-            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
+            BlockHeader[] uncles = test.Ommers
+                .Select(ommer => Build.A.BlockHeader
+                    .WithNumber(test.CurrentNumber - ommer.Delta)
+                    .WithBeneficiary(ommer.Address)
+                    .TestObject)
+                .ToArray();
+
+            Block block = Build.A.Block.WithHeader(header).WithTransactions(test.Transactions)
+                .WithWithdrawals(test.Withdrawals).WithUncles(uncles).TestObject;
+
+            if (!test.IsStateTest)
             {
-                BlockHeader parent = new(
-                    parentHash: Keccak.Zero,
-                    unclesHash: Keccak.OfAnEmptySequenceRlp,
-                    beneficiary: test.CurrentCoinbase,
-                    difficulty: test.CurrentDifficulty,
-                    number: test.CurrentNumber - 1,
-                    gasLimit: test.CurrentGasLimit,
-                    timestamp: test.CurrentTimestamp,
-                    extraData: []
-                )
+                var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
+                withdrawalProcessor.ProcessWithdrawals(block, spec);
+            }
+            else if (test.Withdrawals.Length > 0)
+            {
+                throw new T8NException("withdrawals are not supported in state tests", ExitCodes.ErrorEVM);
+            }
+
+
+            CalculateReward(test.StateReward, test.IsStateTest, block, stateProvider, spec);
+            BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
+            StorageTxTracer storageTxTracer = new();
+            if (test.IsT8NTest)
+            {
+                CompositeBlockTracer compositeBlockTracer = new();
+                compositeBlockTracer.Add(storageTxTracer);
+                if (test.IsTraceEnabled)
                 {
-                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
-                };
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+                    GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, test.GethTraceOptions, new FileSystem());
+                    compositeBlockTracer.Add(gethLikeBlockFileTracer);
+                }
+                blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
             }
+            blockReceiptsTracer.StartNewBlockTrace(block);
 
-            Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
-
-            bool isValid = _txValidator.IsWellFormed(test.Transaction, spec) && IsValidBlock(block, specProvider);
-
-            if (isValid)
+            if (!test.IsStateTest && test.ParentBeaconBlockRoot != null)
             {
-                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, storageTxTracer);
             }
+
+            int txIndex = 0;
+            TransactionExecutionReport transactionExecutionReport = new();
+
+            foreach (var tx in test.Transactions)
+            {
+                bool isValid = _txValidator.IsWellFormed(tx, spec, out string error) && IsValidBlock(block, specProvider);
+                if (isValid)
+                {
+                    blockReceiptsTracer.StartNewTxTrace(tx);
+                    TransactionResult transactionResult = transactionProcessor
+                        .Execute(tx, new BlockExecutionContext(header), test.IsT8NTest ? blockReceiptsTracer : txTracer);
+                    blockReceiptsTracer.EndTxTrace();
+
+                    if (!test.IsT8NTest) continue;
+                    transactionExecutionReport.ValidTransactions.Add(tx);
+                    if (transactionResult.Success)
+                    {
+                        transactionExecutionReport.SuccessfulTransactions.Add(tx);
+                        blockReceiptsTracer.LastReceipt.PostTransactionState = null;
+                        blockReceiptsTracer.LastReceipt.BlockHash = null;
+                        blockReceiptsTracer.LastReceipt.BlockNumber = 0;
+                        transactionExecutionReport.SuccessfulTransactionReceipts.Add(blockReceiptsTracer.LastReceipt);
+                    }
+                    else if (transactionResult.Error != null)
+                    {
+                        transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(transactionResult.Error, tx.SenderAddress.ToString(true), tx.Nonce, stateProvider.GetNonce(tx.SenderAddress))));
+                        stateProvider.Reset();
+                    }
+                    txIndex++;
+                }
+                else if (error != null)
+                {
+                    transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(error)));
+                }
+            }
+            blockReceiptsTracer.EndBlockTrace();
 
             stopwatch.Stop();
 
@@ -163,23 +221,55 @@ namespace Ethereum.Test.Base
             testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
-            //            Assert.Zero(differences.Count, "differences");
+            if (test.IsT8NTest)
+            {
+                testResult.T8NResult = T8NResult.ConstructT8NResult(stateProvider, block, test, storageTxTracer, blockReceiptsTracer, specProvider, header, transactionExecutionReport);
+            }
+
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, WorldState stateProvider, ISpecProvider specProvider)
+        private static IBlockhashProvider GetBlockHashProvider(GeneralStateTest test, BlockHeader header, BlockHeader? parent)
         {
-            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+            if (!test.IsT8NTest)
             {
-                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                return new TestBlockhashProvider();
+            }
+            var t8NBlockHashProvider = new T8NBlockHashProvider();
+
+            if (header.Hash != null) t8NBlockHashProvider.Insert(header.Hash, header.Number);
+            if (parent?.Hash != null) t8NBlockHashProvider.Insert(parent.Hash, parent.Number);
+            foreach (var blockHash in test.BlockHashes)
+            {
+                t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
+            }
+            return t8NBlockHashProvider;
+        }
+
+        private static UInt256 CalculateBaseFeePerGas(GeneralStateTest test, BlockHeader? parentHeader)
+        {
+            if (test.CurrentBaseFee.HasValue) return test.CurrentBaseFee.Value;
+            return test.IsT8NTest ? BaseFeeCalculator.Calculate(parentHeader, test.Fork) : _defaultBaseFeeForStateTest;
+        }
+
+        private static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider, ISpecProvider specProvider)
+        {
+            foreach (KeyValuePair<Address, AccountState> accountState in pre)
+            {
+                if (accountState.Value.Storage is not null)
                 {
-                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                    foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                    {
+                        stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                            storageItem.Value.WithoutLeadingZeros().ToArray());
+                    }
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
+                if (accountState.Value.Code is not null)
+                {
+                    stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
+                }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
@@ -203,9 +293,30 @@ namespace Ethereum.Test.Base
             return blockValidator.ValidateOrphanedBlock(block, out _);
         }
 
+        private static void CalculateReward(string? stateReward, bool isStateTest, Block block, WorldState stateProvider, IReleaseSpec spec)
+        {
+            if (stateReward == null || isStateTest) return;
+
+            var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
+            BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+
+            foreach (BlockReward reward in rewards)
+            {
+                if (!stateProvider.AccountExists(reward.Address))
+                {
+                    stateProvider.CreateAccount(reward.Address, reward.Value);
+                }
+                else
+                {
+                    stateProvider.AddToBalance(reward.Address, reward.Value, spec);
+                }
+            }
+        }
+
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
             List<string> differences = [];
+            if (test.IsT8NTest) return differences;
             if (test.PostHash != stateProvider.StateRoot)
             {
                 differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
