@@ -103,7 +103,8 @@ public class AuRaContractGasLimitOverrideTests
                 NullWithdrawalProcessor.Instance,
                 null,
                 null,
-                GasLimitCalculator as AuRaContractGasLimitOverride);
+                GasLimitCalculator as AuRaContractGasLimitOverride,
+                preWarmer: new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager, WorldStateManager.GlobalWorldState), SpecProvider, LogManager, WorldStateManager.GlobalWorldState));
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
