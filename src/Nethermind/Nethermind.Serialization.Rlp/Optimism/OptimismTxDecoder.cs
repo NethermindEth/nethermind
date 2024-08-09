@@ -1,13 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using Microsoft.Extensions.ObjectPool;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Optimism;
-using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.Optimism;
 
@@ -61,4 +55,3 @@ public static class OptimismTxDecoder
                + Rlp.LengthOf(item.Data);
     }
 }
-
