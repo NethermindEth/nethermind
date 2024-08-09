@@ -14,11 +14,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
-        private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private readonly IRlpStreamDecoder<TxReceipt> _decoder;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider)
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetStreamDecoder<TxReceipt>()) { }
+
+        protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpStreamDecoder<TxReceipt> decoder)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
