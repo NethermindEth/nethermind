@@ -8,19 +8,12 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class LegacyTxDecoder(bool lazyHash = true) : IMyTxDecoder<Transaction>
+public sealed class LegacyTxDecoder(bool lazyHash = true)
 {
     private readonly bool _lazyHash = lazyHash;
 
-    public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Transaction Decode(byte[] transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        if (rlpStream.IsNextItemNull())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-        Span<byte> transactionSequence = rlpStream.PeekNextItem();
-
         Transaction transaction = new()
         {
             Type = TxType.Legacy
@@ -29,14 +22,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : IMyTxDecoder<Transac
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        switch (transaction.Type)
-        {
-            case TxType.Legacy:
-                DecodePayloadWithoutSig(transaction, rlpStream);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
+        DecodePayloadWithoutSig(transaction, rlpStream);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -63,6 +49,11 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : IMyTxDecoder<Transac
         }
 
         return transaction;
+    }
+
+    public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        throw new NotImplementedException();
     }
 
     public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

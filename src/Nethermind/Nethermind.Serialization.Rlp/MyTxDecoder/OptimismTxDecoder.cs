@@ -9,7 +9,7 @@ using Nethermind.Core.Optimism;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class OptimismTxDecoder : IMyTxDecoder<DepositTransaction>
+public sealed class OptimismTxDecoder
 {
     private readonly bool _lazyHash;
 
