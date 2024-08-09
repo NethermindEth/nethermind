@@ -133,18 +133,18 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     public void Encode(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        EncodeTx(stream, item, rlpBehaviors);
+        Encode(stream, item, rlpBehaviors);
     }
 
     public Rlp EncodeTx(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         RlpStream rlpStream = new RlpStream(GetTxLength(item, forSigning, isEip155Enabled, chainId));
-        EncodeTx(rlpStream, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        Encode(item, rlpStream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    private void EncodeTx(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public override void Encode(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (item is null)
         {
