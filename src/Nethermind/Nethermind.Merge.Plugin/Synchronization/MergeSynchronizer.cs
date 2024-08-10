@@ -18,8 +18,6 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -98,7 +96,7 @@ public class MergeSynchronizer : Synchronizer
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
         _beaconHeadersFeed =
-            new(_poSSwitcher, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
+            new(_specProvider, _poSSwitcher, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _dbProvider.MetadataDb, _logManager);
         BeaconHeadersSyncDownloader beaconHeadersDownloader = new(_logManager);
 
         SyncDispatcher<HeadersSyncBatch> dispatcher = CreateDispatcher(

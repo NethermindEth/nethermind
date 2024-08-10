@@ -11,7 +11,9 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
@@ -28,7 +30,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
-    private readonly ILogger _logger;
     private bool _chainMerged;
 
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
@@ -42,6 +43,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override MeasuredProgress HeadersSyncQueueReport => _syncReport.BeaconHeadersInQueue;
 
     public BeaconHeadersSyncFeed(
+        ISpecProvider specProvider,
         IPoSSwitcher poSSwitcher,
         IBlockTree? blockTree,
         ISyncPeerPool? syncPeerPool,
@@ -50,14 +52,14 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         IPivot? pivot,
         IMergeConfig? mergeConfig,
         IInvalidChainTracker invalidChainTracker,
+        IDb metaDb,
         ILogManager logManager)
-        : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
+        : base(specProvider, blockTree, syncPeerPool, syncConfig, syncReport, metaDb, logManager, true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
         _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger();
     }
 
     protected override SyncMode ActivationSyncModes { get; }

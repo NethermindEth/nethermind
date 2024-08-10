@@ -16,5 +16,6 @@ namespace Nethermind.Db
         public const int UpdatedPivotData = 9;
         public const int ReceiptsBarrierWhenStarted = 10;
         public const int BodiesBarrierWhenStarted = 11;
+        public const int HeaderBodiesBarrierWhenStarted = 12;
     }
 }

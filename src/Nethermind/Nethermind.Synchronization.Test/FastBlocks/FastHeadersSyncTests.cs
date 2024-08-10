@@ -15,7 +15,9 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
@@ -40,10 +42,12 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             Assert.Throws<InvalidOperationException>(() =>
             {
                 HeadersSyncFeed _ = new HeadersSyncFeed(
+                    specProvider: Substitute.For<ISpecProvider>(),
                     blockTree: blockTree,
                     syncPeerPool: Substitute.For<ISyncPeerPool>(),
                     syncConfig: new SyncConfig(),
                     syncReport: Substitute.For<ISyncReport>(),
+                    metadataDb: new MemDb(),
                     logManager: LimboLogs.Instance);
             });
 
@@ -56,6 +60,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
             HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
@@ -66,6 +71,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = "1000"
                 },
                 syncReport: Substitute.For<ISyncReport>(),
+                metadataDb: new MemDb(),
                 logManager: LimboLogs.Instance);
 
             await feed.PrepareRequest();
@@ -89,6 +95,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             ManualResetEventSlim hangLatch = new(false);
             BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
             ResettableHeaderSyncFeed feed = new(
+                Substitute.For<ISpecProvider>(),
                 blockTree: blockTree,
                 syncPeerPool: syncPeerPool,
                 syncConfig: new SyncConfig
@@ -99,6 +106,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!
                 },
                 syncReport: syncReport,
+                new MemDb(),
                 logManager: LimboLogs.Instance,
                 hangOnBlockNumberAfterInsert: 425,
                 hangLatch: hangLatch
@@ -149,6 +157,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
             using ResettableHeaderSyncFeed feed = new(
+                Substitute.For<ISpecProvider>(),
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
@@ -159,6 +168,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()!
                 },
                 syncReport: syncReport,
+                new MemDb(),
                 logManager: LimboLogs.Instance);
 
             feed.InitializeFeed();
@@ -196,6 +206,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             BlockHeader pivot = remoteBlockTree.FindHeader(2000, BlockTreeLookupOptions.None)!;
             using HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
@@ -206,6 +217,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
                 },
                 syncReport: syncReport,
+                metadataDb: new MemDb(),
                 logManager: LimboLogs.Instance);
 
             feed.InitializeFeed();
@@ -267,6 +279,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
             ResettableHeaderSyncFeed feed = new(
+                Substitute.For<ISpecProvider>(),
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
@@ -277,6 +290,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()!
                 },
                 syncReport: syncReport,
+                new MemDb(),
                 logManager: LimboLogs.Instance,
                 hangOnBlockNumber: 400,
                 hangLatch: hangLatch
@@ -321,6 +335,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
             HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new SyncConfig
@@ -331,6 +346,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = "1000"
                 },
                 syncReport: Substitute.For<ISyncReport>(),
+                new MemDb(),
                 logManager: LimboLogs.Instance);
 
             for (int i = 0; i < 10; i++)
@@ -351,7 +367,14 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             MeasuredProgress measuredProgress = new();
             report.FastBlocksHeaders.Returns(measuredProgress);
-            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
+                blockTree,
+                Substitute.For<ISyncPeerPool>(),
+                new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" },
+                report,
+                new MemDb(),
+                LimboLogs.Instance);
             await feed.PrepareRequest();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             using HeadersSyncBatch? result = await feed.PrepareRequest();
@@ -374,7 +397,14 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
-            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
+                blockTree,
+                Substitute.For<ISyncPeerPool>(),
+                new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" },
+                report,
+                new MemDb(),
+                LimboLogs.Instance);
             feed.InitializeFeed();
             using HeadersSyncBatch? result = await feed.PrepareRequest();
 
@@ -420,7 +450,14 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
+            using HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
+                localBlockTree,
+                syncPeerPool,
+                syncConfig,
+                report,
+                new MemDb(),
+                LimboLogs.Instance);
             feed.InitializeFeed();
             using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
             using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
@@ -472,6 +509,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             MeasuredProgress measuredProgress = new();
             report.FastBlocksHeaders.Returns(measuredProgress);
             HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
                 blockTree,
                 Substitute.For<ISyncPeerPool>(),
                 new SyncConfig
@@ -480,7 +518,10 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotNumber = "1000",
                     PivotHash = Keccak.Zero.ToString(),
                     PivotTotalDifficulty = "1000"
-                }, report, LimboLogs.Instance);
+                },
+                report,
+                new MemDb(),
+                LimboLogs.Instance);
             feed.InitializeFeed();
 
             List<HeadersSyncBatch> batches = new();
@@ -551,10 +592,12 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem.KeccakA).TestObject);
 
             HeadersSyncFeed feed = new(
+                specProvider: Substitute.For<ISpecProvider>(),
                 blockTree,
                 Substitute.For<ISyncPeerPool>(),
                 syncConfig,
                 Substitute.For<ISyncReport>(),
+                new MemDb(),
                 LimboLogs.Instance);
 
             Assert.False(feed.IsFinished);
@@ -567,16 +610,18 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             private readonly long? _hangOnBlockNumberAfterInsert;
 
             public ResettableHeaderSyncFeed(
+                ISpecProvider specProvider,
                 IBlockTree? blockTree,
                 ISyncPeerPool? syncPeerPool,
                 ISyncConfig? syncConfig,
                 ISyncReport? syncReport,
+                IDb metadataDb,
                 ILogManager? logManager,
                 long? hangOnBlockNumber = null,
                 long? hangOnBlockNumberAfterInsert = null,
                 ManualResetEventSlim? hangLatch = null,
                 bool alwaysStartHeaderSync = false
-            ) : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
+            ) : base(specProvider, blockTree, syncPeerPool, syncConfig, syncReport, metadataDb, logManager, alwaysStartHeaderSync)
             {
                 _hangOnBlockNumber = hangOnBlockNumber;
                 _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;
