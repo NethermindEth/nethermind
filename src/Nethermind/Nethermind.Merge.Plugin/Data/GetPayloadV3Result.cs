@@ -3,19 +3,15 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Merge.Plugin.Data;
 
 public class GetPayloadV3Result : GetPayloadV2Result
 {
-    private readonly CensorshipDetector? _censorshipDetector;
-
-    public GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, CensorshipDetector? censorshipDetector) : base(block, blockFees)
+    public GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle) : base(block, blockFees)
     {
         ExecutionPayload = new(block);
         BlobsBundle = blobsBundle;
-        _censorshipDetector = censorshipDetector;
     }
 
     public BlobsBundleV1 BlobsBundle { get; }

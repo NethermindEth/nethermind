@@ -51,6 +51,8 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly SortedDictionary<Address, int> _addressCensorshipDetectorHelper = [];
+        private int _uniqueAddressesTxSentToCount = 0;
 
         private readonly ILogger _logger;
 
@@ -420,6 +422,15 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
+                    if (_addressCensorshipDetectorHelper.TryGetValue(tx.To!, out int txSentToAddressCount))
+                    {
+                        if (txSentToAddressCount == 0)
+                        {
+                            _uniqueAddressesTxSentToCount++;
+                        }
+                        _addressCensorshipDetectorHelper[tx.To!]++;
+                    }
+
                     // Clear proper snapshot
                     if (tx.SupportsBlobs)
                         _blobTransactionSnapshot = null;
@@ -654,6 +665,18 @@ namespace Nethermind.TxPool
 
             if (hasBeenRemoved)
             {
+                if (_addressCensorshipDetectorHelper.TryGetValue(transaction.To!, out int txSentToAddressCount))
+                {
+                    if (txSentToAddressCount > 0)
+                    {
+                        if (txSentToAddressCount == 1)
+                        {
+                            _uniqueAddressesTxSentToCount--;
+                        }
+                        _addressCensorshipDetectorHelper[transaction.To!]--;
+                    }
+                }
+
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
             }
 
@@ -731,7 +754,45 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public Transaction GetBestTx() => _transactions.GetBest() ?? new();
+        public Transaction? GetBestTx() => _transactions.GetBest();
+
+        public int GetUniqueAddressesTxSentToCount() => _uniqueAddressesTxSentToCount;
+
+        public bool DetectingCensorshipForAddress(Address address)
+        {
+            return _addressCensorshipDetectorHelper.TryGetValue(address, out _);
+        }
+
+        public void AddAddressesToDetectCensorshipFor(IEnumerable<Address> addresses)
+        {
+            foreach (Address address in addresses)
+            {
+                if (!DetectingCensorshipForAddress(address))
+                {
+                    _addressCensorshipDetectorHelper[address] = 0;
+                }
+            }
+        }
+
+        public void RemoveAddressesToDetectCensorshipFor(IEnumerable<Address> addresses)
+        {
+            foreach (Address address in addresses)
+            {
+                if (_addressCensorshipDetectorHelper.TryGetValue(address, out int txSentToAddressCount))
+                {
+                    if (txSentToAddressCount > 0)
+                    {
+                        _uniqueAddressesTxSentToCount--;
+                    }
+                    _addressCensorshipDetectorHelper.Remove(address);
+                }
+            }
+        }
+
+        public bool GetFromAddressDetectorHelper(Address address)
+        {
+            return _addressCensorshipDetectorHelper.TryGetValue(address, out _);
+        }
 
         public bool IsKnown(Hash256? hash) => hash is not null ? _hashCache.Get(hash) : false;
 

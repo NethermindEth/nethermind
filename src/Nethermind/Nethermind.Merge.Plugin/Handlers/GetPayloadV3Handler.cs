@@ -28,9 +28,9 @@ public class GetPayloadV3Handler : GetPayloadHandlerBase<GetPayloadV3Result>
 
     protected override GetPayloadV3Result GetPayloadResultFromBlock(IBlockProductionContext context)
     {
-        return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV1(context.CurrentBestBlock!), _censorshipDetector)
+        return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV1(context.CurrentBestBlock!))
         {
-            ShouldOverrideBuilder = _censorshipDetector?.CensorshipDetected ?? false
+            ShouldOverrideBuilder = _censorshipDetector?.CensorshipDetected(context.CurrentBestBlock!.Number, context.CurrentBestBlock!.Hash!) ?? false
         };
     }
 }

@@ -40,7 +40,17 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Hash256? hash) => false;
 
-        public Transaction GetBestTx() => new();
+        public Transaction? GetBestTx() => null;
+
+        public int GetUniqueAddressesTxSentToCount() => 0;
+
+        public bool DetectingCensorshipForAddress(Address address) => false;
+
+        public void AddAddressesToDetectCensorshipFor(IEnumerable<Address> addresses) { }
+
+        public void RemoveAddressesToDetectCensorshipFor(IEnumerable<Address> addresses) { }
+
+        public bool GetFromAddressDetectorHelper(Address address) => false;
 
         public bool IsKnown(Hash256 hash) => false;
 

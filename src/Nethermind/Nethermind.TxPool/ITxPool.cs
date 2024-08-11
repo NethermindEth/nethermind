@@ -38,7 +38,12 @@ namespace Nethermind.TxPool
         bool ContainsTx(Hash256 hash, TxType txType);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
-        Transaction GetBestTx();
+        Transaction? GetBestTx();
+        int GetUniqueAddressesTxSentToCount();
+        bool DetectingCensorshipForAddress(Address address);
+        void AddAddressesToDetectCensorshipFor(IEnumerable<Address> addresses);
+        void RemoveAddressesToDetectCensorshipFor(IEnumerable<Address> addresses);
+        bool GetFromAddressDetectorHelper(Address address);
         bool IsKnown(Hash256 hash);
         bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);

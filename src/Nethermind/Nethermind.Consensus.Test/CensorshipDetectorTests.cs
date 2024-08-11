@@ -21,6 +21,9 @@ using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
+using Nethermind.Core.Crypto;
+using System.Linq;
+using static Nethermind.Consensus.Processing.CensorshipDetector;
 
 namespace Nethermind.Consensus.Test
 {
@@ -34,6 +37,7 @@ namespace Nethermind.Consensus.Test
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private IComparer<Transaction> _comparer;
+        private ChainHeadInfoProvider _headInfo;
         private TxPool.TxPool _txPool;
         private CensorshipDetector _censorshipDetector;
 
@@ -56,221 +60,9 @@ namespace Nethermind.Consensus.Test
             _censorshipDetector.Dispose();
         }
 
+        // Address Censorship is given to be false here since censorship is not being detected for any address.
         [Test]
-        public void Block_will_get_added_to_temporary_cache_on_block_processing()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            Block block = Build.A.Block.WithNumber(0).TestObject;
-            _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-
-            Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(0), Is.EqualTo(true).After(10, 1));
-        }
-
-        [Test]
-        public void Unprocessed_blocks_will_not_get_added_to_temporary_cache()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-            Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(0), Is.EqualTo(false).After(10, 1));
-        }
-
-        /* First, all blocks will get added and then all will be retrieved to show multiple blocks were added correctly */
-        [Test]
-        public void Multiple_blocks_will_get_added_to_temporary_cache_on_block_processing()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            for (long i = 0; i < 5; i++)
-            {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
-                _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-            }
-
-            for (long i = 0; i < 5; i++)
-            {
-                Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(i), Is.EqualTo(true).After(10, 1));
-            }
-        }
-
-        [Test]
-        public void Temporary_cache_will_not_exceed_capacity()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            for (long i = 0; i < 16; i++)
-            {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
-                _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-            }
-
-            Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(0), Is.EqualTo(true).After(50, 1));
-
-            Block lastBlock = Build.A.Block.WithNumber(16).TestObject;
-            _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(lastBlock));
-
-            Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(0), Is.EqualTo(false).After(50, 1));
-        }
-
-        [Test]
-        public void Block_will_get_added_to_main_cache_when_block_is_correctly_added_to_main()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            Block block = Build.A.Block.WithNumber(0).TestObject;
-            _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-
-            Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(0), Is.EqualTo(true).After(10, 1));
-
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-            Assert.That(() => _censorshipDetector.CacheContainsBlock(0), Is.EqualTo(true).After(10, 1));
-        }
-
-        [Test]
-        public void Block_will_not_get_added_to_main_cache_if_not_present_in_temporary_cache()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            Block block = Build.A.Block.WithNumber(0).TestObject;
-
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-            Assert.That(() => _censorshipDetector.CacheContainsBlock(0), Is.EqualTo(false).After(10, 1));
-        }
-
-        /* First, all blocks will get added and then all will be retrieved to show multiple blocks were added correctly */
-        [Test]
-        public void Multiple_blocks_will_get_added_to_main_cache_when_blocks_are_correctly_added_to_main()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            for (long i = 0; i < 4; i++)
-            {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
-                _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-                Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(i), Is.EqualTo(true).After(10, 1));
-                _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-            }
-
-            for (long i = 0; i < 4; i++)
-            {
-                Assert.That(() => _censorshipDetector.CacheContainsBlock(i), Is.EqualTo(true).After(10, 1));
-            }
-        }
-
-        [Test]
-        public void Main_cache_will_not_exceed_capacity()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            for (long i = 0; i < 4; i++)
-            {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
-                _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-                Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(i), Is.EqualTo(true).After(10, 1));
-                _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-            }
-
-            Assert.That(() => _censorshipDetector.CacheContainsBlock(0), Is.EqualTo(true).After(10, 1));
-
-            Block lastBlock = Build.A.Block.WithNumber(4).TestObject;
-            _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(lastBlock));
-            Assert.That(() => _censorshipDetector.TemporaryCacheContainsBlock(4), Is.EqualTo(true).After(10, 1));
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(lastBlock));
-
-            Assert.That(() => _censorshipDetector.CacheContainsBlock(0), Is.EqualTo(false).After(10, 1));
-        }
-
-        [Test]
-        public void Potential_censorship_will_be_false_if_tx_pool_is_empty()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            Transaction tx = Build.A.Transaction.
-                            WithType(TxType.EIP1559).
-                            WithMaxFeePerGas(10.Wei()).
-                            WithMaxPriorityFeePerGas(1.Wei()).
-                            SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).
-                            TestObject;
-            CreateSenderAccount(tx);
-
-            Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(5.Wei()).WithTransactions([tx]).TestObject;
-            CensorshipDetectorAssertions(block, false);
-        }
-
-        /* Tx Pool to be filled here */
-        [Test]
-        public void Potential_censorship_will_be_true_if_best_tx_in_pool_is_not_included_in_block()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA);
-            SubmitTxToPool(2, TestItem.PrivateKeyB);
-
-            Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(5.Wei()).WithTransactions([tx1]).TestObject;
-            CensorshipDetectorAssertions(block, true);
-        }
-
-        [Test]
-        public void Potential_censorship_will_be_false_if_best_tx_in_pool_is_included_in_block()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA);
-            Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB);
-
-            Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(5.Wei()).WithTransactions([tx1, tx2]).TestObject;
-            CensorshipDetectorAssertions(block, false);
-        }
-
-        [Test]
-        public void Censorship_is_not_detected_when_potential_censorship_is_false_for_some_blocks_in_main_cache()
-        {
-            _txPool = CreatePool();
-            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
-
-            Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA);
-            Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB);
-            Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC);
-            Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD);
-
-            Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(5.Wei()).WithTransactions([tx4]).TestObject;
-            CensorshipDetectorAssertions(block1, false);
-            _txPool.RemoveTransaction(tx4.Hash);
-            Assert.That(() => _txPool.GetBestTx().MaxPriorityFeePerGas, Is.EqualTo(3.Wei()).After(10, 1));
-
-            Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE);
-
-            Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(5.Wei()).WithTransactions([tx3]).TestObject;
-            CensorshipDetectorAssertions(block2, true);
-            _txPool.RemoveTransaction(tx5.Hash);
-            _txPool.RemoveTransaction(tx3.Hash);
-            Assert.That(() => _txPool.GetBestTx().MaxPriorityFeePerGas, Is.EqualTo(2.Wei()).After(10, 1));
-
-            Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(5.Wei()).WithTransactions([tx2]).TestObject;
-            CensorshipDetectorAssertions(block3, false);
-            _txPool.RemoveTransaction(tx2.Hash);
-            Assert.That(() => _txPool.GetBestTx().MaxPriorityFeePerGas, Is.EqualTo(1.Wei()).After(10, 1));
-
-            Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(5.Wei()).WithTransactions([tx1]).TestObject;
-            CensorshipDetectorAssertions(block4, false);
-            _txPool.RemoveTransaction(tx1.Hash);
-            Assert.That(() => _txPool.GetBestTx().MaxPriorityFeePerGas, Is.EqualTo(0.Wei()).After(10, 1));
-
-            Assert.That(() => _censorshipDetector.CensorshipDetected, Is.EqualTo(false).After(10, 1));
-        }
-
-        [Test]
-        public void Censorship_is_detected_when_potential_censorship_is_true_for_all_blocks_in_main_cache()
+        public void Censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_true_for_all_blocks_in_main_cache()
         {
             _txPool = CreatePool();
             _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
@@ -281,26 +73,143 @@ namespace Nethermind.Consensus.Test
             Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD);
             Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE);
 
-            Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(5.Wei()).WithTransactions([tx4]).TestObject;
-            CensorshipDetectorAssertions(block1, true);
-            _txPool.RemoveTransaction(tx4.Hash);
+            Block block1 = Build.A.Block.WithNumber(1).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
+            Hash256 blockHash1 = block1.CalculateHash();
+            BlockProcessingWorkflow(block1);
 
-            Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(5.Wei()).WithTransactions([tx3]).TestObject;
-            CensorshipDetectorAssertions(block2, true);
-            _txPool.RemoveTransaction(tx3.Hash);
+            Block block2 = Build.A.Block.WithNumber(2).WithTransactions([tx3]).WithParentHash(blockHash1).TestObject;
+            Hash256 blockHash2 = block2.CalculateHash();
+            BlockProcessingWorkflow(block2);
 
-            Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(5.Wei()).WithTransactions([tx2]).TestObject;
-            CensorshipDetectorAssertions(block3, true);
-            _txPool.RemoveTransaction(tx2.Hash);
+            Block block3 = Build.A.Block.WithNumber(3).WithTransactions([tx2]).WithParentHash(blockHash2).TestObject;
+            Hash256 blockHash3 = block3.CalculateHash();
+            BlockProcessingWorkflow(block3);
 
-            Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(5.Wei()).WithTransactions([tx1]).TestObject;
-            CensorshipDetectorAssertions(block4, true);
-            _txPool.RemoveTransaction(tx1.Hash);
+            Block block4 = Build.A.Block.WithNumber(4).WithTransactions([tx1]).WithParentHash(blockHash3).TestObject;
+            BlockProcessingWorkflow(block4);
 
-            Assert.That(() => _censorshipDetector.CensorshipDetected, Is.EqualTo(true).After(10, 1));
+            Assert.That(() => _censorshipDetector.CensorshipDetected(block4), Is.EqualTo(true).After(250, 1));
+            Assert.That(() => _censorshipDetector.GetCensoredBlocks().Contains(new BlockNumberHash(block4)), Is.EqualTo(true).After(20, 1));
+            Assert.That(() => _censorshipDetector.GetCensoredBlocksCount(), Is.EqualTo(1).After(20, 1));
         }
 
-        private ChainHeadInfoProvider _headInfo;
+        // Address Censorship is given to be false here since censorship is not being detected for any address.
+        [Test]
+        public void No_censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_false_for_some_blocks_in_main_cache()
+        {
+            _txPool = CreatePool();
+            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
+
+            Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA);
+            Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB);
+            Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC);
+            Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD);
+            Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE);
+
+            Block block1 = Build.A.Block.WithNumber(1).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
+            Hash256 blockHash1 = block1.CalculateHash();
+            BlockProcessingWorkflow(block1);
+
+            Block block2 = Build.A.Block.WithNumber(2).WithTransactions([tx3, tx5]).WithParentHash(blockHash1).TestObject;
+            Hash256 blockHash2 = block2.CalculateHash();
+            BlockProcessingWorkflow(block2);
+
+            Block block3 = Build.A.Block.WithNumber(3).WithTransactions([tx2]).WithParentHash(blockHash2).TestObject;
+            Hash256 blockHash3 = block3.CalculateHash();
+            BlockProcessingWorkflow(block3);
+
+            Block block4 = Build.A.Block.WithNumber(4).WithTransactions([tx1]).WithParentHash(blockHash3).TestObject;
+            BlockProcessingWorkflow(block4);
+
+            Assert.That(() => _censorshipDetector.CensorshipDetected(block4), Is.EqualTo(false).After(250, 1));
+        }
+
+        // High-Paying Tx Censorship is given to be false here.
+        [Test]
+        public void Censorship_when_high_paying_tx_censorship_is_false_and_address_censorship_is_true_for_all_blocks_in_main_cache()
+        {
+            _txPool = CreatePool();
+            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
+
+            _censorshipDetector.AddAddressesToDetectCensorshipFor([
+                TestItem.AddressA,
+                TestItem.AddressB,
+                TestItem.AddressC,
+                TestItem.AddressD,
+                TestItem.AddressE,
+                TestItem.AddressF]);
+
+            Transaction tx1 = SubmitTxToPoolWithToAddress(1, TestItem.PrivateKeyA, TestItem.AddressA);
+            Transaction tx2 = SubmitTxToPoolWithToAddress(2, TestItem.PrivateKeyB, TestItem.AddressB);
+            Transaction tx3 = SubmitTxToPoolWithToAddress(3, TestItem.PrivateKeyC, TestItem.AddressC);
+            Transaction tx4 = SubmitTxToPoolWithToAddress(4, TestItem.PrivateKeyD, TestItem.AddressD);
+            Transaction tx5 = SubmitTxToPoolWithToAddress(5, TestItem.PrivateKeyE, TestItem.AddressE);
+            Transaction tx6 = SubmitTxToPoolWithToAddress(6, TestItem.PrivateKeyF, TestItem.AddressF);
+
+            Block block1 = Build.A.Block.WithNumber(1).WithTransactions([tx6]).WithParentHash(TestItem.KeccakA).TestObject;
+            Hash256 blockHash1 = block1.CalculateHash();
+            BlockProcessingWorkflow(block1);
+
+            Block block2 = Build.A.Block.WithNumber(2).WithTransactions([tx5]).WithParentHash(blockHash1).TestObject;
+            Hash256 blockHash2 = block2.CalculateHash();
+            BlockProcessingWorkflow(block2);
+
+            Block block3 = Build.A.Block.WithNumber(3).WithTransactions([tx4]).WithParentHash(blockHash2).TestObject;
+            Hash256 blockHash3 = block3.CalculateHash();
+            BlockProcessingWorkflow(block3);
+
+            Block block4 = Build.A.Block.WithNumber(4).WithTransactions([tx3]).WithParentHash(blockHash3).TestObject;
+            BlockProcessingWorkflow(block4);
+
+            Assert.That(() => _censorshipDetector.CensorshipDetected(block4), Is.EqualTo(true).After(250, 1));
+            Assert.That(() => _censorshipDetector.GetCensoredBlocks().Contains(new BlockNumberHash(block4)), Is.EqualTo(true).After(20, 1));
+            Assert.That(() => _censorshipDetector.GetCensoredBlocksCount(), Is.EqualTo(1).After(20, 1));
+        }
+
+        // High-Paying Tx Censorship is given to be false here.
+        [Test]
+        public void No_censorship_when_high_paying_tx_censorship_is_false_and_address_censorship_is_false_for_some_blocks_in_main_cache()
+        {
+            _txPool = CreatePool();
+            _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _blockTree, _logManager);
+
+            _censorshipDetector.AddAddressesToDetectCensorshipFor([
+                TestItem.AddressA,
+                TestItem.AddressB,
+                TestItem.AddressC,
+                TestItem.AddressD,
+                TestItem.AddressE]);
+
+            Transaction tx1 = SubmitTxToPoolWithToAddress(1, TestItem.PrivateKeyA, TestItem.AddressA);
+            Transaction tx2 = SubmitTxToPoolWithToAddress(2, TestItem.PrivateKeyB, TestItem.AddressB);
+            Transaction tx3 = SubmitTxToPoolWithToAddress(3, TestItem.PrivateKeyC, TestItem.AddressC);
+            Transaction tx4 = SubmitTxToPoolWithToAddress(4, TestItem.PrivateKeyD, TestItem.AddressD);
+            Transaction tx5 = SubmitTxToPoolWithToAddress(5, TestItem.PrivateKeyE, TestItem.AddressE);
+
+            Block block1 = Build.A.Block.WithNumber(1).WithTransactions([tx3, tx4, tx5]).WithParentHash(TestItem.KeccakA).TestObject;
+            Hash256 blockHash1 = block1.CalculateHash();
+            BlockProcessingWorkflow(block1);
+
+            Transaction tx6 = SubmitTxToPoolWithToAddress(6, TestItem.PrivateKeyC, TestItem.AddressC);
+            Transaction tx7 = SubmitTxToPoolWithToAddress(7, TestItem.PrivateKeyD, TestItem.AddressD);
+            Transaction tx8 = SubmitTxToPoolWithToAddress(8, TestItem.PrivateKeyE, TestItem.AddressE);
+
+            Block block2 = Build.A.Block.WithNumber(2).WithTransactions([tx7, tx8]).WithParentHash(blockHash1).TestObject;
+            Hash256 blockHash2 = block2.CalculateHash();
+            BlockProcessingWorkflow(block2);
+
+            Transaction tx9 = SubmitTxToPoolWithToAddress(9, TestItem.PrivateKeyD, TestItem.AddressD);
+            Transaction tx10 = SubmitTxToPoolWithToAddress(10, TestItem.PrivateKeyE, TestItem.AddressE);
+
+            Block block3 = Build.A.Block.WithNumber(3).WithTransactions([tx6, tx9, tx10]).WithParentHash(blockHash2).TestObject;
+            Hash256 blockHash3 = block3.CalculateHash();
+            BlockProcessingWorkflow(block3);
+
+            Block block4 = Build.A.Block.WithNumber(4).WithTransactions([tx1, tx2]).WithParentHash(blockHash3).TestObject;
+            BlockProcessingWorkflow(block4);
+
+            Assert.That(() => _censorshipDetector.CensorshipDetected(block4), Is.EqualTo(false).After(250, 1));
+        }
 
         private TxPool.TxPool CreatePool(
             ITxPoolConfig config = null,
@@ -348,17 +257,13 @@ namespace Nethermind.Consensus.Test
             }
         }
 
-        private void CensorshipDetectorAssertions(Block block, bool expectedCensorshipStatus)
+        private void BlockProcessingWorkflow(Block block)
         {
             _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
-            Assert.That(() => _censorshipDetector.GetTemporaryCensorshipStatus(block.Number),
-            Is.EqualTo(expectedCensorshipStatus).After(50, 1));
-
+            Assert.That(() => _censorshipDetector.TemporaryPotentialCacheContainsBlock(block.Number, block.Hash), Is.EqualTo(true).After(20, 1));
             RemoveTxsFromPool(block);
-
             _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-            Assert.That(() => _censorshipDetector.GetCensorshipStatus(block.Number),
-            Is.EqualTo(expectedCensorshipStatus).After(50, 1));
+            Assert.That(() => _censorshipDetector.PotentialCacheContainsBlock(block.Number, block.Hash), Is.EqualTo(true).After(20, 1));
         }
 
         private Transaction SubmitTxToPool(int maxPriorityFeePerGas, PrivateKey privateKey)
@@ -367,6 +272,21 @@ namespace Nethermind.Consensus.Test
                             WithType(TxType.EIP1559).
                             WithMaxFeePerGas(10.Wei()).
                             WithMaxPriorityFeePerGas(maxPriorityFeePerGas.Wei()).
+                            SignedAndResolved(_ethereumEcdsa, privateKey).
+                            TestObject;
+            CreateSenderAccount(tx);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
+            return tx;
+        }
+
+        private Transaction SubmitTxToPoolWithToAddress(int maxPriorityFeePerGas, PrivateKey privateKey, Address address)
+        {
+            Transaction tx = Build.A.Transaction.
+                            WithType(TxType.EIP1559).
+                            WithMaxFeePerGas(10.Wei()).
+                            WithMaxPriorityFeePerGas(maxPriorityFeePerGas.Wei()).
+                            WithTo(address).
                             SignedAndResolved(_ethereumEcdsa, privateKey).
                             TestObject;
             CreateSenderAccount(tx);
