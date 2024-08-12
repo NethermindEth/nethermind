@@ -20,7 +20,7 @@ namespace Nethermind.TxPool
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
-        public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => new();
+
         public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
@@ -52,6 +52,8 @@ namespace Nethermind.TxPool
             blobTransaction = null;
             return false;
         }
+
+        public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => new();
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
