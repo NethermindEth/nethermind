@@ -200,7 +200,12 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         }
     }
 
-    private int GetAccessListContentLength(Transaction item)
+    private int GetContentLength(Transaction item)
+    {
+        return GetPayloadContentLength(item) + GetSignatureContentLength(item);
+    }
+
+    private int GetPayloadContentLength(Transaction item)
     {
         return Rlp.LengthOf(item.Nonce)
                + Rlp.LengthOf(item.GasPrice)
@@ -210,18 +215,6 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
                + Rlp.LengthOf(item.Data)
                + Rlp.LengthOf(item.ChainId ?? 0)
                + _decoder.GetLength(item.AccessList, RlpBehaviors.None);
-    }
-
-    private int GetContentLength(Transaction item)
-    {
-        var contentLength = item.Type switch
-        {
-            TxType.AccessList => GetAccessListContentLength(item),
-            _ => throw new InvalidOperationException("Unexpected TxType"),
-        };
-        contentLength += GetSignatureContentLength(item);
-
-        return contentLength;
     }
 
     private static int GetSignatureContentLength(Transaction item)
@@ -245,6 +238,8 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
 
     public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
+        if (tx?.Type != TxType.AccessList) { throw new InvalidOperationException("Unexpected TxType"); }
+
         int txContentLength = GetContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
