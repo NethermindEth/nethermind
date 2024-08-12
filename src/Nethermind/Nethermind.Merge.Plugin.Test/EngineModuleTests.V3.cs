@@ -515,7 +515,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
-        var ethereumEcdsa = new EthereumEcdsa(BlockchainIds.Mainnet, LimboLogs.Instance);
+        EthereumEcdsa ethereumEcdsa = new((ulong)BlockchainIds.Mainnet, LimboLogs.Instance);
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
