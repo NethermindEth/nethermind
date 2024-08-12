@@ -515,14 +515,13 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
-        EthereumEcdsa ethereumEcdsa = new((ulong)BlockchainIds.Mainnet, LimboLogs.Instance);
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
             .WithMaxFeePerGas(1.GWei())
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithMaxFeePerBlobGas(1000.Wei())
-            .SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
