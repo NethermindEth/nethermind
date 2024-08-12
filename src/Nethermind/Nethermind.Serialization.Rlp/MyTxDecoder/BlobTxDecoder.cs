@@ -33,7 +33,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+        DecodePayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
 
         if (rlpStream.Position < lastCheck)
         {
@@ -85,7 +85,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return new Hash256(hash.Hash);
     }
 
-    private void DecodeShardBlobPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    private void DecodePayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
         transaction.Nonce = rlpStream.DecodeUInt256();
@@ -100,15 +100,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
     }
 
-    private static void DecodeShardBlobNetworkPayload(Transaction transaction, RlpStream rlpStream)
-    {
-        byte[][] blobs = rlpStream.DecodeByteArrays();
-        byte[][] commitments = rlpStream.DecodeByteArrays();
-        byte[][] proofs = rlpStream.DecodeByteArrays();
-        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
-    }
-
-    private void DecodeShardBlobPayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    private void DecodePayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = decoderContext.DecodeULong();
         transaction.Nonce = decoderContext.DecodeUInt256();
@@ -123,6 +115,14 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
     }
 
+    private static void DecodeShardBlobNetworkPayload(Transaction transaction, RlpStream rlpStream)
+    {
+        byte[][] blobs = rlpStream.DecodeByteArrays();
+        byte[][] commitments = rlpStream.DecodeByteArrays();
+        byte[][] proofs = rlpStream.DecodeByteArrays();
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
+    }
+
     private static void DecodeShardBlobNetworkPayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         byte[][] blobs = decoderContext.DecodeByteArrays();
@@ -131,7 +131,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
-    private void EncodeShardBlobPayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
+    private void EncodePayloadWithoutSignature(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
     {
         stream.Encode(item.ChainId ?? 0);
         stream.Encode(item.Nonce);
@@ -144,6 +144,14 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         stream.Encode(item.MaxFeePerBlobGas.Value);
         stream.Encode(item.BlobVersionedHashes);
+    }
+
+    private static void EncodeShardBlobNetworkPayload(Transaction transaction, RlpStream rlpStream)
+    {
+        ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
+        rlpStream.Encode(networkWrapper.Blobs);
+        rlpStream.Encode(networkWrapper.Commitments);
+        rlpStream.Encode(networkWrapper.Proofs);
     }
 
     public override Transaction Decode(int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors)
@@ -167,7 +175,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         int transactionLength = context.ReadSequenceLength();
         int lastCheck = context.Position + transactionLength;
 
-        DecodeShardBlobPayloadWithoutSig(transaction, ref context, rlpBehaviors);
+        DecodePayloadWithoutSig(transaction, ref context, rlpBehaviors);
 
         if (context.Position < lastCheck)
         {
@@ -242,15 +250,10 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         Encode(item, stream, rlpBehaviors);
     }
 
-    public Rlp EncodeTx(Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(item, rlpStream, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
-    }
-
     public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item?.Type != TxType.Blob) { throw new InvalidOperationException("Unexpected TxType"); }
+
         if (item is null)
         {
             stream.WriteByte(Rlp.NullObjectByte);
@@ -267,6 +270,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         stream.WriteByte((byte)item.Type);
 
+        // TODO: I think we can remove this block completely
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
         {
             stream.StartSequence(contentLength);
@@ -275,15 +279,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         stream.StartSequence(contentLength);
 
-        switch (item.Type)
-        {
-            case TxType.Blob:
-                EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        EncodePayloadWithoutSignature(item, stream, rlpBehaviors);
         EncodeSignature(stream, item);
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
@@ -308,15 +304,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         }
     }
 
-    private static void EncodeShardBlobNetworkPayload(Transaction transaction, RlpStream rlpStream)
-    {
-        ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
-        rlpStream.Encode(networkWrapper.Blobs);
-        rlpStream.Encode(networkWrapper.Commitments);
-        rlpStream.Encode(networkWrapper.Proofs);
-    }
-
-    private int GetShardBlobContentLength(Transaction item)
+    private int GetPayloadContentLength(Transaction item)
     {
         return Rlp.LengthOf(item.Nonce)
                + Rlp.LengthOf(item.GasPrice) // gas premium
@@ -342,16 +330,12 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     private int GetContentLength(Transaction item, bool withNetworkWrapper = false)
     {
-        int contentLength = item.Type switch
-        {
-            TxType.Blob => GetShardBlobContentLength(item),
-            _ => throw new InvalidOperationException("Unexpected TxType"),
-        };
+        int contentLength = GetPayloadContentLength(item);
         contentLength += GetSignatureContentLength(item);
-
         if (withNetworkWrapper)
         {
-            contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength); // TODO: shouldnt' this be `+=` ?
+            // TODO: shouldnt' this be `+=` ?
+            contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
         }
         return contentLength;
     }
@@ -359,17 +343,26 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : AbstractTxDecoder
     private static int GetSignatureContentLength(Transaction item)
     {
         int contentLength = 0;
-
-        bool signatureIsNull = item.Signature is null;
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RecoveryId);
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+        if (item.Signature is null)
+        {
+            contentLength += 1;
+            contentLength += 1;
+            contentLength += 1;
+        }
+        else
+        {
+            contentLength += Rlp.LengthOf(item.Signature.RecoveryId);
+            contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
+            contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+        }
 
         return contentLength;
     }
 
     public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
+        if (tx?.Type != TxType.Blob) { throw new InvalidOperationException("Unexpected TxType"); }
+
         int txContentLength = GetContentLength(tx, withNetworkWrapper: (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
