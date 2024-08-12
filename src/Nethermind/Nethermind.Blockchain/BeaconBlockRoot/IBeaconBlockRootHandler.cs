@@ -9,5 +9,5 @@ using Nethermind.State;
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state, ITxTracer txTracer);
+    void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state, ITxTracer? txTracer = null);
 }

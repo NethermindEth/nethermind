@@ -21,7 +21,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
 {
     private static readonly byte[] EmptyBytes = [0];
 
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, ITxTracer txTracer)
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, ITxTracer? txTracer = null)
     {
         IReleaseSpec spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
@@ -37,7 +37,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         var blockHashStoreValueAfter = parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray();
 
         worldState.Set(blockHashStoreCell, blockHashStoreValueAfter);
-        if (txTracer.IsTracingStorage)
+        if (txTracer?.IsTracingStorage == true)
         {
             txTracer.ReportStorageChange(blockHashStoreCell, blockHashStoreValueBefore, blockHashStoreValueAfter);
         }

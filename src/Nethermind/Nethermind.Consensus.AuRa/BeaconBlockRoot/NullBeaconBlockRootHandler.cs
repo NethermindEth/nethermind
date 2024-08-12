@@ -10,7 +10,7 @@ using Nethermind.State;
 namespace Nethermind.Consensus.AuRa.BeaconBlockRoot;
 internal class NullBeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state, ITxTracer txTracer)
+    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state, ITxTracer? txTracer = null)
     {
     }
 

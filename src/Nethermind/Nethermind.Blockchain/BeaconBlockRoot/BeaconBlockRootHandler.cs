@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.BeaconBlockRoot;
 
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider, ITxTracer txTracer)
+    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider, ITxTracer? txTracer = null)
     {
         if (!spec.IsBeaconBlockRootAvailable ||
             block.IsGenesis ||
@@ -40,9 +40,10 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
         stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
 
-        if (!txTracer.IsTracingStorage) return;
-
-        txTracer.ReportStorageChange(tsStorageCell, tsStorageValueBefore, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
-        txTracer.ReportStorageChange(brStorageCell, brStorageValueBefore, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
+        if (!txTracer?.IsTracingStorage == true)
+        {
+            txTracer.ReportStorageChange(tsStorageCell, tsStorageValueBefore, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
+            txTracer.ReportStorageChange(brStorageCell, brStorageValueBefore, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
+        }
     }
 }

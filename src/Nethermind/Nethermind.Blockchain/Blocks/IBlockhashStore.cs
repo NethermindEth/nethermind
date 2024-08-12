@@ -10,6 +10,6 @@ namespace Nethermind.Blockchain.Blocks;
 
 public interface IBlockhashStore
 {
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, ITxTracer txTracer);
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, ITxTracer? txTracer = null);
     public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber);
 }
