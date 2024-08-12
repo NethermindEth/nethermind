@@ -7,5 +7,5 @@ namespace Nethermind.Merge.Plugin.Data;
 
 public class GetBlobsV1Result(BlobAndProofV1?[] blobsAndProofs)
 {
-    public BlobAndProofV1?[] BlobsAndProofs = blobsAndProofs;
+    public readonly BlobAndProofV1?[] BlobsAndProofs = blobsAndProofs;
 }
