@@ -44,13 +44,6 @@ public class ShutterBlockHandler(
                 _haveCheckedRegistered = true;
             }
             eon.Update(head.Header);
-
-            if (head.Hash is null)
-            {
-                _logger.Warn("Head block hash was null, cannot load Shutter transactions.");
-                return;
-            }
-
             txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
         }
         else

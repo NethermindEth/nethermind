@@ -48,8 +48,8 @@ public class SequencerContract : Contract
         }
     }
 
-    public bool FilterAccepts(LogEntry log, long blockNumber)
-        => new LogFilter(0, new(blockNumber), new(blockNumber), _addressFilter, _topicsFilter).Accepts(log);
+    public LogFilter CreateFilter(long blockNumber)
+        => new LogFilter(0, new(blockNumber), new(blockNumber), _addressFilter, _topicsFilter);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(ILogEntry log)

@@ -19,6 +19,7 @@ using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
 using System.Runtime.CompilerServices;
+using Nethermind.Blockchain.Filters;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -39,7 +40,7 @@ public class ShutterTxLoader(
     private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
-    private List<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
+    private Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     private ulong _txPointer = ulong.MaxValue;
     private bool _loadFromReceipts = false;
 
@@ -77,11 +78,12 @@ public class ShutterTxLoader(
             if (_loadFromReceipts && head is not null)
             {
                 int count = 0;
+                LogFilter filter = _sequencerContract.CreateFilter(head.Number);
                 foreach (TxReceipt receipt in receipts)
                 {
                     foreach (LogEntry log in receipt.Logs!)
                     {
-                        if (_sequencerContract.FilterAccepts(log, head.Number))
+                        if (filter.Accepts(log))
                         {
                             ISequencerContract.TransactionSubmitted e = _sequencerContract.ParseTransactionSubmitted(log);
                             if (e.TxIndex != _txPointer && _logger.IsWarn)
@@ -89,7 +91,7 @@ public class ShutterTxLoader(
                                 _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex}, expected {_txPointer}.");
                             }
                             _txPointer = e.TxIndex + 1;
-                            _transactionSubmittedEvents.Add(e);
+                            _transactionSubmittedEvents.Enqueue(e);
                             count++;
                         }
                     }
@@ -214,23 +216,19 @@ public class ShutterTxLoader(
             }
             else
             {
-                _transactionSubmittedEvents = _sequencerContract.GetEvents(eon, txPointer, headBlockNumber).ToList();
-                _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
+                LoadFromScanningLogs(eon, txPointer, headBlockNumber);
                 _loadFromReceipts = true;
-                // todo: make debug
-                _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
-            List<ISequencerContract.TransactionSubmitted> events = _transactionSubmittedEvents.ToList();
 
             UInt256 totalGas = 0;
             int index = 0;
 
-            foreach (ISequencerContract.TransactionSubmitted e in events)
+            while (_transactionSubmittedEvents.TryPeek(out ISequencerContract.TransactionSubmitted e))
             {
                 if (e.TxIndex < txPointer)
                 {
                     // skip and delete outdated events
-                    _transactionSubmittedEvents.Remove(e);
+                    _transactionSubmittedEvents.Dequeue();
                     continue;
                 }
 
@@ -240,26 +238,36 @@ public class ShutterTxLoader(
                     yield break;
                 }
 
-                byte[] identityPreimage = new byte[52];
-                e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
-                e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
-
-                _transactionSubmittedEvents.Remove(e);
-
-                SequencedTransaction sequencedTransaction = new()
-                {
-                    Index = index++,
-                    Eon = eon,
-                    EncryptedTransaction = e.EncryptedTransaction,
-                    GasLimit = e.GasLimit,
-                    Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
-                    IdentityPreimage = identityPreimage
-                };
-
+                _transactionSubmittedEvents.Dequeue();
                 totalGas += e.GasLimit;
-                yield return sequencedTransaction;
+                yield return EventToSequencedTransaction(e, index, eon);
             }
         }
+    }
+
+    private static SequencedTransaction EventToSequencedTransaction(ISequencerContract.TransactionSubmitted e, int index, ulong eon)
+    {
+        byte[] identityPreimage = new byte[52];
+        e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
+        e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
+
+        return new()
+        {
+            Index = index++,
+            Eon = eon,
+            EncryptedTransaction = e.EncryptedTransaction,
+            GasLimit = e.GasLimit,
+            Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
+            IdentityPreimage = identityPreimage
+        };
+    }
+
+    private void LoadFromScanningLogs(ulong eon, ulong txPointer, long headBlockNumber)
+    {
+        _transactionSubmittedEvents = new Queue<ISequencerContract.TransactionSubmitted>(_sequencerContract.GetEvents(eon, txPointer, headBlockNumber));
+        _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
+        // todo: make debug
+        _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }
 
     internal struct SequencedTransaction
