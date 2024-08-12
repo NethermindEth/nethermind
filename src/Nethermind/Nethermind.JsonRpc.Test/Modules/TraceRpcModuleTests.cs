@@ -841,8 +841,8 @@ public class TraceRpcModuleTests
         await blockchain.AddBlock(tx);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
-        traces.Data.Should().HaveCount(3);
-        var state = traces.Data.ElementAt(1).StateChanges!;
+        traces.Data.Should().HaveCount(1);
+        var state = traces.Data.ElementAt(0).StateChanges!;
 
         state.Count.Should().Be(3);
         state[TestItem.AddressA].Nonce!.Before.Should().Be(accountA.Nonce);
@@ -867,7 +867,7 @@ public class TraceRpcModuleTests
         TestRpcBlockchain blockchain = context.Blockchain;
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
 
-        string[] traceTypes = ["stateDiff"];
+        string[] traceTypes = ["fullStateDiff"];
 
         Hash256 parentBeaconBlockRoot = new Hash256("0x0000beac00beac00beac00beac00beac00beac00beac00beac00beac00beac00");
 

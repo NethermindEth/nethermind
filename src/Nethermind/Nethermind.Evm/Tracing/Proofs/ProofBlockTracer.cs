@@ -23,13 +23,5 @@ namespace Nethermind.Evm.Tracing.Proofs
         /// <param name="txTracer">Tracer of the transaction that just has been processed.</param>
         /// <returns>Just returns the <paramref name="txTracer"/></returns>
         protected override ProofTxTracer OnEnd(ProofTxTracer txTracer) => txTracer;
-
-        protected override void AddTrace(ProofTxTracer trace)
-        {
-            if (trace.Accounts.Count != 0 || trace.BlockHashes.Count != 0 || trace.Storages.Count != 0)
-            {
-                base.AddTrace(trace);
-            }
-        }
     }
 }

@@ -34,14 +34,14 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         StorageCell tsStorageCell = new(eip4788Account, timestampReduced);
         StorageCell brStorageCell = new(eip4788Account, rootIndex);
 
+        var tsStorageValueBefore = stateProvider.Get(tsStorageCell).ToArray();
+        var brStorageValueBefore = stateProvider.Get(brStorageCell).ToArray();
+
         stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
         stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
 
         if (txTracer?.IsTracingStorage == true)
         {
-            var tsStorageValueBefore = stateProvider.Get(tsStorageCell).ToArray();
-            var brStorageValueBefore = stateProvider.Get(brStorageCell).ToArray();
-
             txTracer.ReportStorageChange(tsStorageCell, tsStorageValueBefore, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
             txTracer.ReportStorageChange(brStorageCell, brStorageValueBefore, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
         }

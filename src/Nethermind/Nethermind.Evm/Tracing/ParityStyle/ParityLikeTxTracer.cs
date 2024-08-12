@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _tx = tx;
             _trace = new ParityLikeTxTrace { TransactionHash = tx?.Hash, TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx), BlockNumber = block.Number, BlockHash = block.Hash! };
 
-            if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
+            if ((_parityTraceTypes & (ParityTraceTypes.StateDiff | ParityTraceTypes.FullStateDiff)) != 0)
             {
                 IsTracingState = true;
                 IsTracingStorage = true;
