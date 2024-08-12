@@ -273,7 +273,16 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     public virtual Task InitRpcModules()
     {
-        return InitRpcModulesInternal(_api.BlockImprovementContextFactory, true);
+        // todo: remove
+        _logger.Info($"Shutter block improvement is initialized? {_api.BlockImprovementContextFactory is not null}")
+        if (_api.BlockImprovementContextFactory is null)
+        {
+            return InitRpcModulesInternal(null, true);
+        }
+        else
+        {
+            return InitRpcModulesInternal(_api.BlockImprovementContextFactory, false);
+        }
     }
 
     protected Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory, bool keepImproving)

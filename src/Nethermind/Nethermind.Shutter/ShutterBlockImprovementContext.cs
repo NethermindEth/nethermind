@@ -83,68 +83,71 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         StartDateTime = startDateTime;
         _logger = logManager.GetClassLogger();
 
-        ImprovementTask = Task.Run(async () =>
-        {
-            // set default block without waiting for Shutter keys
-            Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
-            if (result is not null)
-            {
-                CurrentBestBlock = result;
-            }
-
-            ulong slot;
-            long offset;
-            try
-            {
-                (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs);
-            }
-            catch (ShutterHelpers.ShutterSlotCalulationException e)
-            {
-
-                _logger.Warn($"Could not calculate Shutter building slot: {e}");
-                return CurrentBestBlock;
-            }
-
-            long waitTime = shutterConfig.MaxKeyDelay - offset;
-            if (waitTime <= 0)
-            {
-                _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
-                return CurrentBestBlock;
-            }
-            waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
-
-            _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
-
-            using var timeoutSource = new CancellationTokenSource((int)waitTime);
-            using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
-
-            try
-            {
-                await shutterTxSignal.WaitForTransactions(slot, source.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                if (timeoutSource.IsCancellationRequested && _logger.IsWarn)
-                {
-                    _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
-                }
-
-                return CurrentBestBlock;
-            }
-
-            result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
-            if (result is not null)
-            {
-                CurrentBestBlock = result;
-            }
-
-            return result;
-        });
+        ImprovementTask = Task.Run(ImproveBlock);
     }
 
     public void Dispose()
     {
         Disposed = true;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+    }
+
+    private async Task ImproveBlock()
+    {
+        _logger.Info("Running Shutter block improvement.");
+
+        // set default block without waiting for Shutter keys
+        Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+        if (result is not null)
+        {
+            CurrentBestBlock = result;
+        }
+
+        ulong slot;
+        long offset;
+        try
+        {
+            (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs);
+        }
+        catch (ShutterHelpers.ShutterSlotCalulationException e)
+        {
+            _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            return CurrentBestBlock;
+        }
+
+        long waitTime = shutterConfig.MaxKeyDelay - offset;
+        if (waitTime <= 0)
+        {
+            _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
+            return CurrentBestBlock;
+        }
+        waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
+
+        _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
+
+        using var timeoutSource = new CancellationTokenSource((int)waitTime);
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
+
+        try
+        {
+            await shutterTxSignal.WaitForTransactions(slot, source.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (timeoutSource.IsCancellationRequested && _logger.IsWarn)
+            {
+                _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
+            }
+
+            return CurrentBestBlock;
+        }
+
+        result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+        if (result is not null)
+        {
+            CurrentBestBlock = result;
+        }
+
+        return result;
     }
 }
