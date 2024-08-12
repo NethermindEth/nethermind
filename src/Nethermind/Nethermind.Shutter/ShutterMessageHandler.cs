@@ -16,44 +16,47 @@ using G1 = Bls.P1;
 
 public class ShutterMessageHandler(
     IShutterConfig shutterConfig,
-    ShutterTxSource txSource,
     ShutterEon eon,
     ILogManager logManager) : IShutterMessageHandler
 {
+    private ulong? _highestValidatedSlot;
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
+    private readonly object _lockObject = new();
 
     public event EventHandler<IShutterMessageHandler.ValidatedKeyArgs>? KeysValidated;
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        ulong loadedTransactionsSlot = txSource.HighestLoadedSlot();
-
-        if (decryptionKeys.Gnosis.Slot <= loadedTransactionsSlot)
+        lock (_lockObject)
         {
-            _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {loadedTransactionsSlot}.");
-            return;
-        }
+            if (_highestValidatedSlot is not null && decryptionKeys.Gnosis.Slot <= _highestValidatedSlot)
+            {
+                _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {_highestValidatedSlot}.");
+                return;
+            }
 
-        ShutterEon.Info? eonInfo = eon.GetCurrentEonInfo();
-        if (eonInfo is null)
-        {
-            _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");
-            return;
-        }
+            ShutterEon.Info? eonInfo = eon.GetCurrentEonInfo();
+            if (eonInfo is null)
+            {
+                _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");
+                return;
+            }
 
-        _logger.Debug($"Checking Shutter decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
+            _logger.Debug($"Checking Shutter decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
 
-        if (CheckDecryptionKeys(decryptionKeys, eonInfo.Value))
-        {
-            _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
-            List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
-            KeysValidated?.Invoke(this, new() {
-                Eon = decryptionKeys.Eon,
-                Slot = decryptionKeys.Gnosis.Slot,
-                TxPointer = decryptionKeys.Gnosis.TxPointer,
-                Keys = keys
-            });
+            if (CheckDecryptionKeys(decryptionKeys, eonInfo.Value))
+            {
+                _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
+                _highestValidatedSlot = decryptionKeys.Gnosis.Slot;
+                List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
+                KeysValidated?.Invoke(this, new() {
+                    Eon = decryptionKeys.Eon,
+                    Slot = decryptionKeys.Gnosis.Slot,
+                    TxPointer = decryptionKeys.Gnosis.TxPointer,
+                    Keys = keys
+                });
+            }
         }
     }
 

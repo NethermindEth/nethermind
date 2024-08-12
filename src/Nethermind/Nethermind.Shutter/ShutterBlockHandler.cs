@@ -36,6 +36,7 @@ public class ShutterBlockHandler(
     private bool _haveCheckedRegistered = false;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
     private readonly LruCache<ulong, Block?> _blockCache = new(5, "Block cache");
+    private readonly object _syncObject = new();
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
 
     public void OnNewHeadBlock(Block head)
@@ -52,11 +53,15 @@ public class ShutterBlockHandler(
             eon.Update(head.Header);
             txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
 
-            ulong slot = ShutterHelpers.GetSlot(head.Timestamp * 1000, _genesisTimestampMs);
-            _blockCache.Set(slot, head);
-            if (_blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? tcs))
+            lock (_syncObject)
             {
-                tcs?.TrySetResult(head);
+                ulong slot = ShutterHelpers.GetSlot(head.Timestamp * 1000, _genesisTimestampMs);
+                _blockCache.Set(slot, head);
+
+                if (_blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? tcs))
+                {
+                    tcs?.TrySetResult(head);
+                }
             }
         }
         else
@@ -68,30 +73,33 @@ public class ShutterBlockHandler(
 
     public async Task<Block?> WaitForBlockInSlot(ulong slot, TimeSpan slotLength, TimeSpan cutoff, CancellationToken cancellationToken)
     {
-        // todo: make debug
-        _logger.Info($"Waiting for block in {slot} (Shutter).");
-
         TaskCompletionSource<Block?>? tcs = null;
-        if (_blockCache.TryGet(slot, out Block? block))
+        lock (_syncObject)
         {
-            return block;
-        }
+            if (_blockCache.TryGet(slot, out Block? block))
+            {
+                return block;
+            }
 
-        long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
-        long waitTime = (long)cutoff.TotalMilliseconds - offset;
-        if (waitTime <= 0)
-        {
-            _logger.Warn($"Cannot await block in slot {slot}, offset of {offset}ms is after cutoff of {cutoff}ms (Shutter).");
-            return null;
-        }
-        waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
+            // todo: make debug
+            _logger.Info($"Waiting for block in {slot} (Shutter).");
 
-        using var timeoutSource = new CancellationTokenSource((int)waitTime);
-        using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
+            long waitTime = (long)cutoff.TotalMilliseconds - offset;
+            if (waitTime <= 0)
+            {
+                _logger.Warn($"Cannot await block in slot {slot}, offset of {offset}ms is after cutoff of {cutoff}ms (Shutter).");
+                return null;
+            }
+            waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
 
-        using (source.Token.Register(() => CancelWaitForBlock(slot)))
-        {
-            tcs = _blockWaitTasks.GetOrAdd(slot, _ => new());
+            using var timeoutSource = new CancellationTokenSource((int)waitTime);
+            using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+
+            using (source.Token.Register(() => CancelWaitForBlock(slot)))
+            {
+                tcs = _blockWaitTasks.GetOrAdd(slot, _ => new());
+            }
         }
         return await tcs.Task;
     }

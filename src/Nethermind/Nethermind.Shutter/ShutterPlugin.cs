@@ -55,6 +55,7 @@ namespace Nethermind.Shutter
             if (Enabled)
             {
                 _logger.Info($"Initializing Shutter block improvement.");
+                // does block producer have Shutter tx source or normal?
                 _api!.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
                     _api.BlockProducer!,
                     _txSource!,
@@ -116,7 +117,7 @@ namespace Nethermind.Shutter
 
                 _txSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
-                _msgHandler = new ShutterMessageHandler(_shutterConfig, _txSource, eon, _api.LogManager);
+                _msgHandler = new ShutterMessageHandler(_shutterConfig, eon, _api.LogManager);
                 _keysValidatedHandler = async (_, keys) =>
                 {
                     // wait for latest block before loading transactions
