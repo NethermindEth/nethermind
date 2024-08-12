@@ -42,7 +42,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 
         if (!txTracer.IsTracingStorage) return;
 
-        txTracer.ReportStorageChange(tsStorageCell, tsStorageValueBefore,Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
+        txTracer.ReportStorageChange(tsStorageCell, tsStorageValueBefore, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
         txTracer.ReportStorageChange(brStorageCell, brStorageValueBefore, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
     }
 }
