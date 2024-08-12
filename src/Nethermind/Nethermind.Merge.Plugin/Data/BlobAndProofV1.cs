@@ -19,6 +19,6 @@ public class BlobAndProofV1
         Blob = wrapper.Blobs[index];
         Proof = wrapper.Proofs[index];
     }
-    private byte[] Blob { get; set; }
-    private byte[] Proof { get; set; }
+    public byte[] Blob { get; set; }
+    public byte[] Proof { get; set; }
 }

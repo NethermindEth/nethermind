@@ -59,7 +59,6 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
             _blobTxStorage.Add(fullBlobTx);
-            AddToBlobIndex(fullBlobTx);
             return true;
         }
 
@@ -98,7 +97,6 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
             if (tx is not null)
             {
                 _blobTxStorage.Delete(hash, tx.Timestamp);
-                RemoveFromBlobIndex(tx);
             }
 
             _blobTxCache.Delete(hash);

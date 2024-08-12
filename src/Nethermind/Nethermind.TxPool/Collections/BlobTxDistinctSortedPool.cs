@@ -21,6 +21,16 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     protected override string ShortPoolName => "BlobPool";
 
+    public override bool TryInsert(ValueHash256 hash, Transaction blobTx, out Transaction? removed)
+    {
+        if (base.TryInsert(blobTx.Hash, blobTx, out removed))
+        {
+            AddToBlobIndex(blobTx);
+            return true;
+        }
+
+        return false;
+    }
     protected void AddToBlobIndex(Transaction blobTx)
     {
         if (blobTx.BlobVersionedHashes?.Length > 0)
@@ -39,6 +49,20 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                 }
             }
         }
+    }
+
+    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
+    {
+        if (base.Remove(hash, out tx))
+        {
+            if (tx is not null)
+            {
+                RemoveFromBlobIndex(tx);
+            }
+            return true;
+        }
+
+        return false;
     }
 
     protected void RemoveFromBlobIndex(Transaction blobTx)
