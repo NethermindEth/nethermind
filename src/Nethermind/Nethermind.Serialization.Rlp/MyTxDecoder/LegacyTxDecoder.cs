@@ -102,11 +102,11 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return transaction;
     }
 
-    public Rlp EncodeTx(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    // TODO: Try to remove this method
+    public static Rlp EncodeTx(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        RlpStream rlpStream = new RlpStream(GetTxLength(item, forSigning, isEip155Enabled, chainId));
+        RlpStream rlpStream = new(GetTxLength(item, forSigning, isEip155Enabled, chainId));
         Encode(item, rlpStream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-
         return new Rlp(rlpStream.Data.ToArray());
     }
 
@@ -115,8 +115,10 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         Encode(item, stream, rlpBehaviors);
     }
 
-    private void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    private static void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
+        if (item?.Type != TxType.Legacy) { throw new InvalidOperationException("Unexpected TxType"); }
+
         if (item is null)
         {
             stream.WriteByte(Rlp.NullObjectByte);
@@ -127,16 +129,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
 
         stream.StartSequence(contentLength);
-
-        switch (item.Type)
-        {
-            case TxType.Legacy:
-                EncodeLegacyWithoutPayload(item, stream);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        EncodeLegacyWithoutPayload(item, stream);
         EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
     }
 
@@ -168,11 +161,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
     private static int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
     {
         bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
-        var contentLength = item.Type switch
-        {
-            TxType.Legacy => GetLegacyContentLength(item),
-            _ => throw new InvalidOperationException("Unexpected TxType"),
-        };
+        int contentLength = GetLegacyContentLength(item);
         contentLength += GetSignatureContentLength(item, forSigning, chainId, includeSigChainIdHack);
 
         return contentLength;
@@ -219,6 +208,8 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
+        if (tx.Type != TxType.Legacy) { throw new InvalidOperationException("Unexpected TxType"); }
+
         int txContentLength = GetContentLength(tx, false);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
