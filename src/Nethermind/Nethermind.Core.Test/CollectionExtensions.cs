@@ -15,14 +15,11 @@ public static class CollectionExtensions
         return value;
     }
 
-    public static Task<TValue> AddResultTo<TValue, TCollection>(this Task<TValue> task, ICollection<TCollection> collection)
+    public static async Task<TValue> AddResultTo<TValue, TCollection>(this Task<TValue> task, ICollection<TCollection> collection)
         where TValue : TCollection
     {
-        return task.ContinueWith(t =>
-        {
-            if (t is { IsCompletedSuccessfully: true, Result: { } value })
-                value.AddTo(collection);
-            return t.Result;
-        });
+        TValue value = await task;
+        if (value != null) collection.Add(value);
+        return value;
     }
 }
