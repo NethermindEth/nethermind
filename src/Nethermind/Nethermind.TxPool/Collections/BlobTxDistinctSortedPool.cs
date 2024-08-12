@@ -12,14 +12,14 @@ namespace Nethermind.TxPool.Collections;
 public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
     : TxDistinctSortedPool(capacity, comparer, logManager)
 {
+    protected override string ShortPoolName => "BlobPool";
+
     public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex => BlobIndex;
 
     protected readonly ConcurrentDictionary<byte[], List<Hash256>> BlobIndex = new();
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
-
-    protected override string ShortPoolName => "BlobPool";
 
     public override bool TryInsert(ValueHash256 hash, Transaction blobTx, out Transaction? removed)
     {

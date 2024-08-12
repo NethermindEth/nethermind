@@ -16,7 +16,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadHandlerV3;
     private readonly IAsyncHandler<byte[][], GetBlobsV1Result> _getBlobsHandler;
 
-
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Cancun);
 
