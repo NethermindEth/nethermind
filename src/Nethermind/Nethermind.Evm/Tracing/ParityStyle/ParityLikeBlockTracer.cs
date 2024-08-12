@@ -21,18 +21,21 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             _types = types;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
+            IsTracingFullStateDiff = (types & ParityTraceTypes.FullStateDiff) == ParityTraceTypes.FullStateDiff;
         }
 
         public ParityLikeBlockTracer(ParityTraceTypes types)
         {
             _types = types;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
+            IsTracingFullStateDiff = (types & ParityTraceTypes.FullStateDiff) == ParityTraceTypes.FullStateDiff;
         }
 
         public ParityLikeBlockTracer(IDictionary<Hash256, ParityTraceTypes> typesByTransaction)
         {
             _typesByTransaction = typesByTransaction;
             IsTracingRewards = false;
+            IsTracingFullStateDiff = false;
         }
 
         protected override ParityLikeTxTracer OnStart(Transaction? tx) => new(_block, tx,
@@ -41,6 +44,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
         public override bool IsTracingRewards { get; }
+        public override bool IsTracingFullStateDiff { get; }
 
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {

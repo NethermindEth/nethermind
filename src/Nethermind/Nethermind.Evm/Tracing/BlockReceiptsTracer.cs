@@ -201,6 +201,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
     public TxReceipt LastReceipt => _txReceipts[^1];
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
+    public bool IsTracingFullStateDiff => _otherTracer.IsTracingFullStateDiff;
 
     public ITxTracer InnerTracer => _currentTxTracer;
 

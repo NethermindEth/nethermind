@@ -256,7 +256,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        ITxTracer stateTracer = blockTracer.StartNewTxTrace(null);
+        ITxTracer stateTracer = blockTracer.IsTracingFullStateDiff ? blockTracer.StartNewTxTrace(null) : NullTxTracer.Instance;
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider, stateTracer);
         _blockhashStore.ApplyBlockhashStateChanges(block.Header, stateTracer);
 
@@ -275,7 +275,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
-        stateTracer = blockTracer.StartNewTxTrace(null);
+        stateTracer = blockTracer.IsTracingFullStateDiff ? blockTracer.StartNewTxTrace(null) : NullTxTracer.Instance;
         _stateProvider.Commit(spec, stateTracer, commitStorageRoots: true);
         blockTracer.EndTxTrace();
 

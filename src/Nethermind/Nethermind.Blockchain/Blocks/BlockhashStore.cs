@@ -33,12 +33,12 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         var parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
 
-        var blockHashStoreValueBefore = worldState.Get(blockHashStoreCell).ToArray();
         var blockHashStoreValueAfter = parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray();
 
         worldState.Set(blockHashStoreCell, blockHashStoreValueAfter);
         if (txTracer?.IsTracingStorage == true)
         {
+            var blockHashStoreValueBefore = worldState.Get(blockHashStoreCell).ToArray();
             txTracer.ReportStorageChange(blockHashStoreCell, blockHashStoreValueBefore, blockHashStoreValueAfter);
         }
     }
