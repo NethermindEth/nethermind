@@ -44,19 +44,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             else
             {
                 using ArrayPoolList<Hash256> _ = discoveredTxHashes;
-                ArrayPoolList<Hash256> hashesToRequest = new(MaxNumberOfTxsInOneMsg);
-                for (int i = 0; i < discoveredTxHashes.Count; i++)
+
+                for (int start = 0; start < discoveredTxHashes.Count; start += MaxNumberOfTxsInOneMsg)
                 {
-                    if (hashesToRequest.Count % MaxNumberOfTxsInOneMsg == 0)
-                    {
-                        RequestPooledTransactionsEth66(send, hashesToRequest);
-                        hashesToRequest = new(MaxNumberOfTxsInOneMsg);
-                    }
+                    var end = Math.Min(start + MaxNumberOfTxsInOneMsg, discoveredTxHashes.Count);
 
-                    hashesToRequest.Add(discoveredTxHashes[i]);
+                    ArrayPoolList<Hash256> hashesToRequest = new(end - start);
+                    hashesToRequest.AddRange(discoveredTxHashes.AsSpan()[start..end]);
+                    RequestPooledTransactionsEth66(send, hashesToRequest);
                 }
-
-                RequestPooledTransactionsEth66(send, hashesToRequest);
             }
         }
 

@@ -309,6 +309,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [TestCase(1, 1)]
         [TestCase(256, 1)]
         [TestCase(257, 2)]
+        [TestCase(512, 2)]
         [TestCase(1000, 4)]
         [TestCase(10000, 40)]
         public void should_request_in_GetPooledTransactionsMessage_up_to_256_txs(int numberOfTransactions, int expectedNumberOfMessages)
@@ -336,14 +337,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             using NewPooledTransactionHashesMessage hashesMsg = new(hashes);
             HandleIncomingStatusMessage();
-
-            bool callReceived = true;
-            _session.When((session) => session.DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg)))
-                .Do(_ => callReceived = true);
-
             HandleZeroMessage(hashesMsg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            callReceived.Should().BeTrue();
+            _session.Received(expectedNumberOfMessages)
+                .DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m =>
+                    m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg ||
+                    m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
+                ));
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
