@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Tracing
         /// - <see cref="ReportReward"/>
         /// </remarks>
         bool IsTracingRewards { get; }
-        
+
         /// <summary>
         /// Is all state changes traced
         /// </summary>
