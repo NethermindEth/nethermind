@@ -18,6 +18,8 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
 
     public TValue Get(TKey key)
     {
+        if (MaxCapacity == 0) return default!;
+
         if (_cacheMap.TryGetValue(key, out LruCacheItem? ov))
         {
             MarkAccessed(ov.Offset);
@@ -28,6 +30,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
 
     public bool TryGet(TKey key, out TValue value)
     {
+        value = default!;
+        if (MaxCapacity == 0) return false;
+
         if (_cacheMap.TryGetValue(key, out LruCacheItem? ov))
         {
             MarkAccessed(ov.Offset);
@@ -35,12 +40,13 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
             return true;
         }
 
-        value = default!;
         return false;
     }
 
     public bool Set(TKey key, TValue val)
     {
+        if (MaxCapacity == 0) return true;
+
         if (val is null)
         {
             return Delete(key);
@@ -120,6 +126,8 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
 
     public bool Delete(TKey key)
     {
+        if (MaxCapacity == 0) return false;
+
         using var lockRelease = _lock.Acquire();
 
         if (_cacheMap.Remove(key, out LruCacheItem? ov))
@@ -135,6 +143,8 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
 
     public new void Clear()
     {
+        if (MaxCapacity == 0) return;
+
         using var lockRelease = _lock.Acquire();
 
         base.Clear();
@@ -143,6 +153,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
 
     public bool Contains(TKey key)
     {
+        if (MaxCapacity == 0) return false;
         return _cacheMap.ContainsKey(key);
     }
 
