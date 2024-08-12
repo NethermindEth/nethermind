@@ -177,7 +177,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Data = rlpStream.DecodeByteArray();
     }
 
-    public static void DecodePayloadWithoutSig(DepositTransaction transaction, ref Rlp.ValueDecoderContext decoderContext)
+    private static void DecodePayloadWithoutSig(DepositTransaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
         transaction.SenderAddress = decoderContext.DecodeAddress();
@@ -189,7 +189,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Data = decoderContext.DecodeByteArray();
     }
 
-    public static void EncodePayloadWithoutSignature(DepositTransaction item, RlpStream stream)
+    private static void EncodePayloadWithoutSignature(DepositTransaction item, RlpStream stream)
     {
         stream.Encode(item.SourceHash);
         stream.Encode(item.SenderAddress);

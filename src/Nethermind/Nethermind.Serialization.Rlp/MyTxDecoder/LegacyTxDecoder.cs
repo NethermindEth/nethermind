@@ -129,7 +129,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
 
         stream.StartSequence(contentLength);
-        EncodeLegacyWithoutPayload(item, stream);
+        EncodePayloadWithoutSignature(item, stream);
         EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
     }
 
@@ -260,7 +260,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Signature = SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void EncodeLegacyWithoutPayload(Transaction item, RlpStream stream)
+    private static void EncodePayloadWithoutSignature(Transaction item, RlpStream stream)
     {
         stream.Encode(item.Nonce);
         stream.Encode(item.GasPrice);

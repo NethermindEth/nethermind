@@ -66,7 +66,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
     }
 
-    private void DecodeEip1559PayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    private void DecodePayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = decoderContext.DecodeULong();
         transaction.Nonce = decoderContext.DecodeUInt256();
@@ -79,7 +79,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
     }
 
-    private void EncodeEip1559PayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
+    private void EncodePayloadWithoutSignature(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
     {
         stream.Encode(item.ChainId ?? 0);
         stream.Encode(item.Nonce);
@@ -102,7 +102,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         int transactionLength = context.ReadSequenceLength();
         int lastCheck = context.Position + transactionLength;
 
-        DecodeEip1559PayloadWithoutSig(transaction, ref context, rlpBehaviors);
+        DecodePayloadWithoutSig(transaction, ref context, rlpBehaviors);
 
         if (context.Position < lastCheck)
         {
@@ -183,7 +183,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         stream.WriteByte((byte)item.Type);
         stream.StartSequence(contentLength);
-        EncodeEip1559PayloadWithoutPayload(item, stream, rlpBehaviors);
+        EncodePayloadWithoutSignature(item, stream, rlpBehaviors);
         EncodeSignature(item, stream);
     }
 
