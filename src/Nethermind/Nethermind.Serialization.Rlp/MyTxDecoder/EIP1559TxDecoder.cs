@@ -189,7 +189,6 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     private static void EncodeSignature(Transaction item, RlpStream stream)
     {
-
         if (item.Signature is null)
         {
             stream.Encode(0);
