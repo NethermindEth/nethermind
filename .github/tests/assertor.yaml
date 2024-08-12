@@ -1,7 +1,9 @@
 participants:
   - el_type: nethermind
+    el_image: <DOCKER_IMAGE_PLACEHOLDER>
     cl_type: prysm
   - el_type: nethermind
+    el_image: <DOCKER_IMAGE_PLACEHOLDER>
     cl_type: nimbus
 additional_services:
   - assertoor
