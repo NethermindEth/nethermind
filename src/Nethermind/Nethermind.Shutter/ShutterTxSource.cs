@@ -84,18 +84,18 @@ public class ShutterTxSource(
         await tcs.Task;
     }
 
-    public void LoadTransactions(Block? head, ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
+    public void LoadTransactions(Block? head, IShutterMessageHandler.ValidatedKeyArgs keys)
     {
-        _txCache.Set(slot, txLoader.LoadTransactions(head, eon, txPointer, slot, keys));
+        _txCache.Set(keys.Slot, txLoader.LoadTransactions(head, keys));
 
-        if (_highestLoadedSlot < slot)
+        if (_highestLoadedSlot < keys.Slot)
         {
-            _highestLoadedSlot = slot;
+            _highestLoadedSlot = keys.Slot;
         }
 
         lock (_syncObject)
         {
-            if (_keyWaitTasks.Remove(slot, out TaskCompletionSource? tcs))
+            if (_keyWaitTasks.Remove(keys.Slot, out TaskCompletionSource? tcs))
             {
                 tcs?.TrySetResult();
             }

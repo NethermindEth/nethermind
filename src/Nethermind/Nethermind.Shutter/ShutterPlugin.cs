@@ -32,7 +32,7 @@ namespace Nethermind.Shutter
         private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
         private EventHandler<BlockEventArgs>? _newHeadBlockHandler;
-        private EventHandler<Dto.DecryptionKeys>? _keysValidatedHandler;
+        private EventHandler<IShutterMessageHandler.ValidatedKeyArgs>? _keysValidatedHandler;
         private ShutterTxSource? _txSource;
         private IShutterMessageHandler? _msgHandler;
         private ILogger _logger;
@@ -117,12 +117,11 @@ namespace Nethermind.Shutter
                 _txSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
                 _msgHandler = new ShutterMessageHandler(_shutterConfig, _txSource, eon, _api.LogManager);
-                _keysValidatedHandler = async (_, decryptionKeys) =>
+                _keysValidatedHandler = async (_, keys) =>
                 {
                     // wait for latest block before loading transactions
-                    Block? head = await blockHandler.WaitForBlockInSlot(decryptionKeys.Gnosis.Slot - 1, _slotLength, _blockWaitCutoff, new());
-                    List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
-                    _txSource.LoadTransactions(head, decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer, decryptionKeys.Gnosis.Slot, keys);
+                    Block? head = await blockHandler.WaitForBlockInSlot(keys.Slot - 1, _slotLength, _blockWaitCutoff, new());
+                    _txSource.LoadTransactions(head, keys);
                 };
                 _msgHandler.KeysValidated += _keysValidatedHandler;
 

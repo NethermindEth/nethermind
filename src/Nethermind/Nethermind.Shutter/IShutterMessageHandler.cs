@@ -2,10 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Shutter;
 public interface IShutterMessageHandler
 {
     void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys);
-    event EventHandler<Dto.DecryptionKeys> KeysValidated;
+    event EventHandler<ValidatedKeyArgs> KeysValidated;
+
+    public struct ValidatedKeyArgs
+    {
+        public ulong Slot;
+        public ulong Eon;
+        public ulong TxPointer;
+        public List<(byte[], byte[])> Keys;
+    }
 }

@@ -46,16 +46,16 @@ public class ShutterTxLoader(
     private ulong _txPointer = ulong.MaxValue;
     private bool _loadFromReceipts = false;
 
-    public ShutterTransactions LoadTransactions(Block? head, ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
+    public ShutterTransactions LoadTransactions(Block? head, IShutterMessageHandler.ValidatedKeyArgs keys)
     {
         List<SequencedTransaction>? sequencedTransactions = null;
-        sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
+        sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
 
-        long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
+        long offset = ShutterHelpers.GetCurrentOffsetMs(keys.Slot, _genesisTimestampMs);
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
-        _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {slot} at time {offsetText} slot start...");
+        _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
-        Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys);
+        Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
 
         if (_logger.IsDebug && transactions.Length > 0) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
@@ -65,7 +65,7 @@ public class ShutterTxLoader(
         ShutterTransactions shutterTransactions = new()
         {
             Transactions = filtered,
-            Slot = slot
+            Slot = keys.Slot
         };
 
         if (_logger.IsDebug && shutterTransactions.Transactions.Length > 0) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
