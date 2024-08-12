@@ -35,19 +35,16 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV
             bool isBlobFound = false;
             if (_blobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
                 && txPool.TryGetPendingBlobTransaction(txHashes.First(), out Transaction? blobTx)
-                && blobTx?.BlobVersionedHashes?.Length > 0)
+                && blobTx.BlobVersionedHashes?.Length > 0)
             {
-                int indexOfRequestedBlob = 0;
-                foreach (var txBlobVersionedHash in blobTx.BlobVersionedHashes)
+                for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
                 {
-                    if (txBlobVersionedHash == requestedBlobVersionedHash)
+                    if (blobTx.BlobVersionedHashes[indexOfBlob] == requestedBlobVersionedHash)
                     {
                         isBlobFound = true;
-                        blobsAndProofs.Add(new BlobAndProofV1(blobTx, indexOfRequestedBlob));
+                        blobsAndProofs.Add(new BlobAndProofV1(blobTx, indexOfBlob));
                         break;
                     }
-
-                    indexOfRequestedBlob++;
                 }
             }
 
