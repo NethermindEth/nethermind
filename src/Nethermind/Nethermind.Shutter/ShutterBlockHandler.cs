@@ -12,7 +12,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
 using System.Threading.Tasks;
 using System.Threading;
-using Nethermind.Specs;
 using System.Collections.Concurrent;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
@@ -35,7 +34,7 @@ public class ShutterBlockHandler(
     ILogManager logManager) : IShutterBlockHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(10);
+    private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(5);
     private bool _haveCheckedRegistered = false;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
     private readonly LruCache<ulong, Block?> _blockCache = new(5, "Block cache");
@@ -105,7 +104,6 @@ public class ShutterBlockHandler(
         cancelledWaitTask?.TrySetException(new OperationCanceledException());
     }
 
-    // todo: check if in current slot?
     private bool IsBlockUpToDate(Block head)
         => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < _upToDateCutoff.TotalSeconds;
 
