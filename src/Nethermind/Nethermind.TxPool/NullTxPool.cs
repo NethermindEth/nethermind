@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -19,7 +20,7 @@ namespace Nethermind.TxPool
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
-
+        public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => new();
         public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
@@ -27,8 +28,6 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
-
-        public static IEnumerable<Transaction> GetPendingBlobTransactions() => Array.Empty<Transaction>();
 
         public void AddPeer(ITxPoolPeer peer) { }
 

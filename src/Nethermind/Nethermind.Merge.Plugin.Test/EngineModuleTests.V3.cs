@@ -361,6 +361,7 @@ public partial class EngineModuleTests
                  Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+                 Substitute.For<IAsyncHandler<byte[][], GetBlobsV1Result>>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
                  Substitute.For<ILogManager>()));
