@@ -101,7 +101,6 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
 
         DecodePayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
 
-
         if (decoderContext.Position < lastCheck)
         {
             DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
@@ -161,15 +160,10 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         Encode(item, stream, rlpBehaviors);
     }
 
-    public Rlp EncodeTx(Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
-        Encode(item, rlpStream, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
-    }
-
     public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item?.Type != TxType.AccessList) { throw new InvalidOperationException("Unexpected TxType"); }
+
         if (item is null)
         {
             stream.WriteByte(Rlp.NullObjectByte);
@@ -185,18 +179,8 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         }
 
         stream.WriteByte((byte)item.Type);
-
         stream.StartSequence(contentLength);
-
-        switch (item.Type)
-        {
-            case TxType.AccessList:
-                EncodePayloadWithoutSignature(item, stream, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        EncodePayloadWithoutSignature(item, stream, rlpBehaviors);
         EncodeSignature(stream, item);
     }
 
@@ -210,7 +194,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
         }
         else
         {
-            stream.Encode(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
+            stream.Encode(item.Signature.RecoveryId);
             stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
             stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
         }
@@ -243,11 +227,18 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : AbstractTxDecode
     private static int GetSignatureContentLength(Transaction item)
     {
         int contentLength = 0;
-
-        bool signatureIsNull = item.Signature is null;
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RecoveryId);
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+        if (item.Signature is null)
+        {
+            contentLength += 1;
+            contentLength += 1;
+            contentLength += 1;
+        }
+        else
+        {
+            contentLength += Rlp.LengthOf(item.Signature.RecoveryId);
+            contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
+            contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+        }
 
         return contentLength;
     }
