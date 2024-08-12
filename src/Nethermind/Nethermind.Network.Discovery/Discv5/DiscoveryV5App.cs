@@ -22,7 +22,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
-using Nethermind.Api;
 using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
 
