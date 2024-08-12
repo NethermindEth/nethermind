@@ -67,7 +67,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
             Status = StatusCode.Success,
             Logs = logs.Select((entry, i) => new Log
             {
-                Address = entry.LoggersAddress,
+                Address = entry.Address,
                 Topics = entry.Topics,
                 Data = entry.Data,
                 LogIndex = (ulong)i,

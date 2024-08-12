@@ -254,7 +254,7 @@ namespace Nethermind.Blockchain.Find
                                     receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
                                     receipt.TxHash.ToCommitment(),
-                                    log.LoggersAddress.ToAddress(),
+                                    log.Address.ToAddress(),
                                     log.Data.ToArray(),
                                     topics));
                             }

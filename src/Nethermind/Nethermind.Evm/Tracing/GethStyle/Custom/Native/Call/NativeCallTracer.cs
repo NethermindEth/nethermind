@@ -104,7 +104,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         NativeCallTracerCallFrame callFrame = _callStack[^1];
 
         NativeCallTracerLogEntry callLog = new(
-            log.LoggersAddress,
+            log.Address,
             log.Data,
             log.Topics,
             (ulong)callFrame.Calls.Count);

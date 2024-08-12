@@ -27,7 +27,7 @@ namespace Nethermind.Facade.Filters
                 txReceipt.BlockHash,
                 txReceipt.Index,
                 txReceipt.TxHash,
-                logEntry.LoggersAddress,
+                logEntry.Address,
                 logEntry.Data,
                 logEntry.Topics,
                 removed)
