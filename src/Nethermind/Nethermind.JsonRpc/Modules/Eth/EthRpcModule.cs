@@ -62,7 +62,7 @@ public partial class EthRpcModule(
     protected readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
     protected readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     protected readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-    protected readonly ITxPool _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
+    protected readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
     protected readonly ITxSender _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -184,7 +184,7 @@ public partial class EthRpcModule(
     {
         if (blockParameter == BlockParameter.Pending)
         {
-            UInt256 pendingNonce = _txPoolBridge.GetLatestPendingNonce(address);
+            UInt256 pendingNonce = _txPool.GetLatestPendingNonce(address);
             return Task.FromResult(ResultWrapper<UInt256>.Success(pendingNonce));
         }
 
@@ -348,7 +348,7 @@ public partial class EthRpcModule(
         return GetBlock(blockParameter, returnFullTransactionObjects);
     }
 
-    private ResultWrapper<BlockForRpc> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
+    protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
@@ -362,36 +362,28 @@ public partial class EthRpcModule(
             _blockchainBridge.RecoverTxSenders(block);
         }
 
-        return ResultWrapper<BlockForRpc>.Success(block is null
+        return ResultWrapper<BlockForRpc?>.Success(block is null
             ? null
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
 
     public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        UInt256? baseFee = null;
-        _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
-        TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
-            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
-            if (transaction is null)
-            {
-                return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
-            }
+            return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel =
-            new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
-        if (_logger.IsTrace)
-            _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+        TransactionForRpc transactionModel = new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
+        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
     }
 
     public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
     {
-        Transaction[] transactions = _txPoolBridge.GetPendingTransactions();
+        Transaction[] transactions = _txPool.GetPendingTransactions();
         TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -680,7 +672,7 @@ public partial class EthRpcModule(
         }
     }
 
-    private void RecoverTxSenderIfNeeded(Transaction transaction)
+    protected void RecoverTxSenderIfNeeded(Transaction transaction)
     {
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
@@ -713,7 +705,7 @@ public partial class EthRpcModule(
                     : null);
     }
 
-    private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
+    protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
 
     private static ResultWrapper<TResult> GetFailureResult<TResult>(ResourceNotFoundException exception, bool isTemporary) =>

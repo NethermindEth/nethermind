@@ -131,7 +131,7 @@ public class Startup
             }
         });
 
-        app.Run(async (ctx) =>
+        app.Run(async ctx =>
         {
             if (ctx.Request.Method == "GET")
             {
@@ -145,12 +145,9 @@ public class Startup
                 if (jsonRpcUrl.MaxRequestBodySize is not null)
                     ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
 
-                bool authenticated = await rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization);
-
-                if (jsonRpcUrl.IsAuthenticated && !authenticated)
+                if (jsonRpcUrl.IsAuthenticated && !await rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
                 {
-                    await PushErrorResponse(StatusCodes.Status403Forbidden, ErrorCodes.InvalidRequest,
-                        "Authentication error");
+                    await PushErrorResponse(StatusCodes.Status403Forbidden, ErrorCodes.InvalidRequest, "Authentication error");
                     return;
                 }
 

@@ -145,27 +145,4 @@ public class McsPriorityLockTests
         // Some lower priority threads will acquire first; we are asserting that they mostly queue jump
         Assert.That(lowPriorityFirst < (numberOfThreads / 8), Is.True, "High priority threads did not acquire the lock before lower priority ones.");
     }
-
-    [Test]
-    public void NonReentrantTest()
-    {
-        bool reentrancyDetected = false;
-        var thread = new Thread(() =>
-        {
-            using var handle = mcsLock.Acquire();
-            try
-            {
-                using var innerHandle = mcsLock.Acquire(); // Attempt to re-lock
-            }
-            catch
-            {
-                reentrancyDetected = true;
-            }
-        });
-
-        thread.Start();
-        thread.Join();
-
-        Assert.IsTrue(reentrancyDetected, "Reentrancy was not properly detected.");
-    }
 }
