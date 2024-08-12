@@ -7,7 +7,7 @@ namespace Nethermind.Core
 {
     public interface ILogEntry
     {
-        Address Address{ get; }
+        Address Address { get; }
         Hash256[] Topics { get; }
         byte[] Data { get; }
     }
