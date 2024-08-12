@@ -84,9 +84,9 @@ public class ShutterTxSource(
         await tcs.Task;
     }
 
-    public void LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
+    public void LoadTransactions(Block? head, ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        _txCache.Set(slot, txLoader.LoadTransactions(eon, txPointer, slot, keys));
+        _txCache.Set(slot, txLoader.LoadTransactions(head, eon, txPointer, slot, keys));
 
         if (_highestLoadedSlot < slot)
         {

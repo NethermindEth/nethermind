@@ -25,7 +25,7 @@ public static class ShutterHelpers
     public static long GetCurrentOffsetMs(ulong slot, ulong genesisTimestampMs, ulong? slotTimestampMs = null)
         => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)(slotTimestampMs ?? GetSlotTimestampMs(slot, genesisTimestampMs));
 
-    public static (ulong slot, long slotOffset) GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs)
+    public static ulong GetSlot(ulong slotTimestampMs, ulong genesisTimestampMs)
     {
         long slotTimeSinceGenesis = (long)slotTimestampMs - (long)genesisTimestampMs;
         if (slotTimeSinceGenesis < 0)
@@ -33,7 +33,12 @@ public static class ShutterHelpers
             throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was greater than genesis timestamp {genesisTimestampMs}ms.");
         }
 
-        ulong buildingSlot = (ulong)slotTimeSinceGenesis / (ulong)SlotLength.TotalMilliseconds;
+        return (ulong)slotTimeSinceGenesis / (ulong)SlotLength.TotalMilliseconds;
+    }
+
+    public static (ulong slot, long slotOffset) GetBuildingSlotAndOffset(ulong slotTimestampMs, ulong genesisTimestampMs)
+    {
+        ulong buildingSlot = GetSlot(slotTimestampMs, genesisTimestampMs);
         long offset = GetCurrentOffsetMs(buildingSlot, genesisTimestampMs, slotTimestampMs);
 
         return (buildingSlot, offset);

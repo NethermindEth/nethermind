@@ -20,6 +20,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Filters;
+using System.Threading.Tasks;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -32,7 +33,6 @@ public class ShutterTxLoader(
     IShutterConfig shutterConfig,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
-    IReadOnlyBlockTree blockTree,
     ILogManager logManager)
 {
     private readonly TxValidator _txValidator = new(specProvider.ChainId);
@@ -44,9 +44,8 @@ public class ShutterTxLoader(
     private ulong _txPointer = ulong.MaxValue;
     private bool _loadFromReceipts = false;
 
-    public ShutterTransactions LoadTransactions(ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
+    public ShutterTransactions LoadTransactions(Block? head, ulong eon, ulong txPointer, ulong slot, List<(byte[], byte[])> keys)
     {
-        Block? head = blockTree.Head;
         List<SequencedTransaction>? sequencedTransactions = null;
         sequencedTransactions = GetNextTransactions(eon, txPointer, head?.Number ?? 0).ToList();
 

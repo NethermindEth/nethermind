@@ -23,6 +23,8 @@ public class ShutterMessageHandler(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
 
+    public event EventHandler<Dto.DecryptionKeys>? KeysValidated;
+
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
         ulong loadedTransactionsSlot = txSource.HighestLoadedSlot();
@@ -45,9 +47,7 @@ public class ShutterMessageHandler(
         if (CheckDecryptionKeys(decryptionKeys, eonInfo.Value))
         {
             _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
-
-            List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
-            txSource.LoadTransactions(decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer, decryptionKeys.Gnosis.Slot, keys);
+            KeysValidated?.Invoke(this, decryptionKeys);
         }
     }
 

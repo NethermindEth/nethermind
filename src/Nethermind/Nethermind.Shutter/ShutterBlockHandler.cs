@@ -11,6 +11,11 @@ using Nethermind.Logging;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
 using System.Threading.Tasks;
+using System.Threading;
+using Nethermind.Specs;
+using System.Collections.Concurrent;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter;
 
@@ -23,6 +28,7 @@ public class ShutterBlockHandler(
     ReadOnlyTxProcessingEnvFactory envFactory,
     IAbiEncoder abiEncoder,
     IReceiptFinder receiptFinder,
+    ISpecProvider specProvider,
     Dictionary<ulong, byte[]> validatorsInfo,
     ShutterEon eon,
     ShutterTxLoader txLoader,
@@ -31,6 +37,9 @@ public class ShutterBlockHandler(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(10);
     private bool _haveCheckedRegistered = false;
+    private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
+    private readonly LruCache<ulong, Block?> _blockCache = new(5, "Block cache");
+    private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
 
     public void OnNewHeadBlock(Block head)
     {
@@ -45,6 +54,13 @@ public class ShutterBlockHandler(
             }
             eon.Update(head.Header);
             txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
+
+            ulong slot = ShutterHelpers.GetSlot(head.Timestamp, _genesisTimestampMs);
+            _blockCache.Set(slot, head);
+            if (_blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? tcs))
+            {
+                tcs?.TrySetResult(head);
+            }
         }
         else
         {
@@ -53,12 +69,40 @@ public class ShutterBlockHandler(
         }
     }
 
-    public async Task<(Block?, TxReceipt[])> WaitForBlock(long blockNumber, ulong slot, TimeSpan slotLength, TimeSpan cutoff)
+    public async Task<Block?> WaitForBlockInSlot(ulong slot, TimeSpan slotLength, TimeSpan cutoff, CancellationToken cancellationToken)
     {
-        _logger.Info($"Waiting for block {blockNumber} in {slot}");
-        await Task.Delay(100);
-        // wait for OnNewHeadBlock
-        return (null, []);
+        // todo: make debug
+        _logger.Info($"Waiting for block in {slot} (Shutter).");
+
+        TaskCompletionSource<Block?>? tcs = null;
+        if (_blockCache.TryGet(slot, out Block? block))
+        {
+            return block;
+        }
+
+        long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
+        long waitTime = (long)cutoff.TotalMilliseconds - offset;
+        if (waitTime <= 0)
+        {
+            _logger.Warn($"Cannot await block in slot {slot}, offset of {offset}ms is after cutoff of {cutoff}ms (Shutter).");
+            return null;
+        }
+        waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
+
+        using var timeoutSource = new CancellationTokenSource((int)waitTime);
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+
+        using (source.Token.Register(() => CancelWaitForBlock(slot)))
+        {
+            tcs = _blockWaitTasks.GetOrAdd(slot, _ => new());
+        }
+        return await tcs.Task;
+    }
+
+    private void CancelWaitForBlock(ulong slot)
+    {
+        _blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? cancelledWaitTask);
+        cancelledWaitTask?.TrySetException(new OperationCanceledException());
     }
 
     // todo: check if in current slot?

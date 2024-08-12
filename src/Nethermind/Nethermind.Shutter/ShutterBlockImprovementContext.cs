@@ -53,7 +53,15 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     public UInt256 BlockFees => 0;
 
     private CancellationTokenSource? _cancellationTokenSource;
-    private ILogger _logger;
+    private readonly ILogger _logger;
+    private readonly IBlockProducer _blockProducer;
+    private readonly IShutterTxSignal _txSignal;
+    private readonly IShutterConfig _shutterConfig;
+    private readonly BlockHeader _parentHeader;
+    private readonly PayloadAttributes _payloadAttributes;
+    private readonly ulong _slotTimestampMs;
+    private readonly ulong _genesisTimestampMs;
+    private readonly TimeSpan _slotLength;
 
     internal ShutterBlockImprovementContext(
         IBlockProducer blockProducer,
@@ -72,16 +80,23 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             throw new ArgumentException("Cannot be zero.", nameof(slotLength));
         }
 
-        ulong slotTimestampMs = payloadAttributes.Timestamp * 1000;
-        if (slotTimestampMs < genesisTimestampMs)
+        _slotTimestampMs = payloadAttributes.Timestamp * 1000;
+        if (_slotTimestampMs < genesisTimestampMs)
         {
-            throw new ArgumentOutOfRangeException(nameof(genesisTimestampMs), genesisTimestampMs, $"Genesis timestamp (ms) cannot be after the payload timestamp ({slotTimestampMs}).");
+            throw new ArgumentOutOfRangeException(nameof(genesisTimestampMs), genesisTimestampMs, $"Genesis timestamp (ms) cannot be after the payload timestamp ({_slotTimestampMs}).");
         }
 
         _cancellationTokenSource = new CancellationTokenSource();
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         _logger = logManager.GetClassLogger();
+        _blockProducer = blockProducer;
+        _txSignal = shutterTxSignal;
+        _shutterConfig = shutterConfig;
+        _parentHeader = parentHeader;
+        _payloadAttributes = payloadAttributes;
+        _genesisTimestampMs = genesisTimestampMs;
+        _slotLength = slotLength;
 
         ImprovementTask = Task.Run(ImproveBlock);
     }
@@ -92,12 +107,13 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
     }
 
-    private async Task ImproveBlock()
+    private async Task<Block?> ImproveBlock()
     {
+        // todo: make debug
         _logger.Info("Running Shutter block improvement.");
 
         // set default block without waiting for Shutter keys
-        Block? result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource!.Token);
         if (result is not null)
         {
             CurrentBestBlock = result;
@@ -107,7 +123,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         long offset;
         try
         {
-            (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(slotTimestampMs, genesisTimestampMs);
+            (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(_slotTimestampMs, _genesisTimestampMs);
         }
         catch (ShutterHelpers.ShutterSlotCalulationException e)
         {
@@ -115,22 +131,22 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             return CurrentBestBlock;
         }
 
-        long waitTime = shutterConfig.MaxKeyDelay - offset;
+        long waitTime = _shutterConfig.MaxKeyDelay - offset;
         if (waitTime <= 0)
         {
             _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
             return CurrentBestBlock;
         }
-        waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
+        waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
 
         _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
         using var timeoutSource = new CancellationTokenSource((int)waitTime);
-        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource!.Token, timeoutSource.Token);
 
         try
         {
-            await shutterTxSignal.WaitForTransactions(slot, source.Token);
+            await _txSignal.WaitForTransactions(slot, source.Token);
         }
         catch (OperationCanceledException)
         {
@@ -142,7 +158,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             return CurrentBestBlock;
         }
 
-        result = await blockProducer.BuildBlock(parentHeader, null, payloadAttributes, _cancellationTokenSource.Token);
+        result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource.Token);
         if (result is not null)
         {
             CurrentBestBlock = result;

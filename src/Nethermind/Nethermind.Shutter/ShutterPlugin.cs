@@ -14,6 +14,8 @@ using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
 using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
+using System.Linq;
+using Nethermind.Specs;
 
 namespace Nethermind.Shutter
 {
@@ -30,8 +32,12 @@ namespace Nethermind.Shutter
         private IShutterConfig? _shutterConfig;
         private ShutterP2P? _shutterP2P;
         private EventHandler<BlockEventArgs>? _newHeadBlockHandler;
-        private ShutterTxSource? _shutterTxSource;
+        private EventHandler<Dto.DecryptionKeys>? _keysValidatedHandler;
+        private ShutterTxSource? _txSource;
+        private IShutterMessageHandler? _msgHandler;
         private ILogger _logger;
+        private readonly TimeSpan _slotLength = GnosisSpecProvider.SlotLength;
+        private readonly TimeSpan _blockWaitCutoff = TimeSpan.FromMilliseconds(1333);
 
         public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -51,7 +57,7 @@ namespace Nethermind.Shutter
                 _logger.Info($"Initializing Shutter block improvement.");
                 _api!.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
                     _api.BlockProducer!,
-                    _shutterTxSource!,
+                    _txSource!,
                     _shutterConfig!,
                     _api.SpecProvider!,
                     _api.LogManager);
@@ -92,23 +98,38 @@ namespace Nethermind.Shutter
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, readOnlyBlockTree, _api.LogManager);
+                ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, _api.LogManager);
                 ShutterEon eon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, _logger);
-                ShutterBlockHandler blockHandler = new(_api.SpecProvider!.ChainId, _shutterConfig.ValidatorRegistryContractAddress!, _shutterConfig.ValidatorRegistryMessageVersion, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _api.ReceiptFinder!, validatorsInfo, eon, txLoader, _api.LogManager);
+                ShutterBlockHandler blockHandler = new(
+                    _api.SpecProvider!.ChainId,
+                    _shutterConfig.ValidatorRegistryContractAddress!,
+                    _shutterConfig.ValidatorRegistryMessageVersion,
+                    readOnlyTxProcessingEnvFactory,
+                    _api.AbiEncoder, _api.ReceiptFinder!, _api.SpecProvider!,
+                    validatorsInfo, eon, txLoader, _api.LogManager);
+
                 _newHeadBlockHandler = (_, e) =>
                 {
                     blockHandler.OnNewHeadBlock(e.Block);
                 };
                 _api.BlockTree!.NewHeadBlock += _newHeadBlockHandler;
 
-                _shutterTxSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
+                _txSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
 
-                ShutterMessageHandler shutterMessageHandler = new(_shutterConfig, _shutterTxSource, eon, _api.LogManager);
-                _shutterP2P = new(shutterMessageHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
+                _msgHandler = new ShutterMessageHandler(_shutterConfig, _txSource, eon, _api.LogManager);
+                _keysValidatedHandler = async (_, decryptionKeys) =>
+                {
+                    List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
+                    Block? head = await blockHandler.WaitForBlockInSlot(decryptionKeys.Gnosis.Slot, _slotLength, _blockWaitCutoff, new());
+                    _txSource.LoadTransactions(head, decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer, decryptionKeys.Gnosis.Slot, keys);
+                };
+                _msgHandler.KeysValidated += _keysValidatedHandler;
+
+                _shutterP2P = new(_msgHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses!);
             }
 
-            return consensusPlugin.InitBlockProducer(_shutterTxSource.Then(txSource));
+            return consensusPlugin.InitBlockProducer(_txSource.Then(txSource));
         }
 
         public bool ShouldRunSteps(INethermindApi api)
@@ -123,6 +144,10 @@ namespace Nethermind.Shutter
             if (_newHeadBlockHandler is not null)
             {
                 _api!.BlockTree!.NewHeadBlock -= _newHeadBlockHandler;
+            }
+            if (_keysValidatedHandler is not null)
+            {
+                _msgHandler!.KeysValidated -= _keysValidatedHandler;
             }
             await (_shutterP2P?.DisposeAsync() ?? default);
         }
