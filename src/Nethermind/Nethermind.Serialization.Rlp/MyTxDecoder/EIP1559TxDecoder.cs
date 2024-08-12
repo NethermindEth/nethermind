@@ -163,13 +163,6 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         Encode(item, stream, rlpBehaviors);
     }
 
-    public Rlp EncodeTx(Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(item, rlpStream, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
-    }
-
     public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item?.Type != TxType.EIP1559) { throw new InvalidOperationException("Unexpected TxType"); }
