@@ -3,10 +3,11 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state);
+    void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state, ITxTracer txTracer);
 }

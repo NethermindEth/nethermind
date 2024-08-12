@@ -256,10 +256,12 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
-        _blockhashStore.ApplyBlockhashStateChanges(block.Header);
+        ITxTracer stateTracer = blockTracer.StartNewTxTrace(null);
+        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider, stateTracer);
+        _blockhashStore.ApplyBlockhashStateChanges(block.Header, stateTracer);
 
-        _stateProvider.Commit(spec, commitStorageRoots: false);
+        _stateProvider.Commit(spec, stateTracer, commitStorageRoots: false);
+        blockTracer.EndTxTrace();
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
@@ -273,7 +275,9 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec, commitStorageRoots: true);
+        stateTracer = blockTracer.StartNewTxTrace(null);
+        _stateProvider.Commit(spec, stateTracer, commitStorageRoots: true);
+        blockTracer.EndTxTrace();
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
