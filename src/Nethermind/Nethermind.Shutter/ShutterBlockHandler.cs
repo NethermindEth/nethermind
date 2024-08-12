@@ -18,8 +18,6 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter;
 
-// todo: make block handler & receipt folding into more reusable class?
-// maybe ReceiptAccumulator with generic log scanning and receipt following
 public class ShutterBlockHandler(
     ulong chainId,
     string validatorRegistryContractAddress,

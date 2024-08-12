@@ -119,8 +119,9 @@ namespace Nethermind.Shutter
                 _msgHandler = new ShutterMessageHandler(_shutterConfig, _txSource, eon, _api.LogManager);
                 _keysValidatedHandler = async (_, decryptionKeys) =>
                 {
+                    // wait for latest block before loading transactions
+                    Block? head = await blockHandler.WaitForBlockInSlot(decryptionKeys.Gnosis.Slot - 1, _slotLength, _blockWaitCutoff, new());
                     List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
-                    Block? head = await blockHandler.WaitForBlockInSlot(decryptionKeys.Gnosis.Slot, _slotLength, _blockWaitCutoff, new());
                     _txSource.LoadTransactions(head, decryptionKeys.Eon, decryptionKeys.Gnosis.TxPointer, decryptionKeys.Gnosis.Slot, keys);
                 };
                 _msgHandler.KeysValidated += _keysValidatedHandler;

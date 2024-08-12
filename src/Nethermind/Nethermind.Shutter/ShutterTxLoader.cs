@@ -28,6 +28,8 @@ namespace Nethermind.Shutter;
 
 using G1 = Bls.P1;
 
+// todo: make into more reusable class?
+// maybe ReceiptAccumulator with generic log scanning and receipt following
 public class ShutterTxLoader(
     ILogFinder logFinder,
     IShutterConfig shutterConfig,
