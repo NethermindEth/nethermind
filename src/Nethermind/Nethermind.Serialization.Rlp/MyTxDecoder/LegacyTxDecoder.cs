@@ -27,7 +27,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         if (rlpStream.Position < lastCheck)
         {
-            DecodeSignature(rlpStream, rlpBehaviors, transaction);
+            DecodeSignature(transaction, rlpStream, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -66,7 +66,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         if (decoderContext.Position < lastCheck)
         {
-            DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
+            DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -76,7 +76,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            if (_lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)
@@ -102,13 +102,6 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return transaction;
     }
 
-    public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(item, rlpStream, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
-    }
-
     public Rlp EncodeTx(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         RlpStream rlpStream = new RlpStream(GetTxLength(item, forSigning, isEip155Enabled, chainId));
@@ -131,7 +124,6 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         }
 
         bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
-
         int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
 
         stream.StartSequence(contentLength);
@@ -208,10 +200,18 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         }
         else
         {
-            bool signatureIsNull = item.Signature is null;
-            contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.V);
-            contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
-            contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+            if (item.Signature is null)
+            {
+                contentLength += 1;
+                contentLength += 1;
+                contentLength += 1;
+            }
+            else
+            {
+                contentLength += Rlp.LengthOf(item.Signature.V);
+                contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+            }
         }
 
         return contentLength;
@@ -253,7 +253,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Data = decoderContext.DecodeByteArrayMemory();
     }
 
-    private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
+    private static void DecodeSignature(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -261,7 +261,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Signature = SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, Transaction transaction)
+    private static void DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();

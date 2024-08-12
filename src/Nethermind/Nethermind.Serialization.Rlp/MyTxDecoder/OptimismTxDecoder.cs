@@ -122,14 +122,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors);
     }
 
-    public Rlp Encode(DepositTransaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
-    }
-
-    public void Encode(RlpStream stream, DepositTransaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(DepositTransaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Encode(item, stream, rlpBehaviors);
     }
