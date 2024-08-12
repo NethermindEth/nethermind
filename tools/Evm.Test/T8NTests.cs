@@ -261,6 +261,7 @@ public class T8NTests
             1,
             inputParams.StateFork,
             inputParams.StateReward,
+            false,
             TraceOptions.Default
         );
 

@@ -28,7 +28,6 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Ethereum.Test.Base.T8NUtils;
-using Microsoft.IdentityModel.Tokens;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
@@ -41,7 +40,7 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
-        private TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
+        private TxValidator? _txValidator;
         private readonly BeaconBlockRootHandler _beaconBlockRootHandler = new();
 
         [SetUp]
@@ -58,30 +57,17 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger();
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test)
+        protected EthereumTestResult RunTest(GeneralStateTest test, bool isGnosis = false)
         {
-            return RunTest(test, false, NullTxTracer.Instance);
+            return RunTest(test, NullTxTracer.Instance, isGnosis);
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, bool isGnosis)
-        {
-            if (isGnosis)
-            {
-                _txValidator = new TxValidator(GnosisSpecProvider.Instance.ChainId);
-            }
-
-            return RunTest(test, isGnosis, NullTxTracer.Instance);
-        }
-
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
-        {
-            return RunTest(test, false, txTracer);
-        }
-
-        protected EthereumTestResult RunTest(GeneralStateTest test, bool isGnosis, ITxTracer txTracer)
+        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer, bool isGnosis = false)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
+
+            _txValidator = new TxValidator(test.StateChainId);
 
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();

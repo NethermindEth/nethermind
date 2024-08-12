@@ -64,7 +64,9 @@ public class InputProcessor
             throw new T8NException(e, ExitCodes.ErrorConfig);
         }
 
-        ISpecProvider specProvider = GnosisSpecProvider.Instance;
+        ISpecProvider specProvider = isGnosis ? GnosisSpecProvider.Instance
+            : new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, spec));
+
         if (spec is Paris)
         {
             specProvider.UpdateMergeTransitionInfo(envInfo.CurrentNumber, 0);
@@ -77,7 +79,7 @@ public class InputProcessor
         generalStateTest.Fork = spec;
         generalStateTest.Pre = allocJson;
         generalStateTest.Transactions = transactions;
-        generalStateTest.StateChainId = isGnosis ? GnosisSpecProvider.Instance.ChainId : FrontierSpecProvider.Instance.ChainId;
+        generalStateTest.StateChainId = isGnosis ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
 
         generalStateTest.CurrentCoinbase = envInfo.CurrentCoinbase;
         generalStateTest.CurrentGasLimit = envInfo.CurrentGasLimit;
