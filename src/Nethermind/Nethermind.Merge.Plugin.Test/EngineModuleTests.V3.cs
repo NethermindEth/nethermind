@@ -27,6 +27,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -508,6 +509,43 @@ public partial class EngineModuleTests
 
         Assert.That(res2.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
     }
+
+    [Test]
+    public async Task GetBlobsV1_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+        var ethereumEcdsa = new EthereumEcdsa(BlockchainIds.Mainnet, LimboLogs.Instance);
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfBlobs)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithMaxFeePerBlobGas(1000.Wei())
+            .SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+        List<BlobAndProofV1?> blobsAndProofs = new();
+
+        for (int i = 0; i < blobTx.BlobVersionedHashes!.Length; i++)
+        {
+            blobsAndProofs.Add(new BlobAndProofV1(blobTx, i));
+        }
+
+        GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+
+        result.Data.Should().BeEquivalentTo(expected);
+        result.Data.BlobsAndProofs.Length.Should().Be(numberOfBlobs);
+        for (int i = 0; i < result.Data.BlobsAndProofs.Length; i++)
+        {
+            result.Data.BlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i]);
+            result.Data.BlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i]);
+        }
+    }
+
 
     public static IEnumerable<TestCaseData> ForkchoiceUpdatedV3DeclinedTestCaseSource
     {
