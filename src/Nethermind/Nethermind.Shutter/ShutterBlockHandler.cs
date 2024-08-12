@@ -52,7 +52,7 @@ public class ShutterBlockHandler(
             eon.Update(head.Header);
             txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
 
-            ulong slot = ShutterHelpers.GetSlot(head.Timestamp, _genesisTimestampMs);
+            ulong slot = ShutterHelpers.GetSlot(head.Timestamp * 1000, _genesisTimestampMs);
             _blockCache.Set(slot, head);
             if (_blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? tcs))
             {

@@ -30,7 +30,7 @@ public static class ShutterHelpers
         long slotTimeSinceGenesis = (long)slotTimestampMs - (long)genesisTimestampMs;
         if (slotTimeSinceGenesis < 0)
         {
-            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was greater than genesis timestamp {genesisTimestampMs}ms.");
+            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {genesisTimestampMs}ms.");
         }
 
         return (ulong)slotTimeSinceGenesis / (ulong)SlotLength.TotalMilliseconds;
