@@ -172,6 +172,8 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item?.Type != TxType.EIP1559) { throw new InvalidOperationException("Unexpected TxType"); }
+
         if (item is null)
         {
             stream.WriteByte(Rlp.NullObjectByte);
@@ -187,18 +189,8 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         }
 
         stream.WriteByte((byte)item.Type);
-
         stream.StartSequence(contentLength);
-
-        switch (item.Type)
-        {
-            case TxType.EIP1559:
-                EncodeEip1559PayloadWithoutPayload(item, stream, rlpBehaviors);
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected TxType");
-        }
-
+        EncodeEip1559PayloadWithoutPayload(item, stream, rlpBehaviors);
         EncodeSignature(item, stream);
     }
 
@@ -219,7 +211,12 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         }
     }
 
-    private int GetEip1559ContentLength(Transaction item)
+    private int GetContentLength(Transaction item)
+    {
+        return GetPayloadContentLength(item) + GetSignatureContentLength(item);
+    }
+
+    private int GetPayloadContentLength(Transaction item)
     {
         return Rlp.LengthOf(item.Nonce)
                + Rlp.LengthOf(item.GasPrice) // gas premium
@@ -232,32 +229,29 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
                + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
     }
 
-    private int GetContentLength(Transaction item)
-    {
-        var contentLength = item.Type switch
-        {
-            TxType.EIP1559 => GetEip1559ContentLength(item),
-            _ => throw new InvalidOperationException("Unexpected TxType"),
-        };
-        contentLength += GetSignatureContentLength(item);
-
-        return contentLength;
-    }
-
     private static int GetSignatureContentLength(Transaction item)
     {
         int contentLength = 0;
-
-        bool signatureIsNull = item.Signature is null;
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RecoveryId);
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
-        contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+        if (item.Signature is null)
+        {
+            contentLength += 1;
+            contentLength += 1;
+            contentLength += 1;
+        }
+        else
+        {
+            contentLength += Rlp.LengthOf(item.Signature.RecoveryId);
+            contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
+            contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+        }
 
         return contentLength;
     }
 
     public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
+        if (tx.Type != TxType.AccessList) { throw new InvalidOperationException("Unexpected TxType"); }
+
         int txContentLength = GetContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
