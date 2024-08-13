@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp.Eip2930;
+using Nethermind.Serialization.Rlp.MyTxDecoder;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -35,6 +37,14 @@ public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
 
 public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : Transaction, new()
 {
+    private readonly Dictionary<TxType, ITxDecoder> _decoders = new() {
+        { TxType.Legacy, new LegacyTxDecoder(lazyHash) },
+        { TxType.AccessList, new AccessListTxDecoder(lazyHash) },
+        { TxType.EIP1559, new EIP1559TxDecoder(lazyHash) },
+        { TxType.Blob, new BlobTxDecoder(lazyHash) },
+        { TxType.DepositTx, new OptimismTxDecoder(lazyHash) }
+    };
+
     private readonly AccessListDecoder _accessListDecoder = new();
     private readonly bool _lazyHash = lazyHash;
 
@@ -53,84 +63,14 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
 
         Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
 
-        T transaction = NewTx();
-        transaction.Type = txType;
-
-        int positionAfterNetworkWrapper = 0;
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
+        if (_decoders.TryGetValue(txType, out ITxDecoder? decoder))
         {
-            int networkWrapperLength = rlpStream.ReadSequenceLength();
-            positionAfterNetworkWrapper = rlpStream.Position + networkWrapperLength;
-            int rlpLength = rlpStream.PeekNextRlpLength();
-            transactionSequence = rlpStream.Peek(rlpLength);
+            return (T)decoder.Decode(transactionSequence, rlpStream, rlpBehaviors);
         }
-
-        int transactionLength = rlpStream.ReadSequenceLength();
-        int lastCheck = rlpStream.Position + transactionLength;
-
-        switch (transaction.Type)
+        else
         {
-            case TxType.Legacy:
-                TxDecoder<T>.DecodeLegacyPayloadWithoutSig(transaction, rlpStream);
-                break;
-            case TxType.AccessList:
-                DecodeAccessListPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
-                break;
-            case TxType.EIP1559:
-                DecodeEip1559PayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
-                break;
-            case TxType.Blob:
-                DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
-                break;
-            case TxType.DepositTx:
-                TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
-                break;
+            throw new InvalidOperationException($"Unknown transaction type: {txType}");
         }
-
-        if (rlpStream.Position < lastCheck)
-        {
-            DecodeSignature(rlpStream, rlpBehaviors, transaction);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            rlpStream.Check(lastCheck);
-        }
-
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
-        {
-            switch (transaction.Type)
-            {
-                case TxType.Blob:
-                    TxDecoder<T>.DecodeShardBlobNetworkPayload(transaction, rlpStream, rlpBehaviors);
-                    break;
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-            {
-                rlpStream.Check(positionAfterNetworkWrapper);
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-            {
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
-            }
-        }
-        else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            if (_lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
-            {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                transaction.SetPreHashNoLock(transactionSequence);
-            }
-            else
-            {
-                // Just calculate the Hash as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
-            }
-        }
-
-        return transaction;
     }
 
     private static Span<byte> DecodeTxTypeAndGetSequence(RlpStream rlpStream, RlpBehaviors rlpBehaviors, out TxType txType)
