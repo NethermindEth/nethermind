@@ -108,7 +108,10 @@ jobs:
       run: |
         assertoor_params=cat ${{ env.ASSERTOOR_PARAMS_FILE}}
         sed -i "s|<DOCKER_IMAGE_PLACEHOLDER>|nethermindeth/nethermind:${{ env.CLEAN_REF }}|g" main-repo/.github/tests/assertor.yaml
-        sed -i "s|<ASSERTOOR_PARAMS_PLACEHOLDER>|$assertoor_params|g" main-repo/.github/tests/assertor.yaml
+        sed -i "/<ASSERTOOR_PARAMS_PLACEHOLDER>/ {
+          r /tmp/output.txt
+          d
+        }" main-repo/.github/tests/assertor.yaml
         cat assertoor-test/.github/tests/assertor.yaml
       
     - name: Kurtosis Assertoor GitHub Action
