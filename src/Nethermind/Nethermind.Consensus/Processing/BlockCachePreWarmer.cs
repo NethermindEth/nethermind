@@ -98,8 +98,13 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-            Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
+
+            int progress = 0;
+            Parallel.For(1, block.Transactions.Length, parallelOptions, _ =>
             {
+                // Process transactions in order, rather than the partitioning scheme from Parallel.For
+                int i = Interlocked.Increment(ref progress);
+
                 // If the transaction has already been processed or being processed, exit early
                 if (block.TransactionProcessed >= i) return;
 
