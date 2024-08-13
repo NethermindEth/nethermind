@@ -294,13 +294,13 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip2935Enabled { get; }
         Address Eip2935ContractAddress { get; }
-        public ulong Eip2935TransitionTimeStamp { get; }
+        public ulong Eip2935TransitionTimestamp { get; }
 
         public ulong WithdrawalTimestamp { get; }
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        public ulong Eip6800TransitionTimeStamp { get; }
+        public ulong Eip6800TransitionTimestamp { get; }
 
         // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;

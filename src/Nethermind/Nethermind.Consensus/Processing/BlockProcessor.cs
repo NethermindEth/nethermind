@@ -307,7 +307,7 @@ public partial class BlockProcessor : IBlockProcessor
             // TODO: find a better way to handle this - no need to have this check everytime
             //      this would just be true on the fork block
             BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-            if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimeStamp)
+            if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
             {
                 InitEip2935History(block.Header, spec, worldState);
             }

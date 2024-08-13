@@ -134,16 +134,16 @@ namespace Nethermind.Specs.Test
             set => _overridenEip1559FeeCollector = value;
         }
 
-        private ulong? _overridenEip4844TransitionTimeStamp;
+        private ulong? _overridenEip4844TransitionTimestamp;
         public ulong Eip4844TransitionTimestamp
         {
             get
             {
-                return _overridenEip4844TransitionTimeStamp ?? _spec.Eip4844TransitionTimestamp;
+                return _overridenEip4844TransitionTimestamp ?? _spec.Eip4844TransitionTimestamp;
             }
             set
             {
-                _overridenEip4844TransitionTimeStamp = value;
+                _overridenEip4844TransitionTimestamp = value;
             }
         }
 
@@ -161,22 +161,22 @@ namespace Nethermind.Specs.Test
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
 
-        private ulong? _overridenEip6800TransitionTimeStamp;
-        public ulong Eip6800TransitionTimeStamp
+        private ulong? _overridenEip6800TransitionTimestamp;
+        public ulong Eip6800TransitionTimestamp
         {
-            get => _overridenEip6800TransitionTimeStamp ?? _spec.Eip6800TransitionTimeStamp;
-            set => _overridenEip6800TransitionTimeStamp = value;
+            get => _overridenEip6800TransitionTimestamp ?? _spec.Eip6800TransitionTimestamp;
+            set => _overridenEip6800TransitionTimestamp = value;
         }
 
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public bool IsVerkleTreeEipEnabled => _spec.IsVerkleTreeEipEnabled;
 
-        private ulong? _overridenEip2935TransitionTimeStamp;
-        public ulong Eip2935TransitionTimeStamp
+        private ulong? _overridenEip2935TransitionTimestamp;
+        public ulong Eip2935TransitionTimestamp
         {
-            get => _overridenEip2935TransitionTimeStamp ?? _spec.Eip2935TransitionTimeStamp;
-            set => _overridenEip2935TransitionTimeStamp = value;
+            get => _overridenEip2935TransitionTimestamp ?? _spec.Eip2935TransitionTimestamp;
+            set => _overridenEip2935TransitionTimestamp = value;
         }
     }
 }

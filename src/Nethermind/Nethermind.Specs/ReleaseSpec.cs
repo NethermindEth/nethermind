@@ -92,7 +92,7 @@ namespace Nethermind.Specs
             set => _eip4788ContractAddress = value;
         }
         public ulong Eip2935TransitionTimestamp { get; set; }
-        public ulong Eip6800TransitionTimeStamp { get; set; }
+        public ulong Eip6800TransitionTimestamp { get; set; }
         public bool IsVerkleTreeEipEnabled { get; set; }
         public bool IsEip2935Enabled { get; set; }
 
@@ -102,7 +102,5 @@ namespace Nethermind.Specs
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
-
-        public ulong Eip2935TransitionTimeStamp { get; set; }
     }
 }
