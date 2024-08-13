@@ -14,7 +14,6 @@ using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
 using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
-using System.Linq;
 using Nethermind.Specs;
 
 namespace Nethermind.Shutter
@@ -43,6 +42,7 @@ namespace Nethermind.Shutter
 
         public Task Init(INethermindApi nethermindApi)
         {
+            _logger.Info($"Initializing Shutter plugin.");
             _api = nethermindApi;
             _mergeConfig = _api.Config<IMergeConfig>();
             _shutterConfig = _api.Config<IShutterConfig>();
@@ -54,13 +54,19 @@ namespace Nethermind.Shutter
         {
             if (Enabled)
             {
-                _logger.Info($"Initializing Shutter block improvement.");
+                if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
+                if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
+                if (_txSource is null) throw new ArgumentNullException(nameof(_txSource));
+                if (_shutterConfig is null) throw new ArgumentNullException(nameof(_shutterConfig));
+
+                _logger.Info($"Initializing Shutter block improvement. Block producer: {_api.BlockProducer.GetType()}");
                 // does block producer have Shutter tx source or normal?
-                _api!.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
-                    _api.BlockProducer!,
-                    _txSource!,
-                    _shutterConfig!,
-                    _api.SpecProvider!,
+                _api.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
+                    _api.BlockProducer,
+                    _txSource,
+                    _shutterConfig,
+                    _api.SpecProvider,
                     _api.LogManager);
             }
             return Task.CompletedTask;
@@ -79,7 +85,7 @@ namespace Nethermind.Shutter
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
 
-                _logger.Info("Initializing Shutter block producer.");
+                _logger.Info($"Initializing Shutter block producer. Wrapping {consensusPlugin.GetType}");
 
                 ShutterHelpers.ValidateConfig(_shutterConfig!);
 
@@ -130,7 +136,8 @@ namespace Nethermind.Shutter
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses!);
             }
 
-            return consensusPlugin.InitBlockProducer(_txSource.Then(txSource));
+            _api!.BlockProducer = consensusPlugin.InitBlockProducer(_txSource.Then(txSource));
+            return _api!.BlockProducer;
         }
 
         public bool ShouldRunSteps(INethermindApi api)

@@ -88,7 +88,7 @@ public class ShutterBlockHandler(
             long waitTime = (long)cutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {
-                _logger.Warn($"Cannot await block in slot {slot}, offset of {offset}ms is after cutoff of {(int)cutoff.TotalMilliseconds}ms (Shutter).");
+                _logger.Warn($"Block missed in slot {slot}, offset of {offset}ms is after cutoff of {(int)cutoff.TotalMilliseconds}ms (Shutter).");
                 return null;
             }
             waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
