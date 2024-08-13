@@ -375,6 +375,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 report,
                 new MemDb(),
                 LimboLogs.Instance);
+            feed.InitializeFeed();
             await feed.PrepareRequest();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             using HeadersSyncBatch? result = await feed.PrepareRequest();

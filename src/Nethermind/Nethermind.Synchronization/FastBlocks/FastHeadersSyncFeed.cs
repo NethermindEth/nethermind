@@ -194,7 +194,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void InitBarrier()
         {
-            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientBodiesBarrierCalc)
+            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientHeadersBarrierCalc)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
                 _barrier = _syncConfig.AncientHeadersBarrierCalc;
