@@ -416,19 +416,48 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done);
 
             yield return (Instruction.LOG1, Prepare.EvmCode
-                .Log(0, 0, [TestItem.KeccakA])
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Log(1, 0, [TestItem.KeccakA])
                 .Done);
 
             yield return (Instruction.LOG2, Prepare.EvmCode
-                .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakB])
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(64)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(96)
+                .Op(Instruction.MSTORE)
+                .Log(4, 0, [TestItem.KeccakA, TestItem.KeccakB])
                 .Done);
 
             yield return (Instruction.LOG3, Prepare.EvmCode
-                .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB])
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .Log(2, 0, [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB])
                 .Done);
 
             yield return (Instruction.LOG4, Prepare.EvmCode
-                .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakB])
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(64)
+                .Op(Instruction.MSTORE)
+                .Log(3, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakB])
                 .Done);
 
             yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
