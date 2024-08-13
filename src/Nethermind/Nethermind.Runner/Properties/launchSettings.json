@@ -93,7 +93,7 @@
     },
     "Holesky": {
       "commandName": "Project",
-      "commandLineArgs": "-c holesky -dd C:/ethereum/holesky/execution-data",
+      "commandLineArgs": "-c holesky -dd .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
