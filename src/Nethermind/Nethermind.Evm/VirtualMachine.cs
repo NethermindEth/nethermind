@@ -1132,7 +1132,27 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
                         bytes = vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+
+                        if (typeof(TTracingInstructions) == typeof(IsTracing))
+                        {
+                            // The tracing is set. It requires to compute keccak in this place.
+                            stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+                        }
+                        else
+                        {
+                            // The tracing is not set. Try to schedule Keccak
+                            KeccakCalculator? calculator = null;
+                            if (calculator != null && calculator.TrySchedule(bytes, out var id))
+                            {
+                                stack.PushKeccakId(id);
+                            }
+                            else
+                            {
+                                // Scheduling computation wasn't successful. Compute in situ.
+                                stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+                            }
+                        }
+
                         break;
                     }
                 case Instruction.ADDRESS:
