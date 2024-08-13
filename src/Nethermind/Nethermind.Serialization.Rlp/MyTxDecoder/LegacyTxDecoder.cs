@@ -134,11 +134,14 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     private static void EncodeSignature(RlpStream stream, Transaction item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
     {
-        if (forSigning && includeSigChainIdHack)
+        if (forSigning)
         {
-            stream.Encode(chainId);
-            stream.Encode(Rlp.OfEmptyByteArray);
-            stream.Encode(Rlp.OfEmptyByteArray);
+            if (includeSigChainIdHack)
+            {
+                stream.Encode(chainId);
+                stream.Encode(Rlp.OfEmptyByteArray);
+                stream.Encode(Rlp.OfEmptyByteArray);
+            }
         }
         else
         {
@@ -180,11 +183,14 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
     {
         int contentLength = 0;
 
-        if (forSigning && includeSigChainIdHack)
+        if (forSigning)
         {
-            contentLength += Rlp.LengthOf(chainId);
-            contentLength += 1;
-            contentLength += 1;
+            if (includeSigChainIdHack)
+            {
+                contentLength += Rlp.LengthOf(chainId);
+                contentLength += 1;
+                contentLength += 1;
+            }
         }
         else
         {
