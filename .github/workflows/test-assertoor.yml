@@ -40,9 +40,8 @@ jobs:
 
     - name: Run retriveAllTests.py script
       run: |
-        output=$(python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing")
-        encoded_output=$(echo "$output" | base64)
-        echo "ASSERTOOR_PARAMS=$encoded_output" >> $GITHUB_ENV
+        python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing" > output.txt
+        echo "ASSERTOOR_PARAMS_FILE=$(pwd)/output.txt" >> $GITHUB_ENV
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -105,9 +104,9 @@ jobs:
         
     - name: Replace Placeholders in YAML
       run: |
-        decoded_output=$(echo "$ASSERTOOR_PARAMS" | base64 --decode)
+        assertoor_params=cat ${{ env.ASSERTOOR_PARAMS_FILE}}
         sed -i "s|<DOCKER_IMAGE_PLACEHOLDER>|nethermindeth/nethermind:${{ env.CLEAN_REF }}|g" main-repo/.github/tests/assertor.yaml
-        sed -i "s|<ASSERTOOR_PARAMS_PLACEHOLDER>|$decoded_output|g" main-repo/.github/tests/assertor.yaml
+        sed -i "s|<ASSERTOOR_PARAMS_PLACEHOLDER>|$assertoor_params|g" main-repo/.github/tests/assertor.yaml
         cat assertoor-test/.github/tests/assertor.yaml
       
     - name: Kurtosis Assertoor GitHub Action
