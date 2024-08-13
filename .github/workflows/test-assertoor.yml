@@ -41,6 +41,7 @@ jobs:
     - name: Run retriveAllTests.py script
       run: |
         python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing" > /tmp/output.txt
+        cat /tmp/output.txt
         echo "ASSERTOOR_PARAMS_FILE=/tmp/output.txt" >> $GITHUB_ENV
 
     - name: Prepare docker tag
