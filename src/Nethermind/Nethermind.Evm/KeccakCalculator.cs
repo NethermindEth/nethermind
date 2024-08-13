@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -12,122 +14,113 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// TODO:
-/// 1. Consider creating a single thread pool work item that communicates by passing a pointer to the work item.
-/// Then a ConcurrentQueue could be used.
-/// 2. Alignment maybe? Why not to align to the word, especially if 1 runner is used
-/// 3. Make the book keeping, so that once the work is done,
-/// it's walked through and checked that it was completed so that calculator can be reused.
+/// The calculator for keccaks, allowing the caller to hold only an <see cref="ushort"/> if it keeps the reference to <see cref="KeccakCalculator"/>.
 /// </summary>
-public sealed class KeccakCalculator : IThreadPoolWorkItem
+public sealed class KeccakCalculator
 {
+    private static readonly int Alignment = UIntPtr.Size;
+
     private const byte HashLength = Hash256.Size;
     private const byte MinLength = HashLength;
 
     private const byte MaxLength = byte.MaxValue - 1;
     private const byte DoneMarker = byte.MaxValue;
 
+    private const ushort IdDiff = 1;
     private const byte LengthPrefix = 1;
     private const int BufferLength = 8 * 1024;
 
-    private const int NotWorking = 0;
-    private const int Working = 1;
+    private static readonly ConcurrentQueue<UIntPtr> Queue = new();
 
-    [StructLayout(LayoutKind.Explicit, Size = Size)]
-    private struct State
+    public static void StartWorker(CancellationToken ct) => new Thread(start: () => RunWorker(ct)) { IsBackground = true }.Start();
+
+    private static unsafe void RunWorker(CancellationToken ct)
     {
-        private const int Size = CacheLineSize * 3;
-        private const int CacheLineSize = 64;
+        while (ct.IsCancellationRequested == false)
+        {
+            while (Queue.TryDequeue(out var item))
+            {
+                byte* b = (byte*)item.ToPointer();
 
-        [FieldOffset(CacheLineSize * 1)] public ushort WrittenTo;
-        [FieldOffset(CacheLineSize * 2)] public int Status;
+                var length = *b;
+                var span = new Span<byte>(b + LengthPrefix, length);
+
+                // Copy back to the span
+                ValueKeccak.Compute(span).BytesAsSpan.CopyTo(span);
+
+                // Mark as done writing done marker after writing the payload
+                Volatile.Write(ref Unsafe.AsRef<byte>(b), DoneMarker);
+            }
+
+            // Spin with no sleep
+            default(SpinWait).SpinOnce();
+        }
     }
 
-    private State _state;
+    private ushort _writtenTo;
 
-    private readonly byte[] _buffer = new byte[BufferLength];
+    private readonly unsafe byte* _buffer = (byte*)NativeMemory.AlignedAlloc(BufferLength, (UIntPtr)Alignment);
 
-    public bool TrySchedule(ReadOnlySpan<byte> bytes, out ushort id)
+    public unsafe bool TrySchedule(ReadOnlySpan<byte> bytes, out ushort id)
     {
-        var writtenTo = _state.WrittenTo;
+        var writtenTo = _writtenTo;
+        var length = bytes.Length;
 
-        if (bytes.Length < MinLength || bytes.Length > MaxLength ||
-            writtenTo + LengthPrefix + bytes.Length > BufferLength)
+        var alignedLength = AlignLength(length);
+
+        if (length < MinLength || length > MaxLength ||
+            writtenTo + alignedLength > BufferLength)
         {
             id = 0;
             return false;
         }
 
         // write length prefix
-        id = writtenTo;
+        id = (ushort)(writtenTo + IdDiff);
 
-        _buffer[writtenTo] = (byte)bytes.Length;
+        ref var start = ref Unsafe.Add(ref Unsafe.AsRef<byte>(_buffer), writtenTo);
+        start = (byte)length;
 
-        bytes.CopyTo(_buffer.AsSpan(writtenTo + LengthPrefix, bytes.Length));
+        var destination = new Span<byte>(Unsafe.AsPointer(ref Unsafe.Add(ref start, LengthPrefix)), length);
+        bytes.CopyTo(destination);
 
-        // Publish
-        Volatile.Write(ref _state.WrittenTo, (ushort)(writtenTo + LengthPrefix + bytes.Length));
+        Queue.Enqueue(new UIntPtr(Unsafe.AsPointer(ref start)));
 
-        // Ensure the work item
-        if (_state.Status == NotWorking)
-        {
-            Volatile.Write(ref _state.Status, Working);
-            ThreadPool.UnsafeQueueUserWorkItem(this, false);
-        }
+        // Update written to
+        _writtenTo = (ushort)(writtenTo + alignedLength);
+
+        Debug.Assert(id > 0);
 
         return true;
     }
 
-    public void Copy(ushort id, Span<byte> destination)
+    public unsafe ReadOnlySpan<byte> Get(ushort id)
     {
+        Debug.Assert(id > 0);
+
         var wait = default(SpinWait);
 
-        while (Volatile.Read(ref _buffer[id]) != DoneMarker)
+        ref var start = ref Unsafe.Add(ref Unsafe.AsRef<byte>(_buffer), id - IdDiff);
+
+        while (Volatile.Read(ref start) != DoneMarker)
         {
             wait.SpinOnce();
         }
 
-        _buffer.AsSpan(id + LengthPrefix, HashLength).CopyTo(destination);
+        return new ReadOnlySpan<byte>(Unsafe.AsPointer(ref Unsafe.Add(ref start, LengthPrefix)), HashLength);
     }
 
-    public void Execute()
+    /// <summary>
+    /// Aligns lengths so that two payloads to compute never share the same word.
+    /// </summary>
+    private static int AlignLength(int length)
     {
-        var wait = new SpinWait();
-        var buffer = _buffer.AsSpan();
-        var processedTo = 0;
+        return Align(LengthPrefix + length, Alignment);
 
-        while (Volatile.Read(ref _state.Status) == Working)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static int Align(int value, int alignment)
         {
-            // Consider reading volatile once per loop
-            var writtenTo = Volatile.Read(ref _state.WrittenTo);
-
-            if (processedTo < writtenTo)
-            {
-                ref var length = ref buffer[processedTo];
-
-                Span<byte> span = buffer.Slice(processedTo + LengthPrefix, length);
-
-                // Copy back to the span
-                ValueKeccak.Compute(span).BytesAsSpan.CopyTo(span);
-
-                // Move processed
-                processedTo += LengthPrefix + length;
-
-                // Mark as done writing done marker
-                Volatile.Write(ref length, DoneMarker);
-            }
-            else
-            {
-                wait.SpinOnce();
-            }
+            return (value + (alignment - 1)) & ~(alignment - 1);
         }
-    }
-
-    public void Clear()
-    {
-        Volatile.Write(ref _state.Status, NotWorking);
-        // TODO: fix the ending
-        _buffer.AsSpan().Clear();
-        _state = default;
     }
 }

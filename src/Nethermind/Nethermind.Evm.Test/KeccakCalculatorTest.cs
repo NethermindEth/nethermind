@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -14,14 +15,17 @@ public class KeccakCalculatorTest
     [Test]
     public void Consecutive()
     {
+        using var cts = new CancellationTokenSource();
+
+        KeccakCalculator.StartWorker(cts.Token);
+
         var calculator = new KeccakCalculator();
 
         const int seed = 13;
         var random = new Random(seed);
         var payload = new byte[32];
-        var actual = new byte[Hash256.Size];
 
-        const int count = 16;
+        const int count = 128;
 
         ushort[] ids = new ushort[count];
 
@@ -31,15 +35,17 @@ public class KeccakCalculatorTest
             calculator.TrySchedule(payload, out ids[i]).Should().BeTrue();
         }
 
-        // Assert
+        // Reset and assert
         random = new Random(seed);
         for (int i = 0; i < count; i++)
         {
             random.NextBytes(payload);
             Span<byte> expected = ValueKeccak.Compute(payload).BytesAsSpan;
 
-            calculator.Copy(ids[i], actual);
+            ReadOnlySpan<byte> actual = calculator.Get(ids[i]);
             expected.SequenceEqual(actual).Should().BeTrue();
         }
+
+        cts.Cancel();
     }
 }
