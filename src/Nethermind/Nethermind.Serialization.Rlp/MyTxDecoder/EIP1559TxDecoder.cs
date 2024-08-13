@@ -245,7 +245,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
-        if (tx.Type != TxType.AccessList) { throw new InvalidOperationException("Unexpected TxType"); }
+        if (tx.Type != TxType.EIP1559) { throw new InvalidOperationException("Unexpected TxType"); }
 
         int txContentLength = GetContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
