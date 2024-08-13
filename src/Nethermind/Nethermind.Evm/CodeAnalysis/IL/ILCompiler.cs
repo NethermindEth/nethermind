@@ -883,7 +883,7 @@ internal class ILCompiler
                     method.LoadLocalAddress(uint256B);
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                     method.Call(typeof(ValueKeccak).GetMethod(nameof(ValueKeccak.Compute), [typeof(ReadOnlySpan<byte>)]));
-                    method.Call(Word.SetValueHash256);
+                    method.Call(Word.SetKeccak);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.BYTE:
@@ -1556,7 +1556,7 @@ internal class ILCompiler
                     method.LoadArgument(2);
                     method.LoadLocal(address);
                     method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetCodeHash)));
-                    method.Call(Word.SetValueHash256);
+                    method.Call(Word.SetKeccak);
                     method.MarkLabel(endOfOpcode);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
@@ -2078,8 +2078,14 @@ internal class ILCompiler
         // Pop an item off the Stack, create a Hash256 object, store it in a local
         Action<int> storeLocalHash256AtStackIndex = (int index) =>
         {
-            il.StackLoadPrevious(stack.span, stack.idx, index);
-            il.Call(Word.GetHash256);
+            using (var keccak = il.DeclareLocal(typeof(ValueHash256)))
+            {
+                il.StackLoadPrevious(stack.span, stack.idx, index);
+                il.Call(Word.GetKeccak);
+                il.StoreLocal(keccak);
+                il.LoadLocalAddress(keccak);
+                il.NewObject(typeof(Hash256), typeof(ValueHash256).MakeByRefType());
+            }
         };
 
         il.StackLoadPrevious(stack.span, stack.idx, 1);

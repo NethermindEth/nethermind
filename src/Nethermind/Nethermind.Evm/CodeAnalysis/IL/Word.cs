@@ -4,10 +4,16 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Trie;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -87,26 +93,7 @@ internal struct Word
         }
     }
 
-    public unsafe Hash256 Hash256
-    {
-        get
-        {
-            fixed (byte* ptr = _buffer)
-            {
-                return new Hash256(new Span<byte>(ptr, 32));
-            }
-        }
-        set
-        {
-            ReadOnlySpan<byte> buffer = value.Bytes;
-            for (int i = 0; i < 20; i++)
-            {
-                _buffer[i] = buffer[i];
-            }
-        }
-    }
-
-    public unsafe ValueHash256 ValueHash256
+    public unsafe ValueHash256 Keccak
     {
         get
         {
@@ -206,11 +193,8 @@ internal struct Word
     public static readonly MethodInfo GetAddress = typeof(Word).GetProperty(nameof(Address))!.GetMethod;
     public static readonly MethodInfo SetAddress = typeof(Word).GetProperty(nameof(Address))!.SetMethod;
 
-    public static readonly MethodInfo GetHash256 = typeof(Word).GetProperty(nameof(Hash256))!.GetMethod;
-    public static readonly MethodInfo SetHash256 = typeof(Word).GetProperty(nameof(Hash256))!.SetMethod;
-
-    public static readonly MethodInfo GetValueHash256 = typeof(Word).GetProperty(nameof(ValueHash256))!.GetMethod;
-    public static readonly MethodInfo SetValueHash256 = typeof(Word).GetProperty(nameof(ValueHash256))!.SetMethod;
+    public static readonly MethodInfo GetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.GetMethod;
+    public static readonly MethodInfo SetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.SetMethod;
 
     public static readonly MethodInfo GetArray = typeof(Word).GetProperty(nameof(Array))!.GetMethod;
     public static readonly MethodInfo SetArray = typeof(Word).GetProperty(nameof(Array))!.SetMethod;
