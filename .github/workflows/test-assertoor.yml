@@ -106,7 +106,7 @@ jobs:
         
     - name: Replace Placeholders in YAML
       run: |
-        assertoor_params= $(cat ${{ env.ASSERTOOR_PARAMS_FILE}})
+        assertoor_params=$(cat ${{ env.ASSERTOOR_PARAMS_FILE}})
         sed -i "s|<DOCKER_IMAGE_PLACEHOLDER>|nethermindeth/nethermind:${{ env.CLEAN_REF }}|g" main-repo/.github/tests/assertor.yaml
         sed -i "/<ASSERTOOR_PARAMS_PLACEHOLDER>/ {
           r /tmp/output.txt
