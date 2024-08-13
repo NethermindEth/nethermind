@@ -12,7 +12,6 @@ namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
     private readonly AccessListDecoder _accessListDecoder = new();
-    private readonly bool _lazyHash = lazyHash;
 
     public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -38,7 +37,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHashNoLock(transactionSequence);
@@ -116,7 +115,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (context.ShouldSliceMemory)
