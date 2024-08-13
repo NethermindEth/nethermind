@@ -108,7 +108,7 @@ public class MyTxDecoder(bool lazyHash = true) : IRlpStreamDecoder<Transaction>,
         decoder.Encode(item, stream, rlpBehaviors);
     }
 
-    public Rlp Encode(Transaction? item, RlpBehaviors rlpBehaviors)
+    public Rlp Encode(Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return EncodeTx(item, forSigning: false, isEip155Enabled: false, chainId: 0, rlpBehaviors);
     }
