@@ -1,4 +1,4 @@
-participants:
+participants_matrix:
   el:
    - el_type: nethermind
      el_image: <DOCKER_IMAGE_PLACEHOLDER>
