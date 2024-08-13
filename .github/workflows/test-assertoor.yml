@@ -98,8 +98,8 @@ jobs:
         REPO_NAME: ${{ env.REPO_NAME }}
         REF: ${{ github.ref }}
       run: |
-        chmod +x scripts/wait-for-workflow-completed.sh
-        ./scripts/wait-for-workflow-completed.sh
+        chmod +x main-repo/scripts/wait-for-workflow-completed.sh
+        ./main-repo/scripts/wait-for-workflow-completed.sh
       working-directory: ${{ github.workspace }}
         
     - name: Replace Placeholders in YAML
