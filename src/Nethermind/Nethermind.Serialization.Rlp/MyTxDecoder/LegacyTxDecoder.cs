@@ -11,8 +11,6 @@ namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
 public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
-    private readonly bool _lazyHash = lazyHash;
-
     public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         Transaction transaction = new()
@@ -37,7 +35,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHashNoLock(transactionSequence);
@@ -76,7 +74,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (_lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)
@@ -102,11 +100,12 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return transaction;
     }
 
-    // TODO: Try to remove this method
-    public static Rlp EncodeTx(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public override Rlp EncodeTx(Transaction? item, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item?.Type != TxType.Legacy) { throw new InvalidOperationException("Unexpected TxType"); }
+
         RlpStream rlpStream = new(GetTxLength(item, forSigning, isEip155Enabled, chainId));
-        Encode(item, rlpStream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        Encode(item, rlpStream, forSigning, isEip155Enabled, chainId, rlpBehaviors);
         return new Rlp(rlpStream.Data.ToArray());
     }
 
@@ -115,7 +114,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         Encode(item, stream, rlpBehaviors);
     }
 
-    private static void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    private static void Encode(Transaction? item, RlpStream stream, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item?.Type != TxType.Legacy) { throw new InvalidOperationException("Unexpected TxType"); }
 

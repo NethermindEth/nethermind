@@ -122,6 +122,15 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors);
     }
 
+    public override Rlp EncodeTx(Transaction? item, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item?.Type != TxType.DepositTx) { throw new InvalidOperationException("Unexpected TxType"); }
+
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        Encode(item, rlpStream, rlpBehaviors);
+        return new Rlp(rlpStream.Data.ToArray());
+    }
+
     public override void Encode(Transaction? _wrongType, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (_wrongType?.Type != TxType.DepositTx) { throw new InvalidOperationException("Unexpected TxType"); }
@@ -165,7 +174,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return result;
     }
 
-    public static void DecodePayloadWithoutSig(DepositTransaction transaction, RlpStream rlpStream)
+    private static void DecodePayloadWithoutSig(DepositTransaction transaction, RlpStream rlpStream)
     {
         transaction.SourceHash = rlpStream.DecodeKeccak();
         transaction.SenderAddress = rlpStream.DecodeAddress();

@@ -6,16 +6,24 @@ namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
 public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
 {
-    private static readonly Dictionary<byte, AbstractTxDecoder> _decoders = new()
-    {
-        { (byte)TxType.Legacy, new LegacyTxDecoder() },
-        { (byte)TxType.AccessList, new AccessListTxDecoder() },
-        { (byte)TxType.EIP1559, new EIP1559TxDecoder() },
-        { (byte)TxType.Blob, new BlobTxDecoder() },
-        { (byte)TxType.DepositTx, new OptimismTxDecoder() }
-    };
+    private readonly Dictionary<byte, AbstractTxDecoder> _decoders;
 
-    private static AbstractTxDecoder DecoderFor(TxType txType)
+    private MyTxDecoder(bool lazyHash)
+    {
+        _decoders = new() {
+            { (byte)TxType.Legacy, new LegacyTxDecoder(lazyHash) },
+            { (byte)TxType.AccessList, new AccessListTxDecoder(lazyHash) },
+            { (byte)TxType.EIP1559, new EIP1559TxDecoder(lazyHash) },
+            { (byte)TxType.Blob, new BlobTxDecoder(lazyHash) },
+            { (byte)TxType.DepositTx, new OptimismTxDecoder(lazyHash) }
+        };
+    }
+
+    public readonly MyTxDecoder Instance = new(lazyHash: true);
+
+    public readonly MyTxDecoder InstanceWithoutLazyHash = new(lazyHash: false);
+
+    private AbstractTxDecoder DecoderFor(TxType txType)
     {
         if (!_decoders.TryGetValue((byte)txType, out AbstractTxDecoder decoder))
         {
@@ -105,12 +113,10 @@ public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecod
         decoder.Encode(item, stream, rlpBehaviors);
     }
 
-    public static Rlp Encode(Transaction item, RlpBehaviors behaviors = RlpBehaviors.None)
+    public Rlp EncodeTx(Transaction? item, bool forSigning, bool isEip155Enabled, ulong chainId, RlpBehaviors rlpBehaviors)
     {
         AbstractTxDecoder decoder = DecoderFor(item.Type);
-        RlpStream stream = new(decoder.GetLength(item, behaviors));
-        decoder.Encode(item, stream, behaviors);
-        return new Rlp(stream.Data.ToArray());
+        return decoder.EncodeTx(item, forSigning, isEip155Enabled, chainId, rlpBehaviors);
     }
 
     public int GetLength(Transaction item, RlpBehaviors rlpBehaviors)

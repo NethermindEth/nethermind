@@ -158,9 +158,13 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors);
     }
 
-    public void Encode(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp EncodeTx(Transaction? item, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        Encode(item, stream, rlpBehaviors);
+        if (item?.Type != TxType.EIP1559) { throw new InvalidOperationException("Unexpected TxType"); }
+
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        Encode(item, rlpStream, rlpBehaviors);
+        return new Rlp(rlpStream.Data.ToArray());
     }
 
     public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
