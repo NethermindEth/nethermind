@@ -111,13 +111,13 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 
     public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        Encode(item, stream, rlpBehaviors);
+        if (item?.Type != TxType.Legacy) { throw new InvalidOperationException("Unexpected TxType"); }
+
+        Encode(item, stream, forSigning: false, isEip155Enabled: false, chainId: 0, rlpBehaviors);
     }
 
     private static void Encode(Transaction? item, RlpStream stream, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (item?.Type != TxType.Legacy) { throw new InvalidOperationException("Unexpected TxType"); }
-
         if (item is null)
         {
             stream.WriteByte(Rlp.NullObjectByte);
