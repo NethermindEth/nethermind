@@ -27,9 +27,9 @@ jobs:
     - name: Checkout assertoor-test repository
       uses: actions/checkout@v4
       with:
-        repository: ethpandaops/assertoor-test
+        repository: kamilchodola/assertoor-test
         path: assertoor-test
-
+        
     - name: Set up Python
       uses: actions/setup-python@v5.1.1
       with:
@@ -38,8 +38,10 @@ jobs:
     - name: Install dependencies
       run: pip install requests beautifulsoup4
 
-    - name: Run script
-      run: python main-repo/your_script_name.py
+    - name: Run retriveAllTests.py script
+      run: |
+        output=$(python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing")
+        echo "ASSERTOOR_PARAMS=$output" >> $GITHUB_ENV
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -100,9 +102,10 @@ jobs:
         ./scripts/wait-for-workflow-completed.sh
       working-directory: ${{ github.workspace }}
         
-    - name: Replace Docker Image in YAML
+    - name: Replace Placeholders in YAML
       run: |
-        sed -i "s|<DOCKER_IMAGE_PLACEHOLDER>|nethermindeth/nethermind:${{ env.CLEAN_REF }}|g" assertoor-test/.github/tests/assertor.yaml
+        sed -i "s|<DOCKER_IMAGE_PLACEHOLDER>|nethermindeth/nethermind:${{ env.CLEAN_REF }}|g" main-repo/.github/tests/assertor.yaml
+        sed -i "s|<ASSERTOOR_PARAMS_PLACEHOLDER>|${{ env.ASSERTOOR_PARAMS }}|g" main-repo/.github/tests/assertor.yaml
         cat assertoor-test/.github/tests/assertor.yaml
       
     - name: Kurtosis Assertoor GitHub Action
