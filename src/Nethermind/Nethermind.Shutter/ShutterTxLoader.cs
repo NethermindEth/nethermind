@@ -211,7 +211,6 @@ public class ShutterTxLoader(
         {
             if (_loadFromReceipts)
             {
-                // todo: make debug
                 _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             else

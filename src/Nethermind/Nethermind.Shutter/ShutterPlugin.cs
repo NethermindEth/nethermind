@@ -128,7 +128,7 @@ namespace Nethermind.Shutter
                 {
                     // wait for latest block before loading transactions
                     Block? head = await blockHandler.WaitForBlockInSlot(keys.Slot - 1, _slotLength, _blockWaitCutoff, new());
-                    _txSource.LoadTransactions(head, keys);
+                    _txSource.LoadTransactions(head is null ? _api.BlockTree.Head : head, keys);
                 };
                 _msgHandler.KeysValidated += _keysValidatedHandler;
 
