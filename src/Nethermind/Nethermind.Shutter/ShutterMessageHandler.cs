@@ -50,7 +50,8 @@ public class ShutterMessageHandler(
                 _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
                 _highestValidatedSlot = decryptionKeys.Gnosis.Slot;
                 List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
-                KeysValidated?.Invoke(this, new() {
+                KeysValidated?.Invoke(this, new()
+                {
                     Eon = decryptionKeys.Eon,
                     Slot = decryptionKeys.Gnosis.Slot,
                     TxPointer = decryptionKeys.Gnosis.TxPointer,

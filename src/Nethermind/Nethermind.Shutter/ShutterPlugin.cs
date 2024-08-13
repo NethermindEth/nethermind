@@ -75,10 +75,13 @@ namespace Nethermind.Shutter
 
         public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
+            if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
+
             if (Enabled)
             {
-                if (_api!.AbiEncoder is null) throw new ArgumentNullException(nameof(_api.AbiEncoder));
+                if (_api.AbiEncoder is null) throw new ArgumentNullException(nameof(_api.AbiEncoder));
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.BlockProducerEnvFactory is null) throw new ArgumentNullException(nameof(_api.BlockProducerEnvFactory));
                 if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.LogFinder is null) throw new ArgumentNullException(nameof(_api.LogFinder));
                 if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
@@ -134,9 +137,11 @@ namespace Nethermind.Shutter
 
                 _shutterP2P = new(_msgHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses!);
+
+                _api.BlockProducerEnvFactory = new ShutterBlockProducerEnvFactory(_api.BlockProducerEnvFactory, _txSource);
+                _api.BlockProducer = consensusPlugin.InitBlockProducer(txSource);
             }
 
-            _api!.BlockProducer = consensusPlugin.InitBlockProducer(_txSource.Then(txSource));
             return _api!.BlockProducer;
         }
 

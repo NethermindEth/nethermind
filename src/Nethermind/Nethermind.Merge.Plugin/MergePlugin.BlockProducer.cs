@@ -47,7 +47,8 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 if (_api.BlockProducerEnvFactory is null) throw new ArgumentNullException(nameof(_api.BlockProducerEnvFactory));
 
-                if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
+                // todo:: remove Shutter
+                _logger.Info("Starting Merge block producer & sealer (Shutter)");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
                     ? baseBlockProducerFactory.InitBlockProducer(txSource)
