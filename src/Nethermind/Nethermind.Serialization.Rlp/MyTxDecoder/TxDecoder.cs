@@ -85,6 +85,8 @@ public class MyTxDecoder(bool lazyHash = true) /* : IRlpStreamDecoder<Transactio
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
                 txType = (TxType)decoderContext.ReadByte();
+
+                // TODO: Missing check for Legacy transactions
             }
         }
         else if (!decoderContext.IsSequenceNext())
@@ -93,6 +95,8 @@ public class MyTxDecoder(bool lazyHash = true) /* : IRlpStreamDecoder<Transactio
             txSequenceStart = decoderContext.Position;
             transactionSequence = decoderContext.Peek(ContentLength);
             txType = (TxType)decoderContext.ReadByte();
+
+            // TODO: Missing check for Legacy transactions
         }
 
         AbstractTxDecoder decoder = DecoderFor(txType);
