@@ -119,6 +119,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             CurrentBestBlock = result;
         }
 
+        _logger.Info($"initial Shutter block: {result}");
+
         ulong slot;
         long offset;
         try
@@ -157,12 +159,15 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
             return CurrentBestBlock;
         }
+        _logger.Info($"finished waiting for Shutter transactions, building block");
 
         result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource.Token);
         if (result is not null)
         {
             CurrentBestBlock = result;
         }
+
+        _logger.Info($"second Shutter block: {result}");
 
         return result;
     }

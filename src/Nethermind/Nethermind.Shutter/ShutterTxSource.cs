@@ -32,6 +32,9 @@ public class ShutterTxSource(
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
+        // todo: tmp
+        _logger.Info($"Shutter tx source");
+
         if (!shutterConfig.Validator)
         {
             _logger.Debug($"Not building Shutterized block since running in non-validator mode.");
