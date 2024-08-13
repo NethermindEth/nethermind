@@ -14,7 +14,8 @@ using Multiformats.Address;
 namespace Nethermind.Shutter;
 public static class ShutterHelpers
 {
-    public static TimeSpan SlotLength => GnosisSpecProvider.SlotLength;
+    public static readonly TimeSpan SlotLength = GnosisSpecProvider.SlotLength;
+    private static readonly TimeSpan _upToDateCutoff = SlotLength * 2;
     public class ShutterSlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public static ulong GetGenesisTimestampMs(ISpecProvider specProvider) => 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
@@ -26,7 +27,7 @@ public static class ShutterHelpers
         => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)(slotTimestampMs ?? GetSlotTimestampMs(slot, genesisTimestampMs));
 
     public static bool IsBlockUpToDate(Block head)
-        => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < SlotLength.TotalSeconds;
+        => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < _upToDateCutoff.TotalSeconds;
 
     public static ulong GetSlot(ulong slotTimestampMs, ulong genesisTimestampMs)
     {
