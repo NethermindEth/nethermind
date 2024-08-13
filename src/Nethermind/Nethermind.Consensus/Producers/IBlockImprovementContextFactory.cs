@@ -13,4 +13,6 @@ public interface IBlockImprovementContextFactory
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime);
+
+    bool KeepImproving { get => true; }
 }

@@ -57,8 +57,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
         TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null,
-        bool keepImproving = true)
+        TimeSpan? minTimeForProduction = null)
     {
         _blockProducer = blockProducer;
         _blockImprovementContextFactory = blockImprovementContextFactory;
@@ -67,7 +66,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
         _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
         _minTimeForProduction = minTimeForProduction ?? DefaultMinTimeForProduction;
-        _keepImproving = keepImproving;
+        _keepImproving = blockImprovementContextFactory.KeepImproving;
         ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
         timer.Elapsed += CleanupOldPayloads;
         timer.Start();

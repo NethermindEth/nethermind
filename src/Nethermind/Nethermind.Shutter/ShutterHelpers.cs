@@ -25,6 +25,9 @@ public static class ShutterHelpers
     public static long GetCurrentOffsetMs(ulong slot, ulong genesisTimestampMs, ulong? slotTimestampMs = null)
         => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - (long)(slotTimestampMs ?? GetSlotTimestampMs(slot, genesisTimestampMs));
 
+    public static bool IsBlockUpToDate(Block head)
+        => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < SlotLength.TotalSeconds;
+
     public static ulong GetSlot(ulong slotTimestampMs, ulong genesisTimestampMs)
     {
         long slotTimeSinceGenesis = (long)slotTimestampMs - (long)genesisTimestampMs;

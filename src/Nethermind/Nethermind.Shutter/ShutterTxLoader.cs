@@ -97,7 +97,6 @@ public class ShutterTxLoader(
                         }
                     }
                 }
-                // todo: make debug
                 _logger.Info($"Found {count} Shutter events in block {head.Number}, local tx pointer is {_txPointer}.");
             }
         }

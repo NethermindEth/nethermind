@@ -32,7 +32,6 @@ public class ShutterBlockHandler(
     ILogManager logManager) : IShutterBlockHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(5);
     private bool _haveCheckedRegistered = false;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
     private readonly LruCache<ulong, Block?> _blockCache = new(5, "Block cache");
@@ -41,10 +40,10 @@ public class ShutterBlockHandler(
 
     public void OnNewHeadBlock(Block head)
     {
-        if (IsBlockUpToDate(head))
+        if (ShutterHelpers.IsBlockUpToDate(head))
         {
-            // todo: made debug
-            _logger.Info($"Shutter block handler {head.Number}");
+            _logger.Debug($"Shutter block handler {head.Number}");
+
             if (!_haveCheckedRegistered)
             {
                 CheckAllValidatorsRegistered(head.Header, validatorsInfo);
@@ -64,9 +63,8 @@ public class ShutterBlockHandler(
                 }
             }
         }
-        else
+        else if (_logger.IsDebug)
         {
-            // todo: made debug
             _logger.Warn($"Shutter block handler not running, outdated block {head.Number}");
         }
     }
@@ -81,14 +79,13 @@ public class ShutterBlockHandler(
                 return block;
             }
 
-            // todo: make debug
-            _logger.Info($"Waiting for block in {slot} (Shutter).");
+            _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
             long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
             long waitTime = (long)cutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {
-                _logger.Warn($"Block missed in slot {slot}, offset of {offset}ms is after cutoff of {(int)cutoff.TotalMilliseconds}ms (Shutter).");
+                _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)cutoff.TotalMilliseconds}ms.");
                 return null;
             }
             waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
@@ -109,9 +106,6 @@ public class ShutterBlockHandler(
         _blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? cancelledWaitTask);
         cancelledWaitTask?.TrySetException(new OperationCanceledException());
     }
-
-    private bool IsBlockUpToDate(Block head)
-        => (head.Header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) < _upToDateCutoff.TotalSeconds;
 
     private void CheckAllValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo)
     {

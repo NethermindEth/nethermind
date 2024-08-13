@@ -39,6 +39,7 @@ public class ShutterBlockImprovementContextFactory(
                                            _genesisTimestampMs,
                                            GnosisSpecProvider.SlotLength,
                                            logManager);
+    public bool KeepImproving => false;
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
