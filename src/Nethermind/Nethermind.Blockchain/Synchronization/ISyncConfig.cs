@@ -65,11 +65,11 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
     int MaxAttemptsToUpdatePivot { get; set; }
 
-    [ConfigItem(Description = $$"""
-        The earliest body downloaded with fast sync when `{{nameof(DownloadBodiesInFastSync)}}` is set to `true`. The actual value is determined as follows:
+    [ConfigItem(Description = $$$"""
+        The earliest body downloaded with fast sync when `{{{nameof(DownloadBodiesInFastSync)}}}` is set to `true`. The actual value is determined as follows:
 
         ```
-        max{ 1, min{ PivotNumber, AncientBodiesBarrier } }
+        max{ 1, min{ PivotNumber, max{ AncientHeadersBarrier, AncientBodiesBarrier } } }
         ```
 
         """,
@@ -83,7 +83,7 @@ public interface ISyncConfig : IConfig
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
 
         ```
-        max{ 1, min{ PivotNumber, max{ AncientBodiesBarrier, AncientReceiptsBarrier } } }
+        max{ 1, min{ PivotNumber, max{ AncientHeadersBarrier, AncientReceiptsBarrier } } }
         ```
 
         """,

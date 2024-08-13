@@ -67,6 +67,14 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<PruningStatus> admin_prune();
+    [JsonRpcMethod(Description = "Exports a range of historic block in era1 format.",
+    EdgeCaseHint = "",
+    ExampleResponse = "\"Export task started.\"",
+    IsImplemented = true)]
     Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo);
+    [JsonRpcMethod(Description = "Verifies all era1 archives in a given folder against accumulators from a file.",
+    EdgeCaseHint = "",
+    ExampleResponse = "\"Verification task started.\"",
+    IsImplemented = true)]
     Task<ResultWrapper<string>> admin_verifyHistory(string eraSource, string accumulatorFile);
 }
