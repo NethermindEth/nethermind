@@ -2,7 +2,6 @@ participants_matrix:
   el:
    - el_type: nethermind
      el_image: <DOCKER_IMAGE_PLACEHOLDER>
-   - el_type: geth
   cl:
    - cl_type: prysm
    - cl_type: lighthouse
