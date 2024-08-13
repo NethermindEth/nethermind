@@ -112,7 +112,7 @@ jobs:
           r /tmp/output.txt
           d
         }" main-repo/.github/tests/assertor.yaml
-        cat assertoor-test/.github/tests/assertor.yaml
+        cat main-repo/.github/tests/assertor.yaml
       
     - name: Kurtosis Assertoor GitHub Action
       uses: ethpandaops/kurtosis-assertoor-github-action@v1
