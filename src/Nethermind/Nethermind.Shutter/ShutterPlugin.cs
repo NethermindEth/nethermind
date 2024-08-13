@@ -136,11 +136,11 @@ namespace Nethermind.Shutter
                 _shutterP2P = new(_msgHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
                 _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses!);
 
-                _api.BlockProducerEnvFactory = new ShutterBlockProducerEnvFactory(_api.BlockProducerEnvFactory, _txSource, _logger);
+                // _api.BlockProducerEnvFactory = new ShutterBlockProducerEnvFactory(_api.BlockProducerEnvFactory, _txSource, _logger);
             }
 
             _logger.Info("Shutter initialising consensus plugin");
-            _api!.BlockProducer = consensusPlugin.InitBlockProducer(txSource);
+            _api!.BlockProducer = consensusPlugin.InitBlockProducer(_txSource.Then(txSource));
             return _api!.BlockProducer;
         }
 
