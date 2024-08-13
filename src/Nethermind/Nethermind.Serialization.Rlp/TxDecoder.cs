@@ -61,7 +61,32 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             return null;
         }
 
-        Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
+        Span<byte> transactionSequence = rlpStream.PeekNextItem();
+        TxType txType = TxType.Legacy;
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+        {
+            if (rlpStream.PeekByte() <= 0x7F) // it is typed transactions
+            {
+                transactionSequence = rlpStream.Peek(rlpStream.Length);
+                txType = (TxType)rlpStream.ReadByte();
+
+                if (txType == TxType.Legacy)
+                {
+                    throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope");
+                }
+            }
+        }
+        else if (!rlpStream.IsSequenceNext())
+        {
+            (int _, int contentLength) = rlpStream.ReadPrefixAndContentLength();
+            transactionSequence = rlpStream.Peek(contentLength);
+            txType = (TxType)rlpStream.ReadByte();
+
+            if (txType == TxType.Legacy)
+            {
+                throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope");
+            }
+        }
 
         if (_decoders.TryGetValue(txType, out ITxDecoder? decoder))
         {
@@ -71,34 +96,6 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         {
             throw new InvalidOperationException($"Unknown transaction type: {txType}");
         }
-    }
-
-    private static Span<byte> DecodeTxTypeAndGetSequence(RlpStream rlpStream, RlpBehaviors rlpBehaviors, out TxType txType)
-    {
-        static Span<byte> DecodeTxType(RlpStream rlpStream, int length, out TxType txType)
-        {
-            Span<byte> sequence = rlpStream.Peek(length);
-            txType = (TxType)rlpStream.ReadByte();
-            return txType == TxType.Legacy
-                ? throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope.")
-                : sequence;
-        }
-
-        Span<byte> transactionSequence = rlpStream.PeekNextItem();
-        txType = TxType.Legacy;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-        {
-            if (rlpStream.PeekByte() <= 0x7F) // it is typed transactions
-            {
-                transactionSequence = DecodeTxType(rlpStream, rlpStream.Length, out txType);
-            }
-        }
-        else if (!rlpStream.IsSequenceNext())
-        {
-            transactionSequence = DecodeTxType(rlpStream, rlpStream.ReadPrefixAndContentLength().ContentLength, out txType);
-        }
-
-        return transactionSequence;
     }
 
     private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, ReadOnlySpan<byte> transactionSequence)
