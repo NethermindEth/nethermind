@@ -8,5 +8,4 @@ participants:
 additional_services:
   - assertoor
 assertoor_params:
-  run_stability_check: true
-  run_block_proposal_check: true
+  <TESTS_PLACEHOLDER>
