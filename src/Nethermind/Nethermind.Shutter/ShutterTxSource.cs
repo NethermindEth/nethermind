@@ -84,6 +84,11 @@ public class ShutterTxSource(
         await tcs.Task;
     }
 
+    public bool HaveTransactionsArrived(ulong slot)
+    {
+        return _txCache.Contains(slot);
+    }
+
     public void LoadTransactions(Block? head, IShutterMessageHandler.ValidatedKeyArgs keys)
     {
         _txCache.Set(keys.Slot, txLoader.LoadTransactions(head, keys));

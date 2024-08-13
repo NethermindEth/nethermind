@@ -110,15 +110,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     private async Task<Block?> ImproveBlock()
     {
-        // todo: make debug
-        _logger.Info("Running Shutter block improvement.");
-
-        // set default block without waiting for Shutter keys
-        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource!.Token);
-        if (result is not null)
-        {
-            CurrentBestBlock = result;
-        }
+        _logger.Debug("Running Shutter block improvement.");
 
         ulong slot;
         long offset;
@@ -129,6 +121,14 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         catch (ShutterHelpers.ShutterSlotCalulationException e)
         {
             _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            await TryBuildShutterBlock(0);
+            return CurrentBestBlock;
+        }
+
+        // set default block without waiting for Shutter keys
+        bool didBuildShutterBlock = await TryBuildShutterBlock(slot);
+        if (didBuildShutterBlock)
+        {
             return CurrentBestBlock;
         }
 
@@ -159,12 +159,21 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
             return CurrentBestBlock;
         }
 
-        result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource.Token);
+        // should succeed after waiting for transactions
+        await TryBuildShutterBlock(slot);
+
+        return CurrentBestBlock;
+    }
+
+    // builds normal block as fallback
+    private async Task<bool> TryBuildShutterBlock(ulong slot)
+    {
+        bool hasShutterTxs = _txSignal.HaveTransactionsArrived(slot);
+        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource!.Token);
         if (result is not null)
         {
             CurrentBestBlock = result;
         }
-
-        return result;
+        return hasShutterTxs;
     }
 }

@@ -8,4 +8,5 @@ namespace Nethermind.Shutter;
 public interface IShutterTxSignal
 {
     Task WaitForTransactions(ulong slot, CancellationToken cancellationToken);
+    bool HaveTransactionsArrived(ulong slot);
 }
