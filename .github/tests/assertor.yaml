@@ -11,7 +11,7 @@ participants:
    - cl_type: nimbus
    - cl_type: grandine
 network_params:
-  preset: minimal
+  preset: "minimal"
 additional_services:
   - assertoor
 <ASSERTOOR_PARAMS_PLACEHOLDER>
