@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -461,6 +462,25 @@ public class DebugModuleTests
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
+        var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void StandardTraceBadBlockToFile()
+    {
+        var blockHash = Keccak.EmptyTreeHash;
+
+        static IEnumerable<string> GetFileNames(Hash256 hash) =>
+            new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
+
+        debugBridge
+            .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(c => GetFileNames(c.ArgAt<Hash256>(0)));
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);
         var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
 
         actual.Should().BeEquivalentTo(expected);

@@ -143,7 +143,7 @@ namespace Nethermind.Evm.Test
         private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
         private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
         // for testing purposes, particular chain id does not matter. Maybe make random id so it captures the idea that signature should would irrespective of chain
-        private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork, LimboLogs.Instance);
+        private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork);
         private static string run(byte[] input)
         {
             long blocknr = 12965000;
@@ -158,14 +158,17 @@ namespace Nethermind.Evm.Test
                     new MemDb(),
                     LimboLogs.Instance);
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
+            CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
                 new TestBlockhashProvider(specProvider),
                     specProvider,
+                    codeInfoRepository,
                     LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new TransactionProcessor(
                     specProvider,
                     stateProvider,
                     virtualMachine,
+                    codeInfoRepository,
                     LimboLogs.Instance);
 
             stateProvider.CreateAccount(to, 123);

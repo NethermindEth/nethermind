@@ -54,17 +54,18 @@ namespace Nethermind.State
             ILogManager? logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
-            PreBlockCaches? preBlockCaches = null)
+            PreBlockCaches? preBlockCaches = null,
+            bool populatePreBlockCache = true)
         {
             PreBlockCaches = preBlockCaches;
             _trieStore = trieStore;
-            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache);
+            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
+            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches)
-            : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches)
+        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
+            : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
         {
         }
 
@@ -165,13 +166,13 @@ namespace Nethermind.State
         {
             _stateProvider.UpdateStorageRoot(address, storageRoot);
         }
-        public void IncrementNonce(Address address)
+        public void IncrementNonce(Address address, UInt256 delta)
         {
-            _stateProvider.IncrementNonce(address);
+            _stateProvider.IncrementNonce(address, delta);
         }
-        public void DecrementNonce(Address address)
+        public void DecrementNonce(Address address, UInt256 delta)
         {
-            _stateProvider.DecrementNonce(address);
+            _stateProvider.DecrementNonce(address, delta);
         }
 
         public void CommitTree(long blockNumber)
@@ -269,6 +270,8 @@ namespace Nethermind.State
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
 
-        PreBlockCaches IPreBlockCaches.Caches => PreBlockCaches;
+        PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
+
+        public bool ClearCache() => PreBlockCaches?.Clear() == true;
     }
 }

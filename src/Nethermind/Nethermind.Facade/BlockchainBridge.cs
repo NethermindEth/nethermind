@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -19,13 +20,15 @@ using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade
 {
@@ -37,7 +40,9 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly ReadOnlyTxProcessingEnv _processingEnv;
+        private readonly IReadOnlyTxProcessorSource _processingEnv;
+        private readonly IBlockTree _blockTree;
+        private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumEcdsa _ecdsa;
@@ -47,8 +52,10 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
+        private readonly SimulateBridgeHelper _simulateBridgeHelper;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -61,6 +68,8 @@ namespace Nethermind.Facade
             bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
+            _blockTree = processingEnv.BlockTree;
+            _stateReader = processingEnv.StateReader;
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
@@ -71,85 +80,71 @@ namespace Nethermind.Facade
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
             IsMining = isMining;
+            _simulateBridgeHelper = new SimulateBridgeHelper(
+                simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory)),
+                _blocksConfig);
         }
 
         public Block? HeadBlock
         {
             get
             {
-                return _processingEnv.BlockTree.Head;
+                return _blockTree.Head;
             }
         }
 
         public bool IsMining { get; }
 
-        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
+        private bool TryGetCanonicalTransaction(
+            Hash256 txHash,
+            [NotNullWhen(true)] out Transaction? transaction,
+            [NotNullWhen(true)] out TxReceipt? receipt,
+            [NotNullWhen(true)] out Block? block,
+            [NotNullWhen(true)] out TxReceipt[]? receipts)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is not null)
             {
-                Block? block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (block is not null)
                 {
-                    TxReceipt[] txReceipts = _receiptFinder.Get(block);
-                    TxReceipt txReceipt = txReceipts.ForTransaction(txHash);
-                    int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
-                    Transaction tx = block.Transactions[txReceipt.Index];
-                    bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
-                    return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
+                    receipts = _receiptFinder.Get(block);
+                    receipt = receipts.ForTransaction(txHash);
+                    transaction = block.Transactions[receipt.Index];
+                    return true;
                 }
+            }
+
+            transaction = null;
+            receipt = null;
+            receipts = null;
+            block = null;
+            return false;
+        }
+
+        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
+        {
+            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
+            {
+                int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
+                bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
+                return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
             }
 
             return (null, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true)
-        {
-            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash is not null)
-            {
-                Block block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-                return (txReceipt, block?.Transactions[txReceipt.Index], block?.BaseFeePerGas);
-            }
-
-            if (checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
-            {
-                return (null, transaction, null);
-            }
-
-            return (null, null, null);
-        }
+        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
+            TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _)
+                ? (txReceipt, tx, block.BaseFeePerGas)
+                : checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
+                    ? (null, transaction, null)
+                    : (null, null, null);
 
         public TxReceipt? GetReceipt(Hash256 txHash)
         {
             Hash256? blockHash = _receiptFinder.FindBlockHash(txHash);
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
-        }
-
-        public class CallOutput
-        {
-            public CallOutput()
-            {
-            }
-
-            public CallOutput(byte[] outputData, long gasSpent, string error, bool inputError = false)
-            {
-                Error = error;
-                OutputData = outputData;
-                GasSpent = gasSpent;
-                InputError = inputError;
-            }
-
-            public string? Error { get; set; }
-
-            public byte[] OutputData { get; set; }
-
-            public long GasSpent { get; set; }
-
-            public bool InputError { get; set; }
-
-            public AccessList? AccessList { get; set; }
         }
 
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
@@ -166,9 +161,31 @@ namespace Nethermind.Facade
             };
         }
 
+        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        {
+            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(simulateOutputTracer);
+            SimulateOutput result = new();
+            try
+            {
+                if (!_simulateBridgeHelper.TrySimulate(header, payload, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                {
+                    result.Error = error;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.ToString();
+            }
+
+            result.Items = simulateOutputTracer.Results;
+            return result;
+        }
+
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
-            using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(header.StateRoot!);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -177,7 +194,7 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
+            GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState,
                 _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
@@ -194,7 +211,7 @@ namespace Nethermind.Facade
             CallOutputTracer callOutputTracer = new();
             AccessTxTracer accessTxTracer = optimize
                 ? new(tx.SenderAddress,
-                    tx.GetRecipient(tx.IsContractCreation ? _processingEnv.StateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
+                    tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
                 : new(header.GasBeneficiary);
 
             TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
@@ -235,7 +252,7 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
 
             Hash256 stateRoot = blockHeader.StateRoot!;
-            using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(stateRoot);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot);
 
             if (transaction.Nonce == 0)
             {
@@ -277,17 +294,17 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return transactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
         }
 
         public ulong GetChainId()
         {
-            return _processingEnv.BlockTree.ChainId;
+            return _blockTree.ChainId;
         }
 
         private UInt256 GetNonce(Hash256 stateRoot, Address address)
         {
-            return _processingEnv.StateReader.GetNonce(stateRoot, address);
+            return _stateReader.GetNonce(stateRoot, address);
         }
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
@@ -343,7 +360,7 @@ namespace Nethermind.Facade
 
         public int NewBlockFilter()
         {
-            BlockFilter filter = _filterStore.CreateBlockFilter(_processingEnv.BlockTree.Head!.Number);
+            BlockFilter filter = _filterStore.CreateBlockFilter(_blockTree.Head!.Number);
             _filterStore.SaveFilter(filter);
             return filter.Id;
         }
@@ -388,12 +405,12 @@ namespace Nethermind.Facade
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot)
         {
-            _processingEnv.StateReader.RunTreeVisitor(treeVisitor, stateRoot);
+            _stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            return _processingEnv.StateReader.HasStateForRoot(stateRoot);
+            return _stateReader.HasStateForRoot(stateRoot);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)

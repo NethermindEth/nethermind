@@ -35,6 +35,7 @@ public class VirtualMachineTestsBase
     private IDb _stateDb;
 
     protected VirtualMachine Machine { get; private set; }
+    protected CodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
@@ -65,10 +66,11 @@ public class VirtualMachineTestsBase
         _stateDb = new MemDb();
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
-        _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
+        _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
-        _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
+        CodeInfoRepository = new CodeInfoRepository();
+        Machine = new VirtualMachine(blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
+        _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
     [TearDown]

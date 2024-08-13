@@ -18,9 +18,7 @@ namespace Nethermind.Consensus.Processing
         /// <param name="newBranchStateRoot">Initial state for the processed branch.</param>
         /// <param name="suggestedBlocks">List of blocks to be processed.</param>
         /// <param name="processingOptions">Options to use for processor and transaction processor.</param>
-        /// <param name="blockTracer">
-        /// Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/>
-        /// </param>
+        /// <param name="blockTracer">Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/></param>
         /// <returns>List of processed blocks.</returns>
         Block[] Process(
             Hash256 newBranchStateRoot,

@@ -45,7 +45,8 @@ namespace Nethermind.Consensus.AuRa
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null)
+            ContractRewriter? contractRewriter = null,
+            IBlockCachePreWarmer? preWarmer = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -53,9 +54,10 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(blockTree, specProvider, stateProvider),
+                new BlockhashStore(specProvider, stateProvider),
                 logManager,
-                withdrawalProcessor)
+                withdrawalProcessor,
+                preWarmer: preWarmer)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -140,7 +142,7 @@ namespace Nethermind.Consensus.AuRa
                 if (tx.Signature is not null)
                 {
                     IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
-                    EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
+                    EthereumEcdsa ecdsa = new(_specProvider.ChainId);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {

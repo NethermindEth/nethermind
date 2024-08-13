@@ -133,6 +133,8 @@ namespace Nethermind.Core.Caching
             return _cacheMap.ContainsKey(key);
         }
 
+        public int Count => _cacheMap.Count;
+
         public IDictionary<TKey[], TValue> Clone()
         {
             using var lockRelease = _lock.Acquire();
