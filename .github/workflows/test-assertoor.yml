@@ -119,4 +119,4 @@ jobs:
       with:
         ethereum_package_url: "github.com/ethpandaops/ethereum-package"
         ethereum_package_branch: ""
-        ethereum_package_args: .github/tests/assertor.yaml
+        ethereum_package_args: main-repo/.github/tests/assertor.yaml
