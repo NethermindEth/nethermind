@@ -54,9 +54,15 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
         try
         {
+            var physicalCoreCount = RuntimeInformation.PhysicalCoreCount;
+            if (physicalCoreCount < 2)
+            {
+                if (_logger.IsDebug) _logger.Debug("Physical core count is less than 2. Skipping pre-warming.");
+                return;
+            }
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-            ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, RuntimeInformation.PhysicalCoreCount - 2), CancellationToken = cancellationToken };
+            ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = physicalCoreCount - 1, CancellationToken = cancellationToken };
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
 
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
@@ -74,13 +80,18 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
+                int progress = 0;
                 Parallel.For(0, block.Withdrawals.Length, parallelOptions,
-                    i =>
+                    _ =>
                     {
                         IReadOnlyTxProcessorSource env = _envPool.Get();
+                        int i = 0;
                         try
                         {
                             using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                            // Process withdrawals in sequential order, rather than partitioning scheme from Parallel.For
+                            // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
+                            i = Interlocked.Increment(ref progress) - 1;
                             scope.WorldState.WarmUp(block.Withdrawals[i].Address);
                         }
                         catch (Exception ex)
@@ -100,20 +111,22 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
             int progress = 0;
+            // We want to start at 1 which is the second transaction, giving total count one less than the length
             Parallel.For(1, block.Transactions.Length, parallelOptions, _ =>
             {
-                // Process transactions in order, rather than the partitioning scheme from Parallel.For
-                int i = Interlocked.Increment(ref progress);
-
-                // If the transaction has already been processed or being processed, exit early
-                if (block.TransactionProcessed >= i) return;
-
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-                Transaction tx = block.Transactions[i];
                 IReadOnlyTxProcessorSource env = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
+                Transaction? tx = null;
                 try
                 {
+                    // Process transactions in sequential order, rather than partitioning scheme from Parallel.For
+                    // Interlocked.Increment returns the incremented value, so it will start at 1
+                    int i = Interlocked.Increment(ref progress);
+                    // If the transaction has already been processed or being processed, exit early
+                    if (block.TransactionProcessed > i) return;
+
+                    tx = block.Transactions[i];
                     tx.CopyTo(systemTransaction);
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                     if (spec.UseTxAccessLists)
@@ -125,7 +138,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
+                    if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
                 }
                 finally
                 {
