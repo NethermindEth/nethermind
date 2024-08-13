@@ -67,8 +67,6 @@ namespace Nethermind.Init.Steps
                 ILogger logger = _api.LogManager!.GetClassLogger();
                 foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
                 {
-                    //todo: tmp
-                    logger.Info($"adding wrapper plugin {wrapperPlugin.Name} (Shutter)");
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }
 

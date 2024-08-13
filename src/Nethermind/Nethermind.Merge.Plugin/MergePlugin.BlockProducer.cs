@@ -19,16 +19,6 @@ namespace Nethermind.Merge.Plugin
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
 
-        // protected virtual BlockProducerEnv CreateBlockProducerEnv()
-        // {
-        //     Debug.Assert(_api?.BlockProducerEnvFactory is not null,
-        //         $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
-
-        //     _logger.Info($"creating block producer env {_api.BlockProducerEnvFactory.GetType()} (Shutter)");
-
-        //     return _api.BlockProducerEnvFactory.Create();
-        // }
-
         public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource)
         {
             if (MergeEnabled)
@@ -49,15 +39,13 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 if (_api.BlockProducerEnvFactory is null) throw new ArgumentNullException(nameof(_api.BlockProducerEnvFactory));
 
-                // todo:: remove Shutter
-                _logger.Info("Starting Merge block producer & sealer (Shutter)");
+                _logger.Info("Starting Merge block producer & sealer");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
                     ? baseBlockProducerFactory.InitBlockProducer(txSource)
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
-                // BlockProducerEnv blockProducerEnv = CreateBlockProducerEnv();
-                _logger.Info($"creating block producer env (Shutter)");
+
                 BlockProducerEnv blockProducerEnv =  _api.BlockProducerEnvFactory.Create(txSource);
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
