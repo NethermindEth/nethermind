@@ -5,11 +5,20 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
+/// <summary>
+/// TODO:
+/// 1. Consider creating a single thread pool work item that communicates by passing a pointer to the work item.
+/// Then a ConcurrentQueue could be used.
+/// 2. Alignment maybe? Why not to align to the word, especially if 1 runner is used
+/// 3. Make the book keeping, so that once the work is done,
+/// it's walked through and checked that it was completed so that calculator can be reused.
+/// </summary>
 public sealed class KeccakCalculator : IThreadPoolWorkItem
 {
     private const byte HashLength = Hash256.Size;
