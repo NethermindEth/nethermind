@@ -7,5 +7,4 @@ participants:
     cl_type: nimbus
 additional_services:
   - assertoor
-assertoor_params:
-  <TESTS_PLACEHOLDER>
+<ASSERTOOR_PARAMS_PLACEHOLDER>
