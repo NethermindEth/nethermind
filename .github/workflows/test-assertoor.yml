@@ -40,8 +40,8 @@ jobs:
 
     - name: Run retriveAllTests.py script
       run: |
-        python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing" > output.txt
-        echo "ASSERTOOR_PARAMS_FILE=$(pwd)/output.txt" >> $GITHUB_ENV
+        python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing" > /tmp/output.txt
+        echo "ASSERTOOR_PARAMS_FILE=/tmp/output.txt" >> $GITHUB_ENV
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -73,34 +73,34 @@ jobs:
           echo "skip_docker_build=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Trigger Docker Build Action with Cleaned Ref
-      if: steps.check_conditions.outputs.skip_docker_build != 'true'
-      uses: benc-uk/workflow-dispatch@v1
-      with:
-          workflow: publish-docker.yml
-          ref: "${{ github.ref }}"
-          token: "${{ steps.gh-app.outputs.token }}"
-          inputs: '{
-              "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
-              "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
-           }'
+    #- name: Trigger Docker Build Action with Cleaned Ref
+    #  if: steps.check_conditions.outputs.skip_docker_build != 'true'
+    #  uses: benc-uk/workflow-dispatch@v1
+    #  with:
+    #      workflow: publish-docker.yml
+    #      ref: "${{ github.ref }}"
+    #      token: "${{ steps.gh-app.outputs.token }}"
+    #      inputs: '{
+    #          "tag": "${{ env.CLEAN_REF }}",
+    #          "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
+    #          "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
+    #       }'
         
-    - name: Wait for Docker Build Action to complete
-      if: steps.check_conditions.outputs.skip_docker_build != 'true'
-      env:
-        GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
-        WORKFLOW_ID: 'publish-docker.yml'
-        MAX_WAIT_MINUTES: "5"
-        INTERVAL: "5"
-        TIMEOUT: '20'
-        ORG_NAME: ${{ env.ORG_NAME }}
-        REPO_NAME: ${{ env.REPO_NAME }}
-        REF: ${{ github.ref }}
-      run: |
-        chmod +x main-repo/scripts/wait-for-workflow-completed.sh
-        ./main-repo/scripts/wait-for-workflow-completed.sh
-      working-directory: ${{ github.workspace }}
+    #- name: Wait for Docker Build Action to complete
+    #  if: steps.check_conditions.outputs.skip_docker_build != 'true'
+    #  env:
+    #    GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+    #    WORKFLOW_ID: 'publish-docker.yml'
+    #    MAX_WAIT_MINUTES: "5"
+    #    INTERVAL: "5"
+    #    TIMEOUT: '20'
+    #    ORG_NAME: ${{ env.ORG_NAME }}
+    #    REPO_NAME: ${{ env.REPO_NAME }}
+    #    REF: ${{ github.ref }}
+    #  run: |
+    #    chmod +x main-repo/scripts/wait-for-workflow-completed.sh
+    #    ./main-repo/scripts/wait-for-workflow-completed.sh
+    #  working-directory: ${{ github.workspace }}
         
     - name: Replace Placeholders in YAML
       run: |
