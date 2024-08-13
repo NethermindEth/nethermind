@@ -13,5 +13,7 @@ public abstract class AbstractTxDecoder
 
     public abstract void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors);
 
+    public abstract Rlp EncodeTx(Transaction? item, bool forSigning, bool isEip155Enabled, ulong chainId, RlpBehaviors rlpBehaviors);
+
     public abstract int GetLength(Transaction item, RlpBehaviors rlpBehaviors);
 }
