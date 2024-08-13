@@ -24,6 +24,8 @@ namespace Nethermind.Merge.Plugin
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
+            _logger.Info($"creating block producer env {_api.BlockProducerEnvFactory.GetType()} (Shutter)");
+
             return _api.BlockProducerEnvFactory.Create();
         }
 
