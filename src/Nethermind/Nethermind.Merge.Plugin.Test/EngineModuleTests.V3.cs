@@ -525,26 +525,55 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<BlobAndProofV1?> blobsAndProofs = new();
-
-        for (int i = 0; i < blobTx.BlobVersionedHashes!.Length; i++)
+        List<BlobAndProofV1?> blobsAndProofs = new(numberOfBlobs);
+        for (int i = 0; i < numberOfBlobs; i++)
         {
             blobsAndProofs.Add(new BlobAndProofV1(blobTx, i));
         }
-
         GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
 
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         result.Data.Should().BeEquivalentTo(expected);
         result.Data.BlobsAndProofs.Length.Should().Be(numberOfBlobs);
-        for (int i = 0; i < result.Data.BlobsAndProofs.Length; i++)
+        for (int i = 0; i < numberOfBlobs; i++)
         {
             result.Data.BlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i]);
             result.Data.BlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i]);
         }
     }
 
+    [Test]
+    public async Task GetBlobsV1_should_return_nulls_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        // we are not adding this tx
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfRequestedBlobs)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithMaxFeePerBlobGas(1000.Wei())
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        List<BlobAndProofV1?> blobsAndProofs = new(numberOfRequestedBlobs);
+        for (int i = 0; i < numberOfRequestedBlobs; i++)
+        {
+            blobsAndProofs.Add(null);
+        }
+        GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
+
+        // requesting hashes that are not present in TxPool
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+
+        result.Data.Should().BeEquivalentTo(expected);
+        result.Data.BlobsAndProofs.Length.Should().Be(numberOfRequestedBlobs);
+        for (int i = 0; i < numberOfRequestedBlobs; i++)
+        {
+            result.Data.BlobsAndProofs[i]!.Should().BeNull();
+        }
+    }
 
     public static IEnumerable<TestCaseData> ForkchoiceUpdatedV3DeclinedTestCaseSource
     {
