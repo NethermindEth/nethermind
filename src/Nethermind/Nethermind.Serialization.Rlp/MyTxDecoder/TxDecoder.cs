@@ -7,8 +7,8 @@ namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 public class MyTxDecoder(bool lazyHash = true) : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
 {
     public const int MaxDelayedHashTxnSize = 32768;
-    public readonly MyTxDecoder Instance = new(lazyHash: true);
-    public readonly MyTxDecoder InstanceWithoutLazyHash = new(lazyHash: false);
+    public static readonly MyTxDecoder Instance = new(lazyHash: true);
+    public static readonly MyTxDecoder InstanceWithoutLazyHash = new(lazyHash: false);
 
     private readonly Dictionary<byte, AbstractTxDecoder> _decoders = new() {
         { (byte)TxType.Legacy, new LegacyTxDecoder(lazyHash) },
