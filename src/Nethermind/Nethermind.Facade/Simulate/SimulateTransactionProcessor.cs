@@ -22,6 +22,12 @@ public class SimulateTransactionProcessor(
     : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
 {
     public UInt256? BlobBaseFee { get; set; }
+
+    protected override bool ShallValidate(ExecutionOptions opts)
+    {
+        return base.ShallValidate(opts) || opts.HasFlag(ExecutionOptions.Simulation);
+    }
+
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)

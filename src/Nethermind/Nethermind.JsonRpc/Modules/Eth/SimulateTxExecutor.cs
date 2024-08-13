@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -42,15 +43,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     StateOverrides = blockStateCall.StateOverrides,
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        if (callTransactionModel.Type == TxType.Legacy)
-                        {
-                            callTransactionModel.Type = TxType.EIP1559;
-                        }
-
-                        if (callTransactionModel.BlobVersionedHashes is not null)
-                        {
-                            callTransactionModel.Type = TxType.Blob;
-                        }
+                        UpdateTxType(callTransactionModel);
 
                         bool hadGasLimitInRequest = callTransactionModel.Gas.HasValue;
                         bool hadNonceInRequest = callTransactionModel.Nonce.HasValue;
@@ -73,6 +66,19 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         };
 
         return result;
+    }
+
+    private static void UpdateTxType(TransactionForRpc callTransactionModel)
+    {
+        if (callTransactionModel.Type == TxType.Legacy)
+        {
+            callTransactionModel.Type = TxType.EIP1559;
+        }
+
+        if (callTransactionModel.BlobVersionedHashes is not null)
+        {
+            callTransactionModel.Type = TxType.Blob;
+        }
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
@@ -199,6 +205,17 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
     {
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
+        results.Items.ForEach(result =>
+        {
+            result.Calls.ForEach(call =>
+            {
+                if ((call is not null) && (call.Error is not null) && call.Error.Message != "")
+                {
+                    call.Error.Code = ErrorCodes.ExecutionError;
+                }
+            });
+        });
+
         if (results.Error is not null && (results.Error.Contains("invalid transaction")
                                       || results.Error.Contains("InsufficientBalanceException")
                                       ))
@@ -210,8 +227,6 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
         if (results.Error is not null && results.Error.Contains("below intrinsic gas"))
             results.ErrorCode = ErrorCodes.InsufficientIntrinsicGas;
-
-
 
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)

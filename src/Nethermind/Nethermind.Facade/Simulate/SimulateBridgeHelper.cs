@@ -104,7 +104,10 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                     callHeader.BaseFeePerGas = 0;
                 }
 
-                env.SetBlockBlobBaseFee(blockCall.BlockOverrides?.BlobBaseFee);
+                if (spec.IsEip4844Enabled)
+                {
+                    env.SetBlockBlobBaseFee(blockCall.BlockOverrides?.BlobBaseFee);
+                }
 
                 callHeader.Hash = callHeader.CalculateHash();
 
@@ -140,21 +143,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                         processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
-                var current = simulateOutputTracer.Results.Last();
-
-                current.StateRoot = processedBlock.StateRoot ?? new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000"); ;
-
-                current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ??
-                                                new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000");
-
-                current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ??
-                                          new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000");
-
-                current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-
-                current.Withdrawals = processedBlock.Withdrawals ?? [];
-
-                current.Author = null;
+                CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
                 parent = processedBlock.Header;
             }
@@ -162,6 +151,25 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
         error = null;
         return true;
+    }
+
+    private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
+    {
+        var current = simulateOutputTracer.Results.Last();
+
+        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
+
+        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ??
+                                        Hash256.Zero;
+
+        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ??
+                                  Hash256.Zero;
+
+        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
+
+        current.Withdrawals = processedBlock.Withdrawals ?? [];
+
+        current.Author = null;
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
@@ -262,7 +270,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-        //transaction.To ??= Address.Zero;
         transaction.Data ??= Memory<byte>.Empty;
 
         if (!transactionDetails.HadNonceInRequest)

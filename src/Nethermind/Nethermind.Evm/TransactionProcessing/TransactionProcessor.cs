@@ -437,6 +437,11 @@ namespace Nethermind.Evm.TransactionProcessing
             );
         }
 
+        protected virtual bool ShallValidate(ExecutionOptions opts)
+        {
+            return !opts.HasFlag(ExecutionOptions.NoValidation);
+        }
+
         protected void ExecuteEvmCall(
             Transaction tx,
             BlockHeader header,
@@ -449,7 +454,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out long spentGas,
             out byte statusCode)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation) || opts.HasFlag(ExecutionOptions.Simulation);
+            bool validate = ShallValidate(opts);
 
             substate = null;
             spentGas = tx.GasLimit;
