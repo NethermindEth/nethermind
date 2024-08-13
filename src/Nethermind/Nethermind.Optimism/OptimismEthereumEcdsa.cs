@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Optimism;
 using Nethermind.Crypto;
 
 namespace Nethermind.Optimism;
@@ -22,7 +21,7 @@ public class OptimismEthereumEcdsa : Ecdsa, IEthereumEcdsa
 
     public Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false)
     {
-        if (tx.Signature is null && tx is DepositTransaction { IsOPSystemTransaction: true })
+        if (tx.Signature is null && tx.IsOPSystemTransaction)
         {
             return Address.Zero;
         }

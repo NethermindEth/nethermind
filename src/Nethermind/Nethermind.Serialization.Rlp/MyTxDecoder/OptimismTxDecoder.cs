@@ -4,8 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Optimism;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
@@ -13,7 +11,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
 {
     public override Transaction Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        DepositTransaction transaction = new()
+        Transaction transaction = new()
         {
             Type = TxType.DepositTx
         };
@@ -50,9 +48,9 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return transaction;
     }
 
-    public override DepositTransaction Decode(int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    public override Transaction Decode(int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
-        DepositTransaction transaction = new()
+        Transaction transaction = new()
         {
             Type = TxType.DepositTx
         };
@@ -100,7 +98,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return transaction;
     }
 
-    private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, DepositTransaction transaction)
+    private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -110,7 +108,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, DepositTransaction transaction)
+    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, Transaction transaction)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
@@ -129,12 +127,9 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(Transaction? _wrongType, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (_wrongType?.Type != TxType.DepositTx) { throw new InvalidOperationException("Unexpected TxType"); }
-
-        // TODO: Deal with subtyping
-        DepositTransaction item = (DepositTransaction)_wrongType;
+        if (item?.Type != TxType.DepositTx) { throw new InvalidOperationException("Unexpected TxType"); }
 
         if (item is null)
         {
@@ -155,12 +150,9 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         EncodePayloadWithoutSignature(item, stream);
     }
 
-    public override int GetLength(Transaction _wrongType, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
     {
-        if (_wrongType?.Type != TxType.DepositTx) { throw new InvalidOperationException("Unexpected TxType"); }
-
-        // TODO: Deal with subtyping
-        DepositTransaction tx = (DepositTransaction)_wrongType;
+        if (tx?.Type != TxType.DepositTx) { throw new InvalidOperationException("Unexpected TxType"); }
 
         int txContentLength = GetContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
@@ -172,7 +164,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         return result;
     }
 
-    private static void DecodePayloadWithoutSig(DepositTransaction transaction, RlpStream rlpStream)
+    private static void DecodePayloadWithoutSig(Transaction transaction, RlpStream rlpStream)
     {
         transaction.SourceHash = rlpStream.DecodeKeccak();
         transaction.SenderAddress = rlpStream.DecodeAddress();
@@ -184,7 +176,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Data = rlpStream.DecodeByteArray();
     }
 
-    private static void DecodePayloadWithoutSig(DepositTransaction transaction, ref Rlp.ValueDecoderContext decoderContext)
+    private static void DecodePayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
         transaction.SenderAddress = decoderContext.DecodeAddress();
@@ -196,7 +188,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         transaction.Data = decoderContext.DecodeByteArray();
     }
 
-    private static void EncodePayloadWithoutSignature(DepositTransaction item, RlpStream stream)
+    private static void EncodePayloadWithoutSignature(Transaction item, RlpStream stream)
     {
         stream.Encode(item.SourceHash);
         stream.Encode(item.SenderAddress);
@@ -208,7 +200,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : AbstractTxDecoder
         stream.Encode(item.Data);
     }
 
-    private static int GetContentLength(DepositTransaction item)
+    private static int GetContentLength(Transaction item)
     {
         return Rlp.LengthOf(item.SourceHash)
                + Rlp.LengthOf(item.SenderAddress)

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Optimism;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -10,7 +9,7 @@ namespace Nethermind.Core
     public static class TransactionExtensions
     {
         public static bool IsSystem(this Transaction tx) =>
-            tx is SystemTransaction || tx.SenderAddress == Address.SystemUser || tx is DepositTransaction;
+            tx is SystemTransaction || tx.SenderAddress == Address.SystemUser || tx.IsOPSystemTransaction;
 
         public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
 

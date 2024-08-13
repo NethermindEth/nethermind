@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Optimism;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -36,9 +35,9 @@ public class OptimismTransactionProcessor(
 
         IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
         _currentTxL1Cost = null;
-        if (tx is DepositTransaction dt)
+        if (tx.IsDeposit())
         {
-            WorldState.AddToBalanceAndCreateIfNotExists(dt.SenderAddress!, dt.Mint, spec);
+            WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
         }
 
         Snapshot snapshot = WorldState.TakeSnapshot();
@@ -83,7 +82,7 @@ public class OptimismTransactionProcessor(
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
-        if (tx is DepositTransaction dt && !dt.IsOPSystemTransaction && senderBalance < tx.Value)
+        if (tx.IsDeposit() && !tx.IsOPSystemTransaction  && senderBalance < tx.Value)
         {
             return "insufficient sender balance";
         }
@@ -165,11 +164,11 @@ public class OptimismTransactionProcessor(
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
-        if (tx is DepositTransaction dt && !opSpecHelper.IsRegolith(header))
+        if (tx.IsDeposit() && !opSpecHelper.IsRegolith(header))
         {
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)
-            return dt.IsOPSystemTransaction ? 0 : dt.GasLimit;
+            return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
         }
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);

@@ -6,9 +6,7 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Optimism;
 using Nethermind.Serialization.Rlp.Eip2930;
-using Nethermind.Serialization.Rlp.Optimism;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -32,8 +30,13 @@ public sealed class TxDecoder : TxDecoder<Transaction>
         return TxObjectPool.Get();
     }
 }
+public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
+public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
 
-public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : Transaction, new()
+public class TxDecoder<T> :
+    IRlpStreamDecoder<T>,
+    IRlpValueDecoder<T>
+    where T : Transaction, new()
 {
     private readonly AccessListDecoder _accessListDecoder = new();
     private readonly bool _lazyHash;
@@ -58,11 +61,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
         Span<byte> transactionSequence = DecodeTxTypeAndGetSequence(rlpStream, rlpBehaviors, out TxType txType);
 
-        T transaction = txType switch
-        {
-            TxType.DepositTx => new DepositTransaction() as T,
-            _ => NewTx()
-        };
+        T transaction = NewTx();
         transaction.Type = txType;
 
         int positionAfterNetworkWrapper = 0;
@@ -80,7 +79,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         switch (transaction.Type)
         {
             case TxType.Legacy:
-                DecodeLegacyPayloadWithoutSig(transaction, rlpStream);
+                TxDecoder<T>.DecodeLegacyPayloadWithoutSig(transaction, rlpStream);
                 break;
             case TxType.AccessList:
                 DecodeAccessListPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
@@ -92,7 +91,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
                 DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                 break;
             case TxType.DepositTx:
-                OptimismTxDecoder.DecodeDepositPayloadWithoutSig(transaction as DepositTransaction, rlpStream, rlpBehaviors);
+                TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                 break;
         }
 
@@ -108,7 +107,12 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
         {
-            DecodeShardBlobNetworkPayload(transaction, rlpStream, rlpBehaviors);
+            switch (transaction.Type)
+            {
+                case TxType.Blob:
+                    TxDecoder<T>.DecodeShardBlobNetworkPayload(transaction, rlpStream, rlpBehaviors);
+                    break;
+            }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
             {
@@ -234,6 +238,18 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
+    private static void DecodeDepositPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    {
+        transaction.SourceHash = rlpStream.DecodeKeccak();
+        transaction.SenderAddress = rlpStream.DecodeAddress();
+        transaction.To = rlpStream.DecodeAddress();
+        transaction.Mint = rlpStream.DecodeUInt256();
+        transaction.Value = rlpStream.DecodeUInt256();
+        transaction.GasLimit = rlpStream.DecodeLong();
+        transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
+        transaction.Data = rlpStream.DecodeByteArray();
+    }
+
     private static void DecodeLegacyPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
         transaction.Nonce = decoderContext.DecodeUInt256();
@@ -292,6 +308,18 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
+    private static void DecodeDepositPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        transaction.SourceHash = decoderContext.DecodeKeccak();
+        transaction.SenderAddress = decoderContext.DecodeAddress();
+        transaction.To = decoderContext.DecodeAddress();
+        transaction.Mint = decoderContext.DecodeUInt256();
+        transaction.Value = decoderContext.DecodeUInt256();
+        transaction.GasLimit = decoderContext.DecodeLong();
+        transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
+        transaction.Data = decoderContext.DecodeByteArray();
+    }
+
     private static void EncodeLegacyWithoutPayload(T item, RlpStream stream)
     {
         stream.Encode(item.Nonce);
@@ -342,8 +370,24 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         stream.Encode(item.BlobVersionedHashes);
     }
 
+    private static void EncodeDepositTxPayloadWithoutPayload(T item, RlpStream stream)
+    {
+        stream.Encode(item.SourceHash);
+        stream.Encode(item.SenderAddress);
+        stream.Encode(item.To);
+        stream.Encode(item.Mint);
+        stream.Encode(item.Value);
+        stream.Encode(item.GasLimit);
+        stream.Encode(item.IsOPSystemTransaction);
+        stream.Encode(item.Data);
+    }
 
-    public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    // b9018201f9017e86796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f90111f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144
+    // b8__ca01f8__c786796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f8__5bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144000000
+
+    public T? Decode(ref Rlp.ValueDecoderContext decoderContext,
+        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+
     {
         T transaction = null;
         Decode(ref decoderContext, ref transaction, rlpBehaviors);
@@ -352,7 +396,8 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
     }
 
 
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction,
+        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
         {
@@ -361,10 +406,12 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             return;
         }
 
+        transaction ??= NewTx();
+        transaction.Type = TxType.Legacy;
+
         int txSequenceStart = decoderContext.Position;
         ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
-        TxType txType = TxType.Legacy;
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
         {
             byte firstByte = decoderContext.PeekByte();
@@ -372,7 +419,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             {
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
-                txType = (TxType)decoderContext.ReadByte();
+                transaction.Type = (TxType)decoderContext.ReadByte();
             }
         }
         else
@@ -383,16 +430,9 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
                     decoderContext.ReadPrefixAndContentLength();
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
-                txType = (TxType)decoderContext.ReadByte();
+                transaction.Type = (TxType)decoderContext.ReadByte();
             }
         }
-
-        transaction = txType switch
-        {
-            TxType.DepositTx => new DepositTransaction() as T,
-            _ => NewTx()
-        };
-        transaction.Type = txType;
 
         int networkWrapperCheck = 0;
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
@@ -410,7 +450,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         switch (transaction.Type)
         {
             case TxType.Legacy:
-                DecodeLegacyPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+                TxDecoder<T>.DecodeLegacyPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                 break;
             case TxType.AccessList:
                 DecodeAccessListPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
@@ -422,7 +462,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
                 DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                 break;
             case TxType.DepositTx:
-                OptimismTxDecoder.DecodeDepositPayloadWithoutSig(transaction as DepositTransaction, ref decoderContext, rlpBehaviors);
+                TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                 break;
         }
 
@@ -438,7 +478,12 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
         {
-            DecodeShardBlobNetworkPayload(transaction, ref decoderContext, rlpBehaviors);
+            switch (transaction.Type)
+            {
+                case TxType.Blob:
+                    TxDecoder<T>.DecodeShardBlobNetworkPayload(transaction, ref decoderContext, rlpBehaviors);
+                    break;
+            }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
             {
@@ -476,7 +521,10 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         }
     }
 
-    private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, T transaction)
+    private static void DecodeSignature(
+        RlpStream rlpStream,
+        RlpBehaviors rlpBehaviors,
+        T transaction)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -484,7 +532,10 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, T transaction)
+    private static void DecodeSignature(
+        ref Rlp.ValueDecoderContext decoderContext,
+        RlpBehaviors rlpBehaviors,
+        T transaction)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
@@ -492,7 +543,12 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void ApplySignature(T transaction, ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, RlpBehaviors rlpBehaviors)
+    private static void ApplySignature(
+        T transaction,
+        ulong v,
+        ReadOnlySpan<byte> rBytes,
+        ReadOnlySpan<byte> sBytes,
+        RlpBehaviors rlpBehaviors)
     {
         if (transaction.Type == TxType.DepositTx && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty) return;
 
@@ -520,17 +576,20 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
         }
 
-        if (!isSignatureOk && !allowUnsigned)
+        if (isSignatureOk)
+        {
+            if (transaction.Type != TxType.Legacy)
+            {
+                v += Signature.VOffset;
+            }
+
+            Signature signature = new(rBytes, sBytes, v);
+            transaction.Signature = signature;
+        }
+        else if (!allowUnsigned)
         {
             throw new RlpException(signatureError);
         }
-
-        if (transaction.Type != TxType.Legacy)
-        {
-            v += Signature.VOffset;
-        }
-        Signature signature = new(rBytes, sBytes, v);
-        transaction.Signature = signature;
     }
 
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -545,14 +604,16 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         EncodeTx(stream, item, rlpBehaviors);
     }
 
-    public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         RlpStream rlpStream = new(GetTxLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
         EncodeTx(rlpStream, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (item is null)
         {
@@ -587,7 +648,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         switch (item.Type)
         {
             case TxType.Legacy:
-                EncodeLegacyWithoutPayload(item, stream);
+                TxDecoder<T>.EncodeLegacyWithoutPayload(item, stream);
                 break;
             case TxType.AccessList:
                 EncodeAccessListPayloadWithoutPayload(item, stream, rlpBehaviors);
@@ -599,7 +660,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
                 EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
                 break;
             case TxType.DepositTx:
-                OptimismTxDecoder.EncodeDepositTxPayloadWithoutPayload(item as DepositTransaction, stream);
+                TxDecoder<T>.EncodeDepositTxPayloadWithoutPayload(item, stream);
                 break;
         }
 
@@ -607,22 +668,32 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
         {
-            EncodeShardBlobNetworkPayload(item, stream, rlpBehaviors);
+            switch (item.Type)
+            {
+                case TxType.Blob:
+                    TxDecoder<T>.EncodeShardBlobNetworkPayload(item, stream, rlpBehaviors);
+                    break;
+            }
         }
     }
 
     private static void EncodeSignature(RlpStream stream, T item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
     {
-        if (item.Type == TxType.DepositTx) return;
+        if (item.Type == TxType.DepositTx)
+            return;
 
-        if (forSigning && includeSigChainIdHack)
+        if (forSigning)
         {
-            stream.Encode(chainId);
-            stream.Encode(Rlp.OfEmptyByteArray);
-            stream.Encode(Rlp.OfEmptyByteArray);
+            if (includeSigChainIdHack)
+            {
+                stream.Encode(chainId);
+                stream.Encode(Rlp.OfEmptyByteArray);
+                stream.Encode(Rlp.OfEmptyByteArray);
+            }
         }
         else
         {
+            // TODO: move it to a signature decoder
             if (item.Signature is null)
             {
                 stream.Encode(0);
@@ -705,6 +776,18 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
                + Rlp.LengthOf(networkWrapper.Proofs);
     }
 
+    private static int GetDepositTxContentLength(T item)
+    {
+        return Rlp.LengthOf(item.SourceHash)
+               + Rlp.LengthOf(item.SenderAddress)
+               + Rlp.LengthOf(item.To)
+               + Rlp.LengthOf(item.Mint)
+               + Rlp.LengthOf(item.Value)
+               + Rlp.LengthOf(item.GasLimit)
+               + Rlp.LengthOf(item.IsOPSystemTransaction)
+               + Rlp.LengthOf(item.Data);
+    }
+
     private int GetContentLength(T item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0, bool withNetworkWrapper = false)
     {
         bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && item.Type == TxType.Legacy;
@@ -712,7 +795,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         switch (item.Type)
         {
             case TxType.Legacy:
-                contentLength = GetLegacyContentLength(item);
+                contentLength = TxDecoder<T>.GetLegacyContentLength(item);
                 break;
             case TxType.AccessList:
                 contentLength = GetAccessListContentLength(item);
@@ -724,15 +807,18 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
                 contentLength = GetShardBlobContentLength(item);
                 break;
             case TxType.DepositTx:
-                contentLength = OptimismTxDecoder.GetDepositTxContentLength(item as DepositTransaction);
+                contentLength = TxDecoder<T>.GetDepositTxContentLength(item);
                 break;
         }
 
         contentLength += GetSignatureContentLength(item, forSigning, chainId, includeSigChainIdHack);
 
-        if (withNetworkWrapper && item.Type == TxType.Blob)
+        if (withNetworkWrapper)
         {
-            contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
+            if (item.Type == TxType.Blob)
+            {
+                contentLength = TxDecoder<T>.GetShardBlobNetworkWrapperContentLength(item, contentLength);
+            }
         }
         return contentLength;
     }
@@ -744,11 +830,14 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
         int contentLength = 0;
 
-        if (forSigning && includeSigChainIdHack)
+        if (forSigning)
         {
-            contentLength += Rlp.LengthOf(chainId);
-            contentLength += 1;
-            contentLength += 1;
+            if (includeSigChainIdHack)
+            {
+                contentLength += Rlp.LengthOf(chainId);
+                contentLength += 1;
+                contentLength += 1;
+            }
         }
         else
         {
@@ -766,7 +855,8 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
     /// </summary>
     public int GetLength(T tx, RlpBehaviors rlpBehaviors)
     {
-        int txContentLength = GetContentLength(tx, false, withNetworkWrapper: (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
+        int txContentLength = GetContentLength(tx, false,
+            withNetworkWrapper: (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
         bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
@@ -780,7 +870,8 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
     private int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId, (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
+        int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId,
+            (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
         bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
