@@ -15,7 +15,7 @@ namespace Nethermind.Shutter;
 public static class ShutterHelpers
 {
     public static readonly TimeSpan SlotLength = GnosisSpecProvider.SlotLength;
-    private static readonly TimeSpan _upToDateCutoff = SlotLength * 2;
+    private static readonly TimeSpan _upToDateCutoff = TimeSpan.FromSeconds(30);
     public class ShutterSlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public static ulong GetGenesisTimestampMs(ISpecProvider specProvider) => 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
