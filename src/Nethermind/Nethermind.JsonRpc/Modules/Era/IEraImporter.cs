@@ -14,7 +14,7 @@ public interface IEraImporter
 
     event EventHandler<VerificationProgressArgs> VerificationProgress;
 
-    Task Import(string src, long start, long end, string? accumulatorFile=null, CancellationToken cancellation = default);
+    Task Import(string src, long start, long end, string? accumulatorFile = null, CancellationToken cancellation = default);
     Task ImportAsArchiveSync(string src, CancellationToken cancellation);
     Task VerifyEraFiles(string[] eraFiles, byte[][] accumulators, CancellationToken cancellation = default);
 

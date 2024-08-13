@@ -97,7 +97,7 @@ public class AdminEraService : IAdminEraService
         if (!_fileSystem.Directory.Exists(source))
             //TODO consider if this is too sensitive information
             return ResultWrapper<string>.Fail($"The directory does not exists.");
-        if(!_fileSystem.File.Exists(accumulatorFile))
+        if (!_fileSystem.File.Exists(accumulatorFile))
             return ResultWrapper<string>.Fail($"The file does not exists.");
 
         //TODO check if node is syncing

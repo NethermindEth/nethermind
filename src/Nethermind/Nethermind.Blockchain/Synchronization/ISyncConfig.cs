@@ -145,7 +145,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "Directory of era1 archives to be imported before starting in full sync mode.", DefaultValue = "", HiddenFromDocs = false)]
     public string ImportDirectory { get; set; }
-    
+
     [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
 

@@ -72,7 +72,7 @@ public class EraExporter : IEraExporter
         int processedSinceLast = 0;
         int txProcessedSinceLast = 0;
 
-        List<byte[]> eraRoots = new ();
+        List<byte[]> eraRoots = new();
         string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
         _fileSystem.File.Delete(accumulatorPath);
         for (long i = start; i <= end; i += size)
@@ -99,7 +99,7 @@ public class EraExporter : IEraExporter
                 }
 
                 UInt256 td = block.TotalDifficulty ?? _blockTree.GetInfo(block.Number, block.Hash).Info?.TotalDifficulty ?? block.Difficulty;
-                
+
                 if (!await builder.Add(block, receipts, td, cancellation) || y == i + size || y == end)
                 {
                     byte[] root = await builder.Finalize();

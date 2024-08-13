@@ -61,7 +61,7 @@ public class EraImporter : IEraImporter
         string[] eraFiles = EraReader.GetAllEraFiles(src, _networkName, _fileSystem).ToArray();
 
         EraStore eraStore = new(eraFiles, _fileSystem);
-        
+
         if (!string.IsNullOrEmpty(accumulatorFile))
         {
             await VerifyEraFiles(src, accumulatorFile, cancellation);
@@ -125,7 +125,7 @@ public class EraImporter : IEraImporter
                 if (processBlock)
                     await SuggestBlock(b, r, processBlock);
                 else
-                    InsertBlockAndReceipts(b,r);
+                    InsertBlockAndReceipts(b, r);
 
                 blocksProcessed++;
                 txProcessed += b.Transactions.Length;

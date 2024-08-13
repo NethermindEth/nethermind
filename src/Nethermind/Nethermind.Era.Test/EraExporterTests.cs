@@ -88,7 +88,7 @@ public class EraExporterTests
 
         //await sut.Export("test", 0, ChainLength - 1, 8192);
         const string NetworkName = "holesky";
-        foreach (var item in EraReader.GetAllEraFiles(@"C:/ethereum/export",NetworkName).Skip(2))
+        foreach (var item in EraReader.GetAllEraFiles(@"C:/ethereum/export", NetworkName).Skip(2))
         {
 
             using EraReader reader = await EraReader.Create(item);

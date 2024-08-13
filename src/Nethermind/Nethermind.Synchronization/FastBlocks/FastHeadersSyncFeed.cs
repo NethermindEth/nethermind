@@ -157,7 +157,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncReport? syncReport,
             IDb metadataDb,
             ILogManager? logManager,
-            bool alwaysStartHeaderSync = false):base(metadataDb, specProvider, logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed)))
+            bool alwaysStartHeaderSync = false) : base(metadataDb, specProvider, logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed)))
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));

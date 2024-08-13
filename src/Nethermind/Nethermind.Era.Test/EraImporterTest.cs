@@ -133,7 +133,7 @@ public class EraImporterTest
         var destinationPath = "abc";
         const int EpochSize = 16;
         await exporter.Export(destinationPath!, 0, ChainLength - 1, EpochSize);
-        var accumulators = fileSystem.File.ReadAllLines(Path.Combine(destinationPath, EraExporter.AccumulatorFileName)).Select(s=> Bytes.FromHexString(s)).ToArray();
+        var accumulators = fileSystem.File.ReadAllLines(Path.Combine(destinationPath, EraExporter.AccumulatorFileName)).Select(s => Bytes.FromHexString(s)).ToArray();
         accumulators[accumulators.Length - 1] = new byte[32];
 
         EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), NetworkName);

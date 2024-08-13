@@ -409,7 +409,7 @@ public class Era1ModuleTests
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
         EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
         await exporter.Export("test", 0, ChainLength - 1);
-    
+
         BlockTree importTree = Build.A.BlockTree()
             .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
 
