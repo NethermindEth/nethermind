@@ -4,7 +4,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public class MyTxDecoder(bool lazyHash = true) : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
+public class MyTxDecoder(bool lazyHash = true) /* : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction> */
 {
     public const int MaxDelayedHashTxnSize = 32768;
     public static readonly MyTxDecoder Instance = new(lazyHash: true);
@@ -36,29 +36,30 @@ public class MyTxDecoder(bool lazyHash = true) : IRlpStreamDecoder<Transaction>,
         }
 
         Span<byte> transactionSequence = rlpStream.PeekNextItem();
-        TxType txType = (TxType)0xFF; // TODO: UNKNOWN
-
+        TxType txType = TxType.Legacy; // TODO: We're defaulting to `Legacy` like in the original code
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
             if (rlpStream.PeekByte() <= 0x7F) // it is typed transactions
             {
                 transactionSequence = rlpStream.Peek(rlpStream.Length);
                 txType = (TxType)rlpStream.ReadByte();
+
                 if (txType == TxType.Legacy)
                 {
-                    throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope.");
+                    throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope");
                 }
             }
         }
         else if (!rlpStream.IsSequenceNext())
         {
-            transactionSequence = rlpStream.Peek(rlpStream.ReadPrefixAndContentLength().ContentLength);
+            (int _, int ContentLength) = rlpStream.ReadPrefixAndContentLength();
+            transactionSequence = rlpStream.Peek(ContentLength);
             txType = (TxType)rlpStream.ReadByte();
+
             if (txType == TxType.Legacy)
             {
-                throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope.");
+                throw new RlpException("Legacy transactions are not allowed in EIP-2718 Typed Transaction Envelope");
             }
-
         }
 
         AbstractTxDecoder decoder = DecoderFor(txType);
@@ -74,28 +75,24 @@ public class MyTxDecoder(bool lazyHash = true) : IRlpStreamDecoder<Transaction>,
         }
 
         int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
-        TxType txType = (TxType)0xFF; // TODO: UNKNOWN
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
+        TxType txType = TxType.Legacy; // TODO: We're defaulting to `Legacy` like in the original code
+        if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
-            byte firstByte = decoderContext.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
+            if (decoderContext.PeekByte() <= 0x7F) // it is typed transactions
             {
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
                 txType = (TxType)decoderContext.ReadByte();
             }
         }
-        else
+        else if (!decoderContext.IsSequenceNext())
         {
-            if (!decoderContext.IsSequenceNext())
-            {
-                (int _, int ContentLength) = decoderContext.ReadPrefixAndContentLength();
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(ContentLength);
-                txType = (TxType)decoderContext.ReadByte();
-            }
+            (int _, int ContentLength) = decoderContext.ReadPrefixAndContentLength();
+            txSequenceStart = decoderContext.Position;
+            transactionSequence = decoderContext.Peek(ContentLength);
+            txType = (TxType)decoderContext.ReadByte();
         }
 
         AbstractTxDecoder decoder = DecoderFor(txType);
