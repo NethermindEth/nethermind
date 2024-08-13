@@ -4,24 +4,19 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
+public class MyTxDecoder(bool lazyHash = true) : IRlpStreamDecoder<Transaction>, IRlpValueDecoder<Transaction>
 {
-    private readonly Dictionary<byte, AbstractTxDecoder> _decoders;
-
-    private MyTxDecoder(bool lazyHash)
-    {
-        _decoders = new() {
-            { (byte)TxType.Legacy, new LegacyTxDecoder(lazyHash) },
-            { (byte)TxType.AccessList, new AccessListTxDecoder(lazyHash) },
-            { (byte)TxType.EIP1559, new EIP1559TxDecoder(lazyHash) },
-            { (byte)TxType.Blob, new BlobTxDecoder(lazyHash) },
-            { (byte)TxType.DepositTx, new OptimismTxDecoder(lazyHash) }
-        };
-    }
-
+    public const int MaxDelayedHashTxnSize = 32768;
     public readonly MyTxDecoder Instance = new(lazyHash: true);
-
     public readonly MyTxDecoder InstanceWithoutLazyHash = new(lazyHash: false);
+
+    private readonly Dictionary<byte, AbstractTxDecoder> _decoders = new() {
+        { (byte)TxType.Legacy, new LegacyTxDecoder(lazyHash) },
+        { (byte)TxType.AccessList, new AccessListTxDecoder(lazyHash) },
+        { (byte)TxType.EIP1559, new EIP1559TxDecoder(lazyHash) },
+        { (byte)TxType.Blob, new BlobTxDecoder(lazyHash) },
+        { (byte)TxType.DepositTx, new OptimismTxDecoder(lazyHash) }
+    };
 
     private AbstractTxDecoder DecoderFor(TxType txType)
     {
