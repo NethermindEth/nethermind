@@ -13,8 +13,8 @@ namespace Nethermind.Serialization.Rlp;
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
     public const int MaxDelayedHashTxnSize = 32768;
-    public static readonly TxDecoder Instance = new TxDecoder();
-    public static readonly TxDecoder InstanceWithoutLazyHash = new TxDecoder(false);
+    public static readonly TxDecoder Instance = new();
+    public static readonly TxDecoder InstanceWithoutLazyHash = new(false);
     public static readonly ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
 
     public TxDecoder() : base(true) // Rlp will try to find empty constructor.
@@ -33,18 +33,10 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
 public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
 
-public class TxDecoder<T> :
-    IRlpStreamDecoder<T>,
-    IRlpValueDecoder<T>
-    where T : Transaction, new()
+public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : Transaction, new()
 {
     private readonly AccessListDecoder _accessListDecoder = new();
-    private readonly bool _lazyHash;
-
-    protected TxDecoder(bool lazyHash = true)
-    {
-        _lazyHash = lazyHash;
-    }
+    private readonly bool _lazyHash = lazyHash;
 
     protected virtual T NewTx()
     {
@@ -65,7 +57,7 @@ public class TxDecoder<T> :
         transaction.Type = txType;
 
         int positionAfterNetworkWrapper = 0;
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
         {
             int networkWrapperLength = rlpStream.ReadSequenceLength();
             positionAfterNetworkWrapper = rlpStream.Position + networkWrapperLength;
@@ -100,12 +92,12 @@ public class TxDecoder<T> :
             DecodeSignature(rlpStream, rlpBehaviors, transaction);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
             rlpStream.Check(lastCheck);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
         {
             switch (transaction.Type)
             {
@@ -126,7 +118,7 @@ public class TxDecoder<T> :
         }
         else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            if (_lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHashNoLock(transactionSequence);
@@ -156,8 +148,7 @@ public class TxDecoder<T> :
         txType = TxType.Legacy;
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
         {
-            byte firstByte = rlpStream.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
+            if (rlpStream.PeekByte() <= 0x7F) // it is typed transactions
             {
                 transactionSequence = DecodeTxType(rlpStream, rlpStream.Length, out txType);
             }
@@ -382,12 +373,7 @@ public class TxDecoder<T> :
         stream.Encode(item.Data);
     }
 
-    // b9018201f9017e86796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f90111f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144
-    // b8__ca01f8__c786796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f8__5bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144000000
-
-    public T? Decode(ref Rlp.ValueDecoderContext decoderContext,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-
+    public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T transaction = null;
         Decode(ref decoderContext, ref transaction, rlpBehaviors);
@@ -396,8 +382,7 @@ public class TxDecoder<T> :
     }
 
 
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
         {
@@ -414,8 +399,7 @@ public class TxDecoder<T> :
 
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
         {
-            byte firstByte = decoderContext.PeekByte();
-            if (firstByte <= 0x7f) // it is typed transactions
+            if (decoderContext.PeekByte() <= 0x7F) // it is typed transactions
             {
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
@@ -426,16 +410,15 @@ public class TxDecoder<T> :
         {
             if (!decoderContext.IsSequenceNext())
             {
-                (int PrefixLength, int ContentLength) prefixAndContentLength =
-                    decoderContext.ReadPrefixAndContentLength();
+                (_, int ContentLength) = decoderContext.ReadPrefixAndContentLength();
                 txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
+                transactionSequence = decoderContext.Peek(ContentLength);
                 transaction.Type = (TxType)decoderContext.ReadByte();
             }
         }
 
         int networkWrapperCheck = 0;
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
         {
             int networkWrapperLength = decoderContext.ReadSequenceLength();
             networkWrapperCheck = decoderContext.Position + networkWrapperLength;
@@ -521,10 +504,7 @@ public class TxDecoder<T> :
         }
     }
 
-    private static void DecodeSignature(
-        RlpStream rlpStream,
-        RlpBehaviors rlpBehaviors,
-        T transaction)
+    private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, T transaction)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -532,10 +512,7 @@ public class TxDecoder<T> :
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void DecodeSignature(
-        ref Rlp.ValueDecoderContext decoderContext,
-        RlpBehaviors rlpBehaviors,
-        T transaction)
+    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, T transaction)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
@@ -543,12 +520,7 @@ public class TxDecoder<T> :
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void ApplySignature(
-        T transaction,
-        ulong v,
-        ReadOnlySpan<byte> rBytes,
-        ReadOnlySpan<byte> sBytes,
-        RlpBehaviors rlpBehaviors)
+    private static void ApplySignature(T transaction, ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, RlpBehaviors rlpBehaviors)
     {
         if (transaction.Type == TxType.DepositTx && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty) return;
 
@@ -604,16 +576,14 @@ public class TxDecoder<T> :
         EncodeTx(stream, item, rlpBehaviors);
     }
 
-    public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         RlpStream rlpStream = new(GetTxLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
         EncodeTx(rlpStream, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (item is null)
         {
@@ -623,13 +593,12 @@ public class TxDecoder<T> :
 
         bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && item.Type == TxType.Legacy;
 
-        int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId,
-            (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
+        int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId, rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
         int sequenceLength = Rlp.LengthOfSequence(contentLength);
 
         if (item.Type != TxType.Legacy)
         {
-            if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
+            if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
             {
                 stream.StartByteArray(sequenceLength + 1, false);
             }
@@ -637,7 +606,7 @@ public class TxDecoder<T> :
             stream.WriteByte((byte)item.Type);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && item.MayHaveNetworkForm)
         {
             stream.StartSequence(contentLength);
             contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId, false);
@@ -666,7 +635,7 @@ public class TxDecoder<T> :
 
         EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
 
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && item.MayHaveNetworkForm)
         {
             switch (item.Type)
             {
@@ -679,8 +648,7 @@ public class TxDecoder<T> :
 
     private static void EncodeSignature(RlpStream stream, T item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
     {
-        if (item.Type == TxType.DepositTx)
-            return;
+        if (item.Type == TxType.DepositTx) return;
 
         if (forSigning)
         {
@@ -693,7 +661,6 @@ public class TxDecoder<T> :
         }
         else
         {
-            // TODO: move it to a signature decoder
             if (item.Signature is null)
             {
                 stream.Encode(0);
@@ -790,7 +757,7 @@ public class TxDecoder<T> :
 
     private int GetContentLength(T item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0, bool withNetworkWrapper = false)
     {
-        bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && item.Type == TxType.Legacy;
+        bool includeSigChainIdHack = item.Type == TxType.Legacy && isEip155Enabled && chainId != 0;
         int contentLength = 0;
         switch (item.Type)
         {
@@ -826,7 +793,9 @@ public class TxDecoder<T> :
     private static int GetSignatureContentLength(T item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
     {
         if (item.Type == TxType.DepositTx)
+        {
             return 0;
+        }
 
         int contentLength = 0;
 
@@ -841,10 +810,18 @@ public class TxDecoder<T> :
         }
         else
         {
-            bool signatureIsNull = item.Signature is null;
-            contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
-            contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
-            contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+            if (item.Signature is null)
+            {
+                contentLength += 1;
+                contentLength += 1;
+                contentLength += 1;
+            }
+            else
+            {
+                contentLength += Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
+                contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+            }
         }
 
         return contentLength;
@@ -855,11 +832,10 @@ public class TxDecoder<T> :
     /// </summary>
     public int GetLength(T tx, RlpBehaviors rlpBehaviors)
     {
-        int txContentLength = GetContentLength(tx, false,
-            withNetworkWrapper: (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
+        int txContentLength = GetContentLength(tx, false, withNetworkWrapper: rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
-        bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
+        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
         int result = tx.Type != TxType.Legacy
             ? isForTxRoot
                 ? (1 + txPayloadLength)
@@ -870,11 +846,10 @@ public class TxDecoder<T> :
 
     private int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId,
-            (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
+        int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId, rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
-        bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
+        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
         int result = tx.Type != TxType.Legacy
             ? isForTxRoot
                 ? (1 + txPayloadLength)
