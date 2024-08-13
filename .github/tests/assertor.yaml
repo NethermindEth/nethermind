@@ -12,7 +12,7 @@ participants_matrix:
    - cl_type: grandine
 network_params:
   preset: "minimal"
-mev_type: "mev-rs"
+mev_type: "flashbots"
 additional_services:
   - assertoor
 <ASSERTOOR_PARAMS_PLACEHOLDER>
