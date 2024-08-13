@@ -107,7 +107,7 @@ public sealed class MyTxDecoder : IRlpStreamDecoder<Transaction>, IRlpValueDecod
         return decoder.Decode(txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
-    public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         AbstractTxDecoder decoder = DecoderFor(item.Type);
         decoder.Encode(item, stream, rlpBehaviors);
