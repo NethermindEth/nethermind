@@ -104,7 +104,7 @@ namespace Nethermind.Evm
         // As we can add here from VM, we need it as ICollection
         public ICollection<Address> DestroyList => _destroyList;
         // As we can add here from VM, we need it as ICollection
-        public ICollection<Address> CreateList => _createList;
+        public ICollection<AddressAsKey> CreateList => _createList;
         // As we can add here from VM, we need it as ICollection
         public ICollection<LogEntry> Logs => _logs;
 
@@ -112,7 +112,7 @@ namespace Nethermind.Evm
         private readonly JournalSet<StorageCell> _accessedStorageCells;
         private readonly JournalCollection<LogEntry> _logs;
         private readonly JournalSet<Address> _destroyList;
-        private readonly HashSet<Address> _createList;
+        private readonly HashSet<AddressAsKey> _createList;
         private readonly int _accessedAddressesSnapshot;
         private readonly int _accessedStorageKeysSnapshot;
         private readonly int _destroyListSnapshot;
@@ -190,7 +190,7 @@ namespace Nethermind.Evm
                 _accessedAddresses = new JournalSet<Address>();
                 _accessedStorageCells = new JournalSet<StorageCell>();
                 _destroyList = new JournalSet<Address>();
-                _createList = new HashSet<Address>();
+                _createList = new HashSet<AddressAsKey>();
                 _logs = new JournalCollection<LogEntry>();
             }
             if (executionType.IsAnyCreate())

@@ -17,19 +17,13 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(4);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 15L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-        {
-            return 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
-        }
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            return (inputData, true);
+            return (inputData.ToArray(), true);
         }
     }
 }

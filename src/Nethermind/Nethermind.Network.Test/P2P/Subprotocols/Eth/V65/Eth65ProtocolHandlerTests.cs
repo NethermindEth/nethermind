@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -152,7 +153,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     x[1] = tx;
                     return true;
                 });
-            GetPooledTransactionsMessage request = new(TestItem.Keccaks);
+            using GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
             PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
@@ -176,7 +177,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     x[1] = tx;
                     return true;
                 });
-            GetPooledTransactionsMessage request = new(new Hash256[2048]);
+            using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
             PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
@@ -185,8 +186,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void should_handle_NewPooledTransactionHashesMessage([Values(true, false)] bool canGossipTransactions)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
-            NewPooledTransactionHashesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB });
-            IMessageSerializationService serializationService = Build.A.SerializationService().WithEth65().TestObject;
+            using NewPooledTransactionHashesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB }.ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);

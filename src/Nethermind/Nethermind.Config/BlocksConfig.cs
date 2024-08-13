@@ -24,6 +24,7 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
+        public bool PreWarmStateOnBlockProcessing { get; set; } = true;
 
         public string ExtraData
         {

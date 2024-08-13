@@ -106,13 +106,13 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             if ((uint)lengthOfLength > 4)
             {
                 // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                throw new RlpException("Expected length of length less or equal 4");
+                ThrowSequenceLengthTooLong();
             }
 
             int length = PeekDeserializeLength(1, lengthOfLength);
             if (length < 56)
             {
-                throw new RlpException($"Expected length greater or equal 56 and was {length}");
+                ThrowLengthTooLong(length);
             }
 
             result = (lengthOfLength + 1, length);
@@ -127,7 +127,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
             if (contentLength < 56)
             {
-                throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                ThrowLengthTooLong(contentLength);
             }
 
 
@@ -135,6 +135,20 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         }
 
         return result;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowSequenceLengthTooLong()
+        {
+            throw new RlpException("Expected length of length less or equal 4");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowLengthTooLong(int length)
+        {
+            throw new RlpException($"Expected length greater or equal 56 and was {length}");
+        }
     }
 
     public int ReadSequenceLength()
@@ -265,7 +279,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         return Data![_position];
     }
 
-    private void SkipBytes(int length)
+    public void SkipBytes(int length)
     {
         _position += length;
     }
@@ -343,23 +357,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
     public byte[] DecodeByteArray()
     {
-        var span = DecodeByteArraySpan();
-        if (span.Length == 0)
-        {
-            return Array.Empty<byte>();
-        }
-
-        if (span.Length == 1)
-        {
-            int value = span[0];
-            var arrays = RlpStream.SingleByteArrays;
-            if ((uint)value < (uint)arrays.Length)
-            {
-                return arrays[value];
-            }
-        }
-
-        return span.ToArray();
+        return Rlp.ByteSpanToArray(DecodeByteArraySpan());
     }
 
     public ReadOnlySpan<byte> DecodeByteArraySpan()

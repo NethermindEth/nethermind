@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
@@ -17,20 +19,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [Parallelizable(ParallelScope.All)]
     public class ReceiptsMessageSerializerTests
     {
-        private static void Test(TxReceipt[][] txReceipts)
+        private static void Test(TxReceipt[][]? txReceipts)
         {
-            ReceiptsMessage message = new(txReceipts);
+            using ReceiptsMessage message = new(txReceipts?.ToPooledList());
             ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
             var serialized = serializer.Serialize(message);
-            ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+            using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
             if (txReceipts is null)
             {
-                Assert.That(deserialized.TxReceipts.Length, Is.EqualTo(0));
+                Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(0));
             }
             else
             {
-                Assert.That(deserialized.TxReceipts.Length, Is.EqualTo(txReceipts.Length), "length");
+                Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(txReceipts.Length), "length");
                 for (int i = 0; i < txReceipts.Length; i++)
                 {
                     if (txReceipts[i] is null)
@@ -74,14 +76,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+            TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject], [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
             Test(data);
         }
 
         [Test]
         public void Roundtrip_with_IgnoreOutputs()
         {
-            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+            TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject], [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
             foreach (TxReceipt[] receipts in data)
             {
                 receipts.SetSkipStateAndStatusInRlp(true);
@@ -92,7 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_eip658()
         {
-            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(MainnetSpecProvider.ConstantinopleFixBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+            TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], [Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(MainnetSpecProvider.ConstantinopleFixBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
             Test(data);
         }
 
@@ -105,7 +107,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_nulls()
         {
-            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject }, null, new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+            TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], null, new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject }];
             Test(data);
         }
 
@@ -113,14 +115,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Deserialize_empty()
         {
             ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-            serializer.Deserialize(new byte[0]).TxReceipts.Should().HaveCount(0);
+            using ReceiptsMessage receiptsMessage = serializer.Deserialize(Array.Empty<byte>());
+            receiptsMessage.TxReceipts.Should().HaveCount(0);
         }
 
         [Test]
         public void Deserialize_non_empty_but_bytebuffer_starts_with_empty()
         {
-            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
-            ReceiptsMessage message = new(data);
+            TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject], [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
+            using ReceiptsMessage message = new(data.ToPooledList());
             ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
             IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
@@ -128,9 +131,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             buffer.ReadByte();
 
             serializer.Serialize(buffer, message);
-            ReceiptsMessage deserialized = serializer.Deserialize(buffer);
+            using ReceiptsMessage deserialized = serializer.Deserialize(buffer);
 
-            deserialized.TxReceipts.Length.Should().Be(data.Length);
+            deserialized.TxReceipts.Count.Should().Be(data.Length);
         }
 
         [Test]
@@ -138,7 +141,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             byte[] bytes = Bytes.FromHexString("f9012ef9012bf90128a08ccc6709a5df7acef07f97c5681356b6c37cfac15b554aff68e986f57116df2e825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0");
             ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-            ReceiptsMessage message = serializer.Deserialize(bytes);
+            using ReceiptsMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             Assert.That(serialized, Is.EqualTo(bytes));
         }
@@ -146,14 +149,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_one_receipt_with_accessList()
         {
-            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject } };
+            TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject]];
             Test(data);
         }
 
         [Test]
         public void Roundtrip_with_both_txTypes_of_receipt()
         {
-            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+            TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject], [Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
             Test(data);
         }
     }

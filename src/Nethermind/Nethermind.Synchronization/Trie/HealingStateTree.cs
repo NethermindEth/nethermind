@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -18,7 +19,7 @@ public class HealingStateTree : StateTree
 
     [DebuggerStepThrough]
     public HealingStateTree(ITrieStore? store, ILogManager? logManager)
-        : base(store, logManager)
+        : base(store.GetTrieStore(null), logManager)
     {
     }
 
@@ -70,11 +71,11 @@ public class HealingStateTree : StateTree
             GetTrieNodesRequest request = new()
             {
                 RootHash = rootHash,
-                AccountAndStoragePaths = new[]
+                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
                 {
-                    new PathGroup
+                    new()
                     {
-                        Group = new[] { Nibbles.EncodePath(pathPart) }
+                        Group = [Nibbles.EncodePath(pathPart)]
                     }
                 }
             };
@@ -82,7 +83,8 @@ public class HealingStateTree : StateTree
             byte[]? rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                TrieStore.Set(rlpHash, rlp);
+                TreePath path = TreePath.FromNibble(pathPart);
+                TrieStore.Set(path, rlpHash, rlp);
                 return true;
             }
         }

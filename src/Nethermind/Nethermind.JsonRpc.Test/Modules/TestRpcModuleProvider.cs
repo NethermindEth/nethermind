@@ -20,6 +20,8 @@ using Nethermind.Serialization.Json;
 
 using NSubstitute;
 
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
+
 namespace Nethermind.JsonRpc.Test.Modules
 {
     internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IRpcModule
@@ -60,9 +62,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IJsonSerializer Serializer => _provider.Serializer;
         public IReadOnlyCollection<string> Enabled => _provider.All;
         public IReadOnlyCollection<string> All => _provider.All;
-        public ModuleResolution Check(string methodName, JsonRpcContext context) => _provider.Check(methodName, context);
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module) => _provider.Check(methodName, context, out module);
 
-        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName) => _provider.Resolve(methodName);
+        public ResolvedMethodInfo? Resolve(string methodName) => _provider.Resolve(methodName);
 
         public Task<IRpcModule> Rent(string methodName, bool readOnly) => _provider.Rent(methodName, readOnly);
 

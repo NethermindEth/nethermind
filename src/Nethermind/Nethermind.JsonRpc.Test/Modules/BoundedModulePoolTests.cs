@@ -4,6 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -16,6 +17,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Exceptions;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -54,7 +56,9 @@ public class BoundedModulePoolTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IGasPriceOracle>(),
-            Substitute.For<IEthSyncingInfo>()),
+            Substitute.For<IEthSyncingInfo>(),
+            Substitute.For<IFeeHistoryOracle>(),
+            new BlocksConfig().SecondsPerSlot),
              1, 1000);
 
         return Task.CompletedTask;

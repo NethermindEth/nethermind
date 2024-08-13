@@ -28,23 +28,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(destination, false).Should().Be(isValid);
-        }
-
-        [TestCase(-1, false)]
-        [TestCase(0, true)]
-        [TestCase(1, false)]
-        public void Validates_when_only_begin_sub_present(int destination, bool isValid)
-        {
-            byte[] code =
-            {
-                (byte)Instruction.BEGINSUB
-            };
-
-            CodeInfo codeInfo = new(code);
-
-
-            codeInfo.ValidateJump(destination, true).Should().Be(isValid);
+            codeInfo.ValidateJump(destination).Should().Be(isValid);
         }
 
         [Test]
@@ -58,23 +42,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(1, true).Should().BeFalse();
-            codeInfo.ValidateJump(1, false).Should().BeFalse();
-        }
-
-        [Test]
-        public void Validates_when_push_with_data_like_begin_sub()
-        {
-            byte[] code =
-            {
-                (byte)Instruction.PUSH1,
-                (byte)Instruction.BEGINSUB
-            };
-
-            CodeInfo codeInfo = new(code);
-
-            codeInfo.ValidateJump(1, true).Should().BeFalse();
-            codeInfo.ValidateJump(1, false).Should().BeFalse();
+            codeInfo.ValidateJump(1).Should().BeFalse();
         }
 
         [Test]
@@ -89,7 +57,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(11, false).Should().BeTrue();
+            codeInfo.ValidateJump(11).Should().BeTrue();
         }
 
         [Test]
@@ -104,7 +72,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(31, false).Should().BeTrue();
+            codeInfo.ValidateJump(31).Should().BeTrue();
         }
 
         [Test]
@@ -117,7 +85,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false).Should().BeTrue();
+            codeInfo.ValidateJump(10).Should().BeTrue();
         }
 
         [Test]
@@ -130,7 +98,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false).Should().BeFalse();
+            codeInfo.ValidateJump(10).Should().BeFalse();
         }
 
         [Test]
@@ -140,7 +108,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false).Should().BeTrue();
+            codeInfo.ValidateJump(10).Should().BeTrue();
         }
 
         [Test]
@@ -150,7 +118,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false).Should().BeFalse();
+            codeInfo.ValidateJump(10).Should().BeFalse();
         }
 
         [Test]
@@ -164,8 +132,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false).Should().BeFalse();
-            codeInfo.ValidateJump(11, false).Should().BeFalse(); // 0x5b but not JUMPDEST but data
+            codeInfo.ValidateJump(10).Should().BeFalse();
+            codeInfo.ValidateJump(11).Should().BeFalse(); // 0x5b but not JUMPDEST but data
         }
 
         [TestCase(1)]
@@ -231,15 +199,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             for (i = 0; i < Vector256<byte>.Count * 2 + Vector128<byte>.Count; i++)
             {
-                codeInfo.ValidateJump(i, false).Should().BeTrue();
+                codeInfo.ValidateJump(i).Should().BeTrue();
             }
             for (; i < Vector256<byte>.Count * 3; i++)
             {
-                codeInfo.ValidateJump(i, false).Should().BeFalse();
+                codeInfo.ValidateJump(i).Should().BeFalse();
             }
             for (; i < code.Length; i++)
             {
-                codeInfo.ValidateJump(i, false).Should().BeFalse(); // Are 0x5b but not JUMPDEST but data
+                codeInfo.ValidateJump(i).Should().BeFalse(); // Are 0x5b but not JUMPDEST but data
             }
         }
     }

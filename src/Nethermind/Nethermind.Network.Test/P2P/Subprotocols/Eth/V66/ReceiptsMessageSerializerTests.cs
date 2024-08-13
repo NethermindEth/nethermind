@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             byte[] serialized = serializer.Serialize(deserializedMessage);
 
             Assert.That(serialized, Is.EqualTo(bytes));
-            Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
+            using Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
 
             TxReceipt txReceipt = ethMessage.TxReceipts[0][0];
 
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.BlockHash.Should().BeNull();
             txReceipt.Index.Should().Be(0x0);
 
-            ReceiptsMessage message = new(1111, ethMessage);
+            using ReceiptsMessage message = new(1111, ethMessage);
 
             SerializerTester.TestZero(serializer, message, rlp);
         }

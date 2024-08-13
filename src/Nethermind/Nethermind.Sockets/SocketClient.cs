@@ -11,7 +11,7 @@ namespace Nethermind.Sockets;
 
 public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMessageBorderPreservingStream
 {
-    public const int MAX_POOLED_SIZE = 5 * 1024 * 1024;
+    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * 1024 * 1024;
 
     protected readonly TStream _stream;
     protected readonly IJsonSerializer _jsonSerializer;
@@ -55,7 +55,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
             {
                 currentMessageLength += result.Read;
 
-                if (currentMessageLength >= MAX_POOLED_SIZE)
+                if (currentMessageLength >= MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
                 {
                     throw new InvalidOperationException("Message too long");
                 }
@@ -76,7 +76,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
                 else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
                 {
                     // grow the buffer 4x, but not more than max
-                    int newLength = Math.Min(buffer.Length * 4, MAX_POOLED_SIZE);
+                    int newLength = Math.Min(buffer.Length * 4, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
                     if (newLength > buffer.Length)
                     {
                         byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);

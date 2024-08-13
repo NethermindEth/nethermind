@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -19,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetByteCodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Hashes = TestItem.ValueKeccaks,
+                Hashes = TestItem.ValueKeccaks.ToPooledList(),
                 Bytes = 10
             };
 
@@ -34,7 +36,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetByteCodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Hashes = Array.Empty<ValueHash256>(),
+                Hashes = ArrayPoolList<ValueHash256>.Empty(),
                 Bytes = 10
             };
 

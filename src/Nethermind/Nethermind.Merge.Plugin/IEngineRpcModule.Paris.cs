@@ -18,7 +18,7 @@ public partial interface IEngineRpcModule : IRpcModule
     ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(TransitionConfigurationV1 beaconTransitionConfiguration);
 
     [JsonRpcMethod(
-        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+        Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);

@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using System.Text.Unicode;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -111,6 +113,11 @@ public class Block
 
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
+
+    [JsonIgnore]
+    public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
+    [JsonIgnore]
+    internal volatile int TransactionProcessed;
 
     public override string ToString() => ToString(Format.Short);
 

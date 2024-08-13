@@ -102,7 +102,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -145,7 +144,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -155,6 +153,54 @@ namespace Nethermind.Synchronization.Test
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
             Assert.That(block.Header, Is.EqualTo(localBlockTree.BestSuggestedHeader));
+        }
+
+        [TestCase(SyncMode.SnapSync, false)]
+        [TestCase(SyncMode.FastSync, false)]
+        [TestCase(SyncMode.StateNodes, false)]
+        [TestCase(SyncMode.Full, true)]
+        public void Should_accept_or_not_blocks_depends_on_sync_mode(SyncMode syncMode, bool expectBlockAccepted)
+        {
+            Context ctx = new();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+
+            StaticSelector staticSelector;
+            switch (syncMode)
+            {
+                case SyncMode.SnapSync:
+                    staticSelector = StaticSelector.SnapSync;
+                    break;
+                case SyncMode.FastSync:
+                    staticSelector = StaticSelector.FastSync;
+                    break;
+                case SyncMode.StateNodes:
+                    staticSelector = StaticSelector.StateNodesWithFastBlocks;
+                    break;
+                default:
+                    staticSelector = StaticSelector.Full;
+                    break;
+            }
+
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                staticSelector,
+                new SyncConfig(),
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
+
+            ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
+
+            block.Header.Equals(localBlockTree.BestSuggestedHeader).Should().Be(expectBlockAccepted);
         }
 
         [Test]
@@ -214,7 +260,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 testSpecProvider,
                 LimboLogs.Instance);
@@ -438,7 +483,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 testSpecProvider,
                 LimboLogs.Instance);
@@ -479,7 +523,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -512,7 +555,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -540,7 +582,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -577,7 +618,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -619,7 +659,6 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -658,15 +697,15 @@ namespace Nethermind.Synchronization.Test
                 ctx.PeerPool,
                 StaticSelector.Full,
                 new SyncConfig(),
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
             Hash256 nodeKey = TestItem.KeccakA;
             TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
-            trieStore.CommitNode(1, new NodeCommitInfo(node));
-            trieStore.FinishBlockCommit(TrieType.State, 1, node);
+            IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
+            scopedTrieStore.CommitNode(1, new NodeCommitInfo(node, TreePath.Empty));
+            scopedTrieStore.FinishBlockCommit(TrieType.State, 1, node);
 
             stateDb.KeyExists(nodeKey).Should().BeFalse();
             ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
@@ -692,7 +731,6 @@ namespace Nethermind.Synchronization.Test
                     PeerPool,
                     selector,
                     new SyncConfig(),
-                    NullWitnessCollector.Instance,
                     Policy.FullGossip,
                     MainnetSpecProvider.Instance,
                     LimboLogs.Instance);

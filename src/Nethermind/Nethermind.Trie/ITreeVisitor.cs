@@ -17,7 +17,7 @@ namespace Nethermind.Trie
 
         ReadFlags ExtraReadFlag => ReadFlags.None;
 
-        bool ShouldVisit(Hash256 nextNode);
+        bool ShouldVisit(Hash256 nodeHash);
 
         void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext);
 
@@ -39,6 +39,8 @@ namespace Nethermind.Trie
         /// Specify that this is a full table scan and should optimize for it.
         /// </summary>
         public bool IsFullDbScan { get; }
+
+        public bool IsRangeScan => IsFullDbScan;
 
         ReadFlags ExtraReadFlag => ReadFlags.None;
 

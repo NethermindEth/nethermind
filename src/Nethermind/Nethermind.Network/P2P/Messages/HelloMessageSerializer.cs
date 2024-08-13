@@ -61,13 +61,13 @@ namespace Nethermind.Network.P2P.Messages
             HelloMessage helloMessage = new();
             helloMessage.P2PVersion = rlpStream.DecodeByte();
             helloMessage.ClientId = string.Intern(rlpStream.DecodeString());
-            helloMessage.Capabilities = rlpStream.DecodeArray(ctx =>
+            helloMessage.Capabilities = rlpStream.DecodeArrayPoolList(ctx =>
             {
                 ctx.ReadSequenceLength();
                 string protocolCode = string.Intern(ctx.DecodeString());
                 int version = ctx.DecodeByte();
                 return new Capability(protocolCode, version);
-            }).ToList();
+            });
 
             helloMessage.ListenPort = rlpStream.DecodeInt();
 

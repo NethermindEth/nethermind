@@ -25,10 +25,10 @@ public class TxPoolSourceTests
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
 
         ITxPool txPool = Substitute.For<ITxPool>();
-        Dictionary<Address, Transaction[]> transactionsWithBlobs = blobCountPerTx
+        Dictionary<AddressAsKey, Transaction[]> transactionsWithBlobs = blobCountPerTx
             .Select((blobsCount, index) => (blobCount: blobsCount, index))
             .ToDictionary(
-                pair => new Address((new byte[19]).Concat(new byte[] { (byte)pair.index }).ToArray()),
+                pair => new AddressAsKey(new Address((new byte[19]).Concat(new byte[] { (byte)pair.index }).ToArray())),
                 pair => new Transaction[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
         txPool.GetPendingTransactions().Returns(new Transaction[0]);
         txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);

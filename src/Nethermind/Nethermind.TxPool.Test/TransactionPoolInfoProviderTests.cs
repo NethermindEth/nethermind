@@ -33,25 +33,25 @@ namespace Nethermind.TxPool.Test
         public void should_return_valid_pending_and_queued_transactions()
         {
             uint nonce = 3;
-            _stateReader.GetAccount(_address).Returns(new AccountStruct(nonce, UInt256.Zero));
+            _stateReader.GetNonce(_address).Returns(nonce);
             var transactions = GetTransactions();
 
             _txPool.GetPendingTransactionsBySender()
-                .Returns(new Dictionary<Address, Transaction[]> { { _address, transactions } });
+                .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, transactions } });
             var info = _infoProvider.GetInfo();
 
             info.Pending.Count.Should().Be(1);
             info.Queued.Count.Should().Be(1);
 
             var pending = info.Pending.First();
-            pending.Key.Should().Be(_address);
+            pending.Key.Value.Should().Be(_address);
             pending.Value.Count.Should().Be(3);
             VerifyNonceAndTransactions(pending.Value, 3);
             VerifyNonceAndTransactions(pending.Value, 4);
             VerifyNonceAndTransactions(pending.Value, 5);
 
             var queued = info.Queued.First();
-            queued.Key.Should().Be(_address);
+            queued.Key.Value.Should().Be(_address);
             queued.Value.Count.Should().Be(4);
             VerifyNonceAndTransactions(queued.Value, 1);
             VerifyNonceAndTransactions(queued.Value, 2);

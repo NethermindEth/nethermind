@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -19,7 +18,7 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         _api = api;
     }
 
-    protected override Task<IBlockProducer> BuildProducer()
+    protected override IBlockProducer BuildProducer()
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -35,7 +34,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
-            _api.ChainSpec,
             _api.BlockTree,
             _api.SpecProvider,
             _api.BlockValidator,
@@ -57,7 +55,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             producerEnv.TxSource,
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
-            _api.ManualBlockProductionTrigger,
             producerEnv.ReadOnlyStateProvider,
             _api.GasLimitCalculator,
             NullSealEngine.Instance,
@@ -66,6 +63,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             _api.LogManager,
             _api.Config<IBlocksConfig>());
 
-        return Task.FromResult(_api.BlockProducer);
+        return _api.BlockProducer;
     }
 }

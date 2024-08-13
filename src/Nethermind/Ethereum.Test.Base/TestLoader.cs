@@ -58,7 +58,7 @@ namespace Ethereum.Test.Base
             Assembly assembly = typeof(TTest).Assembly;
             string[] resourceNames = assembly.GetManifestResourceNames();
             string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
-            if (resourceName == null)
+            if (resourceName is null)
             {
                 throw new ArgumentException($"Cannot find test resource: {testFileName}");
             }

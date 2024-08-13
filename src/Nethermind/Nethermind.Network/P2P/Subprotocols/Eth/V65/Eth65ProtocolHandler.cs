@@ -59,9 +59,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg
-                            = Deserialize<PooledTransactionsMessage>(message.Content);
-                        Metrics.Eth65PooledTransactionsReceived++;
+                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
                         Handle(pooledTxMsg);
                     }
@@ -73,16 +71,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                     break;
                 case Eth65MessageCode.GetPooledTransactions:
-                    GetPooledTransactionsMessage getPooledTxMsg
-                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    GetPooledTransactionsMessage getPooledTxMsg = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     ReportIn(getPooledTxMsg, size);
-                    BackgroundTaskScheduler.ScheduleTask(getPooledTxMsg, Handle);
+                    BackgroundTaskScheduler.ScheduleBackgroundTask(getPooledTxMsg, Handle);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     if (CanReceiveTransactions)
                     {
-                        NewPooledTransactionHashesMessage newPooledTxMsg =
-                            Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                        NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
                         ReportIn(newPooledTxMsg, size);
                         Handle(newPooledTxMsg);
                     }
@@ -98,8 +94,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected virtual void Handle(NewPooledTransactionHashesMessage msg)
         {
-            Metrics.Eth65NewPooledTransactionHashesReceived++;
-
             AddNotifiedTransactions(msg.Hashes);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -121,12 +115,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private async Task Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
+        private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            Metrics.Eth65GetPooledTransactionsReceived++;
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            Send(await FulfillPooledTransactionsRequest(msg, cancellationToken));
+            using var message = msg;
+            var stopwatch = Stopwatch.StartNew();
+            Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
@@ -135,7 +128,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            using ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
+            ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
 
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
             for (int i = 0; i < msg.Hashes.Count; i++)
@@ -168,14 +161,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 return;
             }
 
-            using ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
+            ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
 
             foreach (Transaction tx in txs)
             {
                 if (hashes.Count == NewPooledTransactionHashesMessage.MaxCount)
                 {
-                    SendMessage(hashes);
-                    hashes.Clear();
+                    SendNewPooledTransactionMessage(hashes);
+                    hashes = new(NewPooledTransactionHashesMessage.MaxCount);
                 }
 
                 if (tx.Hash is not null)
@@ -187,15 +180,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (hashes.Count > 0)
             {
-                SendMessage(hashes);
+                SendNewPooledTransactionMessage(hashes);
+            }
+            else
+            {
+                hashes.Dispose();
             }
         }
 
-        private void SendMessage(IReadOnlyList<Hash256> hashes)
+        private void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes)
         {
             NewPooledTransactionHashesMessage msg = new(hashes);
             Send(msg);
-            Metrics.Eth65NewPooledTransactionHashesSent++;
         }
     }
 }
