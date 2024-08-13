@@ -211,7 +211,7 @@ public class ShutterTxLoader(
         {
             if (_loadFromReceipts)
             {
-                _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
+                _logger.Debug($"Found {_transactionSubmittedEvents.Count} Shutter events in recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             else
             {
@@ -265,8 +265,7 @@ public class ShutterTxLoader(
     {
         _transactionSubmittedEvents = new Queue<ISequencerContract.TransactionSubmitted>(_sequencerContract.GetEvents(eon, txPointer, headBlockNumber));
         _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
-        // todo: make debug
-        _logger.Info($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
+        _logger.Debug($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }
 
     internal struct SequencedTransaction
