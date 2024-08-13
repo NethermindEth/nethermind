@@ -63,7 +63,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
 
         Span<byte> transactionSequence = rlpStream.PeekNextItem();
         TxType txType = TxType.Legacy;
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
             if (rlpStream.PeekByte() <= 0x7F) // it is typed transactions
             {
@@ -78,8 +78,8 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         }
         else if (!rlpStream.IsSequenceNext())
         {
-            (int _, int contentLength) = rlpStream.ReadPrefixAndContentLength();
-            transactionSequence = rlpStream.Peek(contentLength);
+            (int _, int ContentLength) = rlpStream.ReadPrefixAndContentLength();
+            transactionSequence = rlpStream.Peek(ContentLength);
             txType = (TxType)rlpStream.ReadByte();
 
             if (txType == TxType.Legacy)
@@ -334,7 +334,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         int txSequenceStart = decoderContext.Position;
         ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
             if (decoderContext.PeekByte() <= 0x7F) // it is typed transactions
             {
@@ -391,12 +391,12 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
             decoderContext.Check(lastCheck);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
         {
             switch (transaction.Type)
             {
@@ -461,7 +461,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
     {
         if (transaction.Type == TxType.DepositTx && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty) return;
 
-        bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
+        bool allowUnsigned = rlpBehaviors.HasFlag(RlpBehaviors.AllowUnsigned);
         bool isSignatureOk = true;
         string signatureError = null;
         if (rBytes.Length == 0 || sBytes.Length == 0)
