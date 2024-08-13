@@ -117,19 +117,17 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             return;
         }
 
-        transaction ??= NewTx();
-        transaction.Type = TxType.Legacy;
-
         int txSequenceStart = decoderContext.Position;
         ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
+        TxType txType = TxType.Legacy;
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
             if (decoderContext.PeekByte() <= 0x7F) // it is typed transactions
             {
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
-                transaction.Type = (TxType)decoderContext.ReadByte();
+                txType = (TxType)decoderContext.ReadByte();
             }
         }
         else
@@ -139,9 +137,12 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
                 (_, int ContentLength) = decoderContext.ReadPrefixAndContentLength();
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(ContentLength);
-                transaction.Type = (TxType)decoderContext.ReadByte();
+                txType = (TxType)decoderContext.ReadByte();
             }
         }
+
+        transaction ??= NewTx();
+        transaction.Type = txType;
 
         int networkWrapperCheck = 0;
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
