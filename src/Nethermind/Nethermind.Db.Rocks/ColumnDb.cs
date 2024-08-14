@@ -154,6 +154,6 @@ public class ColumnDb : IDb
 
     public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
     {
-        throw new NotImplementedException();
+        return _mainDb.GetIterator(isOrdered, _columnFamily);
     }
 }

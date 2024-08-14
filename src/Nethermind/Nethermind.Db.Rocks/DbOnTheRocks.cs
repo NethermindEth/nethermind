@@ -1693,6 +1693,13 @@ public class DbOnTheRocks : IDb, ITunableDb
         return new RocksDbIteratorWrapper(iterator);
     }
 
+    public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false, ColumnFamilyHandle? familyHandle = null)
+    {
+        var iterator = CreateIterator(isOrdered, familyHandle);
+        iterator.SeekToFirst();
+        return new RocksDbIteratorWrapper(iterator);
+    }
+
     /// <summary>
     /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
     /// temporary higher disk usage or memory usage.

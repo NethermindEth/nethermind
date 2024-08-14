@@ -12,4 +12,10 @@
   <ItemGroup>
     <PackageReference Include="NonBlocking" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="runtimes\win-x64\native\ic.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
