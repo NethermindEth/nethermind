@@ -98,6 +98,16 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
+    public void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
+        int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
+
+        stream.StartSequence(contentLength);
+        EncodeLegacyWithoutPayload(item, stream);
+        EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
+    }
+
     private static void DecodeLegacyPayloadWithoutSig(Transaction transaction, RlpStream rlpStream)
     {
         transaction.Nonce = rlpStream.DecodeUInt256();
@@ -172,5 +182,94 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
             Signature signature = new(rBytes, sBytes, v);
             transaction.Signature = signature;
         }
+    }
+
+    private static void EncodeLegacyWithoutPayload(Transaction item, RlpStream stream)
+    {
+        stream.Encode(item.Nonce);
+        stream.Encode(item.GasPrice);
+        stream.Encode(item.GasLimit);
+        stream.Encode(item.To);
+        stream.Encode(item.Value);
+        stream.Encode(item.Data);
+    }
+
+    private static void EncodeSignature(RlpStream stream, Transaction item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
+    {
+        if (forSigning)
+        {
+            if (includeSigChainIdHack)
+            {
+                stream.Encode(chainId);
+                stream.Encode(Rlp.OfEmptyByteArray);
+                stream.Encode(Rlp.OfEmptyByteArray);
+            }
+        }
+        else
+        {
+            if (item.Signature is null)
+            {
+                stream.Encode(0);
+                stream.Encode(Bytes.Empty);
+                stream.Encode(Bytes.Empty);
+            }
+            else
+            {
+                stream.Encode(item.Signature.V);
+                stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
+                stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
+            }
+        }
+    }
+
+    private static int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
+        int contentLength = GetLegacyContentLength(item);
+        contentLength += GetSignatureContentLength(item, forSigning, chainId, includeSigChainIdHack);
+
+        return contentLength;
+    }
+
+    private static int GetLegacyContentLength(Transaction item)
+    {
+        return Rlp.LengthOf(item.Nonce)
+            + Rlp.LengthOf(item.GasPrice)
+            + Rlp.LengthOf(item.GasLimit)
+            + Rlp.LengthOf(item.To)
+            + Rlp.LengthOf(item.Value)
+            + Rlp.LengthOf(item.Data);
+    }
+
+    private static int GetSignatureContentLength(Transaction item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
+    {
+        int contentLength = 0;
+
+        if (forSigning)
+        {
+            if (includeSigChainIdHack)
+            {
+                contentLength += Rlp.LengthOf(chainId);
+                contentLength += 1;
+                contentLength += 1;
+            }
+        }
+        else
+        {
+            if (item.Signature is null)
+            {
+                contentLength += 1;
+                contentLength += 1;
+                contentLength += 1;
+            }
+            else
+            {
+                contentLength += Rlp.LengthOf(item.Signature.V);
+                contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+            }
+        }
+
+        return contentLength;
     }
 }

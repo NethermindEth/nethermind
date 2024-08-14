@@ -100,6 +100,23 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
+    public void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        int contentLength = GetContentLength(item, forSigning);
+        int sequenceLength = Rlp.LengthOfSequence(contentLength);
+
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
+        {
+            stream.StartByteArray(sequenceLength + 1, false);
+        }
+
+        stream.WriteByte((byte)item.Type);
+        stream.StartSequence(contentLength);
+
+        EncodeEip1559PayloadWithoutPayload(item, stream, rlpBehaviors);
+        EncodeSignature(stream, item, forSigning);
+    }
+
     private void DecodeEip1559PayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
@@ -182,5 +199,81 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : ITxDecoder
             Signature signature = new(rBytes, sBytes, v + Signature.VOffset);
             transaction.Signature = signature;
         }
+    }
+
+    private void EncodeEip1559PayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
+    {
+        stream.Encode(item.ChainId ?? 0);
+        stream.Encode(item.Nonce);
+        stream.Encode(item.GasPrice); // gas premium
+        stream.Encode(item.DecodedMaxFeePerGas);
+        stream.Encode(item.GasLimit);
+        stream.Encode(item.To);
+        stream.Encode(item.Value);
+        stream.Encode(item.Data);
+        _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
+    }
+
+    private static void EncodeSignature(RlpStream stream, Transaction item, bool forSigning)
+    {
+        if (!forSigning)
+        {
+            if (item.Signature is null)
+            {
+                stream.Encode(0);
+                stream.Encode(Bytes.Empty);
+                stream.Encode(Bytes.Empty);
+            }
+            else
+            {
+                stream.Encode(item.Signature.RecoveryId);
+                stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
+                stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
+            }
+        }
+    }
+
+    private int GetContentLength(Transaction item, bool forSigning)
+    {
+        var contentLength = GetEip1559ContentLength(item);
+        contentLength += GetSignatureContentLength(item, forSigning);
+
+        return contentLength;
+    }
+
+    private int GetEip1559ContentLength(Transaction item)
+    {
+        return Rlp.LengthOf(item.Nonce)
+               + Rlp.LengthOf(item.GasPrice) // gas premium
+               + Rlp.LengthOf(item.DecodedMaxFeePerGas)
+               + Rlp.LengthOf(item.GasLimit)
+               + Rlp.LengthOf(item.To)
+               + Rlp.LengthOf(item.Value)
+               + Rlp.LengthOf(item.Data)
+               + Rlp.LengthOf(item.ChainId ?? 0)
+               + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
+    }
+
+    private static int GetSignatureContentLength(Transaction item, bool forSigning)
+    {
+        int contentLength = 0;
+
+        if (!forSigning)
+        {
+            if (item.Signature is null)
+            {
+                contentLength += 1;
+                contentLength += 1;
+                contentLength += 1;
+            }
+            else
+            {
+                contentLength += Rlp.LengthOf(item.Signature.RecoveryId);
+                contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+            }
+        }
+
+        return contentLength;
     }
 }

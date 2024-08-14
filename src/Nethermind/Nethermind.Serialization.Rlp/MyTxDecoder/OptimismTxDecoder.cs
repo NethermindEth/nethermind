@@ -97,6 +97,22 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
+    public void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        int contentLength = GetDepositTxContentLength(item);
+        int sequenceLength = Rlp.LengthOfSequence(contentLength);
+
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
+        {
+            stream.StartByteArray(sequenceLength + 1, false);
+        }
+
+        stream.WriteByte((byte)item.Type);
+        stream.StartSequence(contentLength);
+
+        EncodeDepositTxPayloadWithoutPayload(item, stream);
+    }
+
     private static void DecodeDepositPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.SourceHash = rlpStream.DecodeKeccak();
@@ -177,5 +193,29 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
             Signature signature = new(rBytes, sBytes, v + Signature.VOffset);
             transaction.Signature = signature;
         }
+    }
+
+    private static int GetDepositTxContentLength(Transaction item)
+    {
+        return Rlp.LengthOf(item.SourceHash)
+               + Rlp.LengthOf(item.SenderAddress)
+               + Rlp.LengthOf(item.To)
+               + Rlp.LengthOf(item.Mint)
+               + Rlp.LengthOf(item.Value)
+               + Rlp.LengthOf(item.GasLimit)
+               + Rlp.LengthOf(item.IsOPSystemTransaction)
+               + Rlp.LengthOf(item.Data);
+    }
+
+    private static void EncodeDepositTxPayloadWithoutPayload(Transaction item, RlpStream stream)
+    {
+        stream.Encode(item.SourceHash);
+        stream.Encode(item.SenderAddress);
+        stream.Encode(item.To);
+        stream.Encode(item.Mint);
+        stream.Encode(item.Value);
+        stream.Encode(item.GasLimit);
+        stream.Encode(item.IsOPSystemTransaction);
+        stream.Encode(item.Data);
     }
 }
