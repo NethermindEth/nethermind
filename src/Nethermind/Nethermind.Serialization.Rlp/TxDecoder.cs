@@ -260,58 +260,13 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             return;
         }
 
-        bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && item.Type == TxType.Legacy;
-
-        int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId, rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
-        int sequenceLength = Rlp.LengthOfSequence(contentLength);
-
-        if (item.Type != TxType.Legacy)
+        if (_decoders.TryGetValue(item.Type, out ITxDecoder? decoder))
         {
-            if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
-            {
-                stream.StartByteArray(sequenceLength + 1, false);
-            }
-
-            stream.WriteByte((byte)item.Type);
+            decoder.EncodeTx(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         }
-
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && item.MayHaveNetworkForm)
+        else
         {
-            stream.StartSequence(contentLength);
-            contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId, false);
-        }
-
-        stream.StartSequence(contentLength);
-
-        switch (item.Type)
-        {
-            case TxType.Legacy:
-                TxDecoder<T>.EncodeLegacyWithoutPayload(item, stream);
-                break;
-            case TxType.AccessList:
-                EncodeAccessListPayloadWithoutPayload(item, stream, rlpBehaviors);
-                break;
-            case TxType.EIP1559:
-                EncodeEip1559PayloadWithoutPayload(item, stream, rlpBehaviors);
-                break;
-            case TxType.Blob:
-                EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
-                break;
-            case TxType.DepositTx:
-                TxDecoder<T>.EncodeDepositTxPayloadWithoutPayload(item, stream);
-                break;
-        }
-
-        EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
-
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && item.MayHaveNetworkForm)
-        {
-            switch (item.Type)
-            {
-                case TxType.Blob:
-                    TxDecoder<T>.EncodeShardBlobNetworkPayload(item, stream, rlpBehaviors);
-                    break;
-            }
+            throw new InvalidOperationException($"Unknown transaction type: {item.Type}");
         }
     }
 
