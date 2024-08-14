@@ -142,7 +142,7 @@ namespace Nethermind.Core.Crypto
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {
         public const int Size = 32;
-        public static Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         public const int MemorySize =
             MemorySizes.SmallObjectOverhead -

@@ -31,9 +31,5 @@ public readonly struct BlockExecutionContext
         BlobBaseFee = forceBlobBaseFee;
     }
 
-    public static implicit operator BlockExecutionContext(BlockHeader header)
-    {
-        return new BlockExecutionContext(header);
-    }
-
+    public static implicit operator BlockExecutionContext(BlockHeader header) => new(header);
 }
