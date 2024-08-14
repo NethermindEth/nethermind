@@ -84,6 +84,9 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
         var count = Metrics.Secp256r1Precompile++;
         var watch = Stopwatch.StartNew();
 
+        if (count % 1000 == 0)
+            Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Starting");
+
         try
         {
             using MemoryHandle pin = inputData.Pin();
@@ -93,15 +96,15 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
                 var res = VerifyBytes(slice);
 
                 TimeSpan elapsed = watch.Elapsed;
-                if (elapsed.TotalMilliseconds > 200)
-                    Console.WriteLine($"[secp256r1][{count}] Finished: {Convert.ToHexString(inputData.Span)} -> {res} in {elapsed}");
+                if (elapsed.TotalMicroseconds > 500)
+                    Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Finished: {Convert.ToHexString(inputData.Span)} -> {res} in {elapsed.TotalMicroseconds}µs");
 
                 return (res != 0 ? ValidResult : null, true);
             }
         }
         catch (Exception exception)
         {
-            Console.WriteLine($"[secp256r1][{count}] Failed: {exception.Message} in {watch.Elapsed}");
+            Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Failed: {exception.Message} in {watch.Elapsed}");
             throw;
         }
     }
