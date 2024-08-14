@@ -18,6 +18,7 @@ using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -159,14 +160,25 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
         var cancellationToken = cancellationTokenSource.Token;
-        var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
+        try
+        {
+            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
 
-        if (blockTrace is null)
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
+            if (blockTrace is null)
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
-        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+        }
+        catch (RlpException)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Error decoding block rlp: {blockRlp.ToHexString()}", ErrorCodes.InvalidInput);
+        }
+        catch (ArgumentNullException)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Couldn't find any block", ErrorCodes.InvalidInput);
+        }
     }
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
@@ -175,12 +187,19 @@ public class DebugRpcModule : IDebugRpcModule
         var cancellationToken = cancellationTokenSource.Token;
         var blockTrace = _debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
 
-        if (blockTrace is null)
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
+        try
+        {
+            if (blockTrace is null)
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
-        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+        }
+        catch (ArgumentNullException)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.InvalidInput);
+        }
     }
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
@@ -189,12 +208,19 @@ public class DebugRpcModule : IDebugRpcModule
         var cancellationToken = cancellationTokenSource.Token;
         var blockTrace = _debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
 
-        if (blockTrace is null)
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
+        try
+        {
+            if (blockTrace is null)
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
-        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+        }
+        catch (ArgumentNullException)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.InvalidInput);
+        }
     }
 
     public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null)
@@ -331,6 +357,18 @@ public class DebugRpcModule : IDebugRpcModule
         var files = _debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBlockToFile)} request {blockHash}, result: {files}");
+
+        return ResultWrapper<IEnumerable<string>>.Success(files);
+    }
+
+    public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
+    {
+        using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+        var cancellationToken = cancellationTokenSource.Token;
+
+        var files = _debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
+
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBadBlockToFile)} request {blockHash}, result: {files}");
 
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }

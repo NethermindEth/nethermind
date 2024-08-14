@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -192,7 +193,7 @@ namespace Nethermind.Trie
                             var copy = nodeContext;
 
                             // multithreaded route
-                            Parallel.For(0, BranchesCount, i =>
+                            Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCores, i =>
                             {
                                 visitContext.Semaphore.Wait();
                                 try
@@ -213,10 +214,10 @@ namespace Nethermind.Trie
                         {
                             TrieNode?[] output = new TrieNode?[16];
                             currentNode.ResolveAllChildBranch(nodeResolver, ref path, output);
-                            currentNode.AppendChildPathBranch(ref path, 0);
+                            path.AppendMut(0);
                             for (int i = 0; i < 16; i++)
                             {
-                                if (output[i] == null) continue;
+                                if (output[i] is null) continue;
                                 TrieNode child = output[i];
                                 path.SetLast(i);
                                 child.ResolveKey(nodeResolver, ref path, false);

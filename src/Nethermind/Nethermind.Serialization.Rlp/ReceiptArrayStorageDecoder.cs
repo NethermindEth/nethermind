@@ -8,19 +8,17 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
+public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
-    private readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
-    private readonly CompactReceiptStorageDecoder CompactReceiptStorageDecoder = CompactReceiptStorageDecoder.Instance;
+
+    private static readonly IRlpStreamDecoder<TxReceipt> Decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    private static readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+
+    private static readonly IRlpStreamDecoder<TxReceipt> CompactDecoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
-    private readonly bool _useCompactEncoding = true;
-
-    public ReceiptArrayStorageDecoder(bool compactEncoding = true)
-    {
-        _useCompactEncoding = compactEncoding;
-    }
 
     public int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
@@ -30,7 +28,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         }
 
         int bufferLength = Rlp.LengthOfSequence(GetContentLength(items, rlpBehaviors));
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             bufferLength++;
         }
@@ -39,12 +37,12 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 
     private int GetContentLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
             {
-                totalLength += CompactReceiptStorageDecoder.GetLength(items[i], rlpBehaviors);
+                totalLength += CompactDecoder.GetLength(items[i], rlpBehaviors);
             }
 
             return totalLength;
@@ -54,7 +52,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
             {
-                totalLength += StorageDecoder.GetLength(items[i], rlpBehaviors);
+                totalLength += Decoder.GetLength(items[i], rlpBehaviors);
             }
 
             return totalLength;
@@ -66,11 +64,11 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         if (rlpStream.PeekByte() == CompactEncoding)
         {
             rlpStream.ReadByte();
-            return CompactReceiptStorageDecoder.DecodeArray(rlpStream, RlpBehaviors.Storage);
+            return CompactDecoder.DecodeArray(rlpStream, RlpBehaviors.Storage);
         }
         else
         {
-            return StorageDecoder.DecodeArray(rlpStream, RlpBehaviors.Storage);
+            return Decoder.DecodeArray(rlpStream, RlpBehaviors.Storage);
         }
     }
 
@@ -82,7 +80,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
             return;
         }
 
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = GetContentLength(items, rlpBehaviors);
             stream.WriteByte(CompactEncoding);
@@ -90,7 +88,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 
             for (int i = 0; i < items.Length; i++)
             {
-                CompactReceiptStorageDecoder.Encode(stream, items[i], rlpBehaviors);
+                CompactDecoder.Encode(stream, items[i], rlpBehaviors);
             }
         }
         else
@@ -100,7 +98,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 
             for (int i = 0; i < items.Length; i++)
             {
-                StorageDecoder.Encode(stream, items[i], rlpBehaviors);
+                Decoder.Encode(stream, items[i], rlpBehaviors);
             }
         }
     }
@@ -115,19 +113,19 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
             var decoderContext = new Rlp.ValueDecoderContext(receiptsData[1..]);
-            return CompactReceiptStorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+            return CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
         }
         else
         {
             var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
             try
             {
-                return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+                return ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
             }
             catch (RlpException)
             {
                 decoderContext.Position = 0;
-                return StorageDecoder.DecodeArray(ref decoderContext);
+                return ValueDecoder.DecodeArray(ref decoderContext);
             }
         }
     }
@@ -137,14 +135,14 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         var context = new Rlp.ValueDecoderContext(receiptData);
         try
         {
-            var receipt = StorageDecoder.Decode(ref context, RlpBehaviors.Storage);
+            var receipt = ValueDecoder.Decode(ref context, RlpBehaviors.Storage);
             receipt.TxHash = hash;
             return receipt;
         }
         catch (RlpException)
         {
             context.Position = 0;
-            var receipt = StorageDecoder.Decode(ref context);
+            var receipt = ValueDecoder.Decode(ref context);
             receipt.TxHash = hash;
             return receipt;
         }
@@ -155,13 +153,13 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         return receiptsData.Length > 0 && receiptsData[0] == CompactEncoding;
     }
 
-    public static IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
+    public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
     {
         if (IsCompactEncoding(receiptsData))
         {
-            return CompactReceiptStorageDecoder.Instance;
+            return (IReceiptRefDecoder)CompactValueDecoder;
         }
 
-        return ReceiptStorageDecoder.Instance;
+        return (IReceiptRefDecoder)ValueDecoder;
     }
 }

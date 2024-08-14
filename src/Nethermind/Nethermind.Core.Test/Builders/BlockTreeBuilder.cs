@@ -299,8 +299,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts,
-                        ReceiptMessageDecoder.Instance);
+                    ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamDecoder<TxReceipt>()!);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
@@ -384,7 +383,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
         {
-            _ecdsa = new EthereumEcdsa(BlockTree.ChainId, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(BlockTree.ChainId);
             _receiptStorage = receiptStorage;
             _logCreationFunction = logsForBlockBuilder;
             return this;

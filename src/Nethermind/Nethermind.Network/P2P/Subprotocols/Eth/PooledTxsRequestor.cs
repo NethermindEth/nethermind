@@ -19,8 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITxPool _txPool;
         private readonly ITxPoolConfig _txPoolConfig;
 
-        private readonly LruKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
-            Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
+        private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 
         public PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig)
         {
@@ -140,14 +139,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private static void RequestPooledTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashesToRequest)
         {
             send(new GetPooledTransactionsMessage(hashesToRequest));
-            Metrics.Eth65GetPooledTransactionsRequested++;
         }
 
         private static void RequestPooledTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashesToRequest)
         {
             GetPooledTransactionsMessage msg65 = new(hashesToRequest);
             send(new V66.Messages.GetPooledTransactionsMessage { EthMessage = msg65 });
-            Metrics.Eth66GetPooledTransactionsRequested++;
         }
     }
 }

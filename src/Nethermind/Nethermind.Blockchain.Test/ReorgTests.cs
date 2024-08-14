@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -18,7 +19,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -39,7 +39,7 @@ public class ReorgTests
         WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
-        EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+        EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
             new TransactionComparerProvider(specProvider, _blockTree);
 
@@ -56,15 +56,18 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
+        CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
+            codeInfoRepository,
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
             specProvider,
             stateProvider,
             virtualMachine,
+            codeInfoRepository,
             LimboLogs.Instance);
 
         BlockProcessor blockProcessor = new(
@@ -74,7 +77,7 @@ public class ReorgTests
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
+            new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

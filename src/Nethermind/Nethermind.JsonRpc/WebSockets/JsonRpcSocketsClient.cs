@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
@@ -47,18 +48,19 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         base.Dispose();
         _sendSemaphore.Dispose();
+        _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('[') };
-    private static readonly byte[] _jsonComma = { Convert.ToByte(',') };
-    private static readonly byte[] _jsonClosingBracket = { Convert.ToByte(']') };
+    private static readonly byte[] _jsonOpeningBracket = [Convert.ToByte('[')];
+    private static readonly byte[] _jsonComma = [Convert.ToByte(',')];
+    private static readonly byte[] _jsonClosingBracket = [Convert.ToByte(']')];
 
     public override async Task ProcessAsync(ArraySegment<byte> data)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         IncrementBytesReceivedMetric(data.Count);
-        PipeReader request = PipeReader.Create(new MemoryStream(data.Array!, data.Offset, data.Count));
+        PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data.Array!, data.Offset, data.Count));
         int allResponsesSize = 0;
 
         await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
@@ -136,7 +138,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                             responseSize += 1;
                         }
                         isFirst = false;
-                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
+                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, indented: false);
                         _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                         // We reached the limit and don't want to responded to more request in the batch

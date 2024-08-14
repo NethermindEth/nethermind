@@ -51,7 +51,7 @@ namespace Nethermind.Network.Benchmarks
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
-            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
             var tree = Build.A.BlockTree().TestObject;
             var stateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;

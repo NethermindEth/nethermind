@@ -44,6 +44,7 @@ public class JsonRpcService : IJsonRpcService
             (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
             if (errorCode.HasValue)
             {
+                if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
                 return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
             }
 
@@ -147,7 +148,7 @@ public class JsonRpcService : IJsonRpcService
         bool hasMissing = false;
         if (method.ExpectedParameters.Length > 0)
         {
-            (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParameters, missingParamsCount);
+            (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, missingParamsCount);
             if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
@@ -281,14 +282,9 @@ public class JsonRpcService : IJsonRpcService
 
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
-            if (providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable)
-            {
-                return null;
-            }
-            else
-            {
-                return Type.Missing;
-            }
+            return providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable
+                ? null
+                : Type.Missing;
         }
 
         object? executionParam;
@@ -309,14 +305,9 @@ public class JsonRpcService : IJsonRpcService
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                if (converter.GetType().FullName.StartsWith("System."))
-                {
-                    executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
-                }
-                else
-                {
-                    executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-                }
+                executionParam = converter.GetType().FullName.StartsWith("System.")
+                    ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {
@@ -327,22 +318,25 @@ public class JsonRpcService : IJsonRpcService
         return executionParam;
     }
 
-    private (object[]? parameters, bool hasMissing) DeserializeParameters(ExpectedParameter[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
+    private (object[]? parameters, bool hasMissing) DeserializeParameters(
+        ExpectedParameter[] expectedParameters,
+        int providedParametersLength,
+        JsonElement providedParameters,
+        int missingParamsCount)
     {
         const int parallelThreshold = 4;
         try
         {
             bool hasMissing = false;
-            int arrayLength = providedParameters.GetArrayLength();
-            int totalLength = arrayLength + missingParamsCount;
+            int totalLength = providedParametersLength + missingParamsCount;
 
             if (totalLength == 0) return (Array.Empty<object>(), false);
 
             object[] executionParameters = new object[totalLength];
 
-            if (arrayLength <= parallelThreshold)
+            if (providedParametersLength <= parallelThreshold)
             {
-                for (int i = 0; i < arrayLength; i++)
+                for (int i = 0; i < providedParametersLength; i++)
                 {
                     JsonElement providedParameter = providedParameters[i];
                     ExpectedParameter expectedParameter = expectedParameters[i];
@@ -355,9 +349,9 @@ public class JsonRpcService : IJsonRpcService
                     }
                 }
             }
-            else if (arrayLength > parallelThreshold)
+            else if (providedParametersLength > parallelThreshold)
             {
-                Parallel.For(0, arrayLength, (int i) =>
+                Parallel.For(0, providedParametersLength, (int i) =>
                 {
                     JsonElement providedParameter = providedParameters[i];
                     ExpectedParameter expectedParameter = expectedParameters[i];
@@ -371,11 +365,11 @@ public class JsonRpcService : IJsonRpcService
                 });
             }
 
-            for (int i = arrayLength; i < totalLength; i++)
+            for (int i = providedParametersLength; i < totalLength; i++)
             {
                 executionParameters[i] = Type.Missing;
             }
-            hasMissing |= arrayLength < totalLength;
+            hasMissing |= providedParametersLength < totalLength;
             return (executionParameters, hasMissing);
         }
         catch (Exception e)
@@ -441,13 +435,15 @@ public class JsonRpcService : IJsonRpcService
 
         methodName = methodName.Trim();
 
-        ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
+        ModuleResolution result = _rpcModuleProvider.Check(methodName, context, out string? module);
         return result switch
         {
-            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
-            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
-            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
-            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),
+            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
+            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
+            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
+            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
             _ => (null, null)
         };
     }

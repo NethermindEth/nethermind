@@ -73,6 +73,52 @@ public class SnapServerTest
     }
 
     [Test]
+    public void TestGetAccountRange_InvalidRange()
+    {
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeWithTestAccounts(context.Tree);
+
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
+            context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.MaxValue, Keccak.Zero, 4000, CancellationToken.None);
+
+        accounts.Count.Should().Be(0);
+        accounts.Dispose();
+        proofs.Dispose();
+    }
+
+    [Test]
+    public void TestGetTrieNode_Root()
+    {
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeWithTestAccounts(context.Tree);
+
+        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes([
+            new PathGroup()
+            {
+                Group = [[]]
+            }
+        ], context.Tree.RootHash, default)!;
+
+        result.Count.Should().Be(1);
+    }
+
+    [Test]
+    public void TestGetTrieNode_Storage_Root()
+    {
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeWithTestAccounts(context.Tree);
+
+        using IOwnedReadOnlyList<byte[]> result = context.Server.GetTrieNodes([
+            new PathGroup()
+            {
+                Group = [TestItem.Tree.AccountsWithPaths[0].Path.Bytes.ToArray(), []]
+            }
+        ], context.Tree.RootHash, default)!;
+
+        result.Count.Should().Be(1);
+    }
+
+    [Test]
     public void TestNoState()
     {
         Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(false));
