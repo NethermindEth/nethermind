@@ -10,4 +10,6 @@ namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 interface ITxDecoder
 {
     public Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors);
+
+    public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 }
