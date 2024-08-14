@@ -176,6 +176,18 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
+    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
+    {
+        int txContentLength = GetContentLength(tx, forSigning: false, withNetworkWrapper: rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
+        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
+
+        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
+        int result = isForTxRoot
+                ? (1 + txPayloadLength)
+                : Rlp.LengthOfSequence(1 + txPayloadLength);
+        return result;
+    }
+
     private void DecodeShardBlobPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
