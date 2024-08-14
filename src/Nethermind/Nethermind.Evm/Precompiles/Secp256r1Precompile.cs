@@ -87,8 +87,8 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
         var count = Metrics.Secp256r1Precompile++;
         var watch = Stopwatch.StartNew();
 
-        if (count % 1000 == 0)
-            Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Starting");
+        // if (count % 1000 == 0)
+        //     Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Starting");
 
         try
         {
