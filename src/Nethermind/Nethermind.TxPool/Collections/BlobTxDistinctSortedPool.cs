@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections;
@@ -39,7 +40,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
             {
-                if (blobVersionedHash?.Length == 32)
+                if (blobVersionedHash?.Length == KzgPolynomialCommitments.BytesPerBlobVersionedHash)
                 {
                     _blobIndex.AddOrUpdate(blobVersionedHash.ToHexString(),
                         k => [blobTx.Hash!],
