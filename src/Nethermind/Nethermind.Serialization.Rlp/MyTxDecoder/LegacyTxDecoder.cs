@@ -23,11 +23,11 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        DecodeLegacyPayloadWithoutSig(transaction, rlpStream);
+        DecodePayload(transaction, rlpStream);
 
         if (rlpStream.Position < lastCheck)
         {
-            DecodeSignature(rlpStream, rlpBehaviors, transaction);
+            DecodeSignature(transaction, rlpStream, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
@@ -60,11 +60,11 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        DecodeLegacyPayloadWithoutSig(transaction, ref decoderContext);
+        DecodePayload(transaction, ref decoderContext);
 
         if (decoderContext.Position < lastCheck)
         {
-            DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
+            DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
@@ -74,7 +74,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            if (lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)
@@ -98,25 +98,25 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
-    public void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public void Encode(Transaction? transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
-        int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
+        int contentLength = GetContentLength(transaction, forSigning, isEip155Enabled, chainId);
 
         stream.StartSequence(contentLength);
-        EncodeLegacyWithoutPayload(item, stream);
-        EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
+        EncodePayload(transaction, stream);
+        EncodeSignature(stream, transaction, forSigning, chainId, includeSigChainIdHack);
     }
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId);
+        int txContentLength = GetContentLength(transaction, forSigning, isEip155Enabled, chainId);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
         return txPayloadLength;
     }
 
-    private static void DecodeLegacyPayloadWithoutSig(Transaction transaction, RlpStream rlpStream)
+    private static void DecodePayload(Transaction transaction, RlpStream rlpStream)
     {
         transaction.Nonce = rlpStream.DecodeUInt256();
         transaction.GasPrice = rlpStream.DecodeUInt256();
@@ -126,7 +126,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         transaction.Data = rlpStream.DecodeByteArray();
     }
 
-    private static void DecodeLegacyPayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
+    private static void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         transaction.Nonce = decoderContext.DecodeUInt256();
         transaction.GasPrice = decoderContext.DecodeUInt256();
@@ -136,7 +136,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         transaction.Data = decoderContext.DecodeByteArrayMemory();
     }
 
-    private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
+    private static void DecodeSignature(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -144,7 +144,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, Transaction transaction)
+    private static void DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
@@ -192,14 +192,14 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
-    private static void EncodeLegacyWithoutPayload(Transaction item, RlpStream stream)
+    private static void EncodePayload(Transaction transaction, RlpStream stream)
     {
-        stream.Encode(item.Nonce);
-        stream.Encode(item.GasPrice);
-        stream.Encode(item.GasLimit);
-        stream.Encode(item.To);
-        stream.Encode(item.Value);
-        stream.Encode(item.Data);
+        stream.Encode(transaction.Nonce);
+        stream.Encode(transaction.GasPrice);
+        stream.Encode(transaction.GasLimit);
+        stream.Encode(transaction.To);
+        stream.Encode(transaction.Value);
+        stream.Encode(transaction.Data);
     }
 
     private static void EncodeSignature(RlpStream stream, Transaction item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
@@ -230,26 +230,25 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
-    private static int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    private static int GetContentLength(Transaction transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
-        int contentLength = GetLegacyContentLength(item);
-        contentLength += GetSignatureContentLength(item, forSigning, chainId, includeSigChainIdHack);
+        int payloadLength = GetPayloadLength(transaction);
+        int signatureLength = GetSignatureLength(transaction, forSigning, chainId, includeSigChainIdHack: isEip155Enabled && chainId != 0);
 
-        return contentLength;
+        return payloadLength + signatureLength;
     }
 
-    private static int GetLegacyContentLength(Transaction item)
+    private static int GetPayloadLength(Transaction transaction)
     {
-        return Rlp.LengthOf(item.Nonce)
-            + Rlp.LengthOf(item.GasPrice)
-            + Rlp.LengthOf(item.GasLimit)
-            + Rlp.LengthOf(item.To)
-            + Rlp.LengthOf(item.Value)
-            + Rlp.LengthOf(item.Data);
+        return Rlp.LengthOf(transaction.Nonce)
+            + Rlp.LengthOf(transaction.GasPrice)
+            + Rlp.LengthOf(transaction.GasLimit)
+            + Rlp.LengthOf(transaction.To)
+            + Rlp.LengthOf(transaction.Value)
+            + Rlp.LengthOf(transaction.Data);
     }
 
-    private static int GetSignatureContentLength(Transaction item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
+    private static int GetSignatureLength(Transaction transaction, bool forSigning, ulong chainId, bool includeSigChainIdHack)
     {
         int contentLength = 0;
 
@@ -264,7 +263,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         }
         else
         {
-            if (item.Signature is null)
+            if (transaction.Signature is null)
             {
                 contentLength += 1;
                 contentLength += 1;
@@ -272,9 +271,9 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
             }
             else
             {
-                contentLength += Rlp.LengthOf(item.Signature.V);
-                contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
-                contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(transaction.Signature.V);
+                contentLength += Rlp.LengthOf(transaction.Signature.RAsSpan.WithoutLeadingZeros());
+                contentLength += Rlp.LengthOf(transaction.Signature.SAsSpan.WithoutLeadingZeros());
             }
         }
 
