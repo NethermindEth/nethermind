@@ -39,12 +39,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
-        ExecutionWitness = block.ExecutionWitness!;
+        ExecutionWitness = block.ExecutionWitness;
 
         SetTransactions(block.Transactions);
     }
 
-    public ExecutionWitness ExecutionWitness { get; set; } = new();
+    // TODO: check is this making this null is fine?
+    public ExecutionWitness? ExecutionWitness { get; set; } = null;
     public UInt256 BaseFeePerGas { get; set; }
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;

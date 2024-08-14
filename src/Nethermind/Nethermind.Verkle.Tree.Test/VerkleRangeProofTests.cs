@@ -66,7 +66,7 @@ public class VerkleRangeProofTests
             newTree.CreateStatelessTreeFromRange(proof, root, stems[0], stems[^1], subTrees.ToArray());
         Assert.That(isTrue, Is.True);
 
-        newStore.InsertSyncBatch(0, newTree._treeCache);
+        newStore.InsertSyncBatch(0, newTree.TreeCache);
         newStore.InsertRootNodeAfterSyncCompletion(tree.StateRoot.BytesToArray(), 0);
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
@@ -115,7 +115,7 @@ public class VerkleRangeProofTests
             newTree.CreateStatelessTreeFromRange(proof, root, subTrees[0].Path, subTrees[^1].Path, subTrees.ToArray());
         Assert.That(isTrue, Is.True);
 
-        newStore.InsertSyncBatch(0, newTree._treeCache);
+        newStore.InsertSyncBatch(0, newTree.TreeCache);
         newStore.InsertRootNodeAfterSyncCompletion(tree.StateRoot.BytesToArray(), 0);
         VerkleTreeDumper oldTreeDumper = new();
         VerkleTreeDumper newTreeDumper = new();
@@ -177,7 +177,7 @@ public class VerkleRangeProofTests
             newTree.CreateStatelessTreeFromRange(proof, root, stems[0], stems[^1], subTrees.ToArray());
         Assert.That(isTrue, Is.True);
 
-        newStore.InsertSyncBatch(0, newTree._treeCache);
+        newStore.InsertSyncBatch(0, newTree.TreeCache);
         newStore.InsertRootNodeAfterSyncCompletion(tree.StateRoot.BytesToArray(), 0);
 
         VerkleTreeDumper oldTreeDumper = new();

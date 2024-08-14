@@ -25,7 +25,7 @@ public partial class VerkleTree
 
     public ExecutionWitness GenerateExecutionWitnessFromStore(byte[][] keys, out Banderwagon rootPoint)
     {
-        VerkleTree tree = new(_verkleStateStore, LimboLogs.Instance);
+        VerkleTree tree = new(VerkleStateStore, LimboLogs.Instance);
         return tree.GenerateExecutionWitness(keys, out rootPoint);
     }
 

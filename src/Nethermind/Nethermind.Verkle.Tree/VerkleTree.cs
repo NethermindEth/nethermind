@@ -34,12 +34,12 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
     private readonly ILogger _logger = logManager?.GetClassLogger<VerkleTree>() ?? throw new ArgumentNullException(nameof(logManager));
 
     // the store that is responsible to store the tree in a key-value store
-    public readonly IVerkleTreeStore _verkleStateStore = verkleStateStore;
+    public readonly IVerkleTreeStore VerkleStateStore = verkleStateStore;
 
     // cache to maintain recently used or inserted nodes of the tree - should be consistent
-    public VerkleMemoryDb _treeCache = new();
+    public VerkleMemoryDb TreeCache = new();
 
-    private static byte[] RootKey => Array.Empty<byte>();
+    private static byte[] RootKey => [];
 
     public Hash256 StateRoot
     {
@@ -52,9 +52,9 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
         try
         {
             if (_logger.IsTrace) _logger.Trace($"MoveToStateRoot: from: {StateRoot} to: {stateRoot}");
-            _treeCache.LeafTable.Clear();
-            _treeCache.InternalTable.Clear();
-            return _verkleStateStore.MoveToStateRoot(stateRoot);
+            TreeCache.LeafTable.Clear();
+            TreeCache.InternalTable.Clear();
+            return VerkleStateStore.MoveToStateRoot(stateRoot);
         }
         catch (Exception e)
         {
@@ -65,14 +65,14 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     public byte[]? Get(Hash256 key, Hash256? stateRoot = null)
     {
-        _treeCache.GetLeaf(key.Bytes, out var value);
-        value ??= _verkleStateStore.GetLeaf(key.Bytes, stateRoot);
+        TreeCache.GetLeaf(key.Bytes, out var value);
+        value ??= VerkleStateStore.GetLeaf(key.Bytes, stateRoot);
         return value;
     }
 
     public void Insert(Hash256 key, in ReadOnlySpan<byte> value)
     {
-        ReadOnlySpan<byte> stem = key.Bytes.Slice(0, 31);
+        ReadOnlySpan<byte> stem = key.Bytes[..31];
         var present = _leafUpdateCache.TryGetValue(stem, out LeafUpdateDelta leafUpdateDelta);
         if (!present) leafUpdateDelta = new LeafUpdateDelta();
         leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(key, value.ToArray()), key.Bytes[31]);
@@ -86,7 +86,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
         Span<byte> key = new byte[32];
         stem.CopyTo(key);
-        foreach ((var index, var value) in leafIndexValueMap)
+        foreach (var (index, value) in leafIndexValueMap)
         {
             key[31] = index;
             leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(new Hash256(key.ToArray()), value), key[31]);
@@ -144,19 +144,19 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     public void CommitTree(long blockNumber)
     {
-        _verkleStateStore.InsertBatch(blockNumber, _treeCache);
+        VerkleStateStore.InsertBatch(blockNumber, TreeCache);
         Reset();
     }
 
     private Hash256 GetStateRoot()
     {
-        var inTreeCache = _treeCache.GetInternalNode(Array.Empty<byte>(), out InternalNode? value);
-        return inTreeCache ? new Hash256(value!.Bytes) : _verkleStateStore.StateRoot;
+        var inTreeCache = TreeCache.GetInternalNode(Array.Empty<byte>(), out InternalNode? value);
+        return inTreeCache ? new Hash256(value!.Bytes) : VerkleStateStore.StateRoot;
     }
 
     private void SetLeafCache(Hash256 key, byte[]? value)
     {
-        _treeCache.SetLeaf(key.Bytes, value);
+        TreeCache.SetLeaf(key.Bytes, value);
     }
 
     private Banderwagon UpdateLeafAndGetDelta(Hash256 key, byte[] value)
@@ -205,27 +205,27 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     public byte[]? Get(in ReadOnlySpan<byte> key, Hash256? stateRoot = null)
     {
-        return _treeCache.GetLeaf(key, out var value) ? value : _verkleStateStore.GetLeaf(key, stateRoot);
+        return TreeCache.GetLeaf(key, out var value) ? value : VerkleStateStore.GetLeaf(key, stateRoot);
     }
 
     private InternalNode? GetInternalNode(in ReadOnlySpan<byte> nodeKey, Hash256? rootHash = null)
     {
-        return _treeCache.GetInternalNode(nodeKey, out InternalNode? value)
+        return TreeCache.GetInternalNode(nodeKey, out InternalNode? value)
             ? value
-            : _verkleStateStore.GetInternalNode(nodeKey, rootHash);
+            : VerkleStateStore.GetInternalNode(nodeKey, rootHash);
     }
 
     private void SetInternalNode(in ReadOnlySpan<byte> nodeKey, InternalNode node, bool replace = true)
     {
-        if (replace || !_treeCache.InternalTable.TryGetValue(nodeKey, out InternalNode? prevNode))
+        if (replace || !TreeCache.InternalTable.TryGetValue(nodeKey, out InternalNode? prevNode))
         {
-            _treeCache.SetInternalNode(nodeKey, node);
+            TreeCache.SetInternalNode(nodeKey, node);
         }
         else
         {
             prevNode!.C1 ??= node.C1;
             prevNode.C2 ??= node.C2;
-            _treeCache.SetInternalNode(nodeKey, prevNode);
+            TreeCache.SetInternalNode(nodeKey, prevNode);
         }
     }
 
@@ -234,6 +234,6 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
         _leafUpdateCache.Clear();
         ProofBranchPolynomialCache.Clear();
         ProofStemPolynomialCache.Clear();
-        _treeCache = new VerkleMemoryDb();
+        TreeCache = new VerkleMemoryDb();
     }
 }

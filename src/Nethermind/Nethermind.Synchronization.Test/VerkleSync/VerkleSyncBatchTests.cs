@@ -23,6 +23,6 @@ public class VerkleSyncBatchTests
         };
 
         Console.WriteLine(batch.ToString());
-        batch.ToString().Should().Be("SubTreeRange: (999, 0x0000000000000000000000000000000000000000000000000000000000000000, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c)");
+        batch.ToString().Should().Be("SubTreeRange: (BN:999.RH:0x0000000000000000000000000000000000000000000000000000000000000000, Stem.S:0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.L:0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c)");
     }
 }

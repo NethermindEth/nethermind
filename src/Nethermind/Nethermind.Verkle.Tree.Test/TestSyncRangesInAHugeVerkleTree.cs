@@ -197,7 +197,7 @@ public class TestSyncRangesInAHugeVerkleTree
     public void TestAndAssertSyncRanges(VerkleTree tree, IVerkleTreeStore localStore, Hash256 stateRootToUse, Stem startStem, Stem limitStem)
     {
         PathWithSubTree[]? range =
-            tree._verkleStateStore
+            tree.VerkleStateStore
                 .GetLeafRangeIterator(
                     startStem,
                     limitStem, stateRootToUse, 10000000)
@@ -210,7 +210,7 @@ public class TestSyncRangesInAHugeVerkleTree
         var tempTree = new VerkleTree(stateStore, LimboLogs.Instance);
         bool isTrue = tempTree.CreateStatelessTreeFromRange(proof, root, startStem, endStem, range);
         Assert.IsTrue(isTrue);
-        localStore.InsertSyncBatch(0, tempTree._treeCache);
+        localStore.InsertSyncBatch(0, tempTree.TreeCache);
     }
 
     [TestCase(DbMode.MemDb)]
@@ -287,7 +287,7 @@ public class TestSyncRangesInAHugeVerkleTree
                 endHashIndex = startingHashIndex + numPathInOneHealingLoop - 1;
                 Console.WriteLine($"{startingHashIndex} {endHashIndex}");
                 PathWithSubTree[] range =
-                    remoteTree._verkleStateStore
+                    remoteTree.VerkleStateStore
                         .GetLeafRangeIterator(
                             pathPool[startingHashIndex].Bytes.Slice(0, 31).ToArray(),
                             pathPool[endHashIndex].Bytes.Slice(0, 31).ToArray(),
@@ -344,7 +344,7 @@ public class TestSyncRangesInAHugeVerkleTree
             }
             Console.WriteLine($"{startingHashIndex} {endHashIndex}");
 
-            PathWithSubTree[] range = remoteTree._verkleStateStore.GetLeafRangeIterator(
+            PathWithSubTree[] range = remoteTree.VerkleStateStore.GetLeafRangeIterator(
                 pathPool[startingHashIndex].Bytes.Slice(0, 31).ToArray(),
                 pathPool[endHashIndex].Bytes.Slice(0, 31).ToArray(),
                 remoteTree.StateRoot, 100000000).ToArray();
@@ -432,7 +432,7 @@ public class TestSyncRangesInAHugeVerkleTree
         var localTree = new VerkleTree(newStore, LimboLogs.Instance);
         bool isTrue = localTree.CreateStatelessTreeFromRange(newProof, root, startingStem, endStem, newMessage.PathsWithSubTrees);
         Assert.That(isTrue, Is.True);
-        localStore.InsertSyncBatch(0, localTree._treeCache);
+        localStore.InsertSyncBatch(0, localTree.TreeCache);
         localStore.InsertRootNodeAfterSyncCompletion(stateRoot.BytesToArray(), 0);
     }
 
@@ -491,7 +491,7 @@ public class TestSyncRangesInAHugeVerkleTree
 
         byte[][] keysArray = keys.ToArray();
         using IEnumerator<KeyValuePair<byte[], byte[]>> rangeEnum =
-            tree._verkleStateStore.GetLeafRangeIterator(keysArray[30], keysArray[90], requiredStateRoot).GetEnumerator();
+            tree.VerkleStateStore.GetLeafRangeIterator(keysArray[30], keysArray[90], requiredStateRoot).GetEnumerator();
 
         while (rangeEnum.MoveNext())
         {
@@ -561,7 +561,7 @@ public class TestSyncRangesInAHugeVerkleTree
         }
 
         KeyValuePair<byte[], byte[]>[] rangeEnum =
-            tree._verkleStateStore.GetLeafRangeIterator(Hash256.Zero.Bytes.ToArray(), Hash256.MaxValue.Bytes.ToArray(), requiredStateRoot)
+            tree.VerkleStateStore.GetLeafRangeIterator(Hash256.Zero.Bytes.ToArray(), Hash256.MaxValue.Bytes.ToArray(), requiredStateRoot)
                 .ToArray();
 
         int index = 0;
