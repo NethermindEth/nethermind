@@ -47,7 +47,6 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
     };
 
     private readonly AccessListDecoder _accessListDecoder = new();
-    private readonly bool _lazyHash = lazyHash;
 
     protected virtual T NewTx()
     {
@@ -190,68 +189,6 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
 
     #endregion
 
-    private static void EncodeLegacyWithoutPayload(T item, RlpStream stream)
-    {
-        stream.Encode(item.Nonce);
-        stream.Encode(item.GasPrice);
-        stream.Encode(item.GasLimit);
-        stream.Encode(item.To);
-        stream.Encode(item.Value);
-        stream.Encode(item.Data);
-    }
-
-    private void EncodeAccessListPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
-    {
-        stream.Encode(item.ChainId ?? 0);
-        stream.Encode(item.Nonce);
-        stream.Encode(item.GasPrice);
-        stream.Encode(item.GasLimit);
-        stream.Encode(item.To);
-        stream.Encode(item.Value);
-        stream.Encode(item.Data);
-        _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
-    }
-
-    private void EncodeEip1559PayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
-    {
-        stream.Encode(item.ChainId ?? 0);
-        stream.Encode(item.Nonce);
-        stream.Encode(item.GasPrice); // gas premium
-        stream.Encode(item.DecodedMaxFeePerGas);
-        stream.Encode(item.GasLimit);
-        stream.Encode(item.To);
-        stream.Encode(item.Value);
-        stream.Encode(item.Data);
-        _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
-    }
-
-    private void EncodeShardBlobPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
-    {
-        stream.Encode(item.ChainId ?? 0);
-        stream.Encode(item.Nonce);
-        stream.Encode(item.GasPrice); // gas premium
-        stream.Encode(item.DecodedMaxFeePerGas);
-        stream.Encode(item.GasLimit);
-        stream.Encode(item.To);
-        stream.Encode(item.Value);
-        stream.Encode(item.Data);
-        _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
-        stream.Encode(item.MaxFeePerBlobGas.Value);
-        stream.Encode(item.BlobVersionedHashes);
-    }
-
-    private static void EncodeDepositTxPayloadWithoutPayload(T item, RlpStream stream)
-    {
-        stream.Encode(item.SourceHash);
-        stream.Encode(item.SenderAddress);
-        stream.Encode(item.To);
-        stream.Encode(item.Mint);
-        stream.Encode(item.Value);
-        stream.Encode(item.GasLimit);
-        stream.Encode(item.IsOPSystemTransaction);
-        stream.Encode(item.Data);
-    }
-
     private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (item is null)
@@ -268,44 +205,6 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         {
             throw new InvalidOperationException($"Unknown transaction type: {item.Type}");
         }
-    }
-
-    private static void EncodeSignature(RlpStream stream, T item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
-    {
-        if (item.Type == TxType.DepositTx) return;
-
-        if (forSigning)
-        {
-            if (includeSigChainIdHack)
-            {
-                stream.Encode(chainId);
-                stream.Encode(Rlp.OfEmptyByteArray);
-                stream.Encode(Rlp.OfEmptyByteArray);
-            }
-        }
-        else
-        {
-            if (item.Signature is null)
-            {
-                stream.Encode(0);
-                stream.Encode(Bytes.Empty);
-                stream.Encode(Bytes.Empty);
-            }
-            else
-            {
-                stream.Encode(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
-                stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
-                stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
-            }
-        }
-    }
-
-    private static void EncodeShardBlobNetworkPayload(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
-        rlpStream.Encode(networkWrapper.Blobs);
-        rlpStream.Encode(networkWrapper.Commitments);
-        rlpStream.Encode(networkWrapper.Proofs);
     }
 
     private static int GetLegacyContentLength(T item)
