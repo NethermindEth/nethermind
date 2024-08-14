@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -141,93 +142,13 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             }
         }
 
-        transaction ??= NewTx();
-        transaction.Type = txType;
-
-        int networkWrapperCheck = 0;
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
+        if (_decoders.TryGetValue(txType, out ITxDecoder? decoder))
         {
-            int networkWrapperLength = decoderContext.ReadSequenceLength();
-            networkWrapperCheck = decoderContext.Position + networkWrapperLength;
-            int rlpRength = decoderContext.PeekNextRlpLength();
-            txSequenceStart = decoderContext.Position;
-            transactionSequence = decoderContext.Peek(rlpRength);
+            decoder.Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
         }
-
-        int transactionLength = decoderContext.ReadSequenceLength();
-        int lastCheck = decoderContext.Position + transactionLength;
-
-        switch (transaction.Type)
+        else
         {
-            case TxType.Legacy:
-                TxDecoder<T>.DecodeLegacyPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-                break;
-            case TxType.AccessList:
-                DecodeAccessListPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-                break;
-            case TxType.EIP1559:
-                DecodeEip1559PayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-                break;
-            case TxType.Blob:
-                DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-                break;
-            case TxType.DepositTx:
-                TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
-                break;
-        }
-
-        if (decoderContext.Position < lastCheck)
-        {
-            DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            decoderContext.Check(lastCheck);
-        }
-
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
-        {
-            switch (transaction.Type)
-            {
-                case TxType.Blob:
-                    TxDecoder<T>.DecodeShardBlobNetworkPayload(transaction, ref decoderContext, rlpBehaviors);
-                    break;
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-            {
-                decoderContext.Check(networkWrapperCheck);
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-            {
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
-            }
-        }
-        else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
-            {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                if (decoderContext.ShouldSliceMemory)
-                {
-                    // Do not copy the memory in this case.
-                    int currentPosition = decoderContext.Position;
-                    decoderContext.Position = txSequenceStart;
-                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
-                    decoderContext.Position = currentPosition;
-                }
-                else
-                {
-                    transaction.SetPreHashNoLock(transactionSequence);
-                }
-            }
-            else
-            {
-                // Just calculate the Hash immediately as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
-            }
+            throw new InvalidOperationException($"Unknown transaction type: {txType}");
         }
     }
 
