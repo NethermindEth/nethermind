@@ -56,6 +56,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
+using Nethermind.Consensus.Processing.CensorshipDetector;
 
 namespace Nethermind.Api
 {

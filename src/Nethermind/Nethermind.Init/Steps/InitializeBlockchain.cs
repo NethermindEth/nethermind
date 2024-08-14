@@ -19,6 +19,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
@@ -146,8 +147,8 @@ namespace Nethermind.Init.Steps
                 txPool,
                 CreateTxPoolTxComparer(),
                 mainBlockProcessor,
-                _api.BlockTree!,
-                _api.LogManager
+                _api.LogManager,
+                _api.Config<ICensorshipDetectorConfig>()
             );
             setApi.CensorshipDetector = censorshipDetector;
             _api.DisposeStack.Push(censorshipDetector);
