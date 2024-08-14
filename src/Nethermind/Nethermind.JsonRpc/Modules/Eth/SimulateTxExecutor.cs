@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -205,28 +206,28 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
     {
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
-        results.Items.ForEach(result =>
+        foreach (SimulateBlockResult result in results.Items)
         {
-            result.Calls.ForEach(call =>
+            foreach (SimulateCallResult? call in result.Calls)
             {
-                if ((call is not null) && (call.Error is not null) && call.Error.Message != "")
+                if (call?.Error is not null && call.Error.Message != "")
                 {
                     call.Error.Code = ErrorCodes.ExecutionError;
                 }
-            });
-        });
+            }
+        }
 
-        if (results.Error is not null && (results.Error.Contains("invalid transaction")
-                                      || results.Error.Contains("InsufficientBalanceException")
-                                      ))
-            results.ErrorCode = ErrorCodes.InvalidTransaction;
-
-        if (results.Error is not null && results.Error.Contains("InvalidBlockException"))
-            results.ErrorCode = ErrorCodes.InvalidParams;
-
-
-        if (results.Error is not null && results.Error.Contains("below intrinsic gas"))
-            results.ErrorCode = ErrorCodes.InsufficientIntrinsicGas;
+        if (results.Error is not null)
+        {
+            results.ErrorCode = results.Error switch
+            {
+                var x when x.Contains("invalid transaction") => ErrorCodes.InvalidTransaction,
+                var x when x.Contains("InsufficientBalanceException") => ErrorCodes.InvalidTransaction,
+                var x when x.Contains("InvalidBlockException") => ErrorCodes.InvalidParams,
+                var x when x.Contains("below intrinsic gas") => ErrorCodes.InsufficientIntrinsicGas,
+                _ => results.ErrorCode
+            };
+        }
 
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)

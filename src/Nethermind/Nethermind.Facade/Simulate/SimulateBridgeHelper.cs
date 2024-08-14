@@ -106,7 +106,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                     : SimulateProcessingOptions | ProcessingOptions.NoValidation;
 
                 suggestedBlocks[0] = currentBlock;
-                
+
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
                 Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
@@ -123,20 +123,12 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
     private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
     {
-        var current = simulateOutputTracer.Results.Last();
-
+        SimulateBlockResult current = simulateOutputTracer.Results.Last();
         current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
-
-        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ??
-                                        Hash256.Zero;
-
-        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ??
-                                  Hash256.Zero;
-
+        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
+        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Hash256.Zero;
         current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-
         current.Withdrawals = processedBlock.Withdrawals ?? [];
-
         current.Author = null;
     }
 
