@@ -27,12 +27,13 @@ public class KeccakCalculatorTest
 
         const int count = 128;
 
-        ushort[] ids = new ushort[count];
+        var ids = new OffHeapStack.Slot[count];
 
         for (int i = 0; i < count; i++)
         {
             random.NextBytes(payload);
-            calculator.TrySchedule(payload, out ids[i]).Should().BeTrue();
+            ids[i] = calculator.TrySchedule(payload);
+            ids[i].IsAcquired.Should().BeTrue();
         }
 
         // Reset and assert
@@ -42,7 +43,7 @@ public class KeccakCalculatorTest
             random.NextBytes(payload);
             Span<byte> expected = ValueKeccak.Compute(payload).BytesAsSpan;
 
-            ReadOnlySpan<byte> actual = calculator.Get(ids[i]);
+            ReadOnlySpan<byte> actual = KeccakCalculator.Get(ids[i]);
             expected.SequenceEqual(actual).Should().BeTrue();
         }
 

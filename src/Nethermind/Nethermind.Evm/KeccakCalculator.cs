@@ -7,11 +7,62 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
+
+/// <summary>
+/// This class provides a capability keep some <see cref="EvmStack"/> words as a kind of promise off-heap.
+///
+/// When the value is asked to be materialized with <see cref="Get"/>, the first byte of the slot is checked for <see cref="DoneMarker"/>
+/// If it's resolved, the value is returned. Otherwise, a <see cref="SpinWait"/> is used to spin till it is.
+///
+/// Once value is materialized, it can be retrieved multiple times.
+///
+/// The materialization is left for other components, like <see cref="KeccakCalculator"/> that preserve the semantics of having the first byte
+/// different from <see cref="DoneMarker"/> untill the promise is pending.
+/// </summary>
+public static class OffHeapStack
+{
+    /// <summary>
+    /// Represents the value of the first byte that should be set to it to provide the value.
+    /// </summary>
+    public const byte DoneMarker = byte.MaxValue;
+
+    /// <summary>
+    /// How many bytes of the prefix.
+    /// </summary>
+    public const byte MarkerPrefixLength = 1;
+
+    public const int WordLength = EvmStack.WordSize;
+
+    public static unsafe ReadOnlySpan<byte> Get(Slot slot)
+    {
+        Debug.Assert(slot.Value != UIntPtr.Zero);
+
+        var wait = default(SpinWait);
+
+        ref var start = ref Unsafe.AsRef<byte>(slot.Value.ToPointer());
+
+        while (Volatile.Read(ref start) != DoneMarker)
+        {
+            wait.SpinOnce();
+        }
+
+        return new ReadOnlySpan<byte>(Unsafe.AsPointer(ref Unsafe.Add(ref start, MarkerPrefixLength)), WordLength);
+    }
+
+    /// <summary>
+    /// The slot for the off heap stack.
+    /// </summary>
+    public record struct Slot(UIntPtr Value)
+    {
+        /// <summary>
+        /// Whether the slot represents a promise or is just a zero.
+        /// </summary>
+        public bool IsAcquired => Value != UIntPtr.Zero;
+    }
+}
 
 /// <summary>
 /// The calculator for keccaks, allowing the caller to hold only an <see cref="ushort"/> if it keeps the reference to <see cref="KeccakCalculator"/>.
@@ -20,14 +71,12 @@ public sealed class KeccakCalculator
 {
     private static readonly int Alignment = UIntPtr.Size;
 
-    private const byte HashLength = Hash256.Size;
-    private const byte MinLength = HashLength;
+    private const byte MinLength = OffHeapStack.WordLength;
 
-    private const byte MaxLength = byte.MaxValue - 1;
-    private const byte DoneMarker = byte.MaxValue;
+    private const byte MaxLength = OffHeapStack.DoneMarker - 1;
 
-    private const ushort IdDiff = 1;
-    private const byte LengthPrefix = 1;
+    private const byte LengthPrefix = OffHeapStack.MarkerPrefixLength;
+
     private const int BufferLength = 8 * 1024;
 
     private static readonly ConcurrentQueue<UIntPtr> Queue = new();
@@ -49,7 +98,7 @@ public sealed class KeccakCalculator
                 ValueKeccak.Compute(span).BytesAsSpan.CopyTo(span);
 
                 // Mark as done writing done marker after writing the payload
-                Volatile.Write(ref Unsafe.AsRef<byte>(b), DoneMarker);
+                Volatile.Write(ref Unsafe.AsRef<byte>(b), OffHeapStack.DoneMarker);
             }
 
             // Spin with no sleep
@@ -57,11 +106,12 @@ public sealed class KeccakCalculator
         }
     }
 
-    private ushort _writtenTo;
+    private int _writtenTo;
 
     private readonly unsafe byte* _buffer = (byte*)NativeMemory.AlignedAlloc(BufferLength, (UIntPtr)Alignment);
 
-    public unsafe bool TrySchedule(ReadOnlySpan<byte> bytes, out ushort id)
+    [SkipLocalsInit]
+    public unsafe OffHeapStack.Slot TrySchedule(ReadOnlySpan<byte> bytes)
     {
         var writtenTo = _writtenTo;
         var length = bytes.Length;
@@ -71,44 +121,38 @@ public sealed class KeccakCalculator
         if (length < MinLength || length > MaxLength ||
             writtenTo + alignedLength > BufferLength)
         {
-            id = 0;
-            return false;
+            return default;
         }
 
-        // write length prefix
-        id = (ushort)(writtenTo + IdDiff);
+        // Calculate start
+        byte* start = _buffer + writtenTo;
 
-        ref var start = ref Unsafe.Add(ref Unsafe.AsRef<byte>(_buffer), writtenTo);
-        start = (byte)length;
+        // Remember as a slot
+        var slot = new OffHeapStack.Slot(new UIntPtr(start));
 
-        var destination = new Span<byte>(Unsafe.AsPointer(ref Unsafe.Add(ref start, LengthPrefix)), length);
+        // Set length
+        *start = (byte)length;
+
+        var destination = new Span<byte>(start + LengthPrefix, length);
         bytes.CopyTo(destination);
 
-        Queue.Enqueue(new UIntPtr(Unsafe.AsPointer(ref start)));
+        Queue.Enqueue(slot.Value);
 
         // Update written to
-        _writtenTo = (ushort)(writtenTo + alignedLength);
+        _writtenTo = writtenTo + alignedLength;
 
-        Debug.Assert(id > 0);
-
-        return true;
+        return slot;
     }
 
-    public unsafe ReadOnlySpan<byte> Get(ushort id)
+    /// <summary>
+    /// A quick and dirty reset to allow more writes.
+    /// </summary>
+    public void ResetForTests()
     {
-        Debug.Assert(id > 0);
-
-        var wait = default(SpinWait);
-
-        ref var start = ref Unsafe.Add(ref Unsafe.AsRef<byte>(_buffer), id - IdDiff);
-
-        while (Volatile.Read(ref start) != DoneMarker)
-        {
-            wait.SpinOnce();
-        }
-
-        return new ReadOnlySpan<byte>(Unsafe.AsPointer(ref Unsafe.Add(ref start, LengthPrefix)), HashLength);
+        _writtenTo = 0;
     }
+
+    public static ReadOnlySpan<byte> Get(OffHeapStack.Slot slot) => OffHeapStack.Get(slot);
 
     /// <summary>
     /// Aligns lengths so that two payloads to compute never share the same word.

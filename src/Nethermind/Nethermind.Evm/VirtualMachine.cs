@@ -1140,17 +1140,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            // The tracing is not set. Try to schedule Keccak
-                            KeccakCalculator? calculator = null;
-                            if (calculator != null && calculator.TrySchedule(bytes, out var id))
-                            {
-                                stack.PushKeccakId(id);
-                            }
-                            else
-                            {
-                                // Scheduling computation wasn't successful. Compute in situ.
-                                stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
-                            }
+                            // // The tracing is not set. Try to schedule Keccak
+                            // KeccakCalculator? calculator = null;
+                            // if (calculator != null && calculator.TrySchedule(bytes, out var id))
+                            // {
+                            //     stack.PushKeccakId(id);
+                            // }
+                            // else
+                            // {
+                            // Scheduling computation wasn't successful. Compute in situ.
+                            stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+                            // }
                         }
 
                         break;
