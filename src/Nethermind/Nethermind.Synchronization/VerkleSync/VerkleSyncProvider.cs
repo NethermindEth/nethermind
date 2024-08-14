@@ -73,12 +73,12 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         try
         {
             VerkleProofSerializer ser = VerkleProofSerializer.Instance;
-            VerkleProof vProof = ser.Decode(new RlpStream(proofs!));
+            VerkleProofSerialized vProof = ser.Decode(new RlpStream(proofs!));
             try
             {
                 var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), _logManager);
                 var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
-                var isCorrect = localTree.CreateStatelessTreeFromRange(vProof, rootPoint, startingStem, subTrees[^1].Path, subTrees);
+                var isCorrect = localTree.CreateStatelessTreeFromRange(vProof, rootPoint.ToBytesUncompressedLittleEndian(), startingStem, subTrees[^1].Path, subTrees);
                 if (!isCorrect)
                 {
                     _logger.Error(
@@ -106,8 +106,8 @@ public class VerkleSyncProvider : IVerkleSyncProvider
     }
 
 
-    public AddRangeResult AddSubTreeRange(long blockNumber, Banderwagon rootPoint, byte[] startingStem,
-        PathWithSubTree[] subTrees, VerkleProof proof, byte[] limitStem)
+    public AddRangeResult AddSubTreeRange(long blockNumber, byte[] rootPoint, byte[] startingStem,
+        PathWithSubTree[] subTrees, VerkleProofSerialized proof, byte[] limitStem)
     {
         IVerkleTreeStore store = _trieStorePool.Get();
         VerkleTree tree = new VerkleTree(store, LimboLogs.Instance);
@@ -118,7 +118,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         return AddRangeResult.OK;
     }
 
-    public bool HealTheTreeFromExecutionWitness(ExecutionWitness execWitness, Banderwagon root)
+    public bool HealTheTreeFromExecutionWitness(ExecutionWitness execWitness, byte[] root)
     {
         IVerkleTreeStore store = _trieStorePool.Get();
         VerkleTree tree = new(store, LimboLogs.Instance);

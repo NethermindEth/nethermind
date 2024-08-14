@@ -226,7 +226,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         }
 
         SubTreeRange? accountRange = getAccountRangeMessage.SubTreeRange;
-        (List<PathWithSubTree>, VerkleProof) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
+        (List<PathWithSubTree>, VerkleProofSerialized) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
             accountRange.LimitStem, getAccountRangeMessage.ResponseBytes, out _);
         SubTreeRangeMessage? response = new();
         response.PathsWithSubTrees = data.Item1.ToArray();
@@ -252,7 +252,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
         var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
         var isCorrect = localTree.CreateStatelessTreeFromRange(
-            verkleProofSerializer.Decode(new RlpStream(decode.Proofs)), rootPoint, startingStem,
+            verkleProofSerializer.Decode(new RlpStream(decode.Proofs)), rootPoint.ToBytesUncompressedLittleEndian(), startingStem,
             decode.PathsWithSubTrees[^1].Path, decode.PathsWithSubTrees);
         Logger.Info(!isCorrect
             ? $"FulfillSubTreeRangeMessage: SubTreeRangeMessage encoding-decoding and verification: FAILED"

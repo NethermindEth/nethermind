@@ -161,7 +161,7 @@ public class Block
             if (ExecutionWitness.VerkleProof is not null)
             {
                 builder.AppendLine($"    WitnessVerkleProof: {ExecutionWitness.VerkleProof.D}");
-                builder.AppendLine($"      D: {ExecutionWitness.VerkleProof.D.ToBytes().ToHexString()}");
+                builder.AppendLine($"      D: {ExecutionWitness.VerkleProof.D.ToHexString()}");
                 builder.AppendLine(
                     $"      IpaProof: {ExecutionWitness.VerkleProof.IpaProof.Encode().ToHexString()}");
                 builder.AppendLine(
@@ -172,7 +172,7 @@ public class Block
                         $"      OtherStems: {string.Join(", ", ExecutionWitness.VerkleProof.OtherStems.Select(x => x.ToString()))}");
 
                 builder.AppendLine(
-                    $"      ExtensionPresent: {string.Join(", ", ExecutionWitness.VerkleProof.CommitmentsByPath.Select(x => x.ToBytes().ToHexString()))}");
+                    $"      ExtensionPresent: {string.Join(", ", ExecutionWitness.VerkleProof.CommitmentsByPath.Select(x => x.ToHexString()))}");
             }
         }
 

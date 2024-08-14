@@ -57,9 +57,9 @@ public class InternalNode
     {
         NodeType = nodeType;
         Stem = stem;
-        C1 = new Commitment(Banderwagon.FromBytes(c1, subGroupCheck)!.Value);
-        C2 = new Commitment(Banderwagon.FromBytes(c2, subGroupCheck)!.Value);
-        InternalCommitment = new Commitment(Banderwagon.FromBytes(extCommit, subGroupCheck)!.Value);
+        C1 = new Commitment(Banderwagon.FromBytesUncompressedUnchecked(c1, isBigEndian: false));
+        C2 = new Commitment(Banderwagon.FromBytesUncompressedUnchecked(c2, isBigEndian: false));
+        InternalCommitment = new Commitment(Banderwagon.FromBytesUncompressedUnchecked(extCommit, isBigEndian: false));
     }
 
     public bool IsStem => NodeType == VerkleNodeType.StemNode;
