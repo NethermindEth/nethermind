@@ -6,10 +6,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NonBlocking" />
+    <PackageReference Include="RocksDB" />
   </ItemGroup>
 </Project>

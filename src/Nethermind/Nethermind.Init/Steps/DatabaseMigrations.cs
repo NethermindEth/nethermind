@@ -34,6 +34,7 @@ namespace Nethermind.Init.Steps
             yield return new BloomMigration(_api);
             yield return new ReceiptMigration(_api);
             yield return new ReceiptFixMigration(_api);
+            yield return new ExtractKeyValueMigration(_api);
             yield return new TotalDifficultyFixMigration(_api.ChainLevelInfoRepository, _api.BlockTree, _api.Config<ISyncConfig>(), _api.LogManager);
         }
     }
