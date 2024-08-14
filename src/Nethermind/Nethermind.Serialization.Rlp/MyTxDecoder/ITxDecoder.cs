@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
@@ -16,4 +15,6 @@ interface ITxDecoder
     public void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 
     public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors);
+
+    public int GetTxLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 }
