@@ -129,6 +129,18 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : ITxDecoder
         return result;
     }
 
+    public int GetTxLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        int txContentLength = GetContentLength(tx, forSigning);
+        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
+
+        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
+        int result = isForTxRoot
+                ? (1 + txPayloadLength)
+                : Rlp.LengthOfSequence(1 + txPayloadLength);
+        return result;
+    }
+
     private void DecodeAccessListPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
