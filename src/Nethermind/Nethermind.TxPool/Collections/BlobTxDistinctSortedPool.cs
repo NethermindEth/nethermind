@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections;
@@ -14,9 +15,9 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 {
     protected override string ShortPoolName => "BlobPool";
 
-    public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex => BlobIndex;
+    public ConcurrentDictionary<string, List<Hash256>> GetBlobIndex => BlobIndex;
 
-    protected readonly ConcurrentDictionary<byte[], List<Hash256>> BlobIndex = new();
+    protected readonly ConcurrentDictionary<string, List<Hash256>> BlobIndex = new();
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
@@ -31,6 +32,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
         return false;
     }
+
     protected void AddToBlobIndex(Transaction blobTx)
     {
         if (blobTx.BlobVersionedHashes?.Length > 0)
@@ -39,7 +41,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             {
                 if (blobVersionedHash?.Length == 32)
                 {
-                    BlobIndex.AddOrUpdate(blobVersionedHash,
+                    BlobIndex.AddOrUpdate(blobVersionedHash.ToHexString(),
                         k => [blobTx.Hash!],
                         (k, b) =>
                         {
@@ -65,18 +67,18 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    protected void RemoveFromBlobIndex(Transaction blobTx)
+    private void RemoveFromBlobIndex(Transaction blobTx)
     {
         if (blobTx.BlobVersionedHashes?.Length > 0)
         {
             foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
             {
-                if (blobVersionedHash is not null
-                    && BlobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes))
+                if (blobVersionedHash?.ToHexString() is { } hexString
+                    && BlobIndex.TryGetValue(hexString, out List<Hash256>? txHashes))
                 {
                     if (txHashes.Count < 2)
                     {
-                        BlobIndex.Remove(blobVersionedHash, out _);
+                        BlobIndex.Remove(hexString, out _);
                     }
                     else
                     {
