@@ -30,7 +30,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             if (targetWorldState.ClearCache())
             {
-                if (_logger.IsWarn) _logger.Warn("Cashes are not empty. Clearing them.");
+                if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
             }
 
             if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)
@@ -111,8 +111,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
             int progress = 0;
-            // We want to start at 1 which is the second transaction, giving total count one less than the length
-            Parallel.For(1, block.Transactions.Length, parallelOptions, _ =>
+            Parallel.For(0, block.Transactions.Length, parallelOptions, _ =>
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 IReadOnlyTxProcessorSource env = _envPool.Get();
@@ -121,8 +120,8 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 try
                 {
                     // Process transactions in sequential order, rather than partitioning scheme from Parallel.For
-                    // Interlocked.Increment returns the incremented value, so it will start at 1
-                    int i = Interlocked.Increment(ref progress);
+                    // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
+                    int i = Interlocked.Increment(ref progress) - 1;
                     // If the transaction has already been processed or being processed, exit early
                     if (block.TransactionProcessed > i) return;
 
