@@ -121,9 +121,9 @@ namespace Nethermind.Evm.Test
                 0x5b, 0x36, 0x59, 0x3a, 0x34, 0x60, 0x5b, 0x59, 0x05, 0x30, 0xf4, 0x3a,
                 0x56};
 
-            var a = run(second).ToString();
-            run(first);
-            var b = run(second).ToString();
+            var a = Run(second).ToString();
+            Run(first);
+            var b = Run(second).ToString();
 
             Assert.That(b, Is.EqualTo(a));
         }
@@ -134,7 +134,7 @@ namespace Nethermind.Evm.Test
             var input = new byte[] {
                 0x5b, 0x59, 0x60, 0x20, 0x59, 0x81, 0x91, 0x52, 0x44, 0x36, 0x5a, 0x3b,
                 0x59, 0xf4, 0x5b, 0x31, 0x56, 0x08};
-            run(input);
+            Run(input);
         }
 
         private static readonly PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
@@ -144,7 +144,7 @@ namespace Nethermind.Evm.Test
         private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
         // for testing purposes, particular chain id does not matter. Maybe make random id so it captures the idea that signature should would irrespective of chain
         private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork, LimboLogs.Instance);
-        private static string run(byte[] input)
+        private static string Run(byte[] input)
         {
             long blocknr = 12965000;
             long gas = 34218;
