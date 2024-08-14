@@ -271,8 +271,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         return transaction;
     }
 
-    private BlockHeader GetCallHeader(BlockStateCall<TransactionWithSourceDetails> block, BlockHeader parent, bool payloadValidation, IReleaseSpec spec) =>
-        block.BlockOverrides is not null
+    private BlockHeader GetCallHeader(BlockStateCall<TransactionWithSourceDetails> block, BlockHeader parent, bool payloadValidation, IReleaseSpec spec)
+    {
+        BlockHeader result = block.BlockOverrides is not null
             ? block.BlockOverrides.GetBlockHeader(parent, blocksConfig, spec)
             : new BlockHeader(
                 parent.Hash!,
@@ -284,13 +285,17 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 parent.Timestamp + 1,
                 Array.Empty<byte>())
             {
-                BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
-                    ? block.BlockOverrides.BaseFeePerGas.Value
-                    : !payloadValidation
-                        ? 0
-                        : BaseFeeCalculator.Calculate(parent, spec),
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
                 ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec)
             };
+
+        result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
+            ? block.BlockOverrides.BaseFeePerGas.Value
+            : !payloadValidation
+                ? 0
+                : BaseFeeCalculator.Calculate(parent, spec);
+
+        return result;
+    }
 }
