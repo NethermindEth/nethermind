@@ -46,14 +46,10 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         { TxType.DepositTx, new OptimismTxDecoder(lazyHash) }
     };
 
-    private readonly AccessListDecoder _accessListDecoder = new();
-
     protected virtual T NewTx()
     {
         return new();
     }
-
-    #region public
 
     public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -185,8 +181,6 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         }
     }
 
-    #endregion
-
     private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (item is null)
@@ -203,149 +197,6 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         {
             throw new InvalidOperationException($"Unknown transaction type: {item.Type}");
         }
-    }
-
-    private static int GetLegacyContentLength(T item)
-    {
-        return Rlp.LengthOf(item.Nonce)
-            + Rlp.LengthOf(item.GasPrice)
-            + Rlp.LengthOf(item.GasLimit)
-            + Rlp.LengthOf(item.To)
-            + Rlp.LengthOf(item.Value)
-            + Rlp.LengthOf(item.Data);
-    }
-
-    private int GetAccessListContentLength(T item)
-    {
-        return Rlp.LengthOf(item.Nonce)
-               + Rlp.LengthOf(item.GasPrice)
-               + Rlp.LengthOf(item.GasLimit)
-               + Rlp.LengthOf(item.To)
-               + Rlp.LengthOf(item.Value)
-               + Rlp.LengthOf(item.Data)
-               + Rlp.LengthOf(item.ChainId ?? 0)
-               + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
-    }
-
-    private int GetEip1559ContentLength(T item)
-    {
-        return Rlp.LengthOf(item.Nonce)
-               + Rlp.LengthOf(item.GasPrice) // gas premium
-               + Rlp.LengthOf(item.DecodedMaxFeePerGas)
-               + Rlp.LengthOf(item.GasLimit)
-               + Rlp.LengthOf(item.To)
-               + Rlp.LengthOf(item.Value)
-               + Rlp.LengthOf(item.Data)
-               + Rlp.LengthOf(item.ChainId ?? 0)
-               + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
-    }
-
-    private int GetShardBlobContentLength(T item)
-    {
-        return Rlp.LengthOf(item.Nonce)
-               + Rlp.LengthOf(item.GasPrice) // gas premium
-               + Rlp.LengthOf(item.DecodedMaxFeePerGas)
-               + Rlp.LengthOf(item.GasLimit)
-               + Rlp.LengthOf(item.To)
-               + Rlp.LengthOf(item.Value)
-               + Rlp.LengthOf(item.Data)
-               + Rlp.LengthOf(item.ChainId ?? 0)
-               + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None)
-               + Rlp.LengthOf(item.MaxFeePerBlobGas)
-               + Rlp.LengthOf(item.BlobVersionedHashes);
-    }
-
-    private static int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
-    {
-        ShardBlobNetworkWrapper networkWrapper = item.NetworkWrapper as ShardBlobNetworkWrapper;
-        return Rlp.LengthOfSequence(txContentLength)
-               + Rlp.LengthOf(networkWrapper.Blobs)
-               + Rlp.LengthOf(networkWrapper.Commitments)
-               + Rlp.LengthOf(networkWrapper.Proofs);
-    }
-
-    private static int GetDepositTxContentLength(T item)
-    {
-        return Rlp.LengthOf(item.SourceHash)
-               + Rlp.LengthOf(item.SenderAddress)
-               + Rlp.LengthOf(item.To)
-               + Rlp.LengthOf(item.Mint)
-               + Rlp.LengthOf(item.Value)
-               + Rlp.LengthOf(item.GasLimit)
-               + Rlp.LengthOf(item.IsOPSystemTransaction)
-               + Rlp.LengthOf(item.Data);
-    }
-
-    private int GetContentLength(T item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0, bool withNetworkWrapper = false)
-    {
-        bool includeSigChainIdHack = item.Type == TxType.Legacy && isEip155Enabled && chainId != 0;
-        int contentLength = 0;
-        switch (item.Type)
-        {
-            case TxType.Legacy:
-                contentLength = TxDecoder<T>.GetLegacyContentLength(item);
-                break;
-            case TxType.AccessList:
-                contentLength = GetAccessListContentLength(item);
-                break;
-            case TxType.EIP1559:
-                contentLength = GetEip1559ContentLength(item);
-                break;
-            case TxType.Blob:
-                contentLength = GetShardBlobContentLength(item);
-                break;
-            case TxType.DepositTx:
-                contentLength = TxDecoder<T>.GetDepositTxContentLength(item);
-                break;
-        }
-
-        contentLength += GetSignatureContentLength(item, forSigning, chainId, includeSigChainIdHack);
-
-        if (withNetworkWrapper)
-        {
-            if (item.Type == TxType.Blob)
-            {
-                contentLength = TxDecoder<T>.GetShardBlobNetworkWrapperContentLength(item, contentLength);
-            }
-        }
-        return contentLength;
-    }
-
-    private static int GetSignatureContentLength(T item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
-    {
-        if (item.Type == TxType.DepositTx)
-        {
-            return 0;
-        }
-
-        int contentLength = 0;
-
-        if (forSigning)
-        {
-            if (includeSigChainIdHack)
-            {
-                contentLength += Rlp.LengthOf(chainId);
-                contentLength += 1;
-                contentLength += 1;
-            }
-        }
-        else
-        {
-            if (item.Signature is null)
-            {
-                contentLength += 1;
-                contentLength += 1;
-                contentLength += 1;
-            }
-            else
-            {
-                contentLength += Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
-                contentLength += Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
-                contentLength += Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
-            }
-        }
-
-        return contentLength;
     }
 
     private int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
