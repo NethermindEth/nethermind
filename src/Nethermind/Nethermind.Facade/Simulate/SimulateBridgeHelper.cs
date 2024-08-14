@@ -289,7 +289,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 IsPostMerge = parent.Difficulty == 0,
                 ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec)
             };
-
+        result.Timestamp = parent.Timestamp + 1;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation
