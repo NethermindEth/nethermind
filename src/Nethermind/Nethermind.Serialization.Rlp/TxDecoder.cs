@@ -86,14 +86,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             }
         }
 
-        if (_decoders.TryGetValue(txType, out ITxDecoder? decoder))
-        {
-            return (T)decoder.Decode(transactionSequence, rlpStream, rlpBehaviors);
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unknown transaction type: {txType}");
-        }
+        return (T)_decoders[txType].Decode(transactionSequence, rlpStream, rlpBehaviors);
     }
 
     public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -137,14 +130,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             }
         }
 
-        if (_decoders.TryGetValue(txType, out ITxDecoder? decoder))
-        {
-            decoder.Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unknown transaction type: {txType}");
-        }
+        _decoders[txType].Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -179,25 +165,9 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
             return;
         }
 
-        if (_decoders.TryGetValue(item.Type, out ITxDecoder? decoder))
-        {
-            decoder.Encode(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unknown transaction type: {item.Type}");
-        }
+        _decoders[item.Type].Encode(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
     }
 
-    private int GetLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
-    {
-        if (_decoders.TryGetValue(tx.Type, out ITxDecoder? decoder))
-        {
-            return decoder.GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unknown transaction type: {tx.Type}");
-        }
-    }
+    private int GetLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId) =>
+        _decoders[tx.Type].GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 }
