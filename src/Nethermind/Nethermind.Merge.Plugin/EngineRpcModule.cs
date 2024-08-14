@@ -36,7 +36,6 @@ public partial class EngineRpcModule : IEngineRpcModule
         ILogManager logManager)
     {
         _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
-        _getBlobsHandler = getBlobsHandler;
         _getPayloadHandlerV1 = getPayloadHandlerV1;
         _getPayloadHandlerV2 = getPayloadHandlerV2;
         _getPayloadHandlerV3 = getPayloadHandlerV3;
