@@ -108,7 +108,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
     }
 
-    public int GetTxLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);

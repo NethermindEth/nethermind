@@ -113,7 +113,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         EncodeDepositTxPayloadWithoutPayload(item, stream);
     }
 
-    public int GetTxLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int txContentLength = GetDepositTxContentLength(tx);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
