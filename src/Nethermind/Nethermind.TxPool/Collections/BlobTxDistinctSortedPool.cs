@@ -16,9 +16,9 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 {
     protected override string ShortPoolName => "BlobPool";
 
-    public ConcurrentDictionary<string, List<Hash256>> GetBlobIndex => _blobIndex;
+    public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex => _blobIndex;
 
-    private readonly ConcurrentDictionary<string, List<Hash256>> _blobIndex = new();
+    private readonly ConcurrentDictionary<byte[], List<Hash256>> _blobIndex = new(Bytes.EqualityComparer);
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
@@ -42,7 +42,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             {
                 if (blobVersionedHash?.Length == KzgPolynomialCommitments.BytesPerBlobVersionedHash)
                 {
-                    _blobIndex.AddOrUpdate(blobVersionedHash.ToHexString(),
+                    _blobIndex.AddOrUpdate(blobVersionedHash,
                         k => [blobTx.Hash!],
                         (k, b) =>
                         {
@@ -74,12 +74,12 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
             {
-                if (blobVersionedHash?.ToHexString() is { } key
-                    && _blobIndex.TryGetValue(key, out List<Hash256>? txHashes))
+                if (blobVersionedHash is not null
+                    && _blobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes))
                 {
                     if (txHashes.Count < 2)
                     {
-                        _blobIndex.Remove(key, out _);
+                        _blobIndex.Remove(blobVersionedHash, out _);
                     }
                     else
                     {

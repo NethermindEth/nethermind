@@ -16,7 +16,7 @@ namespace Nethermind.TxPool
         int GetPendingTransactionsCount();
         int GetPendingBlobTransactionsCount();
         Transaction[] GetPendingTransactions();
-        ConcurrentDictionary<string, List<Hash256>> GetBlobIndex();
+        ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex();
 
         /// <summary>
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting

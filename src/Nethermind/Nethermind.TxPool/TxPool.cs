@@ -183,7 +183,7 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
-        public ConcurrentDictionary<string, List<Hash256>> GetBlobIndex() => _blobTransactions.GetBlobIndex;
+        public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => _blobTransactions.GetBlobIndex;
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {

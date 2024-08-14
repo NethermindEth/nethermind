@@ -53,7 +53,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public ConcurrentDictionary<string, List<Hash256>> GetBlobIndex() => new();
+        public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => new();
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 

@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
@@ -19,7 +18,7 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV
 {
     private const int MaxRequest = 128;
 
-    private readonly ConcurrentDictionary<string, List<Hash256>> _blobIndex = txPool.GetBlobIndex();
+    private readonly ConcurrentDictionary<byte[], List<Hash256>> _blobIndex = txPool.GetBlobIndex();
 
     public Task<ResultWrapper<GetBlobsV1Result>> HandleAsync(byte[][] request)
     {
@@ -34,7 +33,7 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV
         foreach (byte[] requestedBlobVersionedHash in request)
         {
             bool isBlobFound = false;
-            if (_blobIndex.TryGetValue(requestedBlobVersionedHash.ToHexString(), out List<Hash256>? txHashes)
+            if (_blobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
                 && txPool.TryGetPendingBlobTransaction(txHashes.First(), out Transaction? blobTx)
                 && blobTx.BlobVersionedHashes?.Length > 0)
             {
