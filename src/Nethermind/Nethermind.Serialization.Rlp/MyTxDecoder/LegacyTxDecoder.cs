@@ -105,7 +105,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
 
         stream.StartSequence(contentLength);
         EncodePayload(transaction, stream);
-        EncodeSignature(stream, transaction, forSigning, chainId, includeSigChainIdHack);
+        EncodeSignature(transaction, stream, forSigning, chainId, includeSigChainIdHack);
     }
 
     public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
@@ -202,7 +202,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         stream.Encode(transaction.Data);
     }
 
-    private static void EncodeSignature(RlpStream stream, Transaction item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
+    private static void EncodeSignature(Transaction transaction, RlpStream stream, bool forSigning, ulong chainId, bool includeSigChainIdHack)
     {
         if (forSigning)
         {
@@ -215,7 +215,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         }
         else
         {
-            if (item.Signature is null)
+            if (transaction.Signature is null)
             {
                 stream.Encode(0);
                 stream.Encode(Bytes.Empty);
@@ -223,9 +223,9 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
             }
             else
             {
-                stream.Encode(item.Signature.V);
-                stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
-                stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
+                stream.Encode(transaction.Signature.V);
+                stream.Encode(transaction.Signature.RAsSpan.WithoutLeadingZeros());
+                stream.Encode(transaction.Signature.SAsSpan.WithoutLeadingZeros());
             }
         }
     }
