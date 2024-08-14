@@ -52,7 +52,6 @@ namespace Nethermind.TxPool
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly ILogger _logger;
-
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
         private readonly UpdateGroupDelegate _updateBucket;
