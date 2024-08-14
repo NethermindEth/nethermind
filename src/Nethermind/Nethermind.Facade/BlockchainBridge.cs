@@ -169,7 +169,7 @@ namespace Nethermind.Facade
             SimulateOutput result = new();
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
                 {
                     result.Error = error;
                 }
