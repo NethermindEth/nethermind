@@ -227,7 +227,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger notification action on test repo
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/master') || startsWith(github.ref, 'refs/heads/release/'))
+        if: github.event.workflow_run.head_branch == 'master' || startsWith(github.event.workflow_run.head_branch, 'release/')
         continue-on-error: true
         uses: benc-uk/workflow-dispatch@v1
         with:
