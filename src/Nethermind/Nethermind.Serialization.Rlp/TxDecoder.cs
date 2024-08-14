@@ -181,7 +181,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
 
         if (_decoders.TryGetValue(item.Type, out ITxDecoder? decoder))
         {
-            decoder.EncodeTx(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+            decoder.Encode(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         }
         else
         {

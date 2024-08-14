@@ -100,7 +100,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
-    public void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int contentLength = GetContentLength(item, forSigning);
         int sequenceLength = Rlp.LengthOfSequence(contentLength);

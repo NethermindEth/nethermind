@@ -98,7 +98,7 @@ public sealed class LegacyTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
-    public void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
         int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
