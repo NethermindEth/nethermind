@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Data.Common;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Transactions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -18,11 +11,15 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.State.Proofs;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Runtime.InteropServices;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -94,6 +91,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 spec = env.SpecProvider.GetSpec(callHeader);
                 PrepareState(callHeader, parent, blockCall, env.WorldState, env.CodeInfoRepository, spec);
                 Transaction[] transactions = CreateTransactions(payload, blockCall, callHeader, stateProvider, nonceCache);
+                callHeader.TxRoot = TxTrie.CalculateRoot(transactions);
                 callHeader.Hash = callHeader.CalculateHash();
 
                 if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
@@ -126,7 +124,8 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         SimulateBlockResult current = simulateOutputTracer.Results.Last();
         current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
         current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
-        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Hash256.Zero;
+        current.TransactionsRoot = processedBlock.Header.TxRoot;
+        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
         current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
         current.Withdrawals = processedBlock.Withdrawals ?? [];
         current.Author = null;
