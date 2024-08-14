@@ -511,6 +511,32 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        List<byte[]> request = new List<byte[]>(requestSize);
+        for (int i = 0; i < requestSize; i++)
+        {
+            request.Add(Bytes.FromHexString(i.ToString("X64")));
+        }
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(request.ToArray());
+
+        if (requestSize > 128)
+        {
+            result.Result.Should().BeEquivalentTo(Result.Fail($"The number of requested blobs must not exceed 128"));
+            result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+        }
+        else
+        {
+            result.Result.Should().Be(Result.Success);
+            result.Data.BlobsAndProofs.Length.Should().Be(requestSize);
+        }
+    }
+
+    [Test]
     public async Task GetBlobsV1_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
