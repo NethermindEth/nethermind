@@ -22,11 +22,11 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
 
-        DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+        DecodePayload(transaction, rlpStream);
 
         if (rlpStream.Position < lastCheck)
         {
-            DecodeSignature(rlpStream, rlpBehaviors, transaction);
+            DecodeSignature(transaction, rlpStream, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
@@ -59,11 +59,11 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        DecodeDepositPayloadWithoutSig(transaction, ref decoderContext);
+        DecodePayload(transaction, ref decoderContext);
 
         if (decoderContext.Position < lastCheck)
         {
-            DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
+            DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
@@ -73,7 +73,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            if (lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)
@@ -97,9 +97,9 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
-    public void Encode(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public void Encode(Transaction? transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int contentLength = GetDepositTxContentLength(item);
+        int contentLength = GetPayloadLength(transaction);
         int sequenceLength = Rlp.LengthOfSequence(contentLength);
 
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
@@ -107,15 +107,15 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
             stream.StartByteArray(sequenceLength + 1, false);
         }
 
-        stream.WriteByte((byte)item.Type);
+        stream.WriteByte((byte)transaction.Type);
         stream.StartSequence(contentLength);
 
-        EncodeDepositTxPayloadWithoutPayload(item, stream);
+        EncodePayload(transaction, stream);
     }
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int txContentLength = GetDepositTxContentLength(tx);
+        int txContentLength = GetPayloadLength(transaction);
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
         bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
@@ -125,7 +125,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         return result;
     }
 
-    private static void DecodeDepositPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    private static void DecodePayload(Transaction transaction, RlpStream rlpStream)
     {
         transaction.SourceHash = rlpStream.DecodeKeccak();
         transaction.SenderAddress = rlpStream.DecodeAddress();
@@ -137,7 +137,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         transaction.Data = rlpStream.DecodeByteArray();
     }
 
-    private static void DecodeDepositPayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
+    private static void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
         transaction.SenderAddress = decoderContext.DecodeAddress();
@@ -149,7 +149,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         transaction.Data = decoderContext.DecodeByteArray();
     }
 
-    private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
+    private static void DecodeSignature(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -157,7 +157,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
-    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, Transaction transaction)
+    private static void DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
@@ -207,27 +207,27 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         }
     }
 
-    private static int GetDepositTxContentLength(Transaction item)
+    private static int GetPayloadLength(Transaction transaction)
     {
-        return Rlp.LengthOf(item.SourceHash)
-               + Rlp.LengthOf(item.SenderAddress)
-               + Rlp.LengthOf(item.To)
-               + Rlp.LengthOf(item.Mint)
-               + Rlp.LengthOf(item.Value)
-               + Rlp.LengthOf(item.GasLimit)
-               + Rlp.LengthOf(item.IsOPSystemTransaction)
-               + Rlp.LengthOf(item.Data);
+        return Rlp.LengthOf(transaction.SourceHash)
+               + Rlp.LengthOf(transaction.SenderAddress)
+               + Rlp.LengthOf(transaction.To)
+               + Rlp.LengthOf(transaction.Mint)
+               + Rlp.LengthOf(transaction.Value)
+               + Rlp.LengthOf(transaction.GasLimit)
+               + Rlp.LengthOf(transaction.IsOPSystemTransaction)
+               + Rlp.LengthOf(transaction.Data);
     }
 
-    private static void EncodeDepositTxPayloadWithoutPayload(Transaction item, RlpStream stream)
+    private static void EncodePayload(Transaction transaction, RlpStream stream)
     {
-        stream.Encode(item.SourceHash);
-        stream.Encode(item.SenderAddress);
-        stream.Encode(item.To);
-        stream.Encode(item.Mint);
-        stream.Encode(item.Value);
-        stream.Encode(item.GasLimit);
-        stream.Encode(item.IsOPSystemTransaction);
-        stream.Encode(item.Data);
+        stream.Encode(transaction.SourceHash);
+        stream.Encode(transaction.SenderAddress);
+        stream.Encode(transaction.To);
+        stream.Encode(transaction.Mint);
+        stream.Encode(transaction.Value);
+        stream.Encode(transaction.GasLimit);
+        stream.Encode(transaction.IsOPSystemTransaction);
+        stream.Encode(transaction.Data);
     }
 }
