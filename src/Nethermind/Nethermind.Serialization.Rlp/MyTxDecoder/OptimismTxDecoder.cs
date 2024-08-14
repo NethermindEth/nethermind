@@ -113,18 +113,6 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
         EncodeDepositTxPayloadWithoutPayload(item, stream);
     }
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
-    {
-        int txContentLength = GetDepositTxContentLength(tx);
-        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
-
-        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
-        int result = isForTxRoot
-                ? (1 + txPayloadLength)
-                : Rlp.LengthOfSequence(1 + txPayloadLength);
-        return result;
-    }
-
     public int GetTxLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int txContentLength = GetDepositTxContentLength(tx);

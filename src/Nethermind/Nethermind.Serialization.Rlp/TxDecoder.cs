@@ -173,7 +173,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
     {
         if (_decoders.TryGetValue(tx.Type, out ITxDecoder? decoder))
         {
-            return decoder.GetLength(tx, rlpBehaviors);
+            return decoder.GetTxLength(tx, rlpBehaviors);
         }
         else
         {

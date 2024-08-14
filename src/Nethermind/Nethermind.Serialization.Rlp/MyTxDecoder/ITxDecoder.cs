@@ -14,7 +14,5 @@ interface ITxDecoder
 
     public void EncodeTx(Transaction? item, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 
-    public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors);
-
     public int GetTxLength(Transaction tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 }
