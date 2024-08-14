@@ -31,11 +31,12 @@ public static class BlobGasCalculator
 
     public static bool TryCalculateBlobGasPrice(BlockHeader header, Transaction transaction, out UInt256 blobGasPrice)
     {
-        if (header.ExcessBlobGas != null &&
-            TryCalculateBlobGasPricePerUnit(header.ExcessBlobGas.Value, out UInt256 blobGasPricePerUnit))
-            return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), blobGasPricePerUnit, out blobGasPrice);
-        blobGasPrice = UInt256.MaxValue;
-        return false;
+        if (!TryCalculateBlobGasPricePerUnit(header.ExcessBlobGas.Value, out UInt256 blobGasPricePerUnit))
+        {
+            blobGasPrice = UInt256.MaxValue;
+            return false;
+        }
+        return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), blobGasPricePerUnit, out blobGasPrice);
     }
 
     public static bool TryCalculateBlobGasPricePerUnit(BlockHeader header, out UInt256 blobGasPricePerUnit)

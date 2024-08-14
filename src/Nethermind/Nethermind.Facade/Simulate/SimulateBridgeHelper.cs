@@ -287,7 +287,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
-                ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec)
             };
         result.Timestamp = parent.Timestamp + 1;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
@@ -295,6 +294,8 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
             : !payloadValidation
                 ? 0
                 : BaseFeeCalculator.Calculate(parent, spec);
+
+        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
 
         return result;
     }
