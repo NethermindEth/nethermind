@@ -9,7 +9,6 @@ participants_matrix:
    - cl_type: teku
    - cl_type: lodestar
    - cl_type: nimbus
-   - cl_type: grandine
 network_params:
   preset: "minimal"
 additional_services:
