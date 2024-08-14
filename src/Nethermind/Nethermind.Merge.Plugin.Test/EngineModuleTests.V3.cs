@@ -575,6 +575,54 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task GetBlobsV1_should_return_mix_of_blobs_and_nulls([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
+    {
+        int requestSize = 10 * numberOfBlobs;
+
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfBlobs)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithMaxFeePerBlobGas(1000.Wei())
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
+
+        int actualIndex = 0;
+        for (int i = 0; i < requestSize; i++)
+        {
+            bool addActualHash = i % 10 == 0;
+
+            blobsAndProofs.Add(addActualHash ? new BlobAndProofV1(blobTx, actualIndex) : null);
+            blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
+        }
+        GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
+
+        result.Data.Should().BeEquivalentTo(expected);
+        result.Data.BlobsAndProofs.Length.Should().Be(requestSize);
+        for (int i = 0; i < requestSize; i++)
+        {
+            if (i % 10 == 0)
+            {
+                result.Data.BlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
+                result.Data.BlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
+            }
+            else
+            {
+                result.Data.BlobsAndProofs[i].Should().BeNull();
+            }
+        }
+    }
+
     public static IEnumerable<TestCaseData> ForkchoiceUpdatedV3DeclinedTestCaseSource
     {
         get
