@@ -161,7 +161,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
 
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        RlpStream rlpStream = new(GetTxLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
         EncodeTx(rlpStream, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         return new Rlp(rlpStream.Data.ToArray());
     }
@@ -169,17 +169,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public int GetLength(T tx, RlpBehaviors rlpBehaviors)
-    {
-        if (_decoders.TryGetValue(tx.Type, out ITxDecoder? decoder))
-        {
-            return decoder.GetLength(tx, rlpBehaviors);
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unknown transaction type: {tx.Type}");
-        }
-    }
+    public int GetLength(T tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors);
 
     private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
@@ -199,7 +189,7 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
         }
     }
 
-    private int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    private int GetLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         if (_decoders.TryGetValue(tx.Type, out ITxDecoder? decoder))
         {
