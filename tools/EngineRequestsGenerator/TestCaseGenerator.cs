@@ -302,15 +302,6 @@ public class TestCaseGenerator
             case TestCase.Blake1MRounds:
             case TestCase.Blake10MRounds:
                 return Blake2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
-            case TestCase.ModexpMinGasBaseHeavy:
-            case TestCase.ModexpMinGasExpHeavy:
-            case TestCase.ModexpMinGasBalanced:
-            case TestCase.Modexp215GasExpHeavy:
-                return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
-            case TestCase.EcAddInfinities:
-            case TestCase.EcAdd12:
-            case TestCase.EcAdd32ByteCoordinates:
-                return EcAdd.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcMulInfinities2Scalar:
             case TestCase.EcMulInfinities32ByteScalar:
             case TestCase.EcMul122:
@@ -318,9 +309,6 @@ public class TestCaseGenerator
             case TestCase.EcMul32ByteCoordinates2Scalar:
             case TestCase.EcMul32ByteCoordinates32ByteScalar:
                 return EcMul.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
-            case TestCase.EcPairing0Input:
-            case TestCase.EcPairing2Sets:
-                return EcPairing.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:

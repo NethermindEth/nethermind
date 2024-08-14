@@ -149,27 +149,6 @@ public enum TestCase
     [TestCaseMetadata("Identity precompile from 16k bytes", "Identity precompile call based on 16_384-byte source data")]
     IdentityFrom16KBytes,
 
-    [TestCaseMetadata("Modexp min gas, base heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 192 and exponent equal 3 (0b11 - 2x 1s in binary)")]
-    ModexpMinGasBaseHeavy,
-
-    [TestCaseMetadata("Modexp min gas, exp heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 8 and exponent equal 2^603 - 1 (603x 1s in binary)")]
-    ModexpMinGasExpHeavy,
-
-    [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 40 and exponent equal 2^25 - 1 (25x 1s in binary)")]
-    ModexpMinGasBalanced,
-
-    [TestCaseMetadata("Modexp 215 gas, exp heavy", "Modexp precompile consuming 215 gas, with base and modulo byte size equal 8 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
-    Modexp215GasExpHeavy,
-
-    [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
-    EcAddInfinities,
-
-    [TestCaseMetadata("EcAdd with (1, 2)", "EcAdd precompile with both initial points with x = 1 and y = 2")]
-    EcAdd12,
-
-    [TestCaseMetadata("EcAdd with 32-byte coordinates", "EcAdd precompile with both initial points with x and y as 32-byte values")]
-    EcAdd32ByteCoordinates,
-
     [TestCaseMetadata("EcMul with (0, 0) and scalar 2", "EcMul precompile with initial point with x = 0 and y = 0 and scalar equal 2")]
     EcMulInfinities2Scalar,
 
@@ -187,12 +166,6 @@ public enum TestCase
 
     [TestCaseMetadata("EcMul with 32-byte coordinates and 32-byte scalar", "EcMul precompile with initial point with x, y and scalar as 32-byte values")]
     EcMul32ByteCoordinates32ByteScalar,
-
-    [TestCaseMetadata("EcPairing with empty input", "EcPairing precompile with empty input")]
-    EcPairing0Input,
-
-    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
-    EcPairing2Sets,
 
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,
