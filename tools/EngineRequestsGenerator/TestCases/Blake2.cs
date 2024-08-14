@@ -128,8 +128,10 @@ public static class Blake2
         codeToDeploy.Add((byte)Instruction.MSTORE8);
 
 
-        int jumpDestPosition = codeToDeploy.Count;
+        long jumpDestPosition = codeToDeploy.Count;
+        byte[] jumpDestBytes = jumpDestPosition.ToBigEndianByteArrayWithoutLeadingZeros();
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
+        Console.WriteLine($"jumpdest: {jumpDestPosition}");
 
         for (int i = 0; i < 1000; i++)
         {
@@ -148,8 +150,8 @@ public static class Blake2
             codeToDeploy.Add((byte)Instruction.POP);
         }
 
-        codeToDeploy.Add((byte)Instruction.PUSH1);
-        codeToDeploy.Add((byte)jumpDestPosition);
+        codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)jumpDestBytes.Length - 1));
+        codeToDeploy.AddRange(jumpDestBytes);
         codeToDeploy.Add((byte)Instruction.JUMP);
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);

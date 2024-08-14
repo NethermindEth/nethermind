@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Nullable>annotations</Nullable>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

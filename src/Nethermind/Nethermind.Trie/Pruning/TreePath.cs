@@ -12,6 +12,7 @@ using System.Runtime.Intrinsics;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using System.Numerics;
 
 namespace Nethermind.Trie;
 
@@ -21,7 +22,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
-public struct TreePath
+public struct TreePath : IEquatable<TreePath>
 {
     public const int MemorySize = 36;
     public ValueHash256 Path;
@@ -255,17 +256,19 @@ public struct TreePath
 
     public readonly bool Equals(in TreePath other)
     {
-        return Path.Equals(other.Path) && Length == other.Length;
+        return Length == other.Length && Path.Equals(in other.Path);
     }
+
+    public readonly bool Equals(TreePath other) => Equals(in other);
 
     public readonly override bool Equals(object? obj)
     {
-        return obj is TreePath other && Equals(other);
+        return obj is TreePath other && Equals(in other);
     }
 
     public readonly override int GetHashCode()
     {
-        return HashCode.Combine(Path, Length);
+        return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
     }
 
     /// <summary>

@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
 
-public class Transfers
+public static class Transfers
 {
     public static Transaction[] GetTxs(PrivateKey privateKey, int nonce)
     {

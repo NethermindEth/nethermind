@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
 
-public class Keccak256
+public static class Keccak256
 {
     public static Transaction[] GetTxs(TestCase testCase, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
     {

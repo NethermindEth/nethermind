@@ -18,7 +18,7 @@ public class BlockStore : IBlockStore
 {
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder = new();
-    private const int CacheSize = 128 + 32;
+    public const int CacheSize = 128 + 32;
 
     private readonly LruCache<ValueHash256, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");

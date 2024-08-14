@@ -44,32 +44,37 @@ public class NodeBucket
 
     public struct BondedItemsEnumerator : IEnumerator<NodeBucketItem>, IEnumerable<NodeBucketItem>
     {
-        private NodeBucket _nodeBucket;
+        private readonly NodeBucket _nodeBucket;
         private LinkedListNode<NodeBucketItem>? _currentNode;
-        private DateTime _referenceTime;
+        private readonly DateTime _referenceTime;
 
         public BondedItemsEnumerator(NodeBucket nodeBucket)
         {
             _nodeBucket = nodeBucket;
+            lock (_nodeBucket._nodeBucketLock)
+            {
+                _currentNode = nodeBucket._items.Last;
+            }
             _referenceTime = DateTime.UtcNow;
-            Monitor.Enter(_nodeBucket._nodeBucketLock);
-            _currentNode = nodeBucket._items.Last;
             Current = null!;
         }
 
         public NodeBucketItem Current { get; private set; }
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
-            while (_currentNode is not null)
+            lock (_nodeBucket._nodeBucketLock)
             {
-                Current = _currentNode.Value;
-                _currentNode = _currentNode.Previous;
-                if (Current.IsBonded(_referenceTime))
+                while (_currentNode is not null)
                 {
-                    return true;
+                    Current = _currentNode.Value;
+                    _currentNode = _currentNode.Previous;
+                    if (Current.IsBonded(_referenceTime))
+                    {
+                        return true;
+                    }
                 }
             }
 
@@ -79,20 +84,15 @@ public class NodeBucket
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose()
+        public readonly void Dispose()
         {
-            if (_nodeBucket is not null)
-            {
-                Monitor.Exit(_nodeBucket._nodeBucketLock);
-            }
-            _nodeBucket = null!;
         }
-        public BondedItemsEnumerator GetEnumerator() => this;
+        public readonly BondedItemsEnumerator GetEnumerator() => this;
 
-        IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()
+        readonly IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()
             => GetEnumerator();
 
-        IEnumerator IEnumerable.GetEnumerator()
+        readonly IEnumerator IEnumerable.GetEnumerator()
             => GetEnumerator();
     }
 

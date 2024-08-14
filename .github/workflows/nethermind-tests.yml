@@ -33,7 +33,6 @@ jobs:
       matrix:
         project:
           - Nethermind.Abi.Test
-          - Nethermind.AccountAbstraction.Test
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
           - Nethermind.Blockchain.Test
@@ -55,13 +54,13 @@ jobs:
           - Nethermind.Logging.NLog.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mev.Test
           - Nethermind.Mining.Test
           - Nethermind.Monitoring.Test
           - Nethermind.Network.Discovery.Test
           - Nethermind.Network.Dns.Test
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
+          - Nethermind.Optimism.Test
           - Nethermind.Overseer.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test

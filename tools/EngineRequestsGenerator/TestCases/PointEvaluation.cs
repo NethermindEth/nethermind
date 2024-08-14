@@ -34,8 +34,6 @@ public static class PointEvaluation
     {
         switch (testCase)
         {
-            // case TestCase.PointEvaluationZeros:
-            //     return PrepareCodeZeros();
             case TestCase.PointEvaluationOneData:
                 return PrepareCodeOneData().Result;
             default:

@@ -43,14 +43,6 @@ public static class Modexp
                 return PrepareCode(40, 25);
             case TestCase.Modexp215GasExpHeavy:
                 return PrepareCode(8, 648);
-            // case TestCase.Modexp1KGasBaseHeavy:
-            //     return PrepareCode(440, 2);
-            // case TestCase.Modexp1KGasBalanced:
-            //     return PrepareCode(56, 62);
-            // case TestCase.Modexp10KGasExpHeavy:
-            //     return PrepareCode(48, 25);
-            // case TestCase.Modexp135KGasBalanced:
-            //     return PrepareCode(200, 648);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
@@ -188,12 +180,14 @@ public static class Modexp
             offset += 1;
         }
 
-        int jumpDestPosition = codeToDeploy.Count;
+        long jumpDestPosition = codeToDeploy.Count;
+        byte[] jumpDestBytes = jumpDestPosition.ToBigEndianByteArrayWithoutLeadingZeros();
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
+        Console.WriteLine($"jumpdest: {jumpDestPosition}");
 
         byte[] argsSize = ((long)(32 + 32 + 32 + baseSize + exponentAsBytes.Length + baseSize)).ToBigEndianByteArrayWithoutLeadingZeros();
 
-        for (int i = 0; i < 500; i++)
+        for (int i = 0; i < 1000; i++)
         {
             codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)byteSizeOfBase.Length - 1));      // return size
             codeToDeploy.AddRange(byteSizeOfBase);
@@ -210,8 +204,8 @@ public static class Modexp
             codeToDeploy.Add((byte)Instruction.POP);
         }
 
-        codeToDeploy.Add((byte)Instruction.PUSH1);
-        codeToDeploy.Add((byte)jumpDestPosition);
+        codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)jumpDestBytes.Length - 1));
+        codeToDeploy.AddRange(jumpDestBytes);
         codeToDeploy.Add((byte)Instruction.JUMP);
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);

@@ -274,24 +274,28 @@ public class TestCaseGenerator
                 return SimpleInstructionTwoContracts.GetTxs([Instruction.PUSH0, Instruction.BLOBHASH], privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.CodeCopy:
                 return CodeCopy.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
-            // case TestCase.BalanceNonExisting:
-            //     return BalanceNonExisting.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcRecover:
                 return EcRecover.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SHA2From1Byte:
             case TestCase.SHA2From8Bytes:
             case TestCase.SHA2From32Bytes:
             case TestCase.SHA2From128Bytes:
+            case TestCase.SHA2From1024Bytes:
+            case TestCase.SHA2From16KBytes:
                 return SimplePrecompile.GetTxs(0x02, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.RipemdFrom1Byte:
             case TestCase.RipemdFrom8Bytes:
             case TestCase.RipemdFrom32Bytes:
             case TestCase.RipemdFrom128Bytes:
+            case TestCase.RipemdFrom1024Bytes:
+            case TestCase.RipemdFrom16KBytes:
                 return SimplePrecompile.GetTxs(0x03, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.IdentityFrom1Byte:
             case TestCase.IdentityFrom8Bytes:
             case TestCase.IdentityFrom32Bytes:
             case TestCase.IdentityFrom128Bytes:
+            case TestCase.IdentityFrom1024Bytes:
+            case TestCase.IdentityFrom16KBytes:
                 return SimplePrecompile.GetTxs(0x04, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Blake1Round:
             case TestCase.Blake1KRounds:
@@ -302,10 +306,6 @@ public class TestCaseGenerator
             case TestCase.ModexpMinGasExpHeavy:
             case TestCase.ModexpMinGasBalanced:
             case TestCase.Modexp215GasExpHeavy:
-            // case TestCase.Modexp1KGasBaseHeavy:
-            // case TestCase.Modexp1KGasBalanced:
-            // case TestCase.Modexp10KGasExpHeavy:
-            // case TestCase.Modexp135KGasBalanced:
                 return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.ModexpVulnerabilityExample1:
             case TestCase.ModexpVulnerabilityExample2:
@@ -342,12 +342,8 @@ public class TestCaseGenerator
             case TestCase.EcMul32ByteCoordinates32ByteScalar:
                 return EcMul.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcPairing0Input:
-            // case TestCase.EcPairing1Set:
             case TestCase.EcPairing2Sets:
-            // case TestCase.EcPairing4Sets:
-            // case TestCase.EcPairing16Sets:
                 return EcPairing.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
-            // case TestCase.PointEvaluationZeros:
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:
@@ -359,7 +355,14 @@ public class TestCaseGenerator
             case TestCase.SStoreOneAccountOneKeyZeroValue:
             case TestCase.SStoreOneAccountOneKeyRandomValue:
             case TestCase.SStoreOneAccountOneKeyTwoValues:
+            case TestCase.TStoreOneKeyZeroValue:
+            case TestCase.TStoreOneKeyConstantValue:
+            case TestCase.TStoreOneKeyRandomValue:
                 return SStoreOneKey.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Secp256r1ValidSignature:
+                return Secp256r1.GetTxsWithValidSig(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Secp256r1InvalidSignature:
+                return Secp256r1.GetTxsWithInvalidSig(privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
@@ -422,20 +425,6 @@ public class TestCaseGenerator
         }
     }
 
-    // private IEnumerable<Withdrawal> PrepareWithdrawals(PrivateKey[] privateKeys)
-    // {
-    //     for (int i = 0; i < _numberOfWithdrawals; i++)
-    //     {
-    //         yield return new Withdrawal
-    //         {
-    //             Address = privateKeys[i].Address,
-    //             AmountInGwei = 1_000_000_000_000, // 1000 eth
-    //             ValidatorIndex = (ulong)(i + 1),
-    //             Index = (ulong)(i % 16 + 1)
-    //         };
-    //     }
-    // }
-
     private void WriteJsonRpcRequest(StringBuilder stringBuilder, string methodName, params  string[]? parameters)
     {
         stringBuilder.Append($"{{\"jsonrpc\":\"2.0\",\"method\":\"{methodName}\",");
@@ -454,5 +443,4 @@ public class TestCaseGenerator
         stringBuilder.Append("\"id\":67}");
         stringBuilder.AppendLine();
     }
-
 }

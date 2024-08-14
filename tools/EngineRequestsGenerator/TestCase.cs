@@ -92,9 +92,6 @@ public enum TestCase
     [TestCaseMetadata("CodeCopy", "Endlessly loading 32-bytes of code to the memory")]
     CodeCopy,
 
-    // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
-    // BalanceNonExisting,
-
     [TestCaseMetadata("EcRecover precompile", "EcRecover precompile calculations")]
     EcRecover,
 
@@ -110,6 +107,12 @@ public enum TestCase
     [TestCaseMetadata("SHA-2 precompile from 128 bytes", "SHA-2 precompile calculations based on 128-byte source data")]
     SHA2From128Bytes,
 
+    [TestCaseMetadata("SHA-2 precompile from 1024 bytes", "SHA-2 precompile calculations based on 1024-byte source data")]
+    SHA2From1024Bytes,
+
+    [TestCaseMetadata("SHA-2 precompile from 16k bytes", "SHA-2 precompile calculations based on 16_384-byte source data")]
+    SHA2From16KBytes,
+
     [TestCaseMetadata("Ripemd-160 precompile from 1 byte", "Ripemd-160 precompile calculations based on 1-byte source data")]
     RipemdFrom1Byte,
 
@@ -121,6 +124,12 @@ public enum TestCase
 
     [TestCaseMetadata("Ripemd-160 precompile from 128 bytes", "Ripemd-160 precompile calculations based on 128-byte source data")]
     RipemdFrom128Bytes,
+
+    [TestCaseMetadata("Ripemd-160 precompile from 1024 bytes", "Ripemd-160 precompile calculations based on 1024-byte source data")]
+    RipemdFrom1024Bytes,
+
+    [TestCaseMetadata("Ripemd-160 precompile from 16k bytes", "Ripemd-160 precompile calculations based on 16_384-byte source data")]
+    RipemdFrom16KBytes,
 
     [TestCaseMetadata("Identity precompile from 1 byte", "Identity precompile call based on 1-byte source data")]
     IdentityFrom1Byte,
@@ -134,10 +143,16 @@ public enum TestCase
     [TestCaseMetadata("Identity precompile from 128 bytes", "Identity precompile call based on 128-byte source data")]
     IdentityFrom128Bytes,
 
+    [TestCaseMetadata("Identity precompile from 1024 bytes", "Identity precompile call based on 1024-byte source data")]
+    IdentityFrom1024Bytes,
+
+    [TestCaseMetadata("Identity precompile from 16k bytes", "Identity precompile call based on 16_384-byte source data")]
+    IdentityFrom16KBytes,
+
     [TestCaseMetadata("Modexp min gas, base heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 192 and exponent equal 3 (0b11 - 2x 1s in binary)")]
     ModexpMinGasBaseHeavy,
 
-    [TestCaseMetadata("Modexp min gas, exp heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 8 and exponent equal (603x 1s in binary)")]
+    [TestCaseMetadata("Modexp min gas, exp heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 8 and exponent equal 2^603 - 1 (603x 1s in binary)")]
     ModexpMinGasExpHeavy,
 
     [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 40 and exponent equal 2^25 - 1 (25x 1s in binary)")]
@@ -242,7 +257,7 @@ public enum TestCase
     [TestCaseMetadata("EcMul with (1, 2) and scalar 2", "EcMul precompile with initial point x = 1, y = 2 and scalar equal 2")]
     EcMul122,
 
-    [TestCaseMetadata("EcMul with (1, 2) and 32-byte scalar", "EcMul precompile with initial point x = 1, y = 2 scalar as 32-byte values")]
+    [TestCaseMetadata("EcMul with (1, 2) and 32-byte scalar", "EcMul precompile with initial point x = 1, y = 2 and scalar as 32-byte values")]
     EcMul12And32ByteScalar,
 
     [TestCaseMetadata("EcMul with 32-byte coordinates and scalar 2", "EcMul precompile with initial point with x and y as 32-byte values and scalar equal 2")]
@@ -254,17 +269,8 @@ public enum TestCase
     [TestCaseMetadata("EcPairing with empty input", "EcPairing precompile with empty input")]
     EcPairing0Input,
 
-    // [TestCaseMetadata("EcPairing with 1 set of data", "EcPairing precompile with 1 set of valid input data (6x 32-byte value)")]
-    // EcPairing1Set,
-
     [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
     EcPairing2Sets,
-
-    // [TestCaseMetadata("EcPairing with 4 sets of data", "EcPairing precompile with 4 sets of valid input data (6x 32-byte value)")]
-    // EcPairing4Sets,
-    //
-    // [TestCaseMetadata("EcPairing with 16 sets of data", "EcPairing precompile with 16 sets of valid input data (6x 32-byte value)")]
-    // EcPairing16Sets,
 
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,
@@ -278,11 +284,17 @@ public enum TestCase
     [TestCaseMetadata("Blake2f 10M rounds", "Blake2f precompile with 10_000_000 rounds of computations")]
     Blake10MRounds,
 
-    // [TestCaseMetadata("Point evaluation - zeros", "Point evaluation precompile with just zeros as an argument")]
-    // PointEvaluationZeros,
-
     [TestCaseMetadata("Point evaluation - one data", "Point evaluation precompile repeating computations on the same data")]
     PointEvaluationOneData,
+
+    [TestCaseMetadata("TStore - one storage key, repeating zero value", "TStore - repeating storing zero in single key of transient storage")]
+    TStoreOneKeyZeroValue,
+
+    [TestCaseMetadata("TStore - one storage key, repeating constant value", "TStore - repeating storing the same 32-byte word in single single key of transient storage")]
+    TStoreOneKeyConstantValue,
+
+    [TestCaseMetadata("TStore - one storage key, repeating random values", "TStore - repeating storing random 32-byte values in single key of transient storage")]
+    TStoreOneKeyRandomValue,
 
     [TestCaseMetadata("SStore - one storage key, repeating zero value", "SStore - repeating storing zero in single storage key of single account")]
     SStoreOneAccountOneKeyZeroValue,
@@ -307,4 +319,10 @@ public enum TestCase
 
     [TestCaseMetadata("SStore - many accounts, random storage keys, zero values", "SStore - storing zeros in random storage keys of many accounts")]
     SStoreManyAccountsRandomKeysZeroValue,
+
+    [TestCaseMetadata("Secp256r1 precompile, valid signature", "Secp256r1 precompile calculations with valid signature")]
+    Secp256r1ValidSignature,
+
+    [TestCaseMetadata("Secp256r1 precompile, invalid signature", "Secp256r1 precompile calculations with invalid signature")]
+    Secp256r1InvalidSignature,
 }

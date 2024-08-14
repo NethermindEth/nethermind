@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Db
 {
@@ -12,11 +11,32 @@ namespace Nethermind.Db
     {
         [CounterMetric]
         [Description("Number of Code DB cache reads.")]
-        public static long CodeDbCache { get; set; }
+        public static long CodeDbCache => _codeDbCache.GetTotalValue();
+        private static ZeroContentionCounter _codeDbCache = new();
+        [Description("Number of Code DB cache reads on thread.")]
+        public static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
+        public static void IncrementCodeDbCache() => _codeDbCache.Increment();
+
+        [CounterMetric]
+        [Description("Number of State Trie cache hits.")]
+        public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
+        private static ZeroContentionCounter _stateTreeCacheHits = new();
+        public static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Increment();
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
-        public static long StateTreeReads { get; set; }
+        public static long StateTreeReads => _stateTreeReads.GetTotalValue();
+        private static ZeroContentionCounter _stateTreeReads = new();
+
+        [Description("Number of State Trie reads on thread.")]
+        public static long ThreadLocalStateTreeReads => _stateTreeReads.ThreadLocalValue;
+        public static void IncrementStateTreeReads() => _stateTreeReads.Increment();
+
+        [CounterMetric]
+        [Description("Number of State Reader reads.")]
+        public static long StateReaderReads => _stateReaderReads.GetTotalValue();
+        private static ZeroContentionCounter _stateReaderReads = new();
+        public static void IncrementStateReaderReads() => _stateReaderReads.Increment();
 
         [CounterMetric]
         [Description("Number of Blocks Trie writes.")]
@@ -27,8 +47,23 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
+        [Description("Number of storage trie cache hits.")]
+        public static long StorageTreeCache => _storageTreeCache.GetTotalValue();
+        private static ZeroContentionCounter _storageTreeCache = new();
+        public static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
+
+        [CounterMetric]
         [Description("Number of storage trie reads.")]
-        public static long StorageTreeReads { get; set; }
+        public static long StorageTreeReads => _storageTreeReads.GetTotalValue();
+        private static ZeroContentionCounter _storageTreeReads = new();
+
+        [Description("Number of storage trie reads on thread.")]
+        public static long ThreadLocalStorageTreeReads => _storageTreeReads.ThreadLocalValue;
+        public static void IncrementStorageTreeReads() => _storageTreeReads.Increment();
+
+        [CounterMetric]
+        [Description("Number of storage reader reads.")]
+        public static long StorageReaderReads { get; set; }
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]

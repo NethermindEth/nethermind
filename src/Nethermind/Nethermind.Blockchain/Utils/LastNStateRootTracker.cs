@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain.Utils;
 // of state, that would be out of spec for snap and it would fail hive test.
 public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 {
-    private IBlockTree _blockTree;
+    private readonly IBlockTree _blockTree;
     private readonly int _lastN = 0;
 
     private Hash256? _lastQueuedStateRoot = null;
@@ -29,7 +29,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         _lastN = lastN;
 
         _blockTree.BlockAddedToMain += BlockTreeOnNewHeadBlock;
-        if (_blockTree.Head != null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
+        if (_blockTree.Head is not null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
     }
 
     private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
