@@ -77,6 +77,76 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
         return transaction;
     }
 
+    public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        transaction ??= new();
+        transaction.Type = TxType.Blob;
+
+        int networkWrapperCheck = 0;
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
+        {
+            int networkWrapperLength = decoderContext.ReadSequenceLength();
+            networkWrapperCheck = decoderContext.Position + networkWrapperLength;
+            int rlpRength = decoderContext.PeekNextRlpLength();
+            txSequenceStart = decoderContext.Position;
+            transactionSequence = decoderContext.Peek(rlpRength);
+        }
+
+        int transactionLength = decoderContext.ReadSequenceLength();
+        int lastCheck = decoderContext.Position + transactionLength;
+
+        DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+
+        if (decoderContext.Position < lastCheck)
+        {
+            DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            decoderContext.Check(lastCheck);
+        }
+
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
+        {
+            DecodeShardBlobNetworkPayload(transaction, ref decoderContext, rlpBehaviors);
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+            {
+                decoderContext.Check(networkWrapperCheck);
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+            {
+                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+            }
+        }
+        else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+        {
+            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            {
+                // Delay hash generation, as may be filtered as having too low gas etc
+                if (decoderContext.ShouldSliceMemory)
+                {
+                    // Do not copy the memory in this case.
+                    int currentPosition = decoderContext.Position;
+                    decoderContext.Position = txSequenceStart;
+                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
+                    decoderContext.Position = currentPosition;
+                }
+                else
+                {
+                    transaction.SetPreHashNoLock(transactionSequence);
+                }
+            }
+            else
+            {
+                // Just calculate the Hash immediately as txn too large
+                transaction.Hash = Keccak.Compute(transactionSequence);
+            }
+        }
+    }
+
     private void DecodeShardBlobPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
@@ -92,11 +162,34 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
         transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
     }
 
+    private void DecodeShardBlobPayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        transaction.ChainId = decoderContext.DecodeULong();
+        transaction.Nonce = decoderContext.DecodeUInt256();
+        transaction.GasPrice = decoderContext.DecodeUInt256(); // gas premium
+        transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
+        transaction.GasLimit = decoderContext.DecodeLong();
+        transaction.To = decoderContext.DecodeAddress();
+        transaction.Value = decoderContext.DecodeUInt256();
+        transaction.Data = decoderContext.DecodeByteArray();
+        transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
+        transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
+    }
+
     private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
         ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
+        ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
+    }
+
+    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, Transaction transaction)
+    {
+        ulong v = decoderContext.DecodeULong();
+        ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
+        ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
@@ -147,6 +240,14 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
         byte[][] blobs = rlpStream.DecodeByteArrays();
         byte[][] commitments = rlpStream.DecodeByteArrays();
         byte[][] proofs = rlpStream.DecodeByteArrays();
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
+    }
+
+    private static void DecodeShardBlobNetworkPayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        byte[][] blobs = decoderContext.DecodeByteArrays();
+        byte[][] commitments = decoderContext.DecodeByteArrays();
+        byte[][] proofs = decoderContext.DecodeByteArrays();
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 

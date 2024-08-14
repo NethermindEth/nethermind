@@ -54,6 +54,52 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : ITxDecoder
         return transaction;
     }
 
+    public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        transaction ??= new();
+        transaction.Type = TxType.AccessList;
+
+        int transactionLength = decoderContext.ReadSequenceLength();
+        int lastCheck = decoderContext.Position + transactionLength;
+
+        DecodeAccessListPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+
+        if (decoderContext.Position < lastCheck)
+        {
+            DecodeSignature(ref decoderContext, rlpBehaviors, transaction);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            decoderContext.Check(lastCheck);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+        {
+            if (lazyHash && transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            {
+                // Delay hash generation, as may be filtered as having too low gas etc
+                if (decoderContext.ShouldSliceMemory)
+                {
+                    // Do not copy the memory in this case.
+                    int currentPosition = decoderContext.Position;
+                    decoderContext.Position = txSequenceStart;
+                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
+                    decoderContext.Position = currentPosition;
+                }
+                else
+                {
+                    transaction.SetPreHashNoLock(transactionSequence);
+                }
+            }
+            else
+            {
+                // Just calculate the Hash immediately as txn too large
+                transaction.Hash = Keccak.Compute(transactionSequence);
+            }
+        }
+    }
+
     private void DecodeAccessListPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         transaction.ChainId = rlpStream.DecodeULong();
@@ -66,11 +112,31 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : ITxDecoder
         transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
     }
 
+    private void DecodeAccessListPayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        transaction.ChainId = decoderContext.DecodeULong();
+        transaction.Nonce = decoderContext.DecodeUInt256();
+        transaction.GasPrice = decoderContext.DecodeUInt256();
+        transaction.GasLimit = decoderContext.DecodeLong();
+        transaction.To = decoderContext.DecodeAddress();
+        transaction.Value = decoderContext.DecodeUInt256();
+        transaction.Data = decoderContext.DecodeByteArrayMemory();
+        transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
+    }
+
     private static void DecodeSignature(RlpStream rlpStream, RlpBehaviors rlpBehaviors, Transaction transaction)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
         ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
+        ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
+    }
+
+    private static void DecodeSignature(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, Transaction transaction)
+    {
+        ulong v = decoderContext.DecodeULong();
+        ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
+        ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
         ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
     }
 
