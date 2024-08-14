@@ -350,15 +350,13 @@ public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValu
 
     private int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId, rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
-        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
-
-        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
-        int result = tx.Type != TxType.Legacy
-            ? isForTxRoot
-                ? (1 + txPayloadLength)
-                : Rlp.LengthOfSequence(1 + txPayloadLength) // Rlp(TransactionType || TransactionPayload)
-            : txPayloadLength;
-        return result;
+        if (_decoders.TryGetValue(tx.Type, out ITxDecoder? decoder))
+        {
+            return decoder.GetTxLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unknown transaction type: {tx.Type}");
+        }
     }
 }
