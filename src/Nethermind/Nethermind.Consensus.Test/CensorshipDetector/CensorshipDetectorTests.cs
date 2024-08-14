@@ -276,7 +276,7 @@ public class CensorshipDetectorTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1_000_000).TestObject);
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
         _comparer = new TransactionComparerProvider(_specProvider, blockTree).GetDefaultComparer();
 
         return new(
