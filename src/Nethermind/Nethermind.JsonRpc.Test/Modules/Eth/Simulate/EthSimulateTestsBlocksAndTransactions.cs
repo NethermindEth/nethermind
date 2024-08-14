@@ -278,4 +278,45 @@ public class EthSimulateTestsBlocksAndTransactions
         var logs = result.Data.First().Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
     }
+
+
+
+    [Test]
+    public async Task Test_eth_simulate_logs_on_selfdestructive_contract_sends_eth()
+    {
+        EthereumJsonSerializer serializer = new();
+        string input = """
+                       {
+                           "traceTransfers": true,
+                           "blockStateCalls": [
+                               {
+                                   "stateOverrides": {
+                                       "0xc200000000000000000000000000000000000000": {
+                                           "code": "0x6080604052348015600f57600080fd5b506004361060285760003560e01c806383197ef014602d575b600080fd5b60336035565b005b600073ffffffffffffffffffffffffffffffffffffffff16fffea26469706673582212208e566fde20a17fff9658b9b1db37e27876fd8934ccf9b2aa308cabd37698681f64736f6c63430008120033",
+                                           "balance": "0x1e8480"
+                                       }
+                                   },
+                                   "calls": [
+                                       {
+                                           "from": "0xc000000000000000000000000000000000000000",
+                                           "to": "0xc200000000000000000000000000000000000000",
+                                           "input": "0x83197ef0"
+                                       }
+                                   ]
+                               }
+                           ]
+                       }
+                       """;
+        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        Console.WriteLine($"current test: {nameof(Test_eth_simulate_logs_on_selfdestructive_contract_sends_eth)}");
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+        var calls = result.Data.First().Calls;
+        var logs = calls.First().Logs.ToArray();
+        Assert.That(logs.Length > 0);
+
+    }
+
+
+
 }
