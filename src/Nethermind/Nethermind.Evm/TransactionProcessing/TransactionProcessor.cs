@@ -82,7 +82,7 @@ namespace Nethermind.Evm.TransactionProcessing
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
 
-            Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            Ecdsa = new EthereumEcdsa(specProvider.ChainId);
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
@@ -445,6 +445,8 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
+        protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.NoValidation);
+
         protected void ExecuteEvmCall(
             Transaction tx,
             BlockHeader header,
@@ -457,7 +459,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out long spentGas,
             out byte statusCode)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+            bool validate = ShouldValidate(opts);
 
             substate = null;
             spentGas = tx.GasLimit;

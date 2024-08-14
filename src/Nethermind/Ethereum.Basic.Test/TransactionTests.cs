@@ -38,7 +38,7 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
-            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
             Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
             Assert.That(decodedUnsigned.Value, Is.EqualTo(test.Value), "value");
             Assert.That(decodedUnsigned.GasPrice, Is.EqualTo(test.GasPrice), "gasPrice");
