@@ -14,7 +14,7 @@ public class BlsSigner
     internal static readonly string Cryptosuite = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
     internal static int InputLength = 64;
 
-    public static Signature Sign(PrivateKey privateKey, ReadOnlySpan<byte> message)
+    public static Signature Sign(in PrivateKey privateKey, ReadOnlySpan<byte> message)
     {
         G2 p = new();
         p.hash_to(message.ToArray(), Cryptosuite);
@@ -26,7 +26,7 @@ public class BlsSigner
         return s;
     }
 
-    public static bool Verify(PublicKey publicKey, Signature signature, in byte[] message)
+    public static bool Verify(in PublicKey publicKey, in Signature signature, in byte[] message)
     {
         try
         {
@@ -47,7 +47,7 @@ public class BlsSigner
         }
     }
 
-    public static PublicKey GetPublicKey(PrivateKey privateKey)
+    public static PublicKey GetPublicKey(in PrivateKey privateKey)
     {
         Bls.SecretKey sk = new(privateKey.Bytes, Bls.ByteOrder.LittleEndian);
         G1 p = new(sk);
