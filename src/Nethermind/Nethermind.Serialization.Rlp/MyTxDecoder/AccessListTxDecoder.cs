@@ -98,7 +98,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true, Func<Transaction>?
         }
     }
 
-    public void Encode(Transaction? transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int contentLength = GetContentLength(transaction, forSigning);
         int sequenceLength = Rlp.LengthOfSequence(contentLength);
