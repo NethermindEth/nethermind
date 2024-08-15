@@ -108,7 +108,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.WorldState,
             _api.ReceiptStorage,
             new BlockhashStore(_api.SpecProvider, _api.WorldState),
-            new BeaconBlockRootHandler(apiTransactionProcessor, apiLogManager),
+            new BeaconBlockRootHandler(apiTransactionProcessor),
             apiLogManager,
             _api.SpecHelper,
             contractRewriter,

@@ -237,7 +237,7 @@ public partial class EngineModuleTests
                 State,
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
-                new BeaconBlockRootHandler(TxProcessor, LogManager),
+                new BeaconBlockRootHandler(TxProcessor),
                 LogManager,
                 WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());

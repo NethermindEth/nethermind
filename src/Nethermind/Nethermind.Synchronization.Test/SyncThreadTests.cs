@@ -303,7 +303,7 @@ namespace Nethermind.Synchronization.Test
                 stateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider, stateProvider),
-                new BeaconBlockRootHandler(txProcessor, logManager),
+                new BeaconBlockRootHandler(txProcessor),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -326,7 +326,7 @@ namespace Nethermind.Synchronization.Test
                 devState,
                 receiptStorage,
                 new BlockhashStore(specProvider, devState),
-                new BeaconBlockRootHandler(devTxProcessor, logManager),
+                new BeaconBlockRootHandler(devTxProcessor),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

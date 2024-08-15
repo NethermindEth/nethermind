@@ -376,7 +376,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             new BlockhashStore(SpecProvider, State),
-            new BeaconBlockRootHandler(TxProcessor),
+            new BeaconBlockRootHandler(TxProcessor, LogManager),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer());
 

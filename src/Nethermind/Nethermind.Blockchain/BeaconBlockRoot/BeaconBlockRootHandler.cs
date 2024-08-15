@@ -8,15 +8,10 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
-public class BeaconBlockRootHandler(
-    ITransactionProcessor processor,
-    ILogManager? logManager)
-    : IBeaconBlockRootHandler
+public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBlockRootHandler
 {
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger();
     private const long GasLimit = 30_000_000L;
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)

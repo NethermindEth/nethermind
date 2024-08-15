@@ -239,7 +239,7 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.SpecProvider!, worldState),
-                new BeaconBlockRootHandler(_api.TransactionProcessor, _api.LogManager),
+                new BeaconBlockRootHandler(_api.TransactionProcessor),
                 _api.LogManager,
                 preWarmer: preWarmer
             );

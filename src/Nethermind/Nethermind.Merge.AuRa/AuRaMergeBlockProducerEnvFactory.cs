@@ -72,7 +72,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
-            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, logManager),
+            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
             logManager,
             _blockTree,
             new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(

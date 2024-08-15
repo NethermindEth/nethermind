@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance),
+                new BeaconBlockRootHandler(transactionProcessor),
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),

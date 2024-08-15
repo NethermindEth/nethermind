@@ -97,7 +97,7 @@ public class AuRaContractGasLimitOverrideTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, LimboLogs.Instance),
+                new BeaconBlockRootHandler(TxProcessor),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,

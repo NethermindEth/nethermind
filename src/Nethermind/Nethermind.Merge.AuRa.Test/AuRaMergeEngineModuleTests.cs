@@ -140,7 +140,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 State,
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
-                new BeaconBlockRootHandler(TxProcessor, LimboLogs.Instance),
+                new BeaconBlockRootHandler(TxProcessor),
                 LogManager,
                 WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());
