@@ -4,20 +4,19 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
+public sealed class OptimismTxDecoder(bool lazyHash = true, Func<Transaction>? transactionFactory = null) : ITxDecoder
 {
     public const int MaxDelayedHashTxnSize = 32768;
+    private readonly bool _lazyHash = lazyHash;
+    private readonly Func<Transaction> _createTransaction = transactionFactory ?? (() => new Transaction());
 
     public Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        Transaction transaction = new()
-        {
-            Type = TxType.DepositTx
-        };
+        Transaction transaction = _createTransaction();
+        transaction.Type = TxType.DepositTx;
 
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
@@ -36,7 +35,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
+            if (_lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHashNoLock(transactionSequence);
@@ -73,7 +72,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true) : ITxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
+            if (_lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)

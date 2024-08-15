@@ -9,18 +9,17 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class AccessListTxDecoder(bool lazyHash = true) : ITxDecoder
+public sealed class AccessListTxDecoder(bool lazyHash = true, Func<Transaction>? transactionFactory = null) : ITxDecoder
 {
     public const int MaxDelayedHashTxnSize = 32768;
-
     private static readonly AccessListDecoder AccessListDecoder = new();
+    private readonly bool _lazyHash = lazyHash;
+    private readonly Func<Transaction> _createTransaction = transactionFactory ?? (() => new Transaction());
 
     public Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
-        Transaction transaction = new()
-        {
-            Type = TxType.AccessList
-        };
+        Transaction transaction = _createTransaction();
+        transaction.Type = TxType.AccessList;
 
         int transactionLength = rlpStream.ReadSequenceLength();
         int lastCheck = rlpStream.Position + transactionLength;
@@ -39,7 +38,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : ITxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
+            if (_lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHashNoLock(transactionSequence);
@@ -56,7 +55,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : ITxDecoder
 
     public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction ??= new();
+        transaction ??= _createTransaction();
         transaction.Type = TxType.AccessList;
 
         int transactionLength = decoderContext.ReadSequenceLength();
@@ -76,7 +75,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true) : ITxDecoder
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
+            if (_lazyHash && transactionSequence.Length <= MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)
