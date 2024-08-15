@@ -160,7 +160,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : ITxDecoder
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
         ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
-        ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
+                transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
     private static void DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
@@ -168,47 +168,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true) : ITxDecoder
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
         ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
-        ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
-    }
-
-    private static void ApplySignature(Transaction transaction, ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, RlpBehaviors rlpBehaviors)
-    {
-        bool allowUnsigned = rlpBehaviors.HasFlag(RlpBehaviors.AllowUnsigned);
-        bool isSignatureOk = true;
-        string signatureError = null;
-        if (rBytes.Length == 0 || sBytes.Length == 0)
-        {
-            isSignatureOk = false;
-            signatureError = "VRS is 0 length when decoding Transaction";
-        }
-        else if (rBytes[0] == 0 || sBytes[0] == 0)
-        {
-            isSignatureOk = false;
-            signatureError = "VRS starting with 0";
-        }
-        else if (rBytes.Length > 32 || sBytes.Length > 32)
-        {
-            isSignatureOk = false;
-            signatureError = "R and S lengths expected to be less or equal 32";
-        }
-        else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
-        {
-            isSignatureOk = false;
-            signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
-        }
-
-        if (!isSignatureOk)
-        {
-            if (!allowUnsigned)
-            {
-                throw new RlpException(signatureError);
-            }
-        }
-        else
-        {
-            Signature signature = new(rBytes, sBytes, v + Signature.VOffset);
-            transaction.Signature = signature;
-        }
+        transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
     private static void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors)
