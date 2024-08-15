@@ -23,23 +23,25 @@ namespace Nethermind.Core.Extensions
 {
     public static unsafe partial class Bytes
     {
-        public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+
+        public static readonly BytesEqualityComparer EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
         public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
 
-        private class BytesEqualityComparer : EqualityComparer<byte[]>
+        public class BytesEqualityComparer : EqualityComparer<byte[]>
         {
             public override bool Equals(byte[]? x, byte[]? y)
             {
                 return AreEqual(x, y);
             }
 
-            public override int GetHashCode(byte[] obj)
+            public override int GetHashCode(byte[] bytes)
             {
-                return obj.GetSimplifiedHashCode();
+                return bytes.GetSimplifiedHashCode();
             }
         }
 
@@ -50,9 +52,9 @@ namespace Nethermind.Core.Extensions
                 return AreEqual(x, y);
             }
 
-            public override int GetHashCode(byte[]? obj)
+            public override int GetHashCode(byte[]? bytes)
             {
-                return obj?.GetSimplifiedHashCode() ?? 0;
+                return bytes?.GetSimplifiedHashCode() ?? 0;
             }
         }
 
@@ -60,7 +62,7 @@ namespace Nethermind.Core.Extensions
         {
             public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
 
-            public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
+            public int GetHashCode(ReadOnlySpan<byte> bytes) => GetSimplifiedHashCode(bytes);
         }
 
         public class BytesComparer : Comparer<byte[]>
@@ -1124,28 +1126,38 @@ namespace Nethermind.Core.Extensions
 
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this byte[] bytes)
-        {
-            const int fnvPrime = 0x01000193;
-
-            if (bytes.Length == 0)
-            {
-                return 0;
-            }
-
-            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
-        }
+            => GetSimplifiedHashCode(bytes.AsSpan());
 
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this ReadOnlySpan<byte> bytes)
+        public static int GetSimplifiedHashCode(this ReadOnlySpan<byte> span)
         {
-            const int fnvPrime = 0x01000193;
-
-            if (bytes.Length == 0)
+            if (span.Length == 0)
             {
                 return 0;
             }
 
-            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
+            uint crc = s_instanceRandom;
+            var longSize = span.Length / sizeof(ulong) * sizeof(ulong);
+            if (longSize > 0)
+            {
+                foreach (ulong ul in MemoryMarshal.Cast<byte, ulong>(span[..longSize]))
+                {
+                    crc = BitOperations.Crc32C(crc, ul);
+                }
+                foreach (byte b in span[longSize..])
+                {
+                    crc = BitOperations.Crc32C(crc, b);
+                }
+            }
+            else
+            {
+                foreach (byte b in span)
+                {
+                    crc = BitOperations.Crc32C(crc, b);
+                }
+            }
+
+            return (int)crc;
         }
 
         public static void ChangeEndianness8(Span<byte> bytes)
