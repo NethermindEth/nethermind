@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
@@ -104,7 +105,7 @@ namespace Nethermind.Db
 
                         if (nextLowestBlockNumber > from && currentLowestBlockNumber <= to)
                         {
-                            var indexInfo = new IndexInfo(keyPrefix.ToArray(), db.Get(firstKey.ToArray()));
+                            var indexInfo = new IndexInfo(keyPrefix.ToArray(), db.Get(firstKey));
                             SafeFileHandle fileHandle = indexInfo.IsTemp ? _tempFileHandle : _finalFileHandle;
                             var data = LoadData(fileHandle, indexInfo, indexBuffer.AsSpan());
                             int[] blocks = indexInfo.IsTemp ? MemoryMarshal.Cast<byte, int>(data).ToArray() : Decompress(data, decompressedBlockNumbers.AsSpan());
@@ -238,6 +239,10 @@ namespace Nethermind.Db
                     CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(_tempFileHandle, blockNumberBytes), dbKey.AsSpan());
                     db.PutSpan(dbKey.AsSpan(0, indexInfo.Key.Length + sizeof(int)), CreateIndexValue(indexInfo.Offset, indexInfo.Length, indexInfo.IsTemp, indexInfo.LastBlockNumber));
                 }
+                catch
+                {
+                    _logger.Info(JsonSerializer.Serialize(indexInfo));
+                }
                 finally
                 {
                     ArrayPool<byte>.Shared.Return(dbKey);
@@ -251,24 +256,28 @@ namespace Nethermind.Db
             using var iterator = db.GetIterator(true);
             iterator.Seek(key.ToArray());
 
-            IndexInfo? latestTempIndex = null;
+            Span<byte> keyBytes = stackalloc byte[key.Length + sizeof(int)];
+            bool setKeyBytes = false;
 
             while (iterator.Valid() && iterator.Key().AsSpan().Slice(0, key.Length).SequenceEqual(key))
             {
-                var existingIndex = iterator.Value();
-                if (IsTempIndex(existingIndex))
-                {
-                    latestTempIndex = new IndexInfo(key.ToArray(), existingIndex);
-                }
+                keyBytes = iterator.Key();
+                setKeyBytes = true;
                 iterator.Next();
             }
 
-            if (latestTempIndex != null)
+            if (setKeyBytes)
             {
-                return latestTempIndex;
+                IndexInfo latestIndex = new IndexInfo(key.ToArray(), db.Get(keyBytes));
+
+                if (latestIndex.IsTemp)
+                {
+                    return latestIndex;
+                }
             }
 
-            int freePage = GetFreePage() ?? GrowFile(_tempFileStream, FixedLength);
+
+            long freePage = GetFreePage() ?? GrowFile(_tempFileStream, FixedLength);
             return new IndexInfo(key.ToArray(), freePage, 0, true, 0);
         }
 
@@ -276,60 +285,51 @@ namespace Nethermind.Db
         {
             lock (_mainDb)
             {
-                var freePages = GetFreePages();
-                freePages.Add((int)indexInfo.Offset);
-                _mainDb.PutSpan("freePages".ToBytes(), SerializeFreePages(freePages));
-            }
-        }
+                byte[] freePages = _mainDb.Get(Encoding.UTF8.GetBytes("freePages"));
+                long newFreePage = indexInfo.Offset;
 
-        private int? GetFreePage()
-        {
-            lock (_mainDb)
-            {
-                var freePages = GetFreePages();
-                if (freePages.Count > 0)
+                // Prepare new array with the old free pages plus the new one
+                byte[] newFreePages = ArrayPool<byte>.Shared.Rent((freePages?.Length ?? 0) + sizeof(long));
+
+                try
                 {
-                    var page = freePages.Last();
-                    freePages.RemoveAt(freePages.Count - 1);
-                    _mainDb.PutSpan("freePages".ToBytes(), SerializeFreePages(freePages));
-                    return page;
+                    if (freePages != null)
+                    {
+                        freePages.CopyTo(newFreePages, 0);
+                    }
+
+                    // Append the new free page
+                    BinaryPrimitives.WriteInt64LittleEndian(newFreePages.AsSpan(freePages?.Length ?? 0), newFreePage);
+
+                    // Save the updated free pages back to the database
+                    _mainDb.PutSpan(Encoding.UTF8.GetBytes("freePages"), newFreePages.AsSpan(0, (freePages?.Length ?? 0) + sizeof(long)));
                 }
-                return null;
-            }
-        }
-
-        private List<int> GetFreePages()
-        {
-            var data = _mainDb.Get("freePages".ToBytes());
-            return data != null ? DeserializeFreePages(data) : new List<int>();
-        }
-
-        private List<int> DeserializeFreePages(ReadOnlySpan<byte> data)
-        {
-            var result = new List<int>(data.Length / sizeof(int));
-            for (int i = 0; i < data.Length; i += sizeof(int))
-            {
-                result.Add(BinaryPrimitives.ReadInt32LittleEndian(data.Slice(i, sizeof(int))));
-            }
-            return result;
-        }
-
-        private byte[] SerializeFreePages(List<int> freePages)
-        {
-            byte[] result = ArrayPool<byte>.Shared.Rent(freePages.Count * sizeof(int));
-            try
-            {
-                for (int i = 0; i < freePages.Count; i++)
+                finally
                 {
-                    BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(i * sizeof(int), sizeof(int)), freePages[i]);
+                    ArrayPool<byte>.Shared.Return(newFreePages);
                 }
-                return result.ToArray();
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(result);
             }
         }
+
+
+        private long? GetFreePage()
+        {
+            byte[] freePages = _mainDb.Get(Encoding.UTF8.GetBytes("freePages"));
+
+            if (freePages != null && freePages.Length >= sizeof(long))
+            {
+                // Extract the last 8 bytes as the free page
+                long freePage = BinaryPrimitives.ReadInt64LittleEndian(freePages.AsSpan(freePages.Length - sizeof(long)));
+
+                // Update the freePages array by removing the last 8 bytes
+                _mainDb.PutSpan(Encoding.UTF8.GetBytes("freePages"), freePages.AsSpan(0, freePages.Length - sizeof(long)));
+
+                return freePage;
+            }
+
+            return null;
+        }
+
 
         public void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> buffer)
         {
@@ -337,16 +337,7 @@ namespace Nethermind.Db
             BinaryPrimitives.WriteInt32LittleEndian(buffer.Slice(key.Length), blockNumber);
         }
 
-        private bool CheckBlockNumber(ReadOnlySpan<byte> key, int from, int to)
-        {
-            int blockNumber = BinaryPrimitives.ReadInt32LittleEndian(key.Slice(20));
-            return blockNumber >= from && blockNumber <= to;
-        }
 
-        private bool IsTempIndex(ReadOnlySpan<byte> indexInfo)
-        {
-            return indexInfo[0] == (byte)FileType.TEMP;
-        }
 
         private ReadOnlySpan<byte> LoadData(SafeFileHandle fileHandle, IndexInfo indexInfo, Span<byte> buffer)
         {
@@ -387,7 +378,6 @@ namespace Nethermind.Db
             long offset = fileStream.Length;
             fileStream.Seek(offset, SeekOrigin.Begin);
             fileStream.Write(data);
-            _logger.Info($"Appended data at offset {offset}, length {data.Length}");
             return offset;
         }
 
@@ -401,12 +391,11 @@ namespace Nethermind.Db
             return value.ToArray();
         }
 
-        private int GrowFile(FileStream fileStream, int length)
+        private long GrowFile(FileStream fileStream, int length)
         {
             long originalLength = fileStream.Length;
             fileStream.SetLength(originalLength + length);
-            _logger.Info($"Grew file by {length} bytes. New length: {fileStream.Length}");
-            return (int)originalLength;
+            return originalLength;
         }
 
         private class IndexInfo
@@ -427,13 +416,13 @@ namespace Nethermind.Db
                 LastBlockNumber = lastBlockNumber;
             }
 
-            public IndexInfo(byte[] key, byte[] value)
+            public IndexInfo(byte[] key, Span<byte> value)
             {
                 Key = key;
                 IsTemp = value[0] == (byte)FileType.TEMP;
-                Offset = BinaryPrimitives.ReadInt64LittleEndian(value.AsSpan(1));
-                Length = BinaryPrimitives.ReadInt32LittleEndian(value.AsSpan(1 + sizeof(long)));
-                LastBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(value.AsSpan(1 + sizeof(long) + sizeof(int)));
+                Offset = BinaryPrimitives.ReadInt64LittleEndian(value.Slice(1));
+                Length = BinaryPrimitives.ReadInt32LittleEndian(value.Slice(1 + sizeof(long)));
+                LastBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(value.Slice(1 + sizeof(long) + sizeof(int)));
             }
 
             public bool IsReadyToFinalize()
@@ -473,13 +462,5 @@ namespace Nethermind.Db
             TEMP = 0x01,
             FINAL = 0x02
         }
-    }
-
-    internal static class ExtensionMethods
-    {
-        public static byte[] ToBytes(this string str) => Encoding.UTF8.GetBytes(str);
-        public static byte[] ToBytes(this int num) => BitConverter.GetBytes(num);
-        public static byte[] ToBytes(this long num) => BitConverter.GetBytes(num);
-        public static byte[] ToBytes(this ulong num) => BitConverter.GetBytes(num);
     }
 }
