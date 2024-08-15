@@ -2,44 +2,48 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Shutter;
+using Nethermind.Shutter.Config;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
 
-namespace Nethermind.Merge.AuRa.Test.Shutter;
+namespace Nethermind.Shutter.Test;
+
 [TestFixture]
 public class ShutterBlockImprovementContextTests
 {
     [Test]
     public async Task Test()
     {
-        ShutterConfig shutterConfig = new()
+        ShutterConfig cfg = new()
         {
             MaxKeyDelay = 1666
         };
 
-        Consensus.Producers.PayloadAttributes payloadAttributes = new()
+        PayloadAttributes payloadAttributes = new()
         {
             Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5
         };
 
-        ShutterBlockImprovementContext improvementContext = new(
+        ShutterBlockImprovementContextFactory improvementContextFactory = new(
             Substitute.For<IBlockProducer>(),
-            Substitute.For<IShutterTxSignal>(),
-            shutterConfig,
+            Substitute.For<ShutterTxSource>(),
+            cfg,
+            GnosisSpecProvider.Instance,
+            LimboLogs.Instance
+        );
+
+        IBlockImprovementContext improvementContext = improvementContextFactory.StartBlockImprovementContext(
             Build.A.Block.TestObject,
             Build.A.BlockHeader.TestObject,
             payloadAttributes,
-            DateTimeOffset.UtcNow,
-            GnosisSpecProvider.BeaconChainGenesisTimestamp * 1000,
-            TimeSpan.FromSeconds(5),
-            LimboLogs.Instance);
+            DateTimeOffset.UtcNow
+        );
 
         await improvementContext.ImprovementTask;
     }

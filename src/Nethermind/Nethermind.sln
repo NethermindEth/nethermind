@@ -220,6 +220,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.ExternalSigner.P
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter", "Nethermind.Shutter\Nethermind.Shutter.csproj", "{F38037D2-98EA-4263-887A-4B383635F605}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter.Test", "Nethermind.Shutter.Test\Nethermind.Shutter.Test.csproj", "{CEA1C413-A96C-4339-AC1C-839B603DECC8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -606,6 +608,10 @@ Global
 		{F38037D2-98EA-4263-887A-4B383635F605}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F38037D2-98EA-4263-887A-4B383635F605}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F38037D2-98EA-4263-887A-4B383635F605}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

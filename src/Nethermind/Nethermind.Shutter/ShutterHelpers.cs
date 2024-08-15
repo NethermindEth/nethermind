@@ -12,6 +12,7 @@ using Nethermind.Serialization.Json;
 using Multiformats.Address;
 
 namespace Nethermind.Shutter;
+
 public static class ShutterHelpers
 {
     public static readonly TimeSpan SlotLength = GnosisSpecProvider.SlotLength;

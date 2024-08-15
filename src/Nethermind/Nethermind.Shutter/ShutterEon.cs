@@ -19,11 +19,12 @@ public class ShutterEon(
     ReadOnlyTxProcessingEnvFactory envFactory,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
-    ILogger logger)
+    ILogManager logManager)
 {
     private Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public Info? GetCurrentEonInfo() => _currentInfo;
 
@@ -61,21 +62,21 @@ public class ShutterEon(
                         Addresses = addresses
                     };
 
-                    logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
+                    _logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
                 }
                 else
                 {
-                    logger.Error("Cannot use unfinalised Shutter keyper set contract.");
+                    _logger.Error("Cannot use unfinalised Shutter keyper set contract.");
                 }
             }
         }
         catch (AbiException e)
         {
-            logger.Error($"Error when calling Shutter Keyper contracts.", e);
+            _logger.Error($"Error when calling Shutter Keyper contracts.", e);
         }
         catch (Bls.Exception e)
         {
-            logger.Error($"Invalid Shutter Eon key ", e);
+            _logger.Error($"Invalid Shutter Eon key ", e);
         }
     }
 

@@ -6,19 +6,18 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Shutter;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Core.Test;
 
-namespace Nethermind.Merge.AuRa.Test;
+namespace Nethermind.Shutter.Test;
 
 using G1 = Bls.P1;
 using G2 = Bls.P2;
 using GT = Bls.PT;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 
+[TestFixture]
 class ShutterCryptoTests
 {
     [Test]
@@ -102,7 +101,7 @@ class ShutterCryptoTests
         byte[] expected = Convert.FromHexString(expectedHex);
 
         Transaction transaction = Rlp.Decode<Transaction>(new Rlp(rawTx));
-        transaction.SenderAddress = new EthereumEcdsa(BlockchainIds.Chiado, new NUnitLogManager()).RecoverAddress(transaction, true);
+        transaction.SenderAddress = new EthereumEcdsa(BlockchainIds.Chiado).RecoverAddress(transaction, true);
         TestContext.WriteLine(transaction.ToShortString());
 
         Bytes32 identityPrefix = new(Convert.FromHexString(identityPrefixHex).AsSpan());

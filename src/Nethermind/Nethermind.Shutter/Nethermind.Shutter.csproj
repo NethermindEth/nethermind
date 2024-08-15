@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Shutter.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="Contracts\ValidatorRegistryContract.json" />
     <None Remove="Contracts\KeyBroadcastContract.json" />
     <None Remove="Contracts\KeyperSetManagerContract.json" />

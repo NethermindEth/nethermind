@@ -5,28 +5,27 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Shutter;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using NSubstitute;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Specs;
-using Nethermind.Blockchain;
 using Nethermind.Logging;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Serialization.Rlp;
 using System.Linq;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
+using Nethermind.Shutter.Config;
 
-namespace Nethermind.Merge.AuRa.Test;
+namespace Nethermind.Shutter.Test;
 
 using G1 = Bls.P1;
 using G2 = Bls.P2;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 using SequencedTransaction = ShutterTxLoader.SequencedTransaction;
 
+[TestFixture]
 class ShutterTxLoaderSourceTests
 {
     private ShutterTxLoader _txLoader;
@@ -35,7 +34,7 @@ class ShutterTxLoaderSourceTests
     [SetUp]
     public void Setup()
     {
-        _ecdsa = new EthereumEcdsa(BlockchainIds.Chiado, LimboLogs.Instance);
+        _ecdsa = new EthereumEcdsa(BlockchainIds.Chiado);
         ShutterConfig cfg = new()
         {
             SequencerContractAddress = "0x0000000000000000000000000000000000000000"
@@ -44,9 +43,8 @@ class ShutterTxLoaderSourceTests
         _txLoader = new ShutterTxLoader(
             Substitute.For<ILogFinder>(),
             cfg,
-            ChiadoSpecProvider.Instance,
+            GnosisSpecProvider.Instance,
             _ecdsa,
-            Substitute.For<IReadOnlyBlockTree>(),
             LimboLogs.Instance
         );
     }

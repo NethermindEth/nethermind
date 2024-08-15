@@ -1,34 +1,77 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using Nethermind.Shutter;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
-using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Shutter.Config;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
+using Nethermind.Abi;
+using Nethermind.State;
+using Nethermind.Specs;
+using Nethermind.Core;
 
-namespace Nethermind.Merge.AuRa.Test;
+namespace Nethermind.Shutter.Test;
 
-
+[TestFixture]
 class ShutterMessageHandlerTests
 {
     [Test]
-    public void Can_load_decryption_keys()
+    public void Can_accept_valid_decryption_keys()
+    {
+        ShutterMessageHandler msgHandler = CreateMessageHandler();
+        bool eventFired = false;
+        msgHandler.KeysValidated += (_, _) => eventFired = true;
+        msgHandler.OnDecryptionKeysReceived(new Nethermind.Shutter.Dto.DecryptionKeys() {
+
+        });
+        Assert.That(eventFired);
+    }
+
+    [Test]
+    public void Can_reject_invalid_decryption_keys()
+    {
+        ShutterMessageHandler msgHandler = CreateMessageHandler();
+        bool eventFired = false;
+        msgHandler.KeysValidated += (_, _) => eventFired = true;
+        msgHandler.OnDecryptionKeysReceived(new Nethermind.Shutter.Dto.DecryptionKeys() {
+
+        });
+        Assert.That(!eventFired);
+    }
+
+    private ShutterMessageHandler CreateMessageHandler()
     {
         ShutterConfig cfg = new()
         {
+            KeyBroadcastContractAddress = Address.Zero.ToString(),
+            KeyperSetManagerContractAddress = Address.Zero.ToString(),
         };
 
-        ShutterTxSource txSource = Substitute.For<ShutterTxSource>();
+        // ShutterTxSource txSource = Substitute.For<ShutterTxSource>();
 
-        txSource
-            .When(x => x.LoadTransactions(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<List<(byte[], byte[])>>()))
-            .Do(x => { return; });
+        // txSource
+        //     .When(x => x.LoadTransactions(Arg.Any<ulong>(), Arg.Any<ulong>()))
+        //     .Do(x => { return; });
+        IReadOnlyBlockTree readOnlyBlockTree = Substitute.For<IReadOnlyBlockTree>();
 
-        ShutterEon eon = Substitute.For<ShutterEon>();
-        eon.GetCurrentEonInfo().Returns(x => null);
+        ReadOnlyTxProcessingEnvFactory txProcessingEnvFactory = new(
+            Substitute.For<IWorldStateManager>(),
+            readOnlyBlockTree,
+            GnosisSpecProvider.Instance,
+            LimboLogs.Instance
+        );
 
-        ShutterMessageHandler handler = new ShutterMessageHandler(cfg, txSource, eon, LimboLogs.Instance);
+        ShutterEon eon = new(
+            readOnlyBlockTree,
+            txProcessingEnvFactory,
+            Substitute.For<IAbiEncoder>(),
+            cfg,
+            LimboLogs.Instance
+        );
+        // eon.GetCurrentEonInfo().Returns(x => null);
+
+        return new ShutterMessageHandler(cfg, eon, LimboLogs.Instance);
     }
 }

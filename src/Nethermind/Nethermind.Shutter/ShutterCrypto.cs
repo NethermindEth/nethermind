@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,15 +13,13 @@ using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Merkleization;
 
-[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
-
 namespace Nethermind.Shutter;
 
 using G1 = Bls.P1;
 using G2 = Bls.P2;
 using GT = Bls.PT;
 
-internal static class ShutterCrypto
+public static class ShutterCrypto
 {
     private static readonly string DST = "SHUTTER_V01_BLS12381G1_XMD:SHA-256_SSWU_RO_";
     private static readonly byte CryptoVersion = 0x3;

@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Shutter;
+
 public class ShutterBlockImprovementContextFactory(
     IBlockProducer blockProducer,
     ShutterTxSource shutterTxSource,

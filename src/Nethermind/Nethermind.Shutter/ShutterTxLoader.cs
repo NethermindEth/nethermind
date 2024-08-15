@@ -17,12 +17,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using System.IO;
 using Nethermind.Consensus.Validators;
-using Nethermind.Blockchain;
-using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Filters;
-using System.Threading.Tasks;
-
-[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
 namespace Nethermind.Shutter;
 
@@ -277,4 +272,5 @@ public class ShutterTxLoader(
         public G1 Identity;
         public byte[] IdentityPreimage;
     }
+
 }
