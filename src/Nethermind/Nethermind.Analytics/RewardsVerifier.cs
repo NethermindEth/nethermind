@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Analytics
 {
@@ -19,24 +20,26 @@ namespace Nethermind.Analytics
         public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => 0;
         public long EndLevelExclusive { get; }
+        public IWorldState WorldState { get; }
 
         private readonly UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
         private UInt256 _uncles;
 
         public UInt256 BlockRewards { get; private set; }
 
-        public RewardsVerifier(ILogManager logManager, long endLevelExclusive)
+        public RewardsVerifier(IWorldState worldState, ILogManager logManager, long endLevelExclusive)
         {
             _logger = logManager.GetClassLogger();
             EndLevelExclusive = endLevelExclusive;
             BlockRewards = _genesisAllocations;
+            WorldState = worldState;
         }
 
         private readonly RewardCalculator _rewardCalculator = new(MainnetSpecProvider.Instance);
 
         public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {
-            BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+            BlockReward[] rewards = _rewardCalculator.CalculateRewards(block, WorldState);
             for (int i = 0; i < rewards.Length; i++)
             {
                 if (rewards[i].RewardType == BlockRewardType.Uncle)

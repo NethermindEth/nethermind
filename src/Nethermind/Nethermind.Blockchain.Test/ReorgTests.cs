@@ -65,7 +65,6 @@ public class ReorgTests
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
             specProvider,
-            stateProvider,
             virtualMachine,
             codeInfoRepository,
             LimboLogs.Instance);

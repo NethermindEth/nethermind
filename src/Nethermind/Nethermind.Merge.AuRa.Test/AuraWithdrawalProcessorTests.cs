@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -44,18 +45,17 @@ public class AuraWithdrawalProcessorTests
         // we need to capture those values, because the ArrayPools will be disposed before we can match them
         ulong[] values = Array.Empty<ulong>();
         Address[] addresses = Array.Empty<Address>();
-        contract.ExecuteWithdrawals(
-            block.Header,
+        IWorldState worldState = Substitute.For<IWorldState>();
+        contract.ExecuteWithdrawals(worldState, block.Header,
             4,
             Arg.Do<IList<ulong>>(a => values = a.ToArray()),
             Arg.Do<IList<Address>>(a => addresses = a.ToArray()));
 
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, spec, worldState);
 
         contract
             .Received(1)
-            .ExecuteWithdrawals(
-                Arg.Is(block.Header),
+            .ExecuteWithdrawals(worldState, Arg.Is(block.Header),
                 Arg.Is<UInt256>(4),
                 Arg.Is<IList<ulong>>(a => values.SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
                 Arg.Is<IList<Address>>(a => addresses.SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
@@ -72,12 +72,11 @@ public class AuraWithdrawalProcessorTests
 
         spec.WithdrawalsEnabled.Returns(false);
 
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, spec, Substitute.For<IWorldState>());
 
         contract
             .Received(0)
-            .ExecuteWithdrawals(
-                Arg.Any<BlockHeader>(),
+            .ExecuteWithdrawals(Arg.Any<IWorldState>(), Arg.Any<BlockHeader>(),
                 Arg.Any<UInt256>(),
                 Arg.Any<ulong[]>(),
                 Arg.Any<Address[]>());

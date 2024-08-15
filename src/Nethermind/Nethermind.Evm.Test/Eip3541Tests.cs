@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test
                     break;
             }
 
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
 
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Test
             transaction.To = null;
             transaction.Data = createContract;
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(TestState, transaction, block.Header, tracer);
 
             Assert.That(tracer.ReportedActionErrors.All(x => x != EvmExceptionType.InvalidCode), Is.EqualTo(withoutAnyInvalidCodeErrors), $"Code {code}, Context {context}");
         }

@@ -194,9 +194,9 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState,
+            GasEstimator gasEstimator = new(scope.TransactionProcessor,
                 _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
+            long estimate = gasEstimator.Estimate(scope.WorldState, tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
             {
@@ -294,7 +294,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(scope.WorldState, transaction, new(callHeader), tracer);
         }
 
         public ulong GetChainId()

@@ -5,6 +5,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
@@ -19,13 +20,13 @@ public class MergeRpcRewardCalculator : IRewardCalculator
         _poSSwitcher = poSSwitcher;
     }
 
-    public BlockReward[] CalculateRewards(Block block)
+    public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
     {
         if (_poSSwitcher.IsPostMerge(block.Header))
         {
             return new[] { new BlockReward(block.Beneficiary!, UInt256.Zero) };
         }
 
-        return _beforeTheMerge.CalculateRewards(block);
+        return _beforeTheMerge.CalculateRewards(block, worldState);
     }
 }

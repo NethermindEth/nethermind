@@ -292,7 +292,7 @@ namespace Nethermind.Synchronization.Test
 
             RewardCalculator rewardCalculator = new(specProvider);
             TransactionProcessor txProcessor =
-                new(specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+                new(specProvider, virtualMachine, codeInfoRepository, logManager);
 
             BlockProcessor blockProcessor = new(
                 specProvider,
@@ -314,7 +314,7 @@ namespace Nethermind.Synchronization.Test
 
             WorldState devState = new(trieStore, codeDb, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
-            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, codeInfoRepository, logManager);
+            TransactionProcessor devTxProcessor = new(specProvider, devEvm, codeInfoRepository, logManager);
 
             BlockProcessor devBlockProcessor = new(
                 specProvider,

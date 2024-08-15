@@ -3,12 +3,13 @@
 
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
     public class BuildUpTransactionProcessorAdapter(ITransactionProcessor transactionProcessor) : ITransactionProcessorAdapter
     {
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            transactionProcessor.BuildUp(transaction, in blkCtx, txTracer);
+        public TransactionResult Execute(IWorldState worldState, Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
+            transactionProcessor.BuildUp(worldState, transaction, in blkCtx, txTracer);
     }
 }

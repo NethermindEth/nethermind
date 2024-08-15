@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Rewards
 {
@@ -18,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             _blockRewards = CreateBlockRewards(blockRewards);
         }
 
-        public BlockReward[] CalculateRewards(Block block)
+        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
         {
             _blockRewards.TryGetForActivation(block.Number, out var blockReward);
             return new[] { new BlockReward(block.Beneficiary, blockReward.Reward) };

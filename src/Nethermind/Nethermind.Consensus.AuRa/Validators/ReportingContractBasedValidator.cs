@@ -207,9 +207,10 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] Validators => _contractValidator.Validators;
 
-        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingStart(Block block, IWorldState worldState,
+            ProcessingOptions options = ProcessingOptions.None)
         {
-            _contractValidator.OnBlockProcessingStart(block, options);
+            _contractValidator.OnBlockProcessingStart(block, worldState, options);
         }
 
         public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -72,7 +73,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
         }
 
-        public override void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public override void OnBlockProcessingStart(Block block, IWorldState worldState,
+            ProcessingOptions options = ProcessingOptions.None)
         {
             if (block.IsGenesis)
             {
@@ -128,9 +130,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
 
 
-            base.OnBlockProcessingStart(block, options);
+            base.OnBlockProcessingStart(block, worldState, options);
 
-            FinalizePendingValidatorsIfNeeded(block.Header, isProducingBlock);
+            FinalizePendingValidatorsIfNeeded(block.Header, isProducingBlock, worldState);
 
             (_lastProcessedBlockNumber, _lastProcessedBlockHash) = (block.Number, block.Hash);
         }
@@ -188,7 +190,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private void FinalizePendingValidatorsIfNeeded(BlockHeader block, bool isProducingBlock)
+        private void FinalizePendingValidatorsIfNeeded(BlockHeader block, bool isProducingBlock, IWorldState worldState)
         {
             var validatorsInfo = ValidatorStore.GetValidatorsInfo(block.Number);
             var isInitialValidatorSet = validatorsInfo.FinalizingBlockNumber == InitBlockNumber
@@ -202,7 +204,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (block.Number == InitBlockNumber)
                     ValidatorContract.EnsureSystemAccount();
 
-                ValidatorContract.FinalizeChange(block);
+                ValidatorContract.FinalizeChange(block, worldState);
             }
         }
 

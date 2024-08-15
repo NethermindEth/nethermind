@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, 0, false)]
         public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee, bool send1559Tx)
         {
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, Machine, CodeInfoRepository, LimboLogs.Instance);
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.BASEFEE)
                 .PushData(0)
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
             }
 
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(TestState, transaction, block.Header, tracer);
 
             if (eip3198Enabled)
             {

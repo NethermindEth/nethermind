@@ -24,7 +24,7 @@ internal static class TransactionProcessorAdapterExtensions
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
-        TransactionResult result = transactionProcessor.Execute(currentTx, in blkCtx, receiptsTracer);
+        TransactionResult result = transactionProcessor.Execute(stateProvider, currentTx, in blkCtx, receiptsTracer);
         receiptsTracer.EndTxTrace();
         return result;
     }

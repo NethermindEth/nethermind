@@ -66,7 +66,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
             TransactionProcessor txProcessor = new(
                 specProvider,
-                stateProvider,
                 virtualMachine,
                 codeInfoRepository,
                 LimboLogs.Instance);

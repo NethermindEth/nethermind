@@ -169,7 +169,6 @@ namespace Nethermind.Init.Steps
 
             return new TransactionProcessor(
                 _api.SpecProvider,
-                _api.WorldState,
                 virtualMachine,
                 codeInfoRepository,
                 _api.LogManager);

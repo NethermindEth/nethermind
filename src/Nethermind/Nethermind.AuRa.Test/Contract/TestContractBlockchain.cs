@@ -44,6 +44,6 @@ namespace Nethermind.AuRa.Test.Contract
                     SpecProvider,
                     State,
                     TxProcessor)
-                .Load();
+                .Load(State);
     }
 }

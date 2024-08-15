@@ -3,13 +3,15 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
     public interface IAuRaValidator
     {
         Address[] Validators { get; }
-        void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None);
+        void OnBlockProcessingStart(Block block, IWorldState worldState,
+            ProcessingOptions options = ProcessingOptions.None);
         void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
     }
 }

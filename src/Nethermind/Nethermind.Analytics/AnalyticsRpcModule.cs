@@ -15,13 +15,15 @@ namespace Nethermind.Analytics
     {
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
+        private readonly IWorldState _worldState;
         private readonly ILogManager _logManager;
 
-        public AnalyticsRpcModule(IBlockTree blockTree, IStateReader stateReader, ILogManager logManager)
+        public AnalyticsRpcModule(IBlockTree blockTree, IWorldState worldState, IStateReader stateReader, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _worldState = worldState;
         }
 
         public ResultWrapper<UInt256> analytics_verifySupply()
@@ -33,7 +35,7 @@ namespace Nethermind.Analytics
 
         public ResultWrapper<UInt256> analytics_verifyRewards()
         {
-            RewardsVerifier rewardsVerifier = new RewardsVerifier(_logManager, (_blockTree.Head?.Number ?? 0) + 1);
+            RewardsVerifier rewardsVerifier = new RewardsVerifier(_worldState, _logManager, (_blockTree.Head?.Number ?? 0) + 1);
             _blockTree.Accept(rewardsVerifier, CancellationToken.None);
             return ResultWrapper<UInt256>.Success(rewardsVerifier.BlockRewards);
         }

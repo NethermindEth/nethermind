@@ -15,6 +15,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Data;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 

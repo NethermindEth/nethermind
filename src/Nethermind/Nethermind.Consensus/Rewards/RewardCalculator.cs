@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Rewards
 {
@@ -24,7 +25,7 @@ namespace Nethermind.Consensus.Rewards
             return spec.BlockReward;
         }
 
-        public BlockReward[] CalculateRewards(Block block)
+        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
         {
             if (block.IsGenesis)
             {

@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Test
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
             CallOutputTracer callOutputTracer = new();
-            _processor.Execute(transaction, block.Header, callOutputTracer);
+            _processor.Execute(TestState, transaction, block.Header, callOutputTracer);
             long minorCostsEstimate = 100;
             long keccakCostEstimate = 30 + 512 / 6;
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + minorCostsEstimate + keccakCostEstimate);
@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Test
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
             CallOutputTracer callOutputTracer = new();
-            _processor.Execute(transaction, block.Header, callOutputTracer);
+            _processor.Execute(TestState, transaction, block.Header, callOutputTracer);
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
         }
 
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Test
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
             CallOutputTracer callOutputTracer = new();
-            _processor.Execute(transaction, block.Header, callOutputTracer);
+            _processor.Execute(TestState, transaction, block.Header, callOutputTracer);
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
         }
 

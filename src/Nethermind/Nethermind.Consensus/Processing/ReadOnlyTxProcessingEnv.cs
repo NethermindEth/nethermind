@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Processing
 
         protected virtual TransactionProcessor CreateTransactionProcessor()
         {
-            return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
+            return new TransactionProcessor(SpecProvider, Machine, CodeInfoRepository, _logManager);
         }
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)

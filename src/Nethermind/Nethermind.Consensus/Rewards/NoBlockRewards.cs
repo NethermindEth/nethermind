@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Rewards
 {
@@ -15,7 +16,7 @@ namespace Nethermind.Consensus.Rewards
 
         private static readonly BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
-        public BlockReward[] CalculateRewards(Block block) => _noRewards;
+        public BlockReward[] CalculateRewards(Block block, IWorldState worldState) => _noRewards;
 
         public IRewardCalculator Get(ITransactionProcessor processor) => Instance;
     }

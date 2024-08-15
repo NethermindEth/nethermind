@@ -158,6 +158,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx =>
                     blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
@@ -174,6 +175,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
                 Arg.Any<ITxTracer>());
@@ -189,6 +191,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
                 Arg.Any<ITxTracer>());
@@ -204,6 +207,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
                 Arg.Any<ITxTracer>());

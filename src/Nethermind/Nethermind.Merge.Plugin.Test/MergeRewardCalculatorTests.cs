@@ -12,6 +12,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -30,14 +31,14 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
             MergeRewardCalculator calculator = new(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(3));
             Assert.That((long)rewards[0].Value, Is.EqualTo(5312500000000000000), "miner");
             Assert.That((long)rewards[1].Value, Is.EqualTo(3750000000000000000), "uncle1");
             Assert.That((long)rewards[2].Value, Is.EqualTo(3750000000000000000), "uncle2");
 
-            rewards = calculator.CalculateRewards(block2);
+            rewards = calculator.CalculateRewards(block2, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(0));
         }
@@ -53,13 +54,13 @@ namespace Nethermind.Merge.Plugin.Test
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
 
             MergeRewardCalculator calculator = new(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(2));
             Assert.That((long)rewards[0].Value, Is.EqualTo(5156250000000000000), "miner");
             Assert.That((long)rewards[1].Value, Is.EqualTo(3750000000000000000), "uncle1");
 
-            rewards = calculator.CalculateRewards(block2);
+            rewards = calculator.CalculateRewards(block2, Substitute.For<IWorldState>());
             Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
@@ -73,12 +74,12 @@ namespace Nethermind.Merge.Plugin.Test
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
 
             MergeRewardCalculator calculator = new(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(1));
             Assert.That((long)rewards[0].Value, Is.EqualTo(5000000000000000000), "miner");
 
-            rewards = calculator.CalculateRewards(block2);
+            rewards = calculator.CalculateRewards(block2, Substitute.For<IWorldState>());
             Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
@@ -95,14 +96,14 @@ namespace Nethermind.Merge.Plugin.Test
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
 
             MergeRewardCalculator calculator = new(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(3));
             Assert.That((long)rewards[0].Value, Is.EqualTo(3187500000000000000), "miner");
             Assert.That((long)rewards[1].Value, Is.EqualTo(2250000000000000000), "uncle1");
             Assert.That((long)rewards[2].Value, Is.EqualTo(2250000000000000000), "uncle2");
 
-            rewards = calculator.CalculateRewards(block2);
+            rewards = calculator.CalculateRewards(block2, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(0));
         }
@@ -120,14 +121,14 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
             MergeRewardCalculator calculator = new(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(3));
             Assert.That((long)rewards[0].Value, Is.EqualTo(2125000000000000000), "miner");
             Assert.That((long)rewards[1].Value, Is.EqualTo(1500000000000000000), "uncle1");
             Assert.That((long)rewards[2].Value, Is.EqualTo(1500000000000000000), "uncle2");
 
-            rewards = calculator.CalculateRewards(block2);
+            rewards = calculator.CalculateRewards(block2, Substitute.For<IWorldState>());
             Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
@@ -141,10 +142,10 @@ namespace Nethermind.Merge.Plugin.Test
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
             MergeRewardCalculator calculator = new(NoBlockRewards.Instance, poSSwitcher);
 
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
             Assert.That(rewards.Length, Is.EqualTo(0));
 
-            rewards = calculator.CalculateRewards(block2);
+            rewards = calculator.CalculateRewards(block2, Substitute.For<IWorldState>());
             Assert.That(rewards.Length, Is.EqualTo(0));
         }
 

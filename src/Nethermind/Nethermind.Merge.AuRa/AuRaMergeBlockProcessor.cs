@@ -53,8 +53,9 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         )
     { }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
+    protected override TxReceipt[] ProcessBlock(IWorldState worldState, Block block, IBlockTracer blockTracer,
+        ProcessingOptions options) =>
         block.IsPostMerge
-            ? PostMergeProcessBlock(block, blockTracer, options)
-            : base.ProcessBlock(block, blockTracer, options);
+            ? PostMergeProcessBlock(worldState, block, blockTracer, options)
+            : base.ProcessBlock(worldState, block, blockTracer, options);
 }

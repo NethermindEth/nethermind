@@ -14,22 +14,21 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateTransactionProcessor(
     ISpecProvider? specProvider,
-    IWorldState? worldState,
     IVirtualMachine? virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager,
     bool validate)
-    : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
+    : TransactionProcessor(specProvider, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(IWorldState worldState, Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)
         {
             opts |= ExecutionOptions.NoValidation;
         }
 
-        return base.Execute(tx, in blCtx, tracer, opts);
+        return base.Execute(worldState, tx, in blCtx, tracer, opts);
     }
 }

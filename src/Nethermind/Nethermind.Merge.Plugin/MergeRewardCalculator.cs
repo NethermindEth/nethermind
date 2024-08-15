@@ -5,6 +5,7 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -19,14 +20,14 @@ namespace Nethermind.Merge.Plugin
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         }
 
-        public BlockReward[] CalculateRewards(Block block)
+        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
         {
             if (_poSSwitcher.IsPostMerge(block.Header))
             {
-                return NoBlockRewards.Instance.CalculateRewards(block);
+                return NoBlockRewards.Instance.CalculateRewards(block, worldState);
             }
 
-            return _beforeTheMerge.CalculateRewards(block);
+            return _beforeTheMerge.CalculateRewards(block, worldState);
         }
     }
 }

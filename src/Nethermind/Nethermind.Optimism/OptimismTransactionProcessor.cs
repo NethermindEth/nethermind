@@ -15,17 +15,16 @@ namespace Nethermind.Optimism;
 
 public class OptimismTransactionProcessor(
     ISpecProvider specProvider,
-    IWorldState worldState,
     IVirtualMachine virtualMachine,
     ILogManager logManager,
     IL1CostHelper l1CostHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
-    ) : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessor(specProvider, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(IWorldState worldState, Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.SupportsBlobs)
         {
@@ -37,24 +36,24 @@ public class OptimismTransactionProcessor(
         _currentTxL1Cost = null;
         if (tx.IsDeposit())
         {
-            WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
+            worldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
         }
 
-        Snapshot snapshot = WorldState.TakeSnapshot();
+        Snapshot snapshot = worldState.TakeSnapshot();
 
-        TransactionResult result = base.Execute(tx, blCtx, tracer, opts);
+        TransactionResult result = base.Execute(worldState, tx, blCtx, tracer, opts);
 
         if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
         {
             // deposit tx should be included
-            WorldState.Restore(snapshot);
-            if (!WorldState.AccountExists(tx.SenderAddress!))
+            worldState.Restore(snapshot);
+            if (!worldState.AccountExists(tx.SenderAddress!))
             {
-                WorldState.CreateAccount(tx.SenderAddress!, 0, 1);
+                worldState.CreateAccount(tx.SenderAddress!, 0, 1);
             }
             else
             {
-                WorldState.IncrementNonce(tx.SenderAddress!);
+                worldState.IncrementNonce(tx.SenderAddress!);
             }
             blCtx.Header.GasUsed += tx.GasLimit;
             tracer.MarkAsFailed(tx.To!, tx.GasLimit, Array.Empty<byte>(), $"failed deposit: {result.Error}");
@@ -72,7 +71,7 @@ public class OptimismTransactionProcessor(
         return result;
     }
 
-    protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
     {
         premiumPerGas = UInt256.Zero;
@@ -80,7 +79,7 @@ public class OptimismTransactionProcessor(
 
         bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
-        UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
+        UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress!);
 
         if (tx.IsDeposit() && !tx.IsOPSystemTransaction && senderBalance < tx.Value)
         {
@@ -101,7 +100,7 @@ public class OptimismTransactionProcessor(
                 return "insufficient sender balance";
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+            UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, worldState);
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost, out balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
@@ -126,40 +125,40 @@ public class OptimismTransactionProcessor(
         }
 
         if (validate)
-            WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
+            worldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
         return TransactionResult.Ok;
     }
 
-    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult IncrementNonce(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!tx.IsDeposit())
-            return base.IncrementNonce(tx, header, spec, tracer, opts);
+            return base.IncrementNonce(worldState, tx, header, spec, tracer, opts);
 
-        WorldState.IncrementNonce(tx.SenderAddress!);
+        worldState.IncrementNonce(tx.SenderAddress!);
         return TransactionResult.Ok;
     }
 
-    protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
-        tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
+    protected override TransactionResult ValidateSender(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
+        tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(worldState, tx, header, spec, tracer, opts);
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
+    protected override void PayFees(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
     {
         if (!tx.IsDeposit())
         {
             // Skip coinbase payments for deposit tx in Regolith
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
+            base.PayFees(worldState, tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             if (opSpecHelper.IsBedrock(header))
             {
-                UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver, l1Cost, spec);
+                UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, worldState);
+                worldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver, l1Cost, spec);
             }
         }
     }
 
-    protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+    protected override long Refund(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
     {
         // if deposit: skip refunds, skip tipping coinbase
@@ -171,6 +170,6 @@ public class OptimismTransactionProcessor(
             return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
         }
 
-        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);
+        return base.Refund(worldState, tx, header, spec, opts, substate, unspentGas, gasPrice);
     }
 }

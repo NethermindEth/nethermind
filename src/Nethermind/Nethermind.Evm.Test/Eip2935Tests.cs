@@ -46,7 +46,7 @@ public class Eip2935Tests : VirtualMachineTestsBase
 
         (Block block, Transaction transaction) = PrepareTx(new ForkActivation(BlockNumber, timestamp), 100000, bytecode);
         CallOutputTracer callOutputTracer = new();
-        _processor.Execute(transaction, block.Header, callOutputTracer);
+        _processor.Execute(TestState, transaction, block.Header, callOutputTracer);
 
         long expected = blockNumber;
         callOutputTracer.ReturnValue!.Should().BeEquivalentTo(Keccak.Compute(expected.ToString()).BytesToArray());

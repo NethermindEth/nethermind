@@ -68,7 +68,7 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 worldState,
                 _api.TransactionProcessor)
-                .Load();
+                .Load(worldState);
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
 

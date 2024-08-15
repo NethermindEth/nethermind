@@ -22,7 +22,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec, IWorldState worldState)
     {
         if (!spec.WithdrawalsEnabled)
             return;

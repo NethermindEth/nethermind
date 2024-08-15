@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -21,13 +22,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="blockHeader"></param>
         /// <param name="benefactors">benefactor addresses</param>
         /// <param name="kind">
-        /// Kind:
-        /// 0 - Author - Reward attributed to the block author
-        /// 2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
-        /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
-        /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
+        ///     Kind:
+        ///     0 - Author - Reward attributed to the block author
+        ///     2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
+        ///     3 - External - Reward attributed by an external protocol (e.g. block reward contract)
+        ///     101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
-        (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind);
+        /// <param name="worldState"></param>
+        (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind,
+            IWorldState worldState);
     }
 
     public sealed class RewardContract : CallableContract, IRewardContract
@@ -49,15 +52,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="blockHeader"></param>
         /// <param name="benefactors">benefactor addresses</param>
         /// <param name="kind">
-        /// Kind:
-        /// 0 - Author - Reward attributed to the block author
-        /// 2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
-        /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
-        /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
+        ///     Kind:
+        ///     0 - Author - Reward attributed to the block author
+        ///     2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
+        ///     3 - External - Reward attributed by an external protocol (e.g. block reward contract)
+        ///     101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
-        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
+        /// <param name="worldState"></param>
+        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors,
+            ushort[] kind, IWorldState worldState)
         {
-            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, UnlimitedGas, benefactors, kind);
+            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, UnlimitedGas, worldState, benefactors, kind);
             return ((Address[])result[0], (UInt256[])result[1]);
         }
     }

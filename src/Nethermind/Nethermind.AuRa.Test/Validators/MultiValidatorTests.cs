@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -160,7 +161,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
             _block.Header.Number = blockNumber;
-            validator.OnBlockProcessingStart(_block, ProcessingOptions.ProducingBlock);
+            validator.OnBlockProcessingStart(_block, Substitute.For<IWorldState>(), ProcessingOptions.ProducingBlock);
             _innerValidators.Count.Should().Be(2);
             return _innerValidators.Keys.Last();
         }
@@ -178,7 +179,7 @@ namespace Nethermind.AuRa.Test.Validators
             _validator.Validators.ToList().TryGetSearchedItem(in blockNumber, (l, pair) => l.CompareTo(pair.Key), out KeyValuePair<long, AuRaParameters.Validator> validatorInfo);
             _finalizationManager.GetFinalizationLevel(validatorInfo.Key).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?)null);
             _block.Header.Number = blockNumber;
-            validator.OnBlockProcessingStart(_block);
+            validator.OnBlockProcessingStart(_block, Substitute.For<IWorldState>());
             return _innerValidators.Keys.Last();
         }
 
@@ -187,7 +188,7 @@ namespace Nethermind.AuRa.Test.Validators
             for (int i = 1; i < count; i++)
             {
                 _block.Header.Number = i;
-                validator.OnBlockProcessingStart(_block);
+                validator.OnBlockProcessingStart(_block, Substitute.For<IWorldState>());
                 validator.OnBlockProcessingEnd(_block, Array.Empty<TxReceipt>());
 
                 int finalizedBlock = i - blocksToFinalization;
@@ -206,7 +207,7 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 (IAuRaValidator innerValidator, int calls) = getValidatorWithCallCount(i);
 
-                innerValidator.Received(calls).OnBlockProcessingStart(Arg.Any<Block>());
+                innerValidator.Received(calls).OnBlockProcessingStart(Arg.Any<Block>(), Arg.Any<IWorldState>());
                 innerValidator.Received(calls).OnBlockProcessingEnd(Arg.Any<Block>(),
                     Array.Empty<TxReceipt>());
             }

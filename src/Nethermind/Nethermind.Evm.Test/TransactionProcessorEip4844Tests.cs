@@ -37,7 +37,7 @@ internal class TransactionProcessorEip4844Tests
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(_specProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
@@ -70,11 +70,11 @@ internal class TransactionProcessorEip4844Tests
             .WithBaseFeePerGas(1)
             .TestObject;
 
-        _transactionProcessor.CallAndRestore(blobTx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.CallAndRestore(_stateProvider, blobTx, block.Header, NullTxTracer.Instance);
         UInt256 deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
         Assert.That(deltaBalance, Is.EqualTo(UInt256.Zero));
 
-        _transactionProcessor.Execute(blobTx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.Execute(_stateProvider, blobTx, block.Header, NullTxTracer.Instance);
         deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
 
         return deltaBalance;

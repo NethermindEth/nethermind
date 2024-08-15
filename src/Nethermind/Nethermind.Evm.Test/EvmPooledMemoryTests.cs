@@ -166,7 +166,6 @@ namespace Nethermind.Evm.Test
                     LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new TransactionProcessor(
                     specProvider,
-                    stateProvider,
                     virtualMachine,
                     codeInfoRepository,
                     LimboLogs.Instance);
@@ -197,6 +196,7 @@ namespace Nethermind.Evm.Test
                 TestObject;
             MyTracer tracer = new();
             transactionProcessor.Execute(
+                stateProvider,
                     tx,
                     new BlockExecutionContext(block.Header),
                     tracer);

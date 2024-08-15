@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Rewards
 {
@@ -14,7 +15,7 @@ namespace Nethermind.Consensus.Rewards
 
         public static ZeroWeiRewards Instance { get; } = new();
 
-        public BlockReward[] CalculateRewards(Block block)
+        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
         {
             return new[] { new BlockReward(block.Beneficiary, 0) };
         }

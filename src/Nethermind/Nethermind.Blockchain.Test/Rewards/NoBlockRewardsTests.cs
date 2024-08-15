@@ -4,6 +4,8 @@
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Rewards
@@ -15,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Rewards
         {
             Block block = Build.A.Block.WithNumber(10).WithUncles(Build.A.Block.WithNumber(9).TestObject).TestObject;
             NoBlockRewards calculator = NoBlockRewards.Instance;
-            var rewards = calculator.CalculateRewards(block);
+            var rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
             Assert.IsEmpty(rewards);
         }
     }

@@ -80,9 +80,10 @@ namespace Nethermind.AuRa.Test.Contract
                 _readOnlyTxProcessorSource,
                 new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
 
-            contract.FinalizeChange(_block.Header);
+            contract.FinalizeChange(_block.Header, _stateProvider);
 
             _transactionProcessor.Received().Execute(
+                Arg.Any<IWorldState>(),
                 Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)), Arg.Any<ITxTracer>());
         }
 

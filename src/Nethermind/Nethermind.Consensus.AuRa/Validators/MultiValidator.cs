@@ -12,6 +12,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -100,7 +101,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingStart(Block block, IWorldState worldState,
+            ProcessingOptions options = ProcessingOptions.None)
         {
             if (!block.IsGenesis)
             {
@@ -139,7 +141,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
 
-            _currentValidator?.OnBlockProcessingStart(block, options);
+            _currentValidator?.OnBlockProcessingStart(block, worldState, options);
         }
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);

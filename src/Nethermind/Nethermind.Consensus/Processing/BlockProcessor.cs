@@ -121,7 +121,7 @@ public partial class BlockProcessor : IBlockProcessor
                 Task? preWarmTask = suggestedBlock.Transactions.Length < 3
                     ? null
                     : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(_stateProvider, suggestedBlock, options, blockTracer);
                 cancellationTokenSource.Cancel();
                 preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
@@ -212,13 +212,14 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(IWorldState worldState, Block suggestedBlock,
+        ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
+        TxReceipt[] receipts = ProcessBlock(worldState, block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -246,8 +247,7 @@ public partial class BlockProcessor : IBlockProcessor
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
     // TODO: block processor pipeline
-    protected virtual TxReceipt[] ProcessBlock(
-        Block block,
+    protected virtual TxReceipt[] ProcessBlock(IWorldState worldState, Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options)
     {
@@ -269,8 +269,8 @@ public partial class BlockProcessor : IBlockProcessor
         }
 
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
-        ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        ApplyMinerRewards(block, blockTracer, spec, worldState);
+        _withdrawalProcessor.ProcessWithdrawals(block, spec, worldState);
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitStorageRoots: true);
@@ -341,10 +341,10 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: block processor pipeline
-    private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
+    private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec, IWorldState worldState)
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block, worldState);
         for (int i = 0; i < rewards.Length; i++)
         {
             BlockReward reward = rewards[i];
