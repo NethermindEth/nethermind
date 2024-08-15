@@ -65,6 +65,9 @@ namespace Nethermind.Db
             {
                 RegisterColumnsDb<BlobTxsColumns>(BuildDbSettings(DbNames.BlobTransactions));
             }
+
+            RegisterColumnsDb<LogIndexColumns>(BuildDbSettings(DbNames.LogIndexStorage));
+
         }
 
         private static DbSettings BuildDbSettings(string dbName, bool deleteOnStart = false)
