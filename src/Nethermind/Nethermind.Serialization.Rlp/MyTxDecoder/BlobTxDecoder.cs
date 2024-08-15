@@ -57,7 +57,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
 
             if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                transaction.Hash = CalculateHashForNetworkPayloadForm(transactionSequence);
             }
         }
         else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
@@ -118,7 +118,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
 
             if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                transaction.Hash = CalculateHashForNetworkPayloadForm(transactionSequence);
             }
         }
         else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
@@ -250,10 +250,10 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
-    private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, ReadOnlySpan<byte> transactionSequence)
+    private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
     {
         KeccakHash hash = KeccakHash.Create();
-        Span<byte> txType = [(byte)type];
+        Span<byte> txType = [(byte)TxType.Blob];
         hash.Update(txType);
         hash.Update(transactionSequence);
         return new Hash256(hash.Hash);
