@@ -9,9 +9,9 @@ namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
 public static class SignatureBuilder
 {
-    public static Signature FromBytes(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, RlpBehaviors rlpBehaviors)
+    public static Signature? FromBytes(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, RlpBehaviors rlpBehaviors)
     {
-        bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
+        bool allowUnsigned = rlpBehaviors.HasFlag(RlpBehaviors.AllowUnsigned);
         bool isSignatureOk = true;
         string signatureError = null;
         if (rBytes.Length == 0 || sBytes.Length == 0)
@@ -35,11 +35,20 @@ public static class SignatureBuilder
             signatureError = "Both 'r' and 's' are zero when decoding a transaction";
         }
 
-        if (!isSignatureOk && !allowUnsigned)
+        if (!isSignatureOk)
         {
-            throw new RlpException(signatureError);
+            if (!allowUnsigned)
+            {
+                throw new RlpException(signatureError);
+            }
+            else
+            {
+                return null;
+            }
         }
-
-        return new Signature(rBytes, sBytes, v);
+        else
+        {
+            return new Signature(rBytes, sBytes, v);
+        }
     }
 }
