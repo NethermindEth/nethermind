@@ -46,7 +46,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true) : ITxDecoder
             rlpStream.Check(lastCheck);
         }
 
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && transaction.MayHaveNetworkForm)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             DecodeShardBlobNetworkWrapper(transaction, rlpStream);
 
