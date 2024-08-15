@@ -114,6 +114,8 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
+        ValidateCommandLineFlags(args);
+
         string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
         if (!string.IsNullOrEmpty(duplicateArgumentsList))
         {
@@ -590,5 +592,81 @@ public static class Program
             .Append("Runtime: ").AppendLine(ProductInfo.Runtime);
 
         return info.ToString();
+    }
+
+    private static HashSet<string> generateValidConfigOptionsHash()
+    {
+        // Initialize with the default options
+        var options = new HashSet<string>
+        {
+            "-?",
+            "-h",
+            "--help",
+            "-v",
+            "--version",
+            "-dd",
+            "--datadir",
+            "-c",
+            "--config",
+            "-d",
+            "--baseDbPath",
+            "-l",
+            "--log",
+            "-cd",
+            "--configsDirectory",
+            "-lcs",
+            "--loggerConfigSource",
+            "-pd",
+            "--pluginsDirectory",
+        };
+
+        // Add all the options from the configuration files
+        Type configurationType = typeof(IConfig);
+        IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindBasedTypes(configurationType)
+            .Where(ct => ct.IsInterface);
+
+        foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
+        {
+            if (configType is null)
+            {
+                continue;
+            }
+
+            ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
+
+            if (typeLevel is not null && (typeLevel?.DisabledForCli ?? true))
+            {
+                continue;
+            }
+
+            foreach (PropertyInfo propertyInfo in configType
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .OrderBy(p => p.Name))
+            {
+                ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+                if (!(configItemAttribute?.DisabledForCli ?? false))
+                {
+                    options.Add($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}");
+                }
+            }
+        }
+
+        return options;
+    }
+
+    private static void ValidateCommandLineFlags(string[] args)
+    {
+        // Get all valid options from the configuration files
+        var validParameters = generateValidConfigOptionsHash();
+
+        foreach (var arg in args)
+        {
+            // Check if the argument is a parameter (starts with --)
+            if (arg.StartsWith("--") && !validParameters.Contains(arg))
+            {
+                string message = $"Unrecognized parameter: {arg}.\nRun --help for a list of available options and commands.";
+                throw new ArgumentException(message);
+            }
+        }
     }
 }
