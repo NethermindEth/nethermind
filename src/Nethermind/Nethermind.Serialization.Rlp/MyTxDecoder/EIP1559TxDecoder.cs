@@ -108,7 +108,7 @@ public sealed class EIP1559TxDecoder(bool lazyHash = true, Func<Transaction>? tr
             stream.StartByteArray(sequenceLength + 1, false);
         }
 
-        stream.WriteByte((byte)transaction.Type);
+        stream.WriteByte((byte)TxType.EIP1559);
         stream.StartSequence(contentLength);
 
         EncodePayload(transaction, stream, rlpBehaviors);

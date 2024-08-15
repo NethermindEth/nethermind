@@ -108,7 +108,7 @@ public sealed class AccessListTxDecoder(bool lazyHash = true, Func<Transaction>?
             stream.StartByteArray(sequenceLength + 1, false);
         }
 
-        stream.WriteByte((byte)transaction.Type);
+        stream.WriteByte((byte)TxType.AccessList);
         stream.StartSequence(contentLength);
 
         EncodePayload(transaction, stream, rlpBehaviors);

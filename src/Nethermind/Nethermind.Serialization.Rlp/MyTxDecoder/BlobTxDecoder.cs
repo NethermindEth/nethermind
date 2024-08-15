@@ -155,7 +155,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true, Func<Transaction>? trans
             stream.StartByteArray(sequenceLength + 1, false);
         }
 
-        stream.WriteByte((byte)transaction.Type);
+        stream.WriteByte((byte)TxType.Blob);
 
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {

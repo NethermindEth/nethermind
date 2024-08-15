@@ -105,7 +105,7 @@ public sealed class OptimismTxDecoder(bool lazyHash = true, Func<Transaction>? t
             stream.StartByteArray(sequenceLength + 1, false);
         }
 
-        stream.WriteByte((byte)transaction.Type);
+        stream.WriteByte((byte)TxType.DepositTx);
         stream.StartSequence(contentLength);
 
         EncodePayload(transaction, stream);
