@@ -14,6 +14,7 @@ namespace Nethermind.Core.Crypto
     [DebuggerDisplay("{ToString()}")]
     public static class ValueKeccak
     {
+        private const int MaxCacheLength = 32;
         private static readonly HashCache _cache = new();
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
@@ -72,14 +73,14 @@ namespace Nethermind.Core.Crypto
 
             Unsafe.SkipInit(out ValueHash256 hash);
             Unsafe.SkipInit(out BytesWrapper cacheKey);
-            if (input.Length <= 32)
+            if (input.Length <= MaxCacheLength)
             {
                 cacheKey = input;
                 if (_cache.TryGet(cacheKey, out hash)) return hash;
             }
 
             KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref hash, 1)));
-            if (input.Length <= 32)
+            if (input.Length <= MaxCacheLength)
             {
                 _cache.Set(cacheKey, hash);
             }
@@ -94,13 +95,13 @@ namespace Nethermind.Core.Crypto
             }
 
             Unsafe.SkipInit(out ValueHash256 hash);
-            if (input.Length <= 32 && _cache.TryGet(input, out hash))
+            if (input.Length <= MaxCacheLength && _cache.TryGet(input, out hash))
             {
                 return hash;
             }
 
             KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref hash, 1)));
-            if (input.Length <= 32)
+            if (input.Length <= MaxCacheLength)
             {
                 _cache.Set(input, hash);
             }
@@ -109,7 +110,7 @@ namespace Nethermind.Core.Crypto
 
         private sealed class HashCache
         {
-            private const int CacheCount = 16;
+            private const int CacheCount = 256;
             private const int CacheMax = CacheCount - 1;
             private readonly ClockCache<BytesWrapper, ValueHash256>[] _caches;
 
@@ -119,7 +120,7 @@ namespace Nethermind.Core.Crypto
                 for (int i = 0; i < _caches.Length; i++)
                 {
                     // Cache per nibble to reduce contention as is very parallel
-                    _caches[i] = new ClockCache<BytesWrapper, ValueHash256>(4096);
+                    _caches[i] = new ClockCache<BytesWrapper, ValueHash256>(512);
                 }
             }
 

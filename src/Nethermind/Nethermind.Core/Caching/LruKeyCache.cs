@@ -22,7 +22,7 @@ namespace Nethermind.Core.Caching
             _maxCapacity = maxCapacity;
             _name = name ?? throw new ArgumentNullException(nameof(name));
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)(object)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
         }
 

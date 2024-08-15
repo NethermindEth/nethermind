@@ -32,7 +32,7 @@ namespace Nethermind.Core.Extensions
         public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
 
-        public class BytesEqualityComparer : EqualityComparer<byte[]>
+        public sealed class BytesEqualityComparer : EqualityComparer<byte[]>
         {
             public override bool Equals(byte[]? x, byte[]? y)
             {
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        private class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
+        private sealed class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
         {
             public override bool Equals(byte[]? x, byte[]? y)
             {
@@ -58,14 +58,14 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
+        private sealed class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
         {
             public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
 
             public int GetHashCode(ReadOnlySpan<byte> bytes) => GetSimplifiedHashCode(bytes);
         }
 
-        public class BytesComparer : Comparer<byte[]>
+        public sealed class BytesComparer : Comparer<byte[]>
         {
             public override int Compare(byte[]? x, byte[]? y)
             {
@@ -1137,24 +1137,28 @@ namespace Nethermind.Core.Extensions
             }
 
             uint crc = s_instanceRandom;
-            var longSize = span.Length / sizeof(ulong) * sizeof(ulong);
-            if (longSize > 0)
+            var size = span.Length / sizeof(ulong) * sizeof(ulong);
+            if (size > 0)
             {
-                foreach (ulong ul in MemoryMarshal.Cast<byte, ulong>(span[..longSize]))
+                foreach (ulong ul in MemoryMarshal.Cast<byte, ulong>(span[..size]))
                 {
                     crc = BitOperations.Crc32C(crc, ul);
                 }
-                foreach (byte b in span[longSize..])
-                {
-                    crc = BitOperations.Crc32C(crc, b);
-                }
+                span = span[size..];
             }
-            else
+            size = span.Length / sizeof(uint) * sizeof(uint);
+            if (size > 0)
             {
-                foreach (byte b in span)
+                foreach (uint ui in MemoryMarshal.Cast<byte, uint>(span[..size]))
                 {
-                    crc = BitOperations.Crc32C(crc, b);
+                    crc = BitOperations.Crc32C(crc, ui);
                 }
+                span = span[size..];
+            }
+
+            foreach (byte b in span)
+            {
+                crc = BitOperations.Crc32C(crc, b);
             }
 
             return (int)crc;
