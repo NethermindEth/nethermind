@@ -82,7 +82,7 @@ public class OptimismTransactionProcessor(
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
-        if (tx.IsDeposit() && !tx.IsOPSystemTransaction  && senderBalance < tx.Value)
+        if (tx.IsDeposit() && !tx.IsOPSystemTransaction && senderBalance < tx.Value)
         {
             return "insufficient sender balance";
         }
