@@ -6,50 +6,38 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp.Eip2930;
 using Nethermind.Serialization.Rlp.MyTxDecoder;
 
 namespace Nethermind.Serialization.Rlp;
 
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
-    public const int MaxDelayedHashTxnSize = 32768;
-    public static readonly TxDecoder Instance = new();
-    public static readonly TxDecoder InstanceWithoutLazyHash = new(false);
     public static readonly ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
 
-    public TxDecoder() : base(true) // Rlp will try to find empty constructor.
-    {
-    }
-
-    public TxDecoder(bool lazyHash) : base(lazyHash)
-    {
-    }
-
-    protected override Transaction NewTx()
-    {
-        return TxObjectPool.Get();
-    }
+    public TxDecoder() : base(true) { } // Rlp will try to find empty constructor.
+    public TxDecoder(bool lazyHash) : base(lazyHash) { }
+    protected override Transaction NewTx() => TxObjectPool.Get();
 }
-public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
-public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
 
-public class TxDecoder<T>(bool lazyHash = true) : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : Transaction, new()
+public sealed class SystemTxDecoder : TxDecoder<SystemTransaction> { }
+public sealed class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
+
+public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : Transaction, new()
 {
-    private readonly Dictionary<TxType, ITxDecoder> _decoders = new() {
-        { TxType.Legacy, new LegacyTxDecoder(lazyHash) },
-        { TxType.AccessList, new AccessListTxDecoder(lazyHash) },
-        { TxType.EIP1559, new EIP1559TxDecoder(lazyHash) },
-        { TxType.Blob, new BlobTxDecoder(lazyHash) },
-        { TxType.DepositTx, new OptimismTxDecoder(lazyHash) }
-    };
+    private readonly Dictionary<TxType, ITxDecoder> _decoders;
 
-    protected virtual T NewTx()
+    public TxDecoder(bool lazyHash = true)
     {
-        return new();
+        _decoders = new() {
+            { TxType.Legacy, new LegacyTxDecoder(lazyHash, NewTx) },
+            { TxType.AccessList, new AccessListTxDecoder(lazyHash, NewTx) },
+            { TxType.EIP1559, new EIP1559TxDecoder(lazyHash, NewTx) },
+            { TxType.Blob, new BlobTxDecoder(lazyHash, NewTx) },
+            { TxType.DepositTx, new OptimismTxDecoder(lazyHash, NewTx) }
+        };
     }
+
+    protected virtual T NewTx() => new();
 
     public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
