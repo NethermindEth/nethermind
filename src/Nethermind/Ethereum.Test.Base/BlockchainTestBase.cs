@@ -171,7 +171,7 @@ namespace Ethereum.Test.Base
                 stateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider, stateProvider),
-                new BeaconBlockRootHandler(transactionProcessor, _logManager),
+                new BeaconBlockRootHandler(transactionProcessor),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

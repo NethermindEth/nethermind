@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(specProvider, stateProvider),
-                new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance),
+                new BeaconBlockRootHandler(transactionProcessor),
                 LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId);
