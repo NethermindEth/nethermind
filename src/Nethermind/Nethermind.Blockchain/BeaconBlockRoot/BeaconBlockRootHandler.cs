@@ -26,16 +26,13 @@ public class BeaconBlockRootHandler(
                                   && !header.IsGenesis
                                   && header.ParentBeaconBlockRoot is not null;
 
-        if (spec.Eip4788ContractAddress is null)
-            throw new ArgumentException("Eip4788ContractAddress shouldn't be null");
-
         if (canInsertBeaconRoot)
         {
             Transaction transaction = new()
             {
                 Value = UInt256.Zero,
                 Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
-                To = spec.Eip4788ContractAddress,
+                To = spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = GasLimit,
                 GasPrice = UInt256.Zero,
