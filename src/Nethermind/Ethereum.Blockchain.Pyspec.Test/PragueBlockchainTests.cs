@@ -21,7 +21,7 @@ public class PragueBlockChainTests : BlockchainTestBase
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
         {
             ArchiveName = "fixtures_eip7692.tar.gz",
-            ArchiveVersion = "eip7692@v1.0.7"
+            ArchiveVersion = "eip7692@v1.0.8"
         }, $"fixtures/blockchain_tests/prague");
         return loader.LoadTests().Cast<BlockchainTest>();
     }
