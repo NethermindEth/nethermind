@@ -23,7 +23,8 @@ class ShutterMessageHandlerTests
         ShutterMessageHandler msgHandler = CreateMessageHandler();
         bool eventFired = false;
         msgHandler.KeysValidated += (_, _) => eventFired = true;
-        msgHandler.OnDecryptionKeysReceived(new Nethermind.Shutter.Dto.DecryptionKeys() {
+        msgHandler.OnDecryptionKeysReceived(new Nethermind.Shutter.Dto.DecryptionKeys()
+        {
 
         });
         Assert.That(eventFired);
@@ -35,7 +36,8 @@ class ShutterMessageHandlerTests
         ShutterMessageHandler msgHandler = CreateMessageHandler();
         bool eventFired = false;
         msgHandler.KeysValidated += (_, _) => eventFired = true;
-        msgHandler.OnDecryptionKeysReceived(new Nethermind.Shutter.Dto.DecryptionKeys() {
+        msgHandler.OnDecryptionKeysReceived(new Nethermind.Shutter.Dto.DecryptionKeys()
+        {
 
         });
         Assert.That(!eventFired);
