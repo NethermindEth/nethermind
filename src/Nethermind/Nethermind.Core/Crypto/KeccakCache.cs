@@ -76,7 +76,7 @@ public static unsafe class KeccakCache
                 Entry copy = e;
 
                 // Release the lock
-                Interlocked.Exchange(ref e.Lock, Entry.Unlocked);
+                Volatile.Write(ref e.Lock, Entry.Unlocked);
 
                 // Lengths are equal, the input length can be used without any additional operation.
                 if (MemoryMarshal.CreateReadOnlySpan(ref copy.Payload, input.Length).SequenceEqual(input))
@@ -97,8 +97,8 @@ public static unsafe class KeccakCache
 
             input.CopyTo(MemoryMarshal.CreateSpan(ref e.Payload, input.Length));
 
-            // Release the lock, potentially Volatile.Write??
-            Interlocked.Exchange(ref e.Lock, Entry.Unlocked);
+            // Release the lock
+            Volatile.Write(ref e.Lock, Entry.Unlocked);
         }
 
         return hash;
