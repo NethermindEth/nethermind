@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain.Filters;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 
 namespace Nethermind.Shutter;
 

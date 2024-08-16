@@ -15,6 +15,6 @@ public interface IShutterMessageHandler
         public ulong Slot;
         public ulong Eon;
         public ulong TxPointer;
-        public List<(byte[], byte[])> Keys;
+        public List<(byte[] IdentityPreimage, byte[] Key)> Keys;
     }
 }

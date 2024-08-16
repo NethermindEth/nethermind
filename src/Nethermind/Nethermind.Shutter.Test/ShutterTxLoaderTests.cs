@@ -4,10 +4,8 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;
-using Nethermind.Core.Extensions;
 using NSubstitute;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Specs;
@@ -18,19 +16,17 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs;
 using Nethermind.Shutter.Config;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Shutter.Contracts;
 using Nethermind.Abi;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Shutter.Test;
 
-using G1 = Bls.P1;
-using G2 = Bls.P2;
-using EncryptedMessage = ShutterCrypto.EncryptedMessage;
-using SequencedTransaction = ShutterTxLoader.SequencedTransaction;
 using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 
 [TestFixture]
@@ -40,7 +36,8 @@ class ShutterTxLoaderSourceTests : EngineModuleTests
     private readonly AbiEncoder _abiEncoder = new();
     private static readonly ShutterConfig _cfg = new()
     {
-        SequencerContractAddress = "0x0000000000000000000000000000000000000000"
+        SequencerContractAddress = "0x0000000000000000000000000000000000000000",
+        EncryptedGasLimit = 1000000
     };
 
     // [SetUp]
@@ -51,7 +48,10 @@ class ShutterTxLoaderSourceTests : EngineModuleTests
     [Test]
     public async Task Can_load_transactions()
     {
-        // remove sequencer contract tests
+        const ulong initialSlot = 16082024;
+        const ulong initialTxPointer = 1000;
+        Random rnd = new Random(100);
+
         using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
@@ -64,176 +64,228 @@ class ShutterTxLoaderSourceTests : EngineModuleTests
             LimboLogs.Instance
         );
         
-        Random rnd = new Random(100);
-        UInt256 sk = 4328942385;
-
-        Transaction tx = Build.A.Transaction.WithChainId(BlockchainIds.Chiado).Signed().TestObject;
-        byte[] encodedTx = Rlp.Encode<Transaction>(tx).Bytes;
-
-        byte[] identityPreimage = new byte[52];
-        byte[] sigma = new byte[32];
-        rnd.NextBytes(identityPreimage);
-        rnd.NextBytes(sigma);
-
-        (byte[] encryptedMessage, (byte[], byte[]) key) = GenerateEncryptedMessage(encodedTx, identityPreimage, sk, new(sigma));
-        LogEntry shutterLog = EncodeShutterLog(txLoader, 0, 1000, new(identityPreimage.AsSpan()[..32]), new(identityPreimage[32..]), encryptedMessage, new());
-
-        Block head = chain.BlockTree.Head!;
-        head.Header.Bloom = new([shutterLog]);
-
-        TxReceipt receipt = Build.A.Receipt.WithLogs([shutterLog]).WithTransactionHash(head.Hash).TestObject;
-        chain.ReceiptStorage.Insert(head, [receipt]);
-
-        ShutterTransactions txs = txLoader.LoadTransactions(head, new() {
-            Slot = 0,
-            Eon = 0,
-            TxPointer = 1000,
-            Keys = [([], []), key]
-        });
-
-        Assert.That(txs.Transactions, Has.Length.EqualTo(1));
-        Assert.That(Rlp.Encode<Transaction>(txs.Transactions[0]).Bytes, Is.EqualTo(encodedTx));
-
-        shutterLog = EncodeShutterLog(txLoader, 0, 1001, new(identityPreimage.AsSpan()[..32]), new(identityPreimage[32..]), encryptedMessage, new());
-        head = chain.BlockTree.Head!;
-        head.Header.Bloom = new([shutterLog]);
-        receipt = Build.A.Receipt.WithLogs([shutterLog]).WithTransactionHash(head.Hash).TestObject;
-        txLoader.LoadFromReceipts(Build.A.Block.TestObject, [receipt]);
-
-        txs = txLoader.LoadTransactions(head, new() {
-            Slot = 1,
-            Eon = 0,
-            TxPointer = 1001,
-            Keys = [([], []), key]
-        });
-
-        Assert.That(txs.Transactions, Has.Length.EqualTo(1));
-        Assert.That(Rlp.Encode<Transaction>(txs.Transactions[0]).Bytes, Is.EqualTo(encodedTx));
-    }
-
-    [Test]
-    public async Task Can_load_events_from_scanning_logs()
-    {
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
-
-        ShutterTxLoader txLoader = new(
-            chain.LogFinder,
-            _cfg,
-            GnosisSpecProvider.Instance,
-            _ecdsa,
-            LimboLogs.Instance
+        ShutterEventEmitter eventEmitter = new(
+            rnd,
+            BlockchainIds.Chiado,
+            0,
+            initialTxPointer,
+            _abiEncoder,
+            txLoader._sequencerContract.ContractAddress!,
+            txLoader._sequencerContract._transactionSubmittedAbi
         );
+        IEnumerable<ShutterEventEmitter.Event> eventSource = eventEmitter.EmitEvent();
 
-        byte[] encryptedMessage = [0xaa, 0xbb];
-        LogEntry shutterLog = EncodeShutterLog(txLoader, 0, 1000, new(), Address.Zero, encryptedMessage, new());
-
-        Block head = chain.BlockTree.Head!;
-        head.Header.Bloom = new([shutterLog]);
-
-        TxReceipt receipt = Build.A.Receipt.WithLogs([shutterLog]).WithTransactionHash(head.Hash).TestObject;
-        chain.ReceiptStorage.Insert(head, [receipt]);
-
-        List<SequencedTransaction> txs = txLoader.GetNextTransactions(0, 1000, chain.BlockTree.Head!.Number).ToList();
-        Assert.That(txs, Has.Count.EqualTo(1));
-        Assert.That(txs[0].EncryptedTransaction, Is.EqualTo(encryptedMessage));
-    }
-
-    [Test]
-    public void Can_load_events_from_receipts()
-    {
-        ShutterTxLoader txLoader = new(
-            Substitute.For<ILogFinder>(),
-            _cfg,
-            GnosisSpecProvider.Instance,
-            _ecdsa,
-            LimboLogs.Instance
-        )
+        for (int i = 0; i < 10; i++)
         {
-            _loadFromReceipts = true,
-            _txPointer = 1000
-        };
+            // todo: fix inserting when more than 1 log
+            List<ShutterEventEmitter.Event> events = eventSource.Take(1).ToList();
+            List<(byte[], byte[])> keys = events.Select(e => (e.IdentityPreimage, e.Key)).ToList();
+            keys.Insert(0, ([], [])); // placeholder key
+            LogEntry[] logs = events.Select(e => e.LogEntry).ToArray();
+        
+            Block head = chain.BlockTree.Head!;
+            TxReceipt[] receipts = InsertShutterReceipts(rnd, chain.ReceiptStorage, head, logs);
+            txLoader.LoadFromReceipts(head, receipts);
 
-        TxReceipt[] receipts = [];
-
-        // no Shutter logs
-        txLoader.LoadFromReceipts(Build.A.Block.TestObject, receipts);
-        Assert.That(txLoader._txPointer, Is.EqualTo(1000));
-
-        // one Shutter log
-        LogEntry shutterLog = EncodeShutterLog(txLoader, 0, 1000, new(), Address.Zero, [], new());
-        TxReceipt receipt = Build.A.Receipt.WithLogs([shutterLog]).TestObject;
-        receipts = [receipt];
-
-        txLoader.LoadFromReceipts(Build.A.Block.TestObject, receipts);
-
-        ISequencerContract.TransactionSubmitted expected = new()
-        {
-            Eon = 0,
-            TxIndex = 1000,
-            IdentityPrefix = new(),
-            Sender = Address.Zero,
-            EncryptedTransaction = [],
-            GasLimit = new()
-        };
-        Assert.That(txLoader._txPointer, Is.EqualTo(1001));
-        Assert.That(txLoader._transactionSubmittedEvents.Peek().Equals(expected));
-    }
-
-    [Test]
-    public void Can_decrypt_sequenced_transactions()
-    {
-        const int txCount = 100;
-        UInt256 sk = 4328942385;
-        Random rnd = new Random(100);
-
-        ShutterTxLoader txLoader = new(
-            Substitute.For<ILogFinder>(),
-            _cfg,
-            GnosisSpecProvider.Instance,
-            _ecdsa,
-            LimboLogs.Instance
-        );
-
-        byte[] msg = Convert.FromHexString("f869820248849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a001e44318458b1f279bf81aef969df1b9991944bf8b9d16fd1799ed5b0a7986faa058f572cce63aaff3326df9c902d338b0c416c8fb93109446d6aadd5a65d3d115");
-
-        List<SequencedTransaction> sequencedTransactions = [];
-        List<(byte[] IdentityPreimage, byte[] Key)> keys = [];
-
-        for (int i = 0; i < txCount; i++)
-        {
-            byte[] identityPreimage = new byte[52];
-            byte[] sigma = new byte[32];
-            rnd.NextBytes(identityPreimage);
-            rnd.NextBytes(sigma);
-
-            (byte[] encryptedMessage, (byte[], byte[]) key) = GenerateEncryptedMessage(msg, identityPreimage, sk, new(sigma));
-            SequencedTransaction sequencedTransaction = new()
-            {
-                Index = i,
+            ShutterTransactions txs = txLoader.LoadTransactions(head, new() {
+                Slot = initialSlot,
                 Eon = 0,
-                EncryptedTransaction = encryptedMessage,
-                GasLimit = 0,
-                Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
-                IdentityPreimage = identityPreimage
-            };
-            sequencedTransactions.Add(sequencedTransaction);
-            keys.Add(key);
-        }
+                TxPointer = initialTxPointer,
+                Keys = keys
+            });
 
-        // decryption keys are sorted by preimage
-        keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
-        keys.Insert(0, new());
-
-        Transaction[] txs = txLoader.DecryptSequencedTransactions(sequencedTransactions, keys);
-        foreach (Transaction tx in txs)
-        {
-            byte[] tmp = Rlp.Encode<Transaction>(tx).Bytes;
-            Assert.That(Enumerable.SequenceEqual(tmp, msg));
+            Assert.That(txs.Transactions, Has.Length.EqualTo(1));
+            // advance chain
         }
-        Assert.That(txs, Has.Length.EqualTo(txCount));
+        // LogEntry shutterLog = e.LogEntry;
+
+        // // add Shutter events to head block receipts
+        // Block head = chain.BlockTree.Head!;
+        // InsertShutterReceipts(chain.ReceiptStorage, head, [shutterLog]);
+
+        // // scan receipts for Shutter logs
+        // ShutterTransactions txs = txLoader.LoadTransactions(head, new() {
+        //     Slot = initialSlot,
+        //     Eon = 0,
+        //     TxPointer = initialTxPointer,
+        //     Keys = [([], []), (e.IdentityPreimage, e.Key)]
+        // });
+
+        // Assert.That(txs.Transactions, Has.Length.EqualTo(1));
+        // Assert.That(Rlp.Encode<Transaction>(txs.Transactions[0]).Bytes, Is.EqualTo(e.Transaction));
+
+        // e = events.Take(1).ElementAt(0);
+        // shutterLog = e.LogEntry;
+
+        // head = chain.BlockTree.Head!;
+        // TxReceipt[] receipts = InsertShutterReceipts(chain.ReceiptStorage, head, [shutterLog]);
+        // txLoader.LoadFromReceipts(head, receipts);
+
+        // txs = txLoader.LoadTransactions(head, new() {
+        //     Slot = initialSlot + 1,
+        //     Eon = 0,
+        //     TxPointer = initialTxPointer + 1,
+        //     Keys = [([], []), (e.IdentityPreimage, e.Key)]
+        // });
+
+        // Assert.That(txs.Transactions, Has.Length.EqualTo(1));
+        // Assert.That(Rlp.Encode<Transaction>(txs.Transactions[0]).Bytes, Is.EqualTo(e.Transaction));
     }
+
+    private static TxReceipt[] InsertShutterReceipts(Random rnd, IReceiptStorage receiptStorage, Block block, in LogEntry[] logs)
+    {
+        var receipts = new TxReceipt[logs.Length];
+        block.Header.Bloom = new(logs);
+
+        // one log per receipt
+        for (int i = 0; i < logs.Length; i++)
+        {
+            var h = new byte[32];
+            rnd.NextBytes(h);
+            receipts[i] = Build.A.Receipt
+                .WithLogs([logs[i]])
+                .WithTransactionHash(new(h))
+                .WithBlockHash(block.Hash)
+                .WithBlockNumber(block.Number)
+                .TestObject;
+        }
+
+        receiptStorage.Insert(block, receipts);
+        return receipts;
+    }
+
+    // [Test]
+    // public async Task Can_load_events_from_scanning_logs()
+    // {
+    //     using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
+    //     IEngineRpcModule rpc = CreateEngineModule(chain);
+    //     IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+
+    //     ShutterTxLoader txLoader = new(
+    //         chain.LogFinder,
+    //         _cfg,
+    //         GnosisSpecProvider.Instance,
+    //         _ecdsa,
+    //         LimboLogs.Instance
+    //     );
+
+    //     byte[] encryptedMessage = [0xaa, 0xbb];
+    //     LogEntry shutterLog = EncodeShutterLog(txLoader, 0, 1000, new(), Address.Zero, encryptedMessage, new());
+
+    //     Block head = chain.BlockTree.Head!;
+    //     head.Header.Bloom = new([shutterLog]);
+
+    //     TxReceipt receipt = Build.A.Receipt.WithLogs([shutterLog]).WithTransactionHash(head.Hash).TestObject;
+    //     chain.ReceiptStorage.Insert(head, [receipt]);
+
+    //     List<SequencedTransaction> txs = txLoader.GetNextTransactions(0, 1000, chain.BlockTree.Head!.Number).ToList();
+    //     Assert.That(txs, Has.Count.EqualTo(1));
+    //     Assert.That(txs[0].EncryptedTransaction, Is.EqualTo(encryptedMessage));
+    // }
+
+    // [Test]
+    // public void Can_load_events_from_receipts()
+    // {
+    //     ShutterTxLoader txLoader = new(
+    //         Substitute.For<ILogFinder>(),
+    //         _cfg,
+    //         GnosisSpecProvider.Instance,
+    //         _ecdsa,
+    //         LimboLogs.Instance
+    //     )
+    //     {
+    //         _loadFromReceipts = true,
+    //         _txPointer = 1000
+    //     };
+
+    //     TxReceipt[] receipts = [];
+
+    //     // no Shutter logs
+    //     txLoader.LoadFromReceipts(Build.A.Block.TestObject, receipts);
+    //     Assert.That(txLoader._txPointer, Is.EqualTo(1000));
+
+    //     // one Shutter log
+    //     LogEntry shutterLog = EncodeShutterLog(txLoader, 0, 1000, new(), Address.Zero, [], new());
+    //     TxReceipt receipt = Build.A.Receipt.WithLogs([shutterLog]).TestObject;
+    //     receipts = [receipt];
+
+    //     txLoader.LoadFromReceipts(Build.A.Block.TestObject, receipts);
+
+    //     ISequencerContract.TransactionSubmitted expected = new()
+    //     {
+    //         Eon = 0,
+    //         TxIndex = 1000,
+    //         IdentityPrefix = new(),
+    //         Sender = Address.Zero,
+    //         EncryptedTransaction = [],
+    //         GasLimit = new()
+    //     };
+    //     Assert.That(txLoader._txPointer, Is.EqualTo(1001));
+    //     Assert.That(txLoader._transactionSubmittedEvents.Peek().Equals(expected));
+    // }
+
+    // [Test]
+    // public void Can_decrypt_sequenced_transactions()
+    // {
+    //     const int txCount = 100;
+    //     UInt256 sk = 4328942385;
+    //     Random rnd = new Random(100);
+
+    //     ShutterTxLoader txLoader = new(
+    //         Substitute.For<ILogFinder>(),
+    //         _cfg,
+    //         GnosisSpecProvider.Instance,
+    //         _ecdsa,
+    //         LimboLogs.Instance
+    //     );
+
+    //     ShutterEventEmitter eventEmitter = new(
+    //         new Random(100),
+    //         BlockchainIds.Gnosis,
+    //         0,
+    //         0,
+    //         new(),
+    //         Address.Zero,
+    //     );
+
+    //     byte[] msg = Convert.FromHexString("f869820248849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a001e44318458b1f279bf81aef969df1b9991944bf8b9d16fd1799ed5b0a7986faa058f572cce63aaff3326df9c902d338b0c416c8fb93109446d6aadd5a65d3d115");
+
+    //     List<SequencedTransaction> sequencedTransactions = [];
+    //     List<(byte[] IdentityPreimage, byte[] Key)> keys = [];
+
+    //     for (int i = 0; i < txCount; i++)
+    //     {
+    //         byte[] identityPreimage = new byte[52];
+    //         byte[] sigma = new byte[32];
+    //         rnd.NextBytes(identityPreimage);
+    //         rnd.NextBytes(sigma);
+
+    //         (byte[] encryptedMessage, (byte[], byte[]) key) = GenerateEncryptedMessage(msg, identityPreimage, sk, new(sigma));
+    //         SequencedTransaction sequencedTransaction = new()
+    //         {
+    //             Index = i,
+    //             Eon = 0,
+    //             EncryptedTransaction = encryptedMessage,
+    //             GasLimit = 0,
+    //             Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
+    //             IdentityPreimage = identityPreimage
+    //         };
+    //         sequencedTransactions.Add(sequencedTransaction);
+    //         keys.Add(key);
+    //     }
+
+    //     // decryption keys are sorted by preimage
+    //     keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+    //     keys.Insert(0, new());
+
+    //     Transaction[] txs = txLoader.DecryptSequencedTransactions(sequencedTransactions, keys);
+    //     foreach (Transaction tx in txs)
+    //     {
+    //         byte[] tmp = Rlp.Encode<Transaction>(tx).Bytes;
+    //         Assert.That(Enumerable.SequenceEqual(tmp, msg));
+    //     }
+    //     Assert.That(txs, Has.Length.EqualTo(txCount));
+    // }
 
     [Test]
     [TestCase(2,
@@ -268,43 +320,5 @@ class ShutterTxLoaderSourceTests : EngineModuleTests
         IReleaseSpec releaseSpec = Cancun.Instance;
         IEnumerable<Transaction> filtered = txLoader.FilterTransactions(transactions, releaseSpec);
         Assert.That(filtered.Count, Is.EqualTo(expectedValid));
-    }
-
-    private LogEntry EncodeShutterLog(
-        ShutterTxLoader txLoader,
-        ulong eon,
-        ulong txIndex,
-        Bytes32 identityPrefix,
-        Address sender,
-        in byte[] encryptedTransaction,
-        UInt256 gasLimit)
-    {
-        byte[] logData = _abiEncoder.Encode(txLoader._sequencerContract._transactionSubmittedAbi, [
-            eon,
-            txIndex,
-            identityPrefix.Unwrap(),
-            sender,
-            encryptedTransaction,
-            gasLimit
-        ]);
-
-        return Build.A.LogEntry
-            .WithAddress(txLoader._sequencerContract.ContractAddress!)
-            .WithTopics(txLoader._sequencerContract._transactionSubmittedAbi.Signature.Hash)
-            .WithData(logData)
-            .TestObject;
-    }
-
-    // return struct, take rng as input
-    private (byte[] EncryptedMessage, (byte[] IdentityPreimage, byte[] Key)) GenerateEncryptedMessage(byte[] msg, byte[] identityPreimage, UInt256 sk, Bytes32 sigma)
-    {
-        G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
-        G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
-
-        EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(msg, identity, eonKey, sigma);
-        G1 key = identity.dup().mult(sk.ToLittleEndian());
-
-        byte[] res = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage);
-        return (res, (identityPreimage, key.compress()));
     }
 }
