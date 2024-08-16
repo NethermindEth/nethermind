@@ -42,12 +42,20 @@ public static unsafe class KeccakCache
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
-        // Special cases first
+        Unsafe.SkipInit(out ValueHash256 hash);
 
+        // Special cases first
         if (input.Length == 0)
-            return ValueKeccak.OfAnEmptyString;
+        {
+            hash = ValueKeccak.OfAnEmptyString;
+            goto Return;
+        }
+
         if (input.Length > Entry.MaxPayloadLength)
-            return ValueKeccak.Compute(input);
+        {
+            hash = ValueKeccak.Compute(input);
+            goto Return;
+        }
 
         var fast = FastHash(input);
         var index = fast & BucketMask;
@@ -81,13 +89,14 @@ public static unsafe class KeccakCache
                 // Lengths are equal, the input length can be used without any additional operation.
                 if (MemoryMarshal.CreateReadOnlySpan(ref copy.Payload, input.Length).SequenceEqual(input))
                 {
-                    return copy.Value;
+                    hash = copy.Value;
+                    goto Return;
                 }
             }
         }
 
     Compute:
-        var hash = ValueKeccak.Compute(input);
+        hash = ValueKeccak.Compute(input);
 
         // Try lock and memoize
         if (Interlocked.CompareExchange(ref e.Lock, Entry.Locked, Entry.Unlocked) == Entry.Unlocked)
@@ -101,6 +110,7 @@ public static unsafe class KeccakCache
             Volatile.Write(ref e.Lock, Entry.Unlocked);
         }
 
+    Return:
         return hash;
     }
 
