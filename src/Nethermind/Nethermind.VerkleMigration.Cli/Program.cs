@@ -97,7 +97,8 @@ namespace Nethermind.VerkleMigration.Cli
 
         static void ProgressChangedHandler(object? sender, VerkleTreeMigrator.ProgressEventArgs e)
         {
-            Console.Write($"\rProgress: {e.Progress:F2}%");
+            ILogger logger = _migratorLogManager.GetClassLogger<Program>();
+            logger.Info($"Progress: {e.Progress:F2}%");
         }
     }
 }
