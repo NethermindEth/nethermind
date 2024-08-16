@@ -16,13 +16,15 @@ namespace Nethermind.Core.Crypto;
 /// It allocates only 8MB of memory to store 64k of entries.
 /// No misaligned reads, requires a single CAS to lock.
 /// Also, uses copying on the stack to get the entry, have it copied and release the lock ASAP.
+///
+/// Consider using <see cref="Volatile.Write(ref int, int)"/> to release the locks only after ensuring that semantics is right.
 /// </summary>
 public static unsafe class KeccakCache
 {
     /// <summary>
     /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
-    private const int Count = BucketMask + 1;
+    public const int Count = BucketMask + 1;
     private const int BucketMask = 0x0000_FFFF;
     private const uint HashMask = unchecked((uint)~BucketMask);
 
@@ -40,10 +42,12 @@ public static unsafe class KeccakCache
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
+        // Special cases first
+
+        if (input.Length == 0)
+            return ValueKeccak.OfAnEmptyString;
         if (input.Length > Entry.MaxPayloadLength)
-        {
             return ValueKeccak.Compute(input);
-        }
 
         var fast = FastHash(input);
         var index = fast & BucketMask;
@@ -63,15 +67,15 @@ public static unsafe class KeccakCache
                 if (e.HashAndLength != hashAndLength)
                 {
                     // The value has been changed between reading and taking a lock.
-                    // Release the lock and compute, Use Volatile.Write to release?
+                    // Release the lock and compute.
                     Interlocked.Exchange(ref e.Lock, Entry.Unlocked);
                     goto Compute;
                 }
 
-                // Lock taken, copy to local
+                // Local copy of 128 bytes, to release the lock as soon as possible and make a key comparison without holding it.
                 Entry copy = e;
 
-                // Release the lock, potentially Volatile.Write??
+                // Release the lock
                 Interlocked.Exchange(ref e.Lock, Entry.Unlocked);
 
                 // Lengths are equal, the input length can be used without any additional operation.

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -17,17 +18,33 @@ namespace Nethermind.Core.Test
         [Test]
         public void Multiple()
         {
+            const int spins = 10;
+
             var random = new Random(13);
             var bytes = new byte[31]; // misaligned length
             random.NextBytes(bytes);
 
             ValueHash256 expected = ValueKeccak.Compute(bytes);
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < spins; i++)
             {
                 ValueHash256 actual = KeccakCache.Compute(bytes);
                 actual.Equals(expected).Should().BeTrue();
             }
+        }
+
+        [Test]
+        public void Empty()
+        {
+            ReadOnlySpan<byte> span = ReadOnlySpan<byte>.Empty;
+            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+        }
+
+        [Test]
+        public void Very_long()
+        {
+            ReadOnlySpan<byte> span = new byte[192];
+            KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
         }
 
         [Test]
@@ -63,6 +80,17 @@ namespace Nethermind.Core.Test
                     KeccakCache.Compute(a).Should().Be(v);
                 }
             });
+        }
+
+        [Test]
+        public void Spin_through_all()
+        {
+            Span<byte> span = stackalloc byte[4];
+            for (int i = 0; i < KeccakCache.Count; i++)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(span, i);
+                KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
+            }
         }
     }
 }
