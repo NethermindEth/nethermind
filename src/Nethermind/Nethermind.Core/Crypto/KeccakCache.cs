@@ -14,10 +14,10 @@ namespace Nethermind.Core.Crypto;
 /// This is a minimalistic one-way set associative cache for Keccak values.
 ///
 /// It allocates only 8MB of memory to store 64k of entries.
-/// No misaligned reads, requires a single CAS to lock.
-/// Also, uses copying on the stack to get the entry, have it copied and release the lock ASAP.
-///
-/// Consider using <see cref="Volatile.Write(ref int, int)"/> to release the locks only after ensuring that semantics is right.
+/// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
+/// Requires a single CAS to lock and <see cref="Volatile.Write(ref int,int)"/> to unlock.
+/// On lock failure, it just moves on with execution.
+/// Uses copying on the stack to get the entry, have it copied and release the lock ASAP. This is 128 bytes to copy that quite likely will be the hit.
 /// </summary>
 public static unsafe class KeccakCache
 {
