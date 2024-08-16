@@ -10,13 +10,20 @@ using System.Threading;
 
 namespace Nethermind.Core.Crypto;
 
+/// <summary>
+/// This is a minimalistic one-way set associative cache for Keccak values.
+///
+/// It allocates only 8MB of memory to store 64k of entries.
+/// No misaligned reads, requires a single CAS to lock.
+/// Also, uses copying on the stack to get the entry, have it copied and release the lock ASAP.
+/// </summary>
 public static unsafe class KeccakCache
 {
     /// <summary>
     /// This counts make the cache consume 8MB of continues memory
     /// </summary>
-    private const int Count = 64 * 1024;
-    private const uint BucketMask = 0x0000_FFFF;
+    private const int Count = BucketMask + 1;
+    private const int BucketMask = 0x0000_FFFF;
     private const uint HashMask = 0xFFFF_0000;
 
     private static readonly Entry* Memory;
@@ -141,7 +148,7 @@ public static unsafe class KeccakCache
 
         private const int PayloadStart = 8;
         private const int ValueStart = Size - ValueHash256.MemorySize;
-        private const int PayloadLength = ValueStart - PayloadStart;
+        public const int MaxPayloadLength = ValueStart - PayloadStart;
 
         [FieldOffset(0)]
         public int Lock;
