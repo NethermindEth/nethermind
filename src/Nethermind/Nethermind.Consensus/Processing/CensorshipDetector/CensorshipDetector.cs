@@ -141,9 +141,8 @@ public class CensorshipDetector : IDisposable
             }
         }
 
-        bool highPayingTxCensorship = _comparer.Compare(bestTxInBlock, _txPool.GetBestTx()) > 0;
-        bool addressCensorship = blockCensorshipDetectionUniqueAddressCount * 2 < poolCensorshipDetectionUniqueAddressCount;
-        bool isCensored = highPayingTxCensorship || addressCensorship;
+        bool isCensored = _comparer.Compare(bestTxInBlock, _txPool.GetBestTx()) > 0
+        || blockCensorshipDetectionUniqueAddressCount * 2 < poolCensorshipDetectionUniqueAddressCount;
 
         BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
         _potentiallyCensoredBlocks.Set(new BlockNumberHash(block), blockCensorshipInfo);
