@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -92,18 +93,20 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
         try
         {
-            using MemoryHandle pin = inputData.Pin();
-            unsafe
+            if (inputData.Length != 160)
+                return (null, true);
+
+            ReadOnlySpan<byte> bytes = inputData.Span;
+            ReadOnlySpan<byte> hash = bytes[..32], sig = bytes[32..96];
+            ReadOnlySpan<byte> x = bytes[96..128], y = bytes[128..160];
+
+            using var ecdsa = ECDsa.Create(new ECParameters
             {
-                GoSlice slice = new((IntPtr) pin.Pointer, inputData.Length);
-                var res = VerifyBytes(slice);
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new() { X = x.ToArray(), Y = y.ToArray() }
+            });
 
-                TimeSpan elapsed = watch.Elapsed;
-                if (elapsed.TotalMicroseconds > 500)
-                    Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Finished: {Convert.ToHexString(inputData.Span)} -> {res} in {elapsed.TotalMicroseconds}µs");
-
-                return (res != 0 ? ValidResult : null, true);
-            }
+            return (ecdsa.VerifyHash(hash, sig) ? ValidResult : null, true);
         }
         catch (Exception exception)
         {
