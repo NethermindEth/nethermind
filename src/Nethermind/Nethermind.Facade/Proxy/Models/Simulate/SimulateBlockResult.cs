@@ -15,5 +15,4 @@ public class SimulateBlockResult(Block source, bool includeFullTransactionData, 
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
     public List<SimulateCallResult> Calls { get; set; } = new();
-    public UInt256 BlobBaseFee { get; set; }
 }
