@@ -12,6 +12,8 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace Nethermind.State
 {
@@ -46,12 +48,22 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
-        private static void ComputeKey(in UInt256 index, ref Span<byte> key)
+        [ThreadStatic]
+        private static byte[] _key;
+        private static byte[] GetKeyArray() => _key ??= new byte[32];
+        
+        [SkipLocalsInit]
+        private static Span<byte> ComputeKey(in UInt256 index)
         {
+            byte[] key = GetKeyArray();
             index.ToBigEndian(key);
 
-            // in situ calculation
-            KeccakHash.ComputeHashBytesToSpan(key, key);
+            ValueHash256 keyHash = Keccak.Compute(key);
+
+            Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(key))
+                = Unsafe.As<ValueHash256, Vector256<byte>>(ref keyHash);
+
+            return key;
         }
 
         [SkipLocalsInit]
@@ -62,9 +74,7 @@ namespace Nethermind.State
                 return GetArray(Lookup[index], storageRoot);
             }
 
-            Span<byte> key = stackalloc byte[32];
-            ComputeKey(index, ref key);
-            return GetArray(key, storageRoot);
+            return GetArray(ComputeKey(index), storageRoot);
         }
 
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
@@ -91,9 +101,7 @@ namespace Nethermind.State
             }
             else
             {
-                Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, ref key);
-                SetInternal(key, value);
+                SetInternal(ComputeKey(index), value);
             }
         }
 
