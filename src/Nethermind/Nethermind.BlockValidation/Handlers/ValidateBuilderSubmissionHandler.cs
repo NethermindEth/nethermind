@@ -36,13 +36,13 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if(message.GasLimit != block.GasLimit)
+        if (message.GasLimit != block.GasLimit)
         {
             error = $"Gas limit mismatch. Expected {message.GasLimit} but got {block.GasLimit}";
             return false;
         }
 
-        if(message.GasUsed != block.GasUsed)
+        if (message.GasUsed != block.GasUsed)
         {
             error = $"Gas used mismatch. Expected {message.GasUsed} but got {block.GasUsed}";
             return false;
@@ -50,7 +50,7 @@ public class ValidateSubmissionHandler
 
         return true;
     }
- 
+
     public Task<ResultWrapper<BlockValidationResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
         ExecutionPayload payload = request.BlockRequest.ExecutionPayload;
@@ -59,10 +59,10 @@ public class ValidateSubmissionHandler
         string payloadStr = $"BuilderBlock: {payload}";
 
         _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length}");
-        
-        if(!payload.TryGetBlock(out Block? block))
+
+        if (!payload.TryGetBlock(out Block? block))
         {
-            if(_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}.");
+            if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}.");
             return BlockValidationResult.Invalid($"Block {payload} coud not be parsed as a block");
         }
 

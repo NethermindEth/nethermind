@@ -7,7 +7,7 @@ using Nethermind.Api.Extensions;
 
 namespace Nethermind.BlockValidation;
 
-public class BlockValidation: INethermindPlugin
+public class BlockValidation : INethermindPlugin
 {
     public virtual string Name => "BlockValidation";
     public virtual string Description => "BlockValidation";

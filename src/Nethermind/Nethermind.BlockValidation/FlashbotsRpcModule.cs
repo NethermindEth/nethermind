@@ -8,7 +8,7 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.BlockValidation;
 
-public class FlashbotsRpcModule: IFlashbotsRpcModule
+public class FlashbotsRpcModule : IFlashbotsRpcModule
 {
     private readonly ValidateSubmissionHandler _validateSubmissionHandler;
 
@@ -17,7 +17,7 @@ public class FlashbotsRpcModule: IFlashbotsRpcModule
         _validateSubmissionHandler = validateSubmissionHandler;
     }
 
-    Task<ResultWrapper<BlockValidationResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params) => 
+    Task<ResultWrapper<BlockValidationResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params) =>
         _validateSubmissionHandler.ValidateSubmission(@params);
 
 }

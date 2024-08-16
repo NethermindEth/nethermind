@@ -6,16 +6,18 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.BlockValidation.Data;
 
-public readonly struct SubmitBlockRequest {
+public readonly struct SubmitBlockRequest
+{
     private readonly ExecutionPayload _executionPayload;
     private readonly BlobsBundleV1 _blobsBundle;
 
-    public SubmitBlockRequest(ExecutionPayload executionPayload, BlobsBundleV1 blobsBundle, BidTrace message) {
+    public SubmitBlockRequest(ExecutionPayload executionPayload, BlobsBundleV1 blobsBundle, BidTrace message)
+    {
         _executionPayload = executionPayload;
         _blobsBundle = blobsBundle;
         Message = message;
     }
     public readonly ExecutionPayload ExecutionPayload => _executionPayload;
     public readonly BlobsBundleV1 BlobsBundle => _blobsBundle;
-    public BidTrace Message { get;}
+    public BidTrace Message { get; }
 }

@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.BlockValidation.Data;
 
-public readonly struct BidTrace 
+public readonly struct BidTrace
 {
     public ulong Slot { get; }
     public Hash256 ParentHash { get; }
