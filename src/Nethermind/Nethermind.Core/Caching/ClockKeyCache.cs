@@ -136,6 +136,4 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
         if (MaxCapacity == 0) return false;
         return _cacheMap.ContainsKey(key);
     }
-
-    public int Count => _count;
 }
