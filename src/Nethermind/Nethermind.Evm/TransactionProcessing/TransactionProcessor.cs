@@ -126,24 +126,24 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))) return result;
-            if (!(result = ValidateNonce(tx))) return result;
+            if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
+
+            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
+
+            IEnumerable<Address> authorities = Array.Empty<Address>();
 
             if (spec.IsEip7702Enabled)
             {                
                 if (tx.HasAuthorizationList)
                 {
-                    _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
+                    authorities = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
                 }
             }
-
-            IncrementNonce(tx, header, spec, tracer, opts);
-
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, authorities, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -395,7 +395,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual TransactionResult ValidateNonce(Transaction tx)
+        protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
             if (tx.IsSystem()) return TransactionResult.Ok;
 
@@ -404,12 +404,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
                 return "wrong transaction nonce";
             }
-            return TransactionResult.Ok;
-        }
 
-        protected virtual void IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
-        {
             WorldState.IncrementNonce(tx.SenderAddress);
+            return TransactionResult.Ok;
         }
 
         protected ExecutionEnvironment BuildExecutionEnvironment(
@@ -451,6 +448,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ITxTracer tracer,
             ExecutionOptions opts,
+            IEnumerable<Address> authorities,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
@@ -484,7 +482,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
-                    WarmUp(tx, header, spec, env, state);
+                    WarmUp(tx, header, spec, env, state, authorities);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
