@@ -51,7 +51,7 @@ namespace Nethermind.State
         [ThreadStatic]
         private static byte[] _key;
         private static byte[] GetKeyArray() => _key ??= new byte[32];
-        
+
         [SkipLocalsInit]
         private static Span<byte> ComputeKey(in UInt256 index)
         {
