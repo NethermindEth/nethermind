@@ -32,14 +32,14 @@ public class ShutterTxLoader(
     IEthereumEcdsa ecdsa,
     ILogManager logManager)
 {
+    internal readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
+    internal Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
+    internal ulong _txPointer = ulong.MaxValue;
+    internal bool _loadFromReceipts = false;
     private readonly TxValidator _txValidator = new(specProvider.ChainId);
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
-    private Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
-    private ulong _txPointer = ulong.MaxValue;
-    private bool _loadFromReceipts = false;
 
     public ShutterTransactions LoadTransactions(Block? head, IShutterMessageHandler.ValidatedKeyArgs keys)
     {
@@ -121,6 +121,12 @@ public class ShutterTxLoader(
         int txCount = sequencedTransactions.Count;
         int keyCount = decryptionKeys.Count - 1;
 
+        if (decryptionKeys.Count == 0)
+        {
+            // todo: nice exception
+            throw new Exception();
+        }
+
         if (txCount < keyCount)
         {
             _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
@@ -200,7 +206,7 @@ public class ShutterTxLoader(
         return null;
     }
 
-    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
+    internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
         lock (_transactionSubmittedEvents)
         {
@@ -247,7 +253,7 @@ public class ShutterTxLoader(
 
         return new()
         {
-            Index = index++,
+            Index = index,
             Eon = eon,
             EncryptedTransaction = e.EncryptedTransaction,
             GasLimit = e.GasLimit,

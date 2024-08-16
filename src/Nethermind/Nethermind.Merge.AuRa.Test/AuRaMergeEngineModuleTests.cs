@@ -221,7 +221,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         }
     }
 
-    class MergeAuRaTestBlockchain : MergeTestBlockchain
+    public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         private AuRaNethermindApi? _api;
         private readonly bool _useShutter;
