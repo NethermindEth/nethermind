@@ -62,20 +62,20 @@ class ShutterTxLoaderSourceTests : EngineModuleTests
             ChiadoSpecProvider.Instance,
             _ecdsa,
             LimboLogs.Instance
-        )
-        {
-            _txPointer = 1000
-        };
-
+        );
+        
         Random rnd = new Random(100);
         UInt256 sk = 4328942385;
-        byte[] msg = Convert.FromHexString("f869820248849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a001e44318458b1f279bf81aef969df1b9991944bf8b9d16fd1799ed5b0a7986faa058f572cce63aaff3326df9c902d338b0c416c8fb93109446d6aadd5a65d3d115");
+
+        Transaction tx = Build.A.Transaction.WithChainId(BlockchainIds.Chiado).Signed().TestObject;
+        byte[] encodedTx = Rlp.Encode<Transaction>(tx).Bytes;
+
         byte[] identityPreimage = new byte[52];
         byte[] sigma = new byte[32];
         rnd.NextBytes(identityPreimage);
         rnd.NextBytes(sigma);
 
-        (byte[] encryptedMessage, (byte[], byte[]) key) = GenerateEncryptedMessage(msg, identityPreimage, sk, new(sigma));
+        (byte[] encryptedMessage, (byte[], byte[]) key) = GenerateEncryptedMessage(encodedTx, identityPreimage, sk, new(sigma));
         LogEntry shutterLog = EncodeShutterLog(txLoader, 0, 1000, new(identityPreimage.AsSpan()[..32]), new(identityPreimage[32..]), encryptedMessage, new());
 
         Block head = chain.BlockTree.Head!;
@@ -92,7 +92,23 @@ class ShutterTxLoaderSourceTests : EngineModuleTests
         });
 
         Assert.That(txs.Transactions, Has.Length.EqualTo(1));
-        Assert.That(Rlp.Encode<Transaction>(txs.Transactions[0]).Bytes, Is.EqualTo(msg));
+        Assert.That(Rlp.Encode<Transaction>(txs.Transactions[0]).Bytes, Is.EqualTo(encodedTx));
+
+        shutterLog = EncodeShutterLog(txLoader, 0, 1001, new(identityPreimage.AsSpan()[..32]), new(identityPreimage[32..]), encryptedMessage, new());
+        head = chain.BlockTree.Head!;
+        head.Header.Bloom = new([shutterLog]);
+        receipt = Build.A.Receipt.WithLogs([shutterLog]).WithTransactionHash(head.Hash).TestObject;
+        txLoader.LoadFromReceipts(Build.A.Block.TestObject, [receipt]);
+
+        txs = txLoader.LoadTransactions(head, new() {
+            Slot = 1,
+            Eon = 0,
+            TxPointer = 1001,
+            Keys = [([], []), key]
+        });
+
+        Assert.That(txs.Transactions, Has.Length.EqualTo(1));
+        Assert.That(Rlp.Encode<Transaction>(txs.Transactions[0]).Bytes, Is.EqualTo(encodedTx));
     }
 
     [Test]
@@ -108,10 +124,7 @@ class ShutterTxLoaderSourceTests : EngineModuleTests
             GnosisSpecProvider.Instance,
             _ecdsa,
             LimboLogs.Instance
-        )
-        {
-            _txPointer = 1000
-        };
+        );
 
         byte[] encryptedMessage = [0xaa, 0xbb];
         LogEntry shutterLog = EncodeShutterLog(txLoader, 0, 1000, new(), Address.Zero, encryptedMessage, new());
