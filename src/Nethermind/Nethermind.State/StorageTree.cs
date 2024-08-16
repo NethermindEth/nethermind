@@ -5,6 +5,8 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -46,12 +48,15 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
-        private static void ComputeKey(in UInt256 index, ref Span<byte> key)
+        private static void ComputeKey(in UInt256 index, in Span<byte> key)
         {
             index.ToBigEndian(key);
 
-            // in situ calculation
-            KeccakHash.ComputeHashBytesToSpan(key, key);
+            ValueHash256 keyHash = KeccakCache.Compute(key);
+
+            // Assign to update the argument
+            Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(key))
+                = Unsafe.As<ValueHash256, Vector256<byte>>(ref keyHash);
         }
 
         [SkipLocalsInit]
@@ -63,7 +68,7 @@ namespace Nethermind.State
             }
 
             Span<byte> key = stackalloc byte[32];
-            ComputeKey(index, ref key);
+            ComputeKey(index, key);
             return GetArray(key, storageRoot);
         }
 
@@ -92,7 +97,7 @@ namespace Nethermind.State
             else
             {
                 Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, ref key);
+                ComputeKey(index, in key);
                 SetInternal(key, value);
             }
         }
