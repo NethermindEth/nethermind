@@ -19,7 +19,7 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
     static Secp256r1Precompile()
     {
-        Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1");
+        //Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1");
         Environment.SetEnvironmentVariable("GOGC", "1000");
 
         AssemblyLoadContext.GetLoadContext(Assembly.GetExecutingAssembly())!.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
