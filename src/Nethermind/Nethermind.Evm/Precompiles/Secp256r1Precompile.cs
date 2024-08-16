@@ -18,10 +18,10 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
     static Secp256r1Precompile()
     {
-        AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
-
         Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1");
         Environment.SetEnvironmentVariable("GOGC", "1000");
+
+        AssemblyLoadContext.GetLoadContext(Assembly.GetExecutingAssembly())!.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
         var releaseSpec = new ReleaseSpec();
         var input = Convert.FromHexString(
