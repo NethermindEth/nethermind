@@ -12,11 +12,15 @@ namespace Nethermind.Serialization.Rlp;
 
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
-    public static readonly TxDecoder Instance = new();
     public static readonly ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
 
-    // Rlp will try to find a parameterless constructor during static initialization.
-    // Also, the lambda cannot be removed due to static block initialization order.
+#pragma warning disable CS0618
+    public static readonly TxDecoder Instance = new();
+#pragma warning restore CS0618
+
+    // Rlp will try to find a public parameterless constructor during static initialization.
+    // The lambda cannot be removed due to static block initialization order.
+    [Obsolete("Use `TxDecoder.Instance` instead")]
     public TxDecoder() : base(() => TxObjectPool.Get()) { }
 }
 

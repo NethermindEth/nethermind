@@ -335,7 +335,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
-            new TxDecoder().EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
+            TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
 
         public static Rlp Encode(int value)
         {

@@ -27,7 +27,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -47,7 +46,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private Block _genesisBlock = null!;
         private Eth62ProtocolHandler _handler = null!;
         private IGossipPolicy _gossipPolicy = null!;
-        private readonly TxDecoder _txDecoder = new();
         private ITxGossipPolicy _txGossipPolicy = null!;
 
         [SetUp]

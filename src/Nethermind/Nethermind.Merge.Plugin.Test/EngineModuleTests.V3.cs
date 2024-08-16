@@ -145,9 +145,8 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        TxDecoder rlpEncoder = new();
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => rlpEncoder.Encode(tx, rlpBehaviors).Bytes).ToArray();
+        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
         byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
