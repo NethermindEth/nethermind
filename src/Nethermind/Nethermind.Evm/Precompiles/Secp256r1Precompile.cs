@@ -18,6 +18,7 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
     static Secp256r1Precompile()
     {
+        //Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1");
         Environment.SetEnvironmentVariable("GOGC", "1000");
         AssemblyLoadContext.GetLoadContext(Assembly.GetExecutingAssembly())!.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
     }
@@ -81,17 +82,37 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
         try
         {
-            using MemoryHandle pin = inputData.Pin();
-            unsafe
+            if (count <= 5)
             {
-                GoSlice slice = new((IntPtr) pin.Pointer, inputData.Length);
-                var res = VerifyBytes(slice);
+                if (inputData.Length != 160)
+                    return (null, true);
 
-                TimeSpan elapsed = watch.Elapsed;
-                if (elapsed.TotalMicroseconds > 500)
-                    Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Finished: {Convert.ToHexString(inputData.Span)} -> {res} in {elapsed.TotalMicroseconds}µs");
+                ReadOnlySpan<byte> bytes = inputData.Span;
+                ReadOnlySpan<byte> hash = bytes[..32], sig = bytes[32..96];
+                ReadOnlySpan<byte> x = bytes[96..128], y = bytes[128..160];
 
-                return (res != 0 ? ValidResult : null, true);
+                using var ecdsa = ECDsa.Create(new ECParameters
+                {
+                    Curve = ECCurve.NamedCurves.nistP256,
+                    Q = new() { X = x.ToArray(), Y = y.ToArray() }
+                });
+
+                return (ecdsa.VerifyHash(hash, sig) ? ValidResult : null, true);
+            }
+            else
+            {
+                using MemoryHandle pin = inputData.Pin();
+                unsafe
+                {
+                    GoSlice slice = new((IntPtr) pin.Pointer, inputData.Length);
+                    var res = VerifyBytes(slice);
+
+                    TimeSpan elapsed = watch.Elapsed;
+                    if (elapsed.TotalMicroseconds > 500)
+                        Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] Finished: {Convert.ToHexString(inputData.Span)} -> {res} in {elapsed.TotalMicroseconds}µs");
+
+                    return (res != 0 ? ValidResult : null, true);
+                }
             }
         }
         catch (Exception exception)
