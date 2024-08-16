@@ -1132,7 +1132,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
                         bytes = vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+
+                        stack.PushBytes(KeccakCache.Compute(bytes).BytesAsSpan);
                         break;
                     }
                 case Instruction.ADDRESS:
