@@ -82,8 +82,10 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
         try
         {
-            if (count <= 5)
+            if (count <= 1)
             {
+                Console.WriteLine($"[{DateTime.UtcNow:T}] [secp256r1][{count:D5}] ECDSA call");
+
                 if (inputData.Length != 160)
                     return (null, true);
 
