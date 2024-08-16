@@ -94,7 +94,7 @@ public static class IntrinsicGasCalculator
 
             if (authorizationList.Length != 0)
             {
-                return GasCostOf.PerAuthBaseCost * authorizationList.Length;
+                return GasCostOf.NewAccount * authorizationList.Length;
             }
         }
 
