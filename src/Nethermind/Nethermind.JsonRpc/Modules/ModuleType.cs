@@ -15,6 +15,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Erc20 = nameof(Erc20);
         public const string Eth = nameof(Eth);
         public const string Evm = nameof(Evm);
+        public const string Flashbots = nameof(Flashbots);
         public const string Net = nameof(Net);
         public const string Nft = nameof(Nft);
         public const string Parity = nameof(Parity);
@@ -39,6 +40,7 @@ namespace Nethermind.JsonRpc.Modules
             Erc20,
             Eth,
             Evm,
+            Flashbots,
             Net,
             Nft,
             Parity,
