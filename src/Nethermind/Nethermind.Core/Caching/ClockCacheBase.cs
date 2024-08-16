@@ -24,6 +24,8 @@ public abstract class ClockCacheBase<TKey>
     // Use local count to avoid lock contention with reads on ConcurrentDictionary.Count
     protected int _count = 0;
 
+    public int Count => Volatile.Read(ref _count);
+
     protected ClockCacheBase(int maxCapacity)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);

@@ -163,8 +163,6 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
         return _cacheMap.ContainsKey(key);
     }
 
-    public int Count => _count;
-
     private class LruCacheItem(int offset, TValue v)
     {
         public readonly int Offset = offset;
