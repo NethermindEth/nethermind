@@ -130,7 +130,7 @@ public static unsafe class KeccakCache
 
         ref var b = ref MemoryMarshal.GetReference(input);
 
-        // Start with first
+        // Start with instance random, length and first as seed
         uint hash = (s_instanceRandom + (uint)length) ^ b;
 
         // This is done below, without branches
