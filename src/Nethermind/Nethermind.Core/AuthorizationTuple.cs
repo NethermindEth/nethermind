@@ -35,39 +35,4 @@ public class AuthorizationTuple(
     /// <see cref="Authority"/> may be recovered at a later point.
     /// </summary>
     public Address? Authority { get; set; } = authority;
-
-    /// <summary>
-    /// Determines if this <see cref="AuthorizationTuple"/> is wellformed according to spec.
-    /// </summary>
-    /// <param name="accountStateProvider"></param>
-    /// <param name="chainId"></param>
-    /// <param name="error"></param>
-    /// <returns></returns>
-    public bool IsValidForExecution(IAccountStateProvider accountStateProvider, ulong chainId, [NotNullWhen(false)] out string? error)
-    {
-        if (Authority is null)
-        {
-            error = "Bad signature.";
-            return false;
-        }
-        if (ChainId != 0 && chainId != ChainId)
-        {
-            error = $"Chain id ({ChainId}) does not match.";
-            return false;
-        }
-        if (accountStateProvider.HasCode(Authority))
-        {
-            error = $"Authority ({Authority}) has code deployed.";
-            return false;
-        }
-
-        UInt256 authNonce = accountStateProvider.GetNonce(Authority);
-        if (Nonce is not null && authNonce != Nonce)
-        {
-            error = $"Skipping tuple in authorization_list because nonce is set to {Nonce}, but authority ({Authority}) has {authNonce}.";
-            return false;
-        }
-        error = null;
-        return true;
-    }
 }

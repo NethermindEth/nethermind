@@ -33,7 +33,6 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
         private readonly ICodeInfoRepository _codeInfoRepository;
-        private AuthorizedCodeInfoRepository? _authorizedCodeInfoRepository;
 
         [Flags]
         protected enum ExecutionOptions
@@ -82,7 +81,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-            Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            Ecdsa = new EthereumEcdsa(specProvider.ChainId);
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
@@ -129,16 +128,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))) return result;
             if (!(result = ValidateNonce(tx))) return result;
 
-            ICodeInfoRepository codeInfoRepository = _codeInfoRepository;
             if (spec.IsEip7702Enabled)
-            {
-                _authorizedCodeInfoRepository ??= new(codeInfoRepository, SpecProvider.ChainId, Logger);
-                _authorizedCodeInfoRepository.ClearAuthorizations();
-                codeInfoRepository = _authorizedCodeInfoRepository;
-
+            {                
                 if (tx.HasAuthorizationList)
                 {
-                    _authorizedCodeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
+                    _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
                 }
             }
 
@@ -146,7 +140,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, codeInfoRepository);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
@@ -428,7 +422,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
+            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
@@ -483,7 +477,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tx.IsContractCreation)
                 {
                     // if transaction is a contract creation then recipient address is the contract deployment address
-                    PrepareAccountForContractDeployment(env.ExecutingAccount, env.TxExecutionContext.CodeInfoRepository, spec);
+                    PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec);
                 }
 
                 ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
@@ -530,7 +524,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-                            env.TxExecutionContext.CodeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
+                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
                             unspentGas -= codeDepositGasCost;
                         }
@@ -563,7 +557,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += spentGas;
         }
 
-        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionEnvironment env, EvmState state)
+        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionEnvironment env, EvmState state, IEnumerable<Address> authorities)
         {
             if (spec.UseTxAccessLists)
             {
@@ -583,7 +577,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (spec.IsEip7702Enabled)
             {
-                foreach (Address authorized in _authorizedCodeInfoRepository!.AuthorizedAddresses)
+                foreach (Address authorized in authorities)
                 {
                     state.WarmUp(authorized);
                 }
