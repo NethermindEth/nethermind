@@ -9,10 +9,9 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
-public sealed class BlobTxDecoder(bool lazyHash = true, Func<Transaction>? transactionFactory = null) : ITxDecoder
+public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) : ITxDecoder
 {
     private static readonly AccessListDecoder AccessListDecoder = new();
-    private readonly bool _lazyHash = lazyHash;
     private readonly Func<Transaction> _createTransaction = transactionFactory ?? (() => new Transaction());
 
     public Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
@@ -60,7 +59,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true, Func<Transaction>? trans
         }
         else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (_lazyHash && transactionSequence.Length <= ITxDecoder.MaxDelayedHashTxnSize)
+            if (transactionSequence.Length <= ITxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHashNoLock(transactionSequence);
@@ -121,7 +120,7 @@ public sealed class BlobTxDecoder(bool lazyHash = true, Func<Transaction>? trans
         }
         else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            if (_lazyHash && transactionSequence.Length <= ITxDecoder.MaxDelayedHashTxnSize)
+            if (transactionSequence.Length <= ITxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)

@@ -12,11 +12,12 @@ namespace Nethermind.Serialization.Rlp;
 
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
+    public static readonly TxDecoder Instance = new();
     public static readonly ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
 
-    public TxDecoder() : base(true) { } // Rlp will try to find empty constructor.
-    public TxDecoder(bool lazyHash) : base(lazyHash) { }
-    protected override Transaction NewTx() => TxObjectPool.Get();
+    // Rlp will try to find a parameterless constructor during static initialization.
+    // Also, the lambda cannot be removed due to static block initialization order.
+    public TxDecoder() : base(() => TxObjectPool.Get()) { }
 }
 
 public sealed class SystemTxDecoder : TxDecoder<SystemTransaction> { }
@@ -26,18 +27,17 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 {
     private readonly Dictionary<TxType, ITxDecoder> _decoders;
 
-    public TxDecoder(bool lazyHash = true)
+    protected TxDecoder(Func<Transaction>? transactionFactory = null)
     {
+        Func<Transaction> factory = transactionFactory ?? (() => new());
         _decoders = new() {
-            { TxType.Legacy, new LegacyTxDecoder(lazyHash, NewTx) },
-            { TxType.AccessList, new AccessListTxDecoder(lazyHash, NewTx) },
-            { TxType.EIP1559, new EIP1559TxDecoder(lazyHash, NewTx) },
-            { TxType.Blob, new BlobTxDecoder(lazyHash, NewTx) },
-            { TxType.DepositTx, new OptimismTxDecoder(lazyHash, NewTx) }
+            { TxType.Legacy, new LegacyTxDecoder(factory) },
+            { TxType.AccessList, new AccessListTxDecoder(factory) },
+            { TxType.EIP1559, new EIP1559TxDecoder(factory) },
+            { TxType.Blob, new BlobTxDecoder(factory) },
+            { TxType.DepositTx, new OptimismTxDecoder(factory) }
         };
     }
-
-    protected virtual T NewTx() => new();
 
     public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
