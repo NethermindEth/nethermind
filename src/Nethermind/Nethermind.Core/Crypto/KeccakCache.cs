@@ -68,7 +68,7 @@ public static unsafe class KeccakCache
                 {
                     // The value has been changed between reading and taking a lock.
                     // Release the lock and compute.
-                    Interlocked.Exchange(ref e.Lock, Entry.Unlocked);
+                    Volatile.Write(ref e.Lock, Entry.Unlocked);
                     goto Compute;
                 }
 
