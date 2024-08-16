@@ -20,11 +20,11 @@ namespace Nethermind.Core.Crypto;
 public static unsafe class KeccakCache
 {
     /// <summary>
-    /// This counts make the cache consume 8MB of continues memory
+    /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
     private const int Count = BucketMask + 1;
     private const int BucketMask = 0x0000_FFFF;
-    private const uint HashMask = 0xFFFF_0000;
+    private const uint HashMask = unchecked((uint)~BucketMask);
 
     private static readonly Entry* Memory;
 
@@ -48,7 +48,7 @@ public static unsafe class KeccakCache
         var fast = FastHash(input);
         var index = fast & BucketMask;
 
-        Debug.Assert(index is > 0 and < Count);
+        Debug.Assert(index < Count);
 
         uint hashAndLength = (fast & HashMask) | (ushort)input.Length;
 
@@ -99,6 +99,11 @@ public static unsafe class KeccakCache
 
         return hash;
     }
+
+    /// <summary>
+    /// Gets the bucket for tests.
+    /// </summary>
+    public static uint GetBucket(ReadOnlySpan<byte> input) => FastHash(input) & BucketMask;
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -159,7 +164,8 @@ public static unsafe class KeccakCache
         public int Lock;
 
         /// <summary>
-        /// The mix of hash and length allows for a fast comparison.
+        /// The mix of hash and length allows for a fast comparison and a single volatile read.
+        /// The length is encoded as the low part, while the hash as the high part of uint.
         /// </summary>
         [FieldOffset(4)]
         public uint HashAndLength;
