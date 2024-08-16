@@ -40,6 +40,11 @@ public static unsafe class KeccakCache
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
+        if (input.Length > Entry.MaxPayloadLength)
+        {
+            return ValueKeccak.Compute(input);
+        }
+
         var fast = FastHash(input);
         var index = fast & BucketMask;
 
