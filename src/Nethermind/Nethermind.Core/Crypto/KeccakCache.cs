@@ -21,6 +21,7 @@ namespace Nethermind.Core.Crypto;
 /// </summary>
 public static unsafe class KeccakCache
 {
+    private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
     /// <summary>
     /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
@@ -130,7 +131,7 @@ public static unsafe class KeccakCache
         ref var b = ref MemoryMarshal.GetReference(input);
 
         // Start with first
-        uint hash = b;
+        uint hash = s_instanceRandom ^ b;
 
         // This is done below, without branches
         // if ((length & 1) == 1)
