@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State;
+using Nethermind.Logging;
 
 namespace Nethermind.VerkleMigration.Cli;
 
@@ -19,6 +20,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private readonly IDb? _preImageDb;
     private Address? _lastAddress;
     private Account? _lastAccount;
+    private readonly ILogger _logger;
     private int _leafNodeCounter = 0;
 
     private readonly byte[] _currentPrefix = [0, 0];
@@ -38,12 +40,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
     private const int StateTreeCommitThreshold = 1000;
 
-    public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, IDb? preImageDb = null, EventHandler<ProgressEventArgs>? progressChanged = null)
+    public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, ILogManager logManager, IDb? preImageDb = null, EventHandler<ProgressEventArgs>? progressChanged = null)
     {
         _verkleStateTree = verkleStateTree;
         _stateReader = stateReader;
         _preImageDb = preImageDb;
         _progressChanged = progressChanged;
+        _logger = logManager?.GetClassLogger<VerkleTreeMigrator>()
+            ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     public bool IsFullDbScan => true;
@@ -55,14 +59,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
     public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
     {
-        Console.WriteLine($"Starting migration from Merkle tree with root: {rootHash}");
+        _logger.Debug($"Starting migration from Merkle tree with root: {rootHash}");
         _lastAddress = null;
         _lastAccount = null;
     }
 
     public void VisitMissingNode(in TreePathContext nodeContext, Hash256 nodeHash, TrieVisitContext trieVisitContext)
     {
-        Console.WriteLine($"Warning: Missing node encountered: {nodeHash}");
+        _logger.Warn($"Warning: Missing node encountered: {nodeHash}");
     }
 
     public void VisitBranch(in TreePathContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
@@ -126,14 +130,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         {
             if (_lastAddress is null || _lastAccount is null)
             {
-                Console.WriteLine($"No address or account detected for storage node: {node}");
+                _logger.Warn($"No address or account detected for storage node: {node}");
                 return;
             }
             // Reconstruct the full keccak hash
             var storageSlotBytes = RetrievePreimage(pathBytes);
             if (storageSlotBytes is null)
             {
-                Console.WriteLine($"Storage slot is null for node: {node} with key: {pathBytes.ToHexString()}");
+                _logger.Warn($"Storage slot is null for node: {node} with key: {pathBytes.ToHexString()}");
                 return;
             }
             UInt256 storageSlot = new(storageSlotBytes);
@@ -196,7 +200,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         // Ensure we report 100% progress at the end
         OnProgressChanged(100);
 
-        Console.WriteLine($"Migration completed");
+        _logger.Info($"Migration completed");
     }
 
     private static float CalculateProgress(byte[] prefix)

@@ -15,7 +15,8 @@ namespace Nethermind.VerkleMigration.Cli
 {
     class Program
     {
-        private static ILogManager _logManager = SimpleConsoleLogManager.Instance;
+        private static readonly ILogManager _logManager = NullLogManager.Instance;
+        private static readonly ILogManager _migratorLogManager = SimpleConsoleLogManager.Instance;
         private static readonly string _configPath = "./config.cfg";
         private static readonly ProcessExitSource _processExitSource = new();
 
@@ -88,7 +89,7 @@ namespace Nethermind.VerkleMigration.Cli
             var verkleStateTree = new VerkleStateTree(verkleStore, _logManager);
 
             // initialize migrator
-            var migrator = new VerkleTreeMigrator(verkleStateTree, nethermindApi.StateReader!, null, ProgressChangedHandler);
+            var migrator = new VerkleTreeMigrator(verkleStateTree, nethermindApi.StateReader!, _migratorLogManager, null, ProgressChangedHandler);
 
             return (nethermindApi, migrator);
         }
