@@ -123,16 +123,27 @@ public static unsafe class KeccakCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint FastHash(ReadOnlySpan<byte> input)
     {
-        uint hash = 13;
+        Debug.Assert(input.Length >= 1, "Cannot hash empty");
+
         var length = input.Length;
 
         ref var b = ref MemoryMarshal.GetReference(input);
-        if ((length & 1) == 1)
-        {
-            hash = b;
-            b = ref Unsafe.Add(ref b, 1);
-            length -= 1;
-        }
+
+        // Start with first
+        uint hash = b;
+
+        // This is done below, without branches
+        // if ((length & 1) == 1)
+        // {
+        //     hash = b;
+        //     b = ref Unsafe.Add(ref b, 1);
+        //     length -= 1;
+        // }
+
+        var bit = length & 1;
+        b = ref Unsafe.Add(ref b, bit);
+        length -= bit;
+
         if ((length & 2) == 2)
         {
             hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ushort>(ref b));
