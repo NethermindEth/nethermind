@@ -16,17 +16,10 @@ namespace Nethermind.Evm.Precompiles;
 
 public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
-    private static bool _initialized;
-
-    private static void EnsureInitialized()
+    static Secp256r1Precompile()
     {
-        if (_initialized) return;
-
-        //Environment.SetEnvironmentVariable("GODEBUG", "gctrace=1");
         Environment.SetEnvironmentVariable("GOGC", "1000");
         AssemblyLoadContext.GetLoadContext(Assembly.GetExecutingAssembly())!.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
-
-        _initialized = true;
     }
 
     private static IntPtr OnResolvingUnmanagedDll(Assembly context, string name)
@@ -80,8 +73,6 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        EnsureInitialized();
-
         var count = ++Metrics.Secp256r1Precompile;
         var watch = Stopwatch.StartNew();
 
