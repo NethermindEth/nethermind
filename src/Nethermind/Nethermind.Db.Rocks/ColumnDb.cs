@@ -151,4 +151,9 @@ public class ColumnDb : IDb
     {
         _mainDb.DangerousReleaseMemory(span);
     }
+
+    public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+    {
+        return _mainDb.GetIterator(isOrdered, _columnFamily);
+    }
 }

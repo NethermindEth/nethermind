@@ -90,6 +90,11 @@ namespace Nethermind.Db
 
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
+        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        {
+            throw new NotImplementedException();
+        }
+
         public bool PreferWriteByArray => true; // Because of memdb buffer
     }
 }
