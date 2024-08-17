@@ -23,6 +23,16 @@ public class RocksDbIteratorWrapper : IIterator<byte[], byte[]>
         _iterator.Seek(key);
     }
 
+    public void SeekForPrev(byte[] key)
+    {
+        _iterator.SeekForPrev(key);
+    }
+
+    public void SeekForPrev(ReadOnlySpan<byte> key)
+    {
+        _iterator.SeekForPrev(key);
+    }
+
     public void Next()
     {
         _iterator.Next();

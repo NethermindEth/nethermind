@@ -115,7 +115,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SetReceipts_MovesToFinalizedFile()
+            public void SetReceipts_MovesToFinalizedFile()
         {
             // Arrange
             var address = new Address("0x0000000000000000000000000000000000001234");
@@ -478,6 +478,7 @@ namespace Nethermind.Db.Test
                 resultBlocks.Should().BeEquivalentTo(expectedBlocks, $"Topic {topic} should have the correct block numbers.");
             }
         }
+
 
 
     }
