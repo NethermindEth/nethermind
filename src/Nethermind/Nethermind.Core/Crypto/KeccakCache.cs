@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto;
 
@@ -21,7 +22,6 @@ namespace Nethermind.Core.Crypto;
 /// </summary>
 public static unsafe class KeccakCache
 {
-    private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
     /// <summary>
     /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
@@ -58,8 +58,8 @@ public static unsafe class KeccakCache
             goto Return;
         }
 
-        var fast = FastHash(input);
-        var index = fast & BucketMask;
+        uint fast = (uint)input.FastHash();
+        uint index = fast & BucketMask;
 
         Debug.Assert(index < Count);
 
@@ -118,55 +118,7 @@ public static unsafe class KeccakCache
     /// <summary>
     /// Gets the bucket for tests.
     /// </summary>
-    public static uint GetBucket(ReadOnlySpan<byte> input) => FastHash(input) & BucketMask;
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint FastHash(ReadOnlySpan<byte> input)
-    {
-        Debug.Assert(input.Length >= 1, "Cannot hash empty");
-
-        var length = input.Length;
-
-        ref var b = ref MemoryMarshal.GetReference(input);
-
-        // Start with instance random, length and first as seed
-        uint hash = (s_instanceRandom + (uint)length) ^ b;
-
-        // This is done below, without branches
-        // if ((length & 1) == 1)
-        // {
-        //     hash = b;
-        //     b = ref Unsafe.Add(ref b, 1);
-        //     length -= 1;
-        // }
-
-        var bit = length & 1;
-        b = ref Unsafe.Add(ref b, bit);
-        length -= bit;
-
-        if ((length & 2) == 2)
-        {
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ushort>(ref b));
-            b = ref Unsafe.Add(ref b, 2);
-            length -= 2;
-        }
-        if ((length & 4) == 4)
-        {
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref b));
-            b = ref Unsafe.Add(ref b, 4);
-            length -= 4;
-        }
-
-        while (length > 0)
-        {
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
-            b = ref Unsafe.Add(ref b, 8);
-            length -= 8;
-        }
-
-        return hash;
-    }
+    public static uint GetBucket(ReadOnlySpan<byte> input) => (uint)input.FastHash() & BucketMask;
 
     /// <summary>
     /// An entry to cache keccak

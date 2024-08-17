@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
@@ -13,6 +14,11 @@ namespace Nethermind.Core.Extensions
 {
     public static class SpanExtensions
     {
+        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
+        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
+        // the performance of the network as a whole.
+        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+
         public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);
@@ -165,6 +171,63 @@ namespace Nethermind.Core.Extensions
             ArrayPoolList<T> newList = new ArrayPoolList<T>(span.Length);
             newList.AddRange(span);
             return newList;
+        }
+
+        [SkipLocalsInit]
+        public static int FastHash(this ReadOnlySpan<byte> input)
+        {
+            var length = input.Length;
+            if (length == 0) return 0;
+
+            ref var b = ref MemoryMarshal.GetReference(input);
+
+            // Start with instance random, length and first as seed
+            uint hash = (s_instanceRandom + (uint)length) ^ b;
+
+            // This is done below, without branches
+            // if ((length & 1) == 1)
+            // {
+            //     hash = b;
+            //     b = ref Unsafe.Add(ref b, 1);
+            //     length -= 1;
+            // }
+
+            uint bit = (uint)length & sizeof(byte);
+            b = ref Unsafe.Add(ref b, bit);
+            length -= (int)bit;
+
+            if ((length & sizeof(ushort)) != 0)
+            {
+                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ushort>(ref b));
+                b = ref Unsafe.Add(ref b, sizeof(ushort));
+                length -= sizeof(ushort);
+            }
+            if ((length & sizeof(uint)) != 0)
+            {
+                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref b));
+                b = ref Unsafe.Add(ref b, sizeof(uint));
+                length -= sizeof(uint);
+            }
+
+            while (length >= sizeof(ulong) * 3)
+            {
+                // Crc32C is 3 cycle latency, 1 cycle throughput. However is complex to fully
+                // break the dependency chain when most of our hashes are on <= 32 byte data.
+                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
+                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
+                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
+                b = ref Unsafe.Add(ref b, sizeof(ulong) * 3);
+                length -= sizeof(ulong) * 3;
+            }
+
+            while (length > 0)
+            {
+                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
+                b = ref Unsafe.Add(ref b, sizeof(ulong));
+                length -= sizeof(ulong);
+            }
+
+            return (int)hash;
         }
     }
 }

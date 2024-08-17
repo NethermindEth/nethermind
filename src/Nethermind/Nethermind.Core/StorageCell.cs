@@ -3,9 +3,10 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -57,12 +58,8 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            uint hash = (uint)Address.GetHashCode();
-            hash = BitOperations.Crc32C(hash, _index.u0);
-            hash = BitOperations.Crc32C(hash, _index.u1);
-            hash = BitOperations.Crc32C(hash, _index.u2);
-            hash = BitOperations.Crc32C(hash, _index.u3);
-            return (int)hash;
+            int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
+            return hash ^ Address.GetHashCode();
         }
 
         public override string ToString()
