@@ -48,6 +48,8 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ComputeKey(in UInt256 index, in Span<byte> key)
         {
             index.ToBigEndian(key);
@@ -67,9 +69,15 @@ namespace Nethermind.State
                 return GetArray(Lookup[index], storageRoot);
             }
 
-            Span<byte> key = stackalloc byte[32];
-            ComputeKey(index, key);
-            return GetArray(key, storageRoot);
+            return GetWithKeyGenerate(in index, storageRoot);
+
+            [SkipLocalsInit]
+            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, key);
+                return GetArray(key, storageRoot);
+            }
         }
 
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
@@ -95,6 +103,12 @@ namespace Nethermind.State
                 SetInternal(Lookup[index], value);
             }
             else
+            {
+                SetWithKeyGenerate(in index, value);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, byte[] value)
             {
                 Span<byte> key = stackalloc byte[32];
                 ComputeKey(index, in key);
