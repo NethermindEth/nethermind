@@ -3,6 +3,7 @@ using Ethereum.Test.Base;
 using Ethereum.Test.Base.T8NUtils;
 using Evm.JsonTypes;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 
 namespace Evm.T8NTool;
 
@@ -28,12 +29,18 @@ public class T8NTool : GeneralStateTestBase
         ulong stateChainId,
         string stateFork,
         string? stateReward,
+        bool isGnosis,
         TraceOptions traceOptions)
     {
         T8NOutput t8NOutput = new();
         try
         {
-            var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId, traceOptions);
+            if (isGnosis)
+            {
+                stateChainId = GnosisSpecProvider.Instance.ChainId;
+            }
+            var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId,
+                isGnosis, traceOptions);
 
             if (outputAlloc == "stdout") t8NOutput.Alloc = t8NExecutionResult.Alloc;
             else if (outputAlloc != null) WriteToFile(outputAlloc, outputBasedir, t8NExecutionResult.Alloc);
@@ -72,6 +79,7 @@ public class T8NTool : GeneralStateTestBase
                 Console.WriteLine(t8NOutput.ErrorMessage);
             }
         }
+
         return t8NOutput;
     }
 
@@ -82,11 +90,13 @@ public class T8NTool : GeneralStateTestBase
         string stateFork,
         string? stateReward,
         ulong stateChainId,
+        bool isGnosis,
         TraceOptions traceOptions)
     {
-        var generalStateTest = InputProcessor.ConvertToGeneralStateTest(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId, traceOptions);
+        var generalStateTest = InputProcessor.ConvertToGeneralStateTest(inputAlloc, inputEnv, inputTxs, stateFork,
+            stateReward, stateChainId, isGnosis, traceOptions);
 
-        var res = RunTest(generalStateTest);
+        var res = RunTest(generalStateTest, isGnosis);
 
         PostState postState = new PostState();
         postState.StateRoot = res.StateRoot;
