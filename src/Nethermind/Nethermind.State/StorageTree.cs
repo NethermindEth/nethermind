@@ -50,15 +50,14 @@ namespace Nethermind.State
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ComputeKey(in UInt256 index, in Span<byte> key)
+        private static void ComputeKey(in UInt256 index, Span<byte> key)
         {
             index.ToBigEndian(key);
 
-            ValueHash256 keyHash = KeccakCache.Compute(key);
-
-            // Assign to update the argument
-            Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(key))
-                = Unsafe.As<ValueHash256, Vector256<byte>>(ref keyHash);
+            // We can't direct ComputeTo the key as its also the input, so need a separate variable
+            KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
+            // Which we can then directly assign to fast update the key
+            Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
         }
 
         [SkipLocalsInit]
@@ -111,7 +110,7 @@ namespace Nethermind.State
             void SetWithKeyGenerate(in UInt256 index, byte[] value)
             {
                 Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, in key);
+                ComputeKey(index, key);
                 SetInternal(key, value);
             }
         }

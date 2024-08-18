@@ -41,8 +41,13 @@ public static unsafe class KeccakCache
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
-        Unsafe.SkipInit(out ValueHash256 keccak256);
+        ComputeTo(input, out ValueHash256 keccak256);
+        return keccak256;
+    }
 
+    [SkipLocalsInit]
+    public static ValueHash256 ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
+    {
         // Special cases first
         if (input.Length == 0)
         {

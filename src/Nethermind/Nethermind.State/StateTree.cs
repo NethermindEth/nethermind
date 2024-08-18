@@ -69,7 +69,7 @@ namespace Nethermind.State
 
         public void Set(Address address, Account? account)
         {
-            ValueHash256 keccak = KeccakCache.Compute(address.Bytes);
+            KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 
