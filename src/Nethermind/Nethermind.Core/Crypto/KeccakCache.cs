@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -27,7 +26,6 @@ public static unsafe class KeccakCache
     /// </summary>
     public const int Count = BucketMask + 1;
     private const int BucketMask = 0x0000_FFFF;
-    private const uint HashMask = unchecked((uint)~BucketMask);
 
     private static readonly Entry* Memory;
 
@@ -58,34 +56,34 @@ public static unsafe class KeccakCache
             goto Return;
         }
 
-        uint fast = (uint)input.FastHash();
-        uint index = fast & BucketMask;
+        int fast = input.FastHash();
+        uint index = (uint)fast & BucketMask;
 
         Debug.Assert(index < Count);
-
-        uint hashAndLength = (fast & HashMask) | (ushort)input.Length;
 
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
 
         // Read aligned, volatile, won't be torn, check with computed
-        if (Volatile.Read(ref e.HashAndLength) == hashAndLength)
+        if (Volatile.Read(ref e.Hash) == fast)
         {
             // There's a possibility of a hit, try lock.
-            if (Interlocked.CompareExchange(ref e.Lock, Entry.Locked, Entry.Unlocked) == Entry.Unlocked)
+            int lockAndLength = Volatile.Read(ref e.LockAndLength);
+            // Lock by negating length if the length is the same size as input.
+            if (lockAndLength == input.Length && Interlocked.CompareExchange(ref e.LockAndLength, -lockAndLength, lockAndLength) == lockAndLength)
             {
-                if (e.HashAndLength != hashAndLength)
+                if (e.Hash != fast)
                 {
                     // The value has been changed between reading and taking a lock.
                     // Release the lock and compute.
-                    Volatile.Write(ref e.Lock, Entry.Unlocked);
+                    Volatile.Write(ref e.LockAndLength, lockAndLength);
                     goto Compute;
                 }
 
                 // Local copy of 128 bytes, to release the lock as soon as possible and make a key comparison without holding it.
                 Entry copy = e;
 
-                // Release the lock
-                Volatile.Write(ref e.Lock, Entry.Unlocked);
+                // Release the lock, by setting back to unnegated length.
+                Volatile.Write(ref e.LockAndLength, lockAndLength);
 
                 // Lengths are equal, the input length can be used without any additional operation.
                 if (MemoryMarshal.CreateReadOnlySpan(ref copy.Payload, input.Length).SequenceEqual(input))
@@ -100,15 +98,18 @@ public static unsafe class KeccakCache
         hash = ValueKeccak.Compute(input);
 
         // Try lock and memoize
-        if (Interlocked.CompareExchange(ref e.Lock, Entry.Locked, Entry.Unlocked) == Entry.Unlocked)
+        int length = Volatile.Read(ref e.LockAndLength);
+        // Negative value means that the entry is locked, set to int.MinValue to avoid confusion empty entry,
+        // since we are overwriting it anyway e.g. -0 would not be a reliable locked state.
+        if (length >= 0 && Interlocked.CompareExchange(ref e.LockAndLength, int.MinValue, length) == length)
         {
-            e.HashAndLength = hashAndLength;
+            e.Hash = fast;
             e.Value = hash;
 
             input.CopyTo(MemoryMarshal.CreateSpan(ref e.Payload, input.Length));
 
-            // Release the lock
-            Volatile.Write(ref e.Lock, Entry.Unlocked);
+            // Release the lock, input.Length is always positive so setting it is enough.
+            Volatile.Write(ref e.LockAndLength, input.Length);
         }
 
     Return:
@@ -126,9 +127,6 @@ public static unsafe class KeccakCache
     [StructLayout(LayoutKind.Explicit, Size = Size)]
     private struct Entry
     {
-        public const int Unlocked = 0;
-        public const int Locked = 1;
-
         /// <summary>
         /// Should work for both ARM and x64 and be aligned.
         /// </summary>
@@ -138,15 +136,14 @@ public static unsafe class KeccakCache
         private const int ValueStart = Size - ValueHash256.MemorySize;
         public const int MaxPayloadLength = ValueStart - PayloadStart;
 
-        [FieldOffset(0)]
-        public int Lock;
-
         /// <summary>
-        /// The mix of hash and length allows for a fast comparison and a single volatile read.
-        /// The length is encoded as the low part, while the hash as the high part of uint.
+        /// Length is always positive so we can use a negative length to indicate that it is locked.
         /// </summary>
+        [FieldOffset(0)]
+        public int LockAndLength;
+
         [FieldOffset(4)]
-        public uint HashAndLength;
+        public int Hash;
 
         [FieldOffset(PayloadStart)]
         public byte Payload;
