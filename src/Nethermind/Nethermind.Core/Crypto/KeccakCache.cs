@@ -41,37 +41,37 @@ public static unsafe class KeccakCache
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
-        Unsafe.SkipInit(out ValueHash256 hash);
+        Unsafe.SkipInit(out ValueHash256 keccak256);
 
         // Special cases first
         if (input.Length == 0)
         {
-            hash = ValueKeccak.OfAnEmptyString;
+            keccak256 = ValueKeccak.OfAnEmptyString;
             goto Return;
         }
 
         if (input.Length > Entry.MaxPayloadLength)
         {
-            hash = ValueKeccak.Compute(input);
+            keccak256 = ValueKeccak.Compute(input);
             goto Return;
         }
 
-        int fast = input.FastHash();
-        uint index = (uint)fast & BucketMask;
+        int hashCode = input.FastHash();
+        uint index = (uint)hashCode & BucketMask;
 
         Debug.Assert(index < Count);
 
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
 
         // Read aligned, volatile, won't be torn, check with computed
-        if (Volatile.Read(ref e.Hash) == fast)
+        if (Volatile.Read(ref e.HashCode) == hashCode)
         {
             // There's a possibility of a hit, try lock.
             int lockAndLength = Volatile.Read(ref e.LockAndLength);
             // Lock by negating length if the length is the same size as input.
             if (lockAndLength == input.Length && Interlocked.CompareExchange(ref e.LockAndLength, -lockAndLength, lockAndLength) == lockAndLength)
             {
-                if (e.Hash != fast)
+                if (e.HashCode != hashCode)
                 {
                     // The value has been changed between reading and taking a lock.
                     // Release the lock and compute.
@@ -79,23 +79,25 @@ public static unsafe class KeccakCache
                     goto Compute;
                 }
 
-                // Local copy of 128 bytes, to release the lock as soon as possible and make a key comparison without holding it.
-                Entry copy = e;
+                // Take local copy of the payload and hash, to release the lock as soon as possible and make a key comparison without holding it.
+                // Local copy of 64+32 payload bytes.
+                Payload copy = e.Value;
+                // Copy Keccak256 directly to the local return variable, since we will overwrite if no match anyway.
+                keccak256 = e.Keccak256;
 
                 // Release the lock, by setting back to unnegated length.
                 Volatile.Write(ref e.LockAndLength, lockAndLength);
 
                 // Lengths are equal, the input length can be used without any additional operation.
-                if (MemoryMarshal.CreateReadOnlySpan(ref copy.Payload, input.Length).SequenceEqual(input))
+                if (MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
                 {
-                    hash = copy.Value;
                     goto Return;
                 }
             }
         }
 
     Compute:
-        hash = ValueKeccak.Compute(input);
+        keccak256 = ValueKeccak.Compute(input);
 
         // Try lock and memoize
         int length = Volatile.Read(ref e.LockAndLength);
@@ -103,17 +105,17 @@ public static unsafe class KeccakCache
         // since we are overwriting it anyway e.g. -0 would not be a reliable locked state.
         if (length >= 0 && Interlocked.CompareExchange(ref e.LockAndLength, int.MinValue, length) == length)
         {
-            e.Hash = fast;
-            e.Value = hash;
+            e.HashCode = hashCode;
+            e.Keccak256 = keccak256;
 
-            input.CopyTo(MemoryMarshal.CreateSpan(ref e.Payload, input.Length));
+            input.CopyTo(MemoryMarshal.CreateSpan(ref e.Value.Start, input.Length));
 
             // Release the lock, input.Length is always positive so setting it is enough.
             Volatile.Write(ref e.LockAndLength, input.Length);
         }
 
     Return:
-        return hash;
+        return keccak256;
     }
 
     /// <summary>
@@ -142,16 +144,28 @@ public static unsafe class KeccakCache
         [FieldOffset(0)]
         public int LockAndLength;
 
+        /// <summary>
+        /// The fast Crc32c of the Value
+        /// </summary>
         [FieldOffset(4)]
-        public int Hash;
-
-        [FieldOffset(PayloadStart)]
-        public byte Payload;
+        public int HashCode;
 
         /// <summary>
         /// The actual value
         /// </summary>
+        [FieldOffset(PayloadStart)]
+        public Payload Value;
+
+        /// <summary>
+        /// The Keccak of the Value
+        /// </summary>
         [FieldOffset(ValueStart)]
-        public ValueHash256 Value;
+        public ValueHash256 Keccak256;
+    }
+
+    [InlineArray(Entry.MaxPayloadLength)]
+    private struct Payload
+    {
+        public byte Start;
     }
 }
