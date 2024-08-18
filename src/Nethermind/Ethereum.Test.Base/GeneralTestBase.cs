@@ -129,7 +129,7 @@ namespace Ethereum.Test.Base
 
             InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
-            var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            var ecdsa = new EthereumEcdsa(specProvider.ChainId);
             foreach (var transaction in test.Transactions)
             {
                 transaction.ChainId ??= test.StateChainId;
