@@ -51,7 +51,7 @@ public class GnosisSpecProvider : ISpecProvider
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("8626000000000000000000058750000000000000000000");
-    public IReleaseSpec GenesisSpec => Cancun.Instance;
+    public IReleaseSpec GenesisSpec => Byzantium.Instance;
     public long? DaoBlockNumber => null;
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
