@@ -49,13 +49,12 @@ public class ShutterMessageHandler(
             {
                 _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
                 _highestValidatedSlot = decryptionKeys.Gnosis.Slot;
-                List<(byte[], byte[])> keys = decryptionKeys.Keys.Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
                 KeysValidated?.Invoke(this, new()
                 {
                     Eon = decryptionKeys.Eon,
                     Slot = decryptionKeys.Gnosis.Slot,
                     TxPointer = decryptionKeys.Gnosis.TxPointer,
-                    Keys = keys
+                    Keys = ExtractKeys(decryptionKeys)
                 });
             }
         }
@@ -138,4 +137,9 @@ public class ShutterMessageHandler(
 
         return true;
     }
+
+    private List<(byte[], byte[])> ExtractKeys(in Dto.DecryptionKeys decryptionKeys)
+        => decryptionKeys.Keys
+            .Skip(1) // remove placeholder
+            .Select(x => (x.Identity.ToByteArray(), x.Key_.ToByteArray())).ToList();
 }

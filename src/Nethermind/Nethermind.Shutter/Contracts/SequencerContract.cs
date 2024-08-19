@@ -18,7 +18,7 @@ namespace Nethermind.Shutter.Contracts;
 
 public class SequencerContract : Contract
 {
-    internal readonly AbiEncodingInfo _transactionSubmittedAbi;
+    public readonly AbiEncodingInfo TransactionSubmittedAbi;
     private readonly ILogFinder _logFinder;
     private const long LogScanChunkSize = 16;
     // private const int LogScanCutoffChunks = 128;
@@ -31,9 +31,9 @@ public class SequencerContract : Contract
     public SequencerContract(Address address, ILogFinder logFinder, ILogManager logManager)
         : base(null, address)
     {
-        _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
+        TransactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
         _addressFilter = new AddressFilter(ContractAddress!);
-        _topicsFilter = new SequenceTopicsFilter(new SpecificTopic(_transactionSubmittedAbi.Signature.Hash));
+        _topicsFilter = new SequenceTopicsFilter(new SpecificTopic(TransactionSubmittedAbi.Signature.Hash));
         _logFinder = logFinder;
         _logger = logManager.GetClassLogger();
     }
@@ -56,7 +56,7 @@ public class SequencerContract : Contract
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(ILogEntry log)
     {
-        object[] decodedEvent = AbiEncoder.Decode(AbiEncodingStyle.None, _transactionSubmittedAbi.Signature, log.Data);
+        object[] decodedEvent = AbiEncoder.Decode(AbiEncodingStyle.None, TransactionSubmittedAbi.Signature, log.Data);
         return new ISequencerContract.TransactionSubmitted
         {
             Eon = (ulong)decodedEvent[0],
@@ -99,6 +99,7 @@ public class SequencerContract : Contract
             if (len > 0)
             {
                 ISequencerContract.TransactionSubmitted tx = events.First();
+                // todo: fix this, broken by submitting transaction with lower eon after higher eon
                 if (tx.Eon < eon || tx.TxIndex <= txPointer)
                 {
                     break;

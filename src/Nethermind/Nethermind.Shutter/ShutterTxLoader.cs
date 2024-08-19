@@ -16,9 +16,9 @@ using Nethermind.Shutter.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using System.IO;
-using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Abi;
 
 namespace Nethermind.Shutter;
 
@@ -33,15 +33,18 @@ public class ShutterTxLoader(
     IEthereumEcdsa ecdsa,
     ILogManager logManager)
 {
-    internal readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
-    internal Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
-    internal ulong _txPointer = ulong.MaxValue;
-    internal bool _loadFromReceipts = false;
+    private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
+    // todo: maintain multiple queues for each eon
+    private Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
+    private ulong _txPointer = ulong.MaxValue;
+    private ulong _eon = ulong.MaxValue - 1;
+    private bool _loadFromReceipts = false;
     private readonly ITxFilter _txFilter = new ShutterTxFilter(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
 
+    // keys should not contain placeholder
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterMessageHandler.ValidatedKeyArgs keys)
     {
         List<SequencedTransaction>? sequencedTransactions = null;
@@ -82,10 +85,25 @@ public class ShutterTxLoader(
                         if (filter.Accepts(log))
                         {
                             ISequencerContract.TransactionSubmitted e = _sequencerContract.ParseTransactionSubmitted(log);
-                            if (e.TxIndex != _txPointer && _logger.IsWarn)
+
+                            // todo: change to allow multiple concurrent eons
+                            if (e.Eon == _eon + 1)
+                            {
+                                // reset for new eon
+                                _txPointer = 0;
+                                _eon++;
+                            }
+
+                            if (e.TxIndex != _txPointer)
                             {
                                 _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex}, expected {_txPointer}.");
                             }
+
+                            if (e.Eon != _eon)
+                            {
+                                _logger.Warn($"Loading unexpected Shutter event with eon {e.Eon}, expected {_eon}.");
+                            }
+
                             _txPointer = e.TxIndex + 1;
                             _transactionSubmittedEvents.Enqueue(e);
                             count++;
@@ -96,6 +114,9 @@ public class ShutterTxLoader(
             }
         }
     }
+
+    internal AbiEncodingInfo GetAbi()
+        => _sequencerContract.TransactionSubmittedAbi;
 
     private IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, BlockHeader parentHeader)
     {
@@ -111,13 +132,7 @@ public class ShutterTxLoader(
     private Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
     {
         int txCount = sequencedTransactions.Count;
-        int keyCount = decryptionKeys.Count - 1;
-
-        if (decryptionKeys.Count == 0)
-        {
-            // todo: nice exception
-            throw new Exception();
-        }
+        int keyCount = decryptionKeys.Count;
 
         if (txCount < keyCount)
         {
@@ -136,7 +151,7 @@ public class ShutterTxLoader(
         sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
-        int keyIndex = 1;
+        int keyIndex = 0;
         foreach (SequencedTransaction index in sortedIndexes)
         {
             sortedKeyIndexes[index.Index] = keyIndex++;
@@ -258,6 +273,7 @@ public class ShutterTxLoader(
     {
         _transactionSubmittedEvents = new Queue<ISequencerContract.TransactionSubmitted>(_sequencerContract.GetEvents(eon, txPointer, headBlockNumber));
         _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
+        _eon = eon;
         _logger.Debug($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }
 

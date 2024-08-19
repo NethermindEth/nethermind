@@ -18,8 +18,8 @@ using System.Linq;
 
 public class ShutterEventEmitter
 {
+    public readonly Transaction DefaultTx;
     private readonly UInt256 _defaultGasLimit = new(21000);
-    private readonly Transaction _defaultTx;
     private readonly Random _rnd;
     private readonly ulong _chainId;
     private readonly IAbiEncoder _abiEncoder;
@@ -47,7 +47,7 @@ public class ShutterEventEmitter
         _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
         _transactionSubmittedAbi = transactionSubmittedAbi;
-        _defaultTx = Build.A.Transaction.WithChainId(_chainId).Signed().TestObject;
+        DefaultTx = Build.A.Transaction.WithChainId(_chainId).Signed().TestObject;
 
         NewEon(eon);
     }
@@ -105,7 +105,7 @@ public class ShutterEventEmitter
     {
         while (true)
         {
-            yield return _defaultTx;
+            yield return DefaultTx;
         }
     }
 
