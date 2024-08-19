@@ -15,6 +15,8 @@ using System.Threading;
 using System.Collections.Concurrent;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Crypto;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Shutter;
 
@@ -23,6 +25,7 @@ public class ShutterBlockHandler(
     string validatorRegistryContractAddress,
     ulong validatorRegistryMessageVersion,
     ReadOnlyTxProcessingEnvFactory envFactory,
+    IReadOnlyBlockTree blockTree,
     IAbiEncoder abiEncoder,
     IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
@@ -34,7 +37,7 @@ public class ShutterBlockHandler(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private bool _haveCheckedRegistered = false;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
-    private readonly LruCache<ulong, Block?> _blockCache = new(5, "Block cache");
+    private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
     private readonly object _syncObject = new();
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
 
@@ -55,7 +58,7 @@ public class ShutterBlockHandler(
             lock (_syncObject)
             {
                 ulong slot = ShutterHelpers.GetSlot(head.Timestamp * 1000, _genesisTimestampMs);
-                _blockCache.Set(slot, head);
+                _slotToBlockHash.Set(slot, head.Hash);
 
                 if (_blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? tcs))
                 {
@@ -74,9 +77,9 @@ public class ShutterBlockHandler(
         TaskCompletionSource<Block?>? tcs = null;
         lock (_syncObject)
         {
-            if (_blockCache.TryGet(slot, out Block? block))
+            if (_slotToBlockHash.TryGet(slot, out Hash256? blockHash))
             {
-                return block;
+                return blockTree.FindBlock(blockHash!);
             }
 
             _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
@@ -127,5 +130,4 @@ public class ShutterBlockHandler(
             _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
         }
     }
-
 }
