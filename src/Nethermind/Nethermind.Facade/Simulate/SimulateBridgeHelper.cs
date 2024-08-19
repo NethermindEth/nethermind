@@ -111,6 +111,10 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
                 CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
+                //Testing if geth hash is of base block
+                SimulateBlockResult current = simulateOutputTracer.Results.Last();
+                current.Hash = suggestedBlocks[0].Hash;
+
                 parent = processedBlock.Header;
             }
         }
@@ -288,7 +292,11 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
             };
-        result.Timestamp = parent.Timestamp + 1;
+
+        result.Timestamp = block.BlockOverrides is { Time: not null }
+            ? block.BlockOverrides.Time.Value
+            : parent.Timestamp + 1;
+
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation
