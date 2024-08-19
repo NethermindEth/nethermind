@@ -91,7 +91,7 @@ public static unsafe class KeccakCache
             if (input.Length == InputLengthOfKeccak)
             {
                 // Hashing UInt256 or Hash256 which is Vector256
-                if (Unsafe.As<byte, Vector256<byte>>(ref copy.Start) ==
+                if (Unsafe.As<byte, Vector256<byte>>(ref copy.Aligned32) ==
                     Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input)))
                 {
                     // Current keccak256 is correct hash.
@@ -101,11 +101,10 @@ public static unsafe class KeccakCache
             else if (input.Length == InputLengthOfAddress)
             {
                 // Hashing Address
-                ref byte bytes0 = ref copy.Start;
                 ref byte bytes1 = ref MemoryMarshal.GetReference(input);
                 // 20 bytes which is uint+Vector128
-                if (Unsafe.As<byte, uint>(ref bytes0) == Unsafe.As<byte, uint>(ref bytes1) &&
-                    Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) ==
+                if (Unsafe.As<byte, uint>(ref copy.Start) == Unsafe.As<byte, uint>(ref bytes1) &&
+                    Unsafe.As<byte, Vector128<byte>>(ref copy.Aligned32) ==
                         Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint))))
                 {
                     // Current keccak256 is correct hash.
@@ -134,17 +133,16 @@ public static unsafe class KeccakCache
             if (input.Length == InputLengthOfKeccak)
             {
                 // UInt256 or Hash256 which is Vector256
-                Unsafe.As<byte, Vector256<byte>>(ref e.Value.Start) =
+                Unsafe.As<byte, Vector256<byte>>(ref e.Value.Aligned32) =
                     Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
             }
             else if (input.Length == InputLengthOfAddress)
             {
                 // Address
-                ref byte bytes0 = ref e.Value.Start;
                 ref byte bytes1 = ref MemoryMarshal.GetReference(input);
                 // 20 bytes which is uint+Vector128
-                Unsafe.As<byte, uint>(ref bytes0) = Unsafe.As<byte, uint>(ref bytes1);
-                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) =
+                Unsafe.As<byte, uint>(ref e.Value.Start) = Unsafe.As<byte, uint>(ref bytes1);
+                Unsafe.As<byte, Vector128<byte>>(ref e.Value.Aligned32) =
                     Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint)));
             }
             else
@@ -198,18 +196,20 @@ public static unsafe class KeccakCache
         /// <summary>
         /// The actual value
         /// </summary>
-        /// Alignments 8+16+64
+        /// Alignments 4+8+16+64
         [FieldOffset(PayloadStart)] public Payload Value;
-
         /// <summary>
         /// The Keccak of the Value
         /// </summary>
         [FieldOffset(ValueStart)] public ValueHash256 Keccak256;
     }
 
-    [InlineArray(Entry.MaxPayloadLength)]
+    [StructLayout(LayoutKind.Explicit, Size = Entry.MaxPayloadLength)]
     private struct Payload
     {
-        public byte Start;
+        private const int AlignedStart = Entry.MaxPayloadLength - 32;
+
+        [FieldOffset(0)] public byte Start;
+        [FieldOffset(AlignedStart)] public byte Aligned32;
     }
 }
