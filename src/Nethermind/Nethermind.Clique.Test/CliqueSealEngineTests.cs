@@ -98,7 +98,7 @@ namespace Nethermind.Clique.Test
 
         private CliqueSealer BuildSealer(int currentBlock, IDb db)
         {
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Goerli);
             CliqueConfig config = new();
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];

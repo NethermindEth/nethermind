@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new();
+            CodeInfoRepository codeInfoRepository = new(1);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 new BlockhashStore(specProvider, stateProvider),
                 LimboLogs.Instance);
 
-            RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
+            RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, specProvider, LimboLogs.Instance);
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
             Block genesis = Build.A.Block.Genesis.TestObject;

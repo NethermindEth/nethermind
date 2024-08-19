@@ -21,24 +21,20 @@ using Nethermind.Evm.CodeAnalysis;
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
-public class AuthorizedCodeInfoRepositoryTests
+public class CodeInfoRepositoryTests
 {
     [Test]
     public void InsertFromAuthorizations_AuthorityTupleIsCorrect_CodeIsInserted()
     {
         PrivateKey authority = TestItem.PrivateKeyA;
-        ICodeInfoRepository mockCodeRepository = Substitute.For<ICodeInfoRepository>();
-        mockCodeRepository
-            .GetCachedCodeInfo(Arg.Any<IWorldState>(), authority.Address, Arg.Any<IReleaseSpec>())
-            .Returns(new CodeInfo([]));
-        AuthorizedCodeInfoRepository sut = new(mockCodeRepository, 1, NullLogger.Instance);
+        CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
             CreateAuthorizationTuple(authority, 1, TestItem.AddressB, (UInt256)0),
         };
-        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
+        IEnumerable<Address> result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
 
-        sut.AuthorizedAddresses.Should().BeEquivalentTo([authority.Address]);
+        result.Should().BeEquivalentTo([authority.Address]);
     }
 
     public static IEnumerable<object[]> AuthorizationCases()
@@ -60,15 +56,11 @@ public class AuthorizedCodeInfoRepositoryTests
     [TestCaseSource(nameof(AuthorizationCases))]
     public void InsertFromAuthorizations_MixOfCorrectAndWrongChainIdAndNonce_InsertsExpectedCount(AuthorizationTuple[] tuples, int expectedCount)
     {
-        ICodeInfoRepository mockCodeRepository = Substitute.For<ICodeInfoRepository>();
-        mockCodeRepository
-            .GetCachedCodeInfo(Arg.Any<IWorldState>(), Arg.Any<Address>(), Arg.Any<IReleaseSpec>())
-            .Returns(new CodeInfo(Array.Empty<byte>()));
-        AuthorizedCodeInfoRepository sut = new(mockCodeRepository, 1, NullLogger.Instance);
+        CodeInfoRepository sut = new(1);
 
-        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
+        IEnumerable<Address> result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
 
-        sut.AuthorizedAddresses.Count().Should().Be(expectedCount);
+        result.Count().Should().Be(expectedCount);
     }
 
     [Test]
@@ -78,38 +70,17 @@ public class AuthorizedCodeInfoRepositoryTests
         Address codeSource = TestItem.AddressB;
         IWorldState mockWorldState = Substitute.For<IWorldState>();
         mockWorldState.HasCode(authority.Address).Returns(true);
-        AuthorizedCodeInfoRepository sut = new(Substitute.For<ICodeInfoRepository>(), 1, NullLogger.Instance);
+        CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
             CreateAuthorizationTuple(authority, 1, codeSource, (UInt256)0),
         };
 
-        sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
+        IEnumerable<Address> result = sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
 
-        sut.AuthorizedAddresses.Count().Should().Be(0);
+        result.Count().Should().Be(0);
     }
 
-    [Test]
-    public void ClearAuthorizations_HasAuthorizedAddresses_AuthorizationsAreClear()
-    {
-        ICodeInfoRepository mockCodeRepository = Substitute.For<ICodeInfoRepository>();
-        mockCodeRepository
-            .GetCachedCodeInfo(Arg.Any<IWorldState>(), Arg.Any<Address>(), Arg.Any<IReleaseSpec>())
-            .Returns(new CodeInfo(Array.Empty<byte>()));
-        AuthorizedCodeInfoRepository sut = new(mockCodeRepository, 1, NullLogger.Instance);
-        var tuples = new[]
-        {
-            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressB, (UInt256)0),
-            CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressB, (UInt256)0),
-        };
-        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
-
-        sut.AuthorizedAddresses.Count().Should().Be(2);
-
-        sut.ClearAuthorizations();
-
-        sut.AuthorizedAddresses.Count().Should().Be(0);
-    }
 
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
     {
@@ -118,7 +89,7 @@ public class AuthorizedCodeInfoRepositoryTests
         Span<byte> code = stackalloc byte[rlp.Length + 1];
         code[0] = Eip7702Constants.Magic;
         rlp.Data.AsSpan().CopyTo(code.Slice(1));
-        EthereumEcdsa ecdsa = new(1, new OneLoggerLogManager(NullLogger.Instance));
+        EthereumEcdsa ecdsa = new(1);
         Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
 
         return new AuthorizationTuple(chainId, codeAddress, nonce, sig, signer.Address);

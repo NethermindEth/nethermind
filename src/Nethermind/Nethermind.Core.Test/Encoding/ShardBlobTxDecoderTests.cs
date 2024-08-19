@@ -39,7 +39,7 @@ public partial class ShardBlobTxDecoderTests
         rlpStream.Position = 0;
         Transaction? decoded = _txDecoder.Decode(rlpStream);
         decoded!.SenderAddress =
-            new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+            new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
         decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
     }
@@ -55,7 +55,7 @@ public partial class ShardBlobTxDecoderTests
         rlpStream.Position = 0;
         Transaction? decoded = _txDecoder.Decode(ref decoderContext);
         decoded!.SenderAddress =
-            new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+            new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
         decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
     }
