@@ -20,7 +20,7 @@ public class MergeRpcRewardCalculator : IRewardCalculator
         _poSSwitcher = poSSwitcher;
     }
 
-    public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
+    public BlockReward[] CalculateRewards(Block block, IWorldState? worldState = null)
     {
         if (_poSSwitcher.IsPostMerge(block.Header))
         {

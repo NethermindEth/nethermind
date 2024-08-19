@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             _blockRewards = CreateBlockRewards(blockRewards);
         }
 
-        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
+        public BlockReward[] CalculateRewards(Block block, IWorldState? worldState = null)
         {
             _blockRewards.TryGetForActivation(block.Number, out var blockReward);
             return new[] { new BlockReward(block.Beneficiary, blockReward.Reward) };

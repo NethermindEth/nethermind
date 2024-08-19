@@ -8,6 +8,6 @@ namespace Nethermind.Consensus.Rewards
 {
     public interface IRewardCalculator
     {
-        BlockReward[] CalculateRewards(Block block, IWorldState worldState);
+        BlockReward[] CalculateRewards(Block block, IWorldState? worldState = null);
     }
 }

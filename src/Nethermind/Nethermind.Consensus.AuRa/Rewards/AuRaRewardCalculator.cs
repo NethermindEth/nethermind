@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
 
-        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
+        public BlockReward[] CalculateRewards(Block block, IWorldState? worldState = null)
         {
             if (block.IsGenesis)
             {
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
             return _contracts.TryGetForBlock(block.Number, out var contract)
                 ? CalculateRewardsWithContract(block, contract, worldState)
-                : _blockRewardCalculator.CalculateRewards(block, worldState);
+                : _blockRewardCalculator.CalculateRewards(block);
         }
 
 

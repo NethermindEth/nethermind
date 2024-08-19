@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Rewards
             return spec.BlockReward;
         }
 
-        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
+        public BlockReward[] CalculateRewards(Block block, IWorldState? worldState = null)
         {
             if (block.IsGenesis)
             {

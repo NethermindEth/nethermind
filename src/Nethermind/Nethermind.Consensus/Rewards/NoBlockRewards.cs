@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Rewards
 
         private static readonly BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
-        public BlockReward[] CalculateRewards(Block block, IWorldState worldState) => _noRewards;
+        public BlockReward[] CalculateRewards(Block block, IWorldState? worldState = null) => _noRewards;
 
         public IRewardCalculator Get(ITransactionProcessor processor) => Instance;
     }

@@ -20,11 +20,11 @@ namespace Nethermind.Merge.Plugin
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         }
 
-        public BlockReward[] CalculateRewards(Block block, IWorldState worldState)
+        public BlockReward[] CalculateRewards(Block block, IWorldState? worldState = null)
         {
             if (_poSSwitcher.IsPostMerge(block.Header))
             {
-                return NoBlockRewards.Instance.CalculateRewards(block, worldState);
+                return NoBlockRewards.Instance.CalculateRewards(block);
             }
 
             return _beforeTheMerge.CalculateRewards(block, worldState);
