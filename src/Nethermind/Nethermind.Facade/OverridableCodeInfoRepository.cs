@@ -45,4 +45,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         _codeOverwrites.Clear();
     }
+
+    public IEnumerable<Address> InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, IReleaseSpec spec)
+    {
+        return codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, spec);
+    }
 }

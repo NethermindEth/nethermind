@@ -263,7 +263,7 @@ namespace Nethermind.Synchronization.Test
 
             InMemoryReceiptStorage receiptStorage = new();
 
-            EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
+            EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockTree tree = Build.A.BlockTree().WithoutSettingHead.TestObject;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
@@ -276,7 +276,7 @@ namespace Nethermind.Synchronization.Test
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new();
+            CodeInfoRepository codeInfoRepository = new(1);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
             Always sealValidator = Always.Valid;

@@ -51,7 +51,7 @@ namespace Nethermind.Clique.Test
             private readonly ILogger _logger;
             private static readonly ITimestamper _timestamper = Timestamper.Default;
             private readonly CliqueConfig _cliqueConfig;
-            private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+            private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli);
             private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
             private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
             private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -128,7 +128,7 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-                CodeInfoRepository codeInfoRepository = new();
+                CodeInfoRepository codeInfoRepository = new(1);
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
                     new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                     codeInfoRepository,

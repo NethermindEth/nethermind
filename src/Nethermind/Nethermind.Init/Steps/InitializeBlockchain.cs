@@ -83,7 +83,7 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
             PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
-            CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
+            CodeInfoRepository codeInfoRepository = new(1, preBlockCaches?.PrecompileCache);
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
             _api.TransactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
 
