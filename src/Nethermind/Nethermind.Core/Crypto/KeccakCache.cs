@@ -17,8 +17,8 @@ namespace Nethermind.Core.Crypto;
 /// It allocates only 8MB of memory to store 64k of entries.
 /// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
 /// Requires a single CAS to lock and <see cref="Volatile.Write(ref int,int)"/> to unlock.
-/// On lock failure, it just moves on with execution.
-/// Uses copying on the stack to get the entry, have it copied and release the lock ASAP. This is 128 bytes to copy that quite likely will be the hit.
+/// On a lock failure, it just moves on with execution.
+/// When a potential hit happens, the value of the result and the value of the key are copied on the stack to release the lock ASAP.
 /// </summary>
 public static unsafe class KeccakCache
 {
@@ -27,6 +27,9 @@ public static unsafe class KeccakCache
     /// </summary>
     public const int Count = BucketMask + 1;
     private const int BucketMask = 0x0000_FFFF;
+
+    private const int InputLengthOfKeccak = ValueHash256.MemorySize;
+    private const int InputLengthOfAddress = Address.Size;
 
     private static readonly Entry* Memory;
 
@@ -88,7 +91,7 @@ public static unsafe class KeccakCache
                 Volatile.Write(ref e.LockAndLength, lockAndLength);
 
                 // Lengths are equal, the input length can be used without any additional operation.
-                if (input.Length == 32)
+                if (input.Length == InputLengthOfKeccak)
                 {
                     // Hashing UInt256 or Hash256 which is Vector256
                     if (Unsafe.As<byte, Vector256<byte>>(ref copy.Start) ==
@@ -98,7 +101,7 @@ public static unsafe class KeccakCache
                         return;
                     }
                 }
-                else if (input.Length == 20)
+                else if (input.Length == InputLengthOfAddress)
                 {
                     // Hashing Address
                     ref byte bytes0 = ref copy.Start;
@@ -134,13 +137,13 @@ public static unsafe class KeccakCache
             e.Keccak256 = keccak256;
 
             // Fast copy for 2 common sizes
-            if (input.Length == 32)
+            if (input.Length == InputLengthOfKeccak)
             {
                 // UInt256 or Hash256 which is Vector256
                 Unsafe.As<byte, Vector256<byte>>(ref e.Value.Start) =
                     Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
             }
-            else if (input.Length == 20)
+            else if (input.Length == InputLengthOfAddress)
             {
                 // Address
                 ref byte bytes0 = ref e.Value.Start;
