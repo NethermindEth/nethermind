@@ -112,6 +112,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 _shutterConfig.ValidatorRegistryContractAddress!,
                 _shutterConfig.ValidatorRegistryMessageVersion,
                 readOnlyTxProcessingEnvFactory,
+                readOnlyBlockTree,
                 _api.AbiEncoder, _api.ReceiptFinder!, _api.SpecProvider!,
                 validatorsInfo, eon, txLoader, _api.LogManager);
 
