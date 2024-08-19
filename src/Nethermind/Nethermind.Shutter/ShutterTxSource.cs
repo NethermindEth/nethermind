@@ -89,9 +89,9 @@ public class ShutterTxSource(
         return _txCache.Contains(slot);
     }
 
-    public void LoadTransactions(Block? head, IShutterMessageHandler.ValidatedKeyArgs keys)
+    public void LoadTransactions(Block? head, BlockHeader parentHeader, IShutterMessageHandler.ValidatedKeyArgs keys)
     {
-        _txCache.Set(keys.Slot, txLoader.LoadTransactions(head, keys));
+        _txCache.Set(keys.Slot, txLoader.LoadTransactions(head, parentHeader, keys));
 
         if (_highestLoadedSlot < keys.Slot)
         {

@@ -18,7 +18,7 @@ using Nethermind.Core.Extensions;
 using System.IO;
 using Nethermind.Consensus.Validators;
 using Nethermind.Blockchain.Filters;
-using Microsoft.AspNetCore.Authorization.Infrastructure;
+using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Shutter;
 
@@ -37,12 +37,12 @@ public class ShutterTxLoader(
     internal Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     internal ulong _txPointer = ulong.MaxValue;
     internal bool _loadFromReceipts = false;
-    private readonly TxValidator _txValidator = new(specProvider.ChainId);
+    private readonly ITxFilter _txFilter = new ShutterTxFilter(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
 
-    public ShutterTransactions LoadTransactions(Block? head, IShutterMessageHandler.ValidatedKeyArgs keys)
+    public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterMessageHandler.ValidatedKeyArgs keys)
     {
         List<SequencedTransaction>? sequencedTransactions = null;
         sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
@@ -55,8 +55,7 @@ public class ShutterTxLoader(
 
         if (_logger.IsDebug && transactions.Length > 0) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
-        IReleaseSpec releaseSpec = head is null ? specProvider.GetFinalSpec() : specProvider.GetSpec(head.Number, head.Timestamp);
-        Transaction[] filtered = FilterTransactions(transactions, releaseSpec).ToArray();
+        Transaction[] filtered = FilterTransactions(transactions, parentHeader).ToArray();
 
         ShutterTransactions shutterTransactions = new()
         {
@@ -98,26 +97,18 @@ public class ShutterTxLoader(
         }
     }
 
-    internal IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, IReleaseSpec releaseSpec)
+    private IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, BlockHeader parentHeader)
     {
         foreach (Transaction tx in transactions)
         {
-            bool wellFormed = _txValidator.IsWellFormed(tx, releaseSpec, out string? error);
-
-            if (_logger.IsDebug)
-            {
-                if (!wellFormed) _logger.Debug($"Decrypted Shutter transaction was not well-formed{(error is null ? "." : ": " + error)}");
-                if (tx.Type == TxType.Blob) _logger.Debug("Decrypted Shutter transaction was blob, cannot include.");
-            }
-
-            if (wellFormed && tx.Type != TxType.Blob)
+            if (_txFilter.IsAllowed(tx, parentHeader) == TxPool.AcceptTxResult.Accepted)
             {
                 yield return tx;
             }
         }
     }
 
-    internal Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
+    private Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
     {
         int txCount = sequencedTransactions.Count;
         int keyCount = decryptionKeys.Count - 1;
@@ -207,7 +198,7 @@ public class ShutterTxLoader(
         return null;
     }
 
-    internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
+    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
         lock (_transactionSubmittedEvents)
         {
@@ -241,7 +232,7 @@ public class ShutterTxLoader(
 
                 _transactionSubmittedEvents.Dequeue();
                 totalGas += e.GasLimit;
-                yield return EventToSequencedTransaction(e, index, eon);
+                yield return EventToSequencedTransaction(e, index++, eon);
             }
         }
     }
@@ -270,7 +261,7 @@ public class ShutterTxLoader(
         _logger.Debug($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }
 
-    internal struct SequencedTransaction
+    private struct SequencedTransaction
     {
         public int Index;
         public ulong Eon;
@@ -279,5 +270,4 @@ public class ShutterTxLoader(
         public G1 Identity;
         public byte[] IdentityPreimage;
     }
-
 }

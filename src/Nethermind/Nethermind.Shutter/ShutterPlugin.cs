@@ -15,6 +15,8 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Core.Crypto;
+using Nethermind.Blockchain.Find;
 
 namespace Nethermind.Shutter;
 
@@ -127,8 +129,12 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             _keysValidatedHandler = async (_, keys) =>
             {
                 // wait for latest block before loading transactions
-                Block? head = await blockHandler.WaitForBlockInSlot(keys.Slot - 1, _slotLength, _blockWaitCutoff, new());
-                _txSource.LoadTransactions(head is null ? _api.BlockTree.Head : head, keys);
+                Block? head = (await blockHandler.WaitForBlockInSlot(keys.Slot - 1, _slotLength, _blockWaitCutoff, new())) ?? _api.BlockTree.Head;
+                BlockHeader? header = head?.Header;
+                BlockHeader parentHeader = header is not null
+                    ? _api.BlockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
+                    : _api.BlockTree.FindLatestHeader()!;
+                _txSource.LoadTransactions(head, parentHeader, keys);
             };
             _msgHandler.KeysValidated += _keysValidatedHandler;
 

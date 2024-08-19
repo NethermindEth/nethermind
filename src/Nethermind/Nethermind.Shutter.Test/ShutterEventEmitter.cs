@@ -14,10 +14,12 @@ using Nethermind.Abi;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 using EncryptedMessage = Nethermind.Shutter.ShutterCrypto.EncryptedMessage;
+using System.Linq;
 
 public class ShutterEventEmitter
 {
     private readonly UInt256 _defaultGasLimit = new(21000);
+    private readonly Transaction _defaultTx;
     private readonly Random _rnd;
     private readonly ulong _chainId;
     private readonly IAbiEncoder _abiEncoder;
@@ -45,6 +47,7 @@ public class ShutterEventEmitter
         _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
         _transactionSubmittedAbi = transactionSubmittedAbi;
+        _defaultTx = Build.A.Transaction.WithChainId(_chainId).Signed().TestObject;
 
         NewEon(eon);
     }
@@ -58,19 +61,14 @@ public class ShutterEventEmitter
         public byte[] Transaction;
     }
 
-    public IEnumerable<Event> EmitEvent()
+    public IEnumerable<Event> EmitEvents()
     {
-        IEnumerable<UInt256> EmitGasLimits()
-        {
-            yield return _defaultGasLimit;
-        }
-
-        return EmitEvent(EmitGasLimits());
+        return EmitEvents(EmitDefaultGasLimits(), EmitDefaultTransactions());
     }
 
-    public IEnumerable<Event> EmitEvent(IEnumerable<UInt256> gasLimits)
+    public IEnumerable<Event> EmitEvents(IEnumerable<UInt256> gasLimits, IEnumerable<Transaction> transactions)
     {
-        foreach(UInt256 gasLimit in gasLimits)
+        foreach((UInt256 gasLimit, Transaction tx) in gasLimits.Zip(transactions))
         {
             byte[] identityPreimage = new byte[52];
             byte[] sigma = new byte[32];
@@ -80,7 +78,7 @@ public class ShutterEventEmitter
             G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
             G1 key = identity.dup().mult(_sk.ToLittleEndian());
 
-            byte[] encodedTx = BuildEncodedTransaction();
+            byte[] encodedTx = Rlp.Encode<Transaction>(tx).Bytes;
             EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(encodedTx, identity, _eonKey, new(sigma));
             byte[] encryptedTx = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage);
 
@@ -92,6 +90,22 @@ public class ShutterEventEmitter
                 LogEntry = EncodeShutterLog(encryptedTx, identityPreimage, _txIndex++, gasLimit),
                 Transaction = encodedTx
             };
+        }
+    }
+
+    public IEnumerable<UInt256> EmitDefaultGasLimits()
+    {
+        while (true)
+        {
+            yield return _defaultGasLimit;
+        }
+    }
+
+    public IEnumerable<Transaction> EmitDefaultTransactions()
+    {
+        while (true)
+        {
+            yield return _defaultTx;
         }
     }
 
@@ -107,9 +121,6 @@ public class ShutterEventEmitter
         _sk = new(sk);
         _eonKey = G2.generator().mult(_sk.ToLittleEndian());
     }
-
-    private byte[] BuildEncodedTransaction()
-        => Rlp.Encode<Transaction>(Build.A.Transaction.WithChainId(_chainId).Signed().TestObject).Bytes;
 
     private LogEntry EncodeShutterLog(
         ReadOnlySpan<byte> encryptedTransaction,
