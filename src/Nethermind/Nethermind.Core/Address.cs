@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core.Crypto;
@@ -148,7 +149,12 @@ namespace Nethermind.Core
                 return true;
             }
 
-            return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            ref byte bytes0 = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            ref byte bytes1 = ref MemoryMarshal.GetArrayDataReference(other.Bytes);
+            // 20 bytes which is uint+Vector128
+            return Unsafe.As<byte, uint>(ref bytes0) == Unsafe.As<byte, uint>(ref bytes1) &&
+                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) ==
+                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint)));
         }
 
         public static Address FromNumber(in UInt256 number)

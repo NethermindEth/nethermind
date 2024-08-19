@@ -47,7 +47,7 @@ namespace Nethermind.Core
         public bool Equals(StorageCell other) =>
             _isHash == other._isHash &&
             Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) == Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)) &&
-            Address.Equals(other.Address) && Index.Equals(other.Index);
+            Address.Equals(other.Address);
 
         public override bool Equals(object? obj)
         {
