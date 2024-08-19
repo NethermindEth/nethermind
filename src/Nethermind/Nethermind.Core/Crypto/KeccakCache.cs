@@ -112,6 +112,7 @@ public static unsafe class KeccakCache
             // Release the lock, input.Length is always positive so setting it is enough.
             Volatile.Write(ref e.LockAndLength, input.Length);
         }
+        return;
 
     Uncommon:
         if (input.Length == 0)
