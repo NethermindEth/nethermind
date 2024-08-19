@@ -67,15 +67,14 @@ public static unsafe class KeccakCache
         Debug.Assert(index < Count);
 
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
-
+        // Half the hash his encoded in the bucket so we only need half of it and can use other half for length.
         uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 
         // Check combined. It's aligned properly and can be read in one go.
-        uint existing = Volatile.Read(ref e.Combined);
 
         // Lock by negating length if the length is the same size as input.
-        if (existing == combined &&
-            Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
+        if (Volatile.Read(ref e.Combined) == combined &&
+            Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, combined) == combined)
         {
             // Combined is equal to existing, meaning that it was not locked, and both the length and the hash were equal.
 
@@ -104,10 +103,10 @@ public static unsafe class KeccakCache
                 // Hashing Address
                 ref byte bytes0 = ref copy.Start;
                 ref byte bytes1 = ref MemoryMarshal.GetReference(input);
-                // 20 bytes which is Vector128+uint
-                if (Unsafe.As<byte, Vector128<byte>>(ref bytes0) == Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
-                    Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
-                    Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count)))
+                // 20 bytes which is uint+Vector128
+                if (Unsafe.As<byte, uint>(ref bytes0) == Unsafe.As<byte, uint>(ref bytes1) &&
+                    Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) ==
+                        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint))))
                 {
                     // Current keccak256 is correct hash.
                     return;
@@ -124,10 +123,9 @@ public static unsafe class KeccakCache
         keccak256 = ValueKeccak.Compute(input);
 
         // Try lock and memoize
-        existing = Volatile.Read(ref e.Combined);
+        uint existing = Volatile.Read(ref e.Combined);
 
-        // Negative value means that the entry is locked, set to int.MinValue to avoid confusion empty entry,
-        // since we are overwriting it anyway e.g. -0 would not be a reliable locked state.
+        // Set to locked to combined locked state, if not already locked.
         if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
         {
             e.Keccak256 = keccak256;
@@ -144,10 +142,10 @@ public static unsafe class KeccakCache
                 // Address
                 ref byte bytes0 = ref e.Value.Start;
                 ref byte bytes1 = ref MemoryMarshal.GetReference(input);
-                // 20 bytes which is Vector128+uint
-                Unsafe.As<byte, Vector128<byte>>(ref bytes0) = Unsafe.As<byte, Vector128<byte>>(ref bytes1);
-                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) =
-                    Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
+                // 20 bytes which is uint+Vector128
+                Unsafe.As<byte, uint>(ref bytes0) = Unsafe.As<byte, uint>(ref bytes1);
+                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) =
+                    Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint)));
             }
             else
             {
@@ -161,7 +159,7 @@ public static unsafe class KeccakCache
 
         return;
 
-        Uncommon:
+    Uncommon:
         if (input.Length == 0)
         {
             keccak256 = ValueKeccak.OfAnEmptyString;
@@ -188,7 +186,7 @@ public static unsafe class KeccakCache
         /// </summary>
         public const int Size = 128;
 
-        private const int PayloadStart = 8;
+        private const int PayloadStart = sizeof(uint);
         private const int ValueStart = Size - ValueHash256.MemorySize;
         public const int MaxPayloadLength = ValueStart - PayloadStart;
 
