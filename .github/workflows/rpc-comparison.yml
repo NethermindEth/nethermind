@@ -8,17 +8,6 @@ on:
         description: "A comma-separated list of ips allowed to connect to the node"
         default: ''
         required: false
-      network:
-        description: "Network on which test should be started"
-        default: "mainnet"
-        type: choice
-        options:
-          - mainnet
-          - gnosis
-          - sepolia
-          - goerli
-          - chiado
-          - holesky
       branch_to_compare:
         type: string
         description: "A branch to compare with. Example: \"release/1.25.1\""
@@ -31,7 +20,7 @@ on:
         required: false
       is_performance_check:
         type: boolean
-        description: "When checked, attempts to check RPC performance (because of Linode limitations it would work on single VM). When not checked equality mode will be started."
+        description: "Checked = Load Testing on identical spec. Not checked = RPC Equality Testing (no identical spec)."
         default: false
         required: false
       convert_to_paprika:
@@ -102,7 +91,7 @@ jobs:
       additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
-      network: "${{ inputs.network || 'mainnet' }}"
+      network: "${{ 'mainnet' }}"
       convert_to_paprika: "${{ inputs.convert_to_paprika }}"
   
   create_compare_node:
@@ -125,7 +114,7 @@ jobs:
       additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
-      network: "${{ inputs.network || 'mainnet' }}"
+      network: "${{ 'mainnet' }}"
   
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
@@ -411,8 +400,8 @@ jobs:
             
             for TEST in "${tests[@]}"; do
                 TEST_perf_result="${TEST}_perf_result"
-                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 10 50 100 500 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
-                flood "$TEST" ${compare_to_other_branch_params} --rates 10 50 100 500 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
+                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 10 10 10 100 100 100 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
+                flood "$TEST" ${compare_to_other_branch_params} --rates 10 10 10 100 100 100 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
             done
           else
             echo "flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt"
