@@ -34,6 +34,7 @@ public class WithdrawalContract : CallableContract, IWithdrawalContract
         ArgumentNullException.ThrowIfNull(amounts);
         ArgumentNullException.ThrowIfNull(addresses);
 
-        Call(blockHeader, (string)(string)"executeSystemWithdrawals", Address.SystemUser, GasLimit, worldState, failedMaxCount, amounts, addresses);
+        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, GasLimit, worldState, failedMaxCount, amounts,
+            addresses);
     }
 }

@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>Bytes with result.</returns>
         /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName,
-            Transaction transaction, IWorldState? worldState, bool callAndRestore = false)
+            Transaction transaction, IWorldState worldState, bool callAndRestore = false)
         {
             bool failure;
 
@@ -181,11 +181,11 @@ namespace Nethermind.Blockchain.Contracts
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(worldState!, transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.CallAndRestore(worldState, transaction, new BlockExecutionContext(header), tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(worldState!, transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.Execute(worldState, transaction, new BlockExecutionContext(header), tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;
