@@ -78,7 +78,7 @@ public static unsafe class KeccakCache
                 }
 
                 // Take local copy of the payload and hash, to release the lock as soon as possible and make a key comparison without holding it.
-                // Local copy of 64+32 payload bytes.
+                // Local copy of 8+16+64 payload bytes.
                 Payload copy = e.Value;
                 // Copy Keccak256 directly to the local return variable, since we will overwrite if no match anyway.
                 keccak256 = e.Keccak256;
@@ -159,6 +159,7 @@ public static unsafe class KeccakCache
         /// <summary>
         /// The actual value
         /// </summary>
+        /// Alignments 8+16+64
         [FieldOffset(PayloadStart)]
         public Payload Value;
 
