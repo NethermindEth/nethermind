@@ -46,19 +46,12 @@ public static unsafe class KeccakCache
     }
 
     [SkipLocalsInit]
-    public static ValueHash256 ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
+    public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
-        // Special cases first
-        if (input.Length == 0)
+        // Special cases jump forward as unpredicted
+        if (input.Length == 0 || input.Length > Entry.MaxPayloadLength)
         {
-            keccak256 = ValueKeccak.OfAnEmptyString;
-            goto Return;
-        }
-
-        if (input.Length > Entry.MaxPayloadLength)
-        {
-            keccak256 = ValueKeccak.Compute(input);
-            goto Return;
+            goto Uncommon;
         }
 
         int hashCode = input.FastHash();
@@ -96,7 +89,8 @@ public static unsafe class KeccakCache
                 // Lengths are equal, the input length can be used without any additional operation.
                 if (MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
                 {
-                    goto Return;
+                    // Current keccak256 is correct hash.
+                    return;
                 }
             }
         }
@@ -119,8 +113,15 @@ public static unsafe class KeccakCache
             Volatile.Write(ref e.LockAndLength, input.Length);
         }
 
-    Return:
-        return keccak256;
+    Uncommon:
+        if (input.Length == 0)
+        {
+            keccak256 = ValueKeccak.OfAnEmptyString;
+        }
+        else
+        {
+            keccak256 = ValueKeccak.Compute(input);
+        }
     }
 
     /// <summary>
