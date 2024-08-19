@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core.Extensions;
 
@@ -87,8 +88,33 @@ public static unsafe class KeccakCache
                 Volatile.Write(ref e.LockAndLength, lockAndLength);
 
                 // Lengths are equal, the input length can be used without any additional operation.
-                if (MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
+                if (input.Length == 32)
                 {
+                    // Hashing UInt256 or Hash256 which is Vector256
+                    if (Unsafe.As<byte, Vector256<byte>>(ref copy.Start) ==
+                        Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input)))
+                    {
+                        // Current keccak256 is correct hash.
+                        return;
+                    }
+                }
+                else if (input.Length == 20)
+                {
+                    // Hashing Address
+                    ref byte bytes0 = ref copy.Start;
+                    ref byte bytes1 = ref MemoryMarshal.GetReference(input);
+                    // 20 bytes which is uint+Vector128
+                    if (Unsafe.As<byte, uint>(ref bytes0) == Unsafe.As<byte, uint>(ref bytes1) &&
+                        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) ==
+                        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint))))
+                    {
+                        // Current keccak256 is correct hash.
+                        return;
+                    }
+                }
+                else if (MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
+                {
+                    // Non 32 byte or 20 byte input; call SequenceEqual.
                     // Current keccak256 is correct hash.
                     return;
                 }
@@ -107,7 +133,28 @@ public static unsafe class KeccakCache
             e.HashCode = hashCode;
             e.Keccak256 = keccak256;
 
-            input.CopyTo(MemoryMarshal.CreateSpan(ref e.Value.Start, input.Length));
+            // Fast copy for 2 common sizes
+            if (input.Length == 32)
+            {
+                // UInt256 or Hash256 which is Vector256
+                Unsafe.As<byte, Vector256<byte>>(ref e.Value.Start) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
+            }
+            else if (input.Length == 20)
+            {
+                // Address
+                ref byte bytes0 = ref e.Value.Start;
+                ref byte bytes1 = ref MemoryMarshal.GetReference(input);
+                // 20 bytes which is uint+Vector128
+                Unsafe.As<byte, uint>(ref bytes0) = Unsafe.As<byte, uint>(ref bytes1);
+                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) =
+                    Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint)));
+            }
+            else
+            {
+                // Non 32 byte or 20 byte input; call CopyTo
+                input.CopyTo(MemoryMarshal.CreateSpan(ref e.Value.Start, input.Length));
+            }
 
             // Release the lock, input.Length is always positive so setting it is enough.
             Volatile.Write(ref e.LockAndLength, input.Length);
