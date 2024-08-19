@@ -67,12 +67,12 @@ public static unsafe class KeccakCache
         Debug.Assert(index < Count);
 
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
+
         // Half the hash his encoded in the bucket so we only need half of it and can use other half for length.
+        // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
         uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 
-        // Check combined. It's aligned properly and can be read in one go.
-
-        // Lock by negating length if the length is the same size as input.
+        // Compare with volatile read and then try to lock with CAS
         if (Volatile.Read(ref e.Combined) == combined &&
             Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, combined) == combined)
         {
@@ -84,7 +84,7 @@ public static unsafe class KeccakCache
             // Copy Keccak256 directly to the local return variable, since we will overwrite if no match anyway.
             keccak256 = e.Keccak256;
 
-            // Release the lock, by setting back to unnegated length.
+            // Release the lock, by setting back to the combined value.
             Volatile.Write(ref e.Combined, combined);
 
             // Lengths are equal, the input length can be used without any additional operation.
@@ -121,10 +121,9 @@ public static unsafe class KeccakCache
 
         keccak256 = ValueKeccak.Compute(input);
 
-        // Try lock and memoize
         uint existing = Volatile.Read(ref e.Combined);
 
-        // Set to locked to combined locked state, if not already locked.
+        // Try to set to the combined locked state, if not already locked.
         if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
         {
             e.Keccak256 = keccak256;
@@ -151,7 +150,7 @@ public static unsafe class KeccakCache
                 input.CopyTo(MemoryMarshal.CreateSpan(ref e.Value.Start, input.Length));
             }
 
-            // Release the lock, input.Length is always positive so setting it is enough.
+            // Release the lock, by setting back to the combined value.
             Volatile.Write(ref e.Combined, combined);
         }
 
