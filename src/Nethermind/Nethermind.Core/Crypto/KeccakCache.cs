@@ -25,8 +25,11 @@ public static unsafe class KeccakCache
     /// <summary>
     /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
-    private const uint BucketMask = 0x0000_FFFF;
-    public const uint Count = BucketMask + 1;
+    public const int Count = BucketMask + 1;
+
+    private const int BucketMask = 0x0000_FFFF;
+    private const uint HashMask = 0xFFFF_0000;
+    private const uint LockMarker = 0x0000_8000;
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
@@ -63,16 +66,19 @@ public static unsafe class KeccakCache
 
         Debug.Assert(index < Count);
 
-        // Have to cast hashCode via uint to avoid sign extension into the long.
-        long combined = (long)input.Length << 32 | (long)(uint)hashCode;
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
 
-        // Read aligned, volatile, won't be torn, check with computed
-        if (Volatile.Read(ref e.LockAndLengthAndHash) == combined &&
-            // Combined is equal to existing, meaning that it was not locked, and both the length and the hash were equal.
-            // Lock by negating combined, since the length is always positive, negative always indicates locked.
-            Interlocked.CompareExchange(ref e.LockAndLengthAndHash, -combined, combined) == combined)
+        uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
+
+        // Check combined. It's aligned properly and can be read in one go.
+        uint existing = Volatile.Read(ref e.Combined);
+
+        // Lock by negating length if the length is the same size as input.
+        if (existing == combined &&
+            Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
         {
+            // Combined is equal to existing, meaning that it was not locked, and both the length and the hash were equal.
+
             // Take local copy of the payload and hash, to release the lock as soon as possible and make a key comparison without holding it.
             // Local copy of 8+16+64 payload bytes.
             Payload copy = e.Value;
@@ -80,7 +86,7 @@ public static unsafe class KeccakCache
             keccak256 = e.Keccak256;
 
             // Release the lock, by setting back to unnegated length.
-            Volatile.Write(ref e.LockAndLengthAndHash, combined);
+            Volatile.Write(ref e.Combined, combined);
 
             // Lengths are equal, the input length can be used without any additional operation.
             if (input.Length == InputLengthOfKeccak)
@@ -101,7 +107,7 @@ public static unsafe class KeccakCache
                 // 20 bytes which is Vector128+uint
                 if (Unsafe.As<byte, Vector128<byte>>(ref bytes0) == Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
                     Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
-                        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count)))
+                    Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count)))
                 {
                     // Current keccak256 is correct hash.
                     return;
@@ -118,10 +124,11 @@ public static unsafe class KeccakCache
         keccak256 = ValueKeccak.Compute(input);
 
         // Try lock and memoize
-        long current = Volatile.Read(ref e.LockAndLengthAndHash);
-        // Negative value means that the entry is locked, set to long.MinValue to avoid confusion empty entry,
+        existing = Volatile.Read(ref e.Combined);
+
+        // Negative value means that the entry is locked, set to int.MinValue to avoid confusion empty entry,
         // since we are overwriting it anyway e.g. -0 would not be a reliable locked state.
-        if (current >= 0 && Interlocked.CompareExchange(ref e.LockAndLengthAndHash, -combined, current) == current)
+        if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
         {
             e.Keccak256 = keccak256;
 
@@ -149,11 +156,12 @@ public static unsafe class KeccakCache
             }
 
             // Release the lock, input.Length is always positive so setting it is enough.
-            Volatile.Write(ref e.LockAndLengthAndHash, combined);
+            Volatile.Write(ref e.Combined, combined);
         }
+
         return;
 
-    Uncommon:
+        Uncommon:
         if (input.Length == 0)
         {
             keccak256 = ValueKeccak.OfAnEmptyString;
@@ -180,14 +188,14 @@ public static unsafe class KeccakCache
         /// </summary>
         public const int Size = 128;
 
-        private const int PayloadStart = sizeof(ulong);
+        private const int PayloadStart = 8;
         private const int ValueStart = Size - ValueHash256.MemorySize;
         public const int MaxPayloadLength = ValueStart - PayloadStart;
 
         /// <summary>
-        /// Length is always positive so we can use a negative length to indicate that it is locked.
+        /// Represents a combined value for: hash, length and a potential <see cref="KeccakCache.LockMarker"/>.
         /// </summary>
-        [FieldOffset(0)] public long LockAndLengthAndHash;
+        [FieldOffset(0)] public uint Combined;
 
         /// <summary>
         /// The actual value
