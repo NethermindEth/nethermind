@@ -26,7 +26,10 @@ public static unsafe class KeccakCache
     /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
     /// </summary>
     public const int Count = BucketMask + 1;
+
     private const int BucketMask = 0x0000_FFFF;
+    private const uint HashMask = 0xFFFF_0000;
+    private const uint LockMarker = 0x0000_8000;
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
@@ -65,75 +68,68 @@ public static unsafe class KeccakCache
 
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
 
-        // Read aligned, volatile, won't be torn, check with computed
-        if (Volatile.Read(ref e.HashCode) == hashCode)
+        uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
+
+        // Check combined. It's aligned properly and can be read in one go.
+        uint existing = Volatile.Read(ref e.Combined);
+
+        // Lock by negating length if the length is the same size as input.
+        if (existing == combined &&
+            Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
         {
-            // There's a possibility of a hit, try lock.
-            int lockAndLength = Volatile.Read(ref e.LockAndLength);
-            // Lock by negating length if the length is the same size as input.
-            if (lockAndLength == input.Length && Interlocked.CompareExchange(ref e.LockAndLength, -lockAndLength, lockAndLength) == lockAndLength)
+            // Combined is equal to existing, meaning that it was not locked, and both the length and the hash were equal.
+
+            // Take local copy of the payload and hash, to release the lock as soon as possible and make a key comparison without holding it.
+            // Local copy of 8+16+64 payload bytes.
+            Payload copy = e.Value;
+            // Copy Keccak256 directly to the local return variable, since we will overwrite if no match anyway.
+            keccak256 = e.Keccak256;
+
+            // Release the lock, by setting back to unnegated length.
+            Volatile.Write(ref e.Combined, combined);
+
+            // Lengths are equal, the input length can be used without any additional operation.
+            if (input.Length == InputLengthOfKeccak)
             {
-                if (e.HashCode != hashCode)
+                // Hashing UInt256 or Hash256 which is Vector256
+                if (Unsafe.As<byte, Vector256<byte>>(ref copy.Start) ==
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input)))
                 {
-                    // The value has been changed between reading and taking a lock.
-                    // Release the lock and compute.
-                    Volatile.Write(ref e.LockAndLength, lockAndLength);
-                    goto Compute;
-                }
-
-                // Take local copy of the payload and hash, to release the lock as soon as possible and make a key comparison without holding it.
-                // Local copy of 8+16+64 payload bytes.
-                Payload copy = e.Value;
-                // Copy Keccak256 directly to the local return variable, since we will overwrite if no match anyway.
-                keccak256 = e.Keccak256;
-
-                // Release the lock, by setting back to unnegated length.
-                Volatile.Write(ref e.LockAndLength, lockAndLength);
-
-                // Lengths are equal, the input length can be used without any additional operation.
-                if (input.Length == InputLengthOfKeccak)
-                {
-                    // Hashing UInt256 or Hash256 which is Vector256
-                    if (Unsafe.As<byte, Vector256<byte>>(ref copy.Start) ==
-                        Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input)))
-                    {
-                        // Current keccak256 is correct hash.
-                        return;
-                    }
-                }
-                else if (input.Length == InputLengthOfAddress)
-                {
-                    // Hashing Address
-                    ref byte bytes0 = ref copy.Start;
-                    ref byte bytes1 = ref MemoryMarshal.GetReference(input);
-                    // 20 bytes which is Vector128+uint
-                    if (Unsafe.As<byte, Vector128<byte>>(ref bytes0) == Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
-                        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
-                            Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count)))
-                    {
-                        // Current keccak256 is correct hash.
-                        return;
-                    }
-                }
-                else if (MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
-                {
-                    // Non 32 byte or 20 byte input; call SequenceEqual.
                     // Current keccak256 is correct hash.
                     return;
                 }
             }
+            else if (input.Length == InputLengthOfAddress)
+            {
+                // Hashing Address
+                ref byte bytes0 = ref copy.Start;
+                ref byte bytes1 = ref MemoryMarshal.GetReference(input);
+                // 20 bytes which is Vector128+uint
+                if (Unsafe.As<byte, Vector128<byte>>(ref bytes0) == Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
+                    Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
+                    Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count)))
+                {
+                    // Current keccak256 is correct hash.
+                    return;
+                }
+            }
+            else if (MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
+            {
+                // Non 32 byte or 20 byte input; call SequenceEqual.
+                // Current keccak256 is correct hash.
+                return;
+            }
         }
 
-    Compute:
         keccak256 = ValueKeccak.Compute(input);
 
         // Try lock and memoize
-        int length = Volatile.Read(ref e.LockAndLength);
+        existing = Volatile.Read(ref e.Combined);
+
         // Negative value means that the entry is locked, set to int.MinValue to avoid confusion empty entry,
         // since we are overwriting it anyway e.g. -0 would not be a reliable locked state.
-        if (length >= 0 && Interlocked.CompareExchange(ref e.LockAndLength, int.MinValue, length) == length)
+        if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, combined | LockMarker, existing) == existing)
         {
-            e.HashCode = hashCode;
             e.Keccak256 = keccak256;
 
             // Fast copy for 2 common sizes
@@ -160,11 +156,12 @@ public static unsafe class KeccakCache
             }
 
             // Release the lock, input.Length is always positive so setting it is enough.
-            Volatile.Write(ref e.LockAndLength, input.Length);
+            Volatile.Write(ref e.Combined, combined);
         }
+
         return;
 
-    Uncommon:
+        Uncommon:
         if (input.Length == 0)
         {
             keccak256 = ValueKeccak.OfAnEmptyString;
@@ -196,29 +193,20 @@ public static unsafe class KeccakCache
         public const int MaxPayloadLength = ValueStart - PayloadStart;
 
         /// <summary>
-        /// Length is always positive so we can use a negative length to indicate that it is locked.
+        /// Represents a combined value for: hash, length and a potential <see cref="KeccakCache.LockMarker"/>.
         /// </summary>
-        [FieldOffset(0)]
-        public int LockAndLength;
-
-        /// <summary>
-        /// The fast Crc32c of the Value
-        /// </summary>
-        [FieldOffset(4)]
-        public int HashCode;
+        [FieldOffset(0)] public uint Combined;
 
         /// <summary>
         /// The actual value
         /// </summary>
         /// Alignments 8+16+64
-        [FieldOffset(PayloadStart)]
-        public Payload Value;
+        [FieldOffset(PayloadStart)] public Payload Value;
 
         /// <summary>
         /// The Keccak of the Value
         /// </summary>
-        [FieldOffset(ValueStart)]
-        public ValueHash256 Keccak256;
+        [FieldOffset(ValueStart)] public ValueHash256 Keccak256;
     }
 
     [InlineArray(Entry.MaxPayloadLength)]
