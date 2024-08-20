@@ -592,25 +592,25 @@ public static class Program
         // Initialize with the default options
         var options = new HashSet<string>
         {
-            "-?",
-            "-h",
-            "--help",
-            "-v",
-            "--version",
-            "-dd",
-            "--datadir",
-            "-c",
-            "--config",
-            "-d",
-            "--baseDbPath",
-            "-l",
-            "--log",
-            "-cd",
-            "--configsDirectory",
-            "-lcs",
-            "--loggerConfigSource",
-            "-pd",
-            "--pluginsDirectory",
+            "?",
+            "h",
+            "help",
+            "v",
+            "version",
+            "dd",
+            "datadir",
+            "c",
+            "config",
+            "d",
+            "baseDbPath",
+            "l",
+            "log",
+            "cd",
+            "configsDirectory",
+            "lcs",
+            "loggerConfigSource",
+            "pd",
+            "pluginsDirectory",
         };
 
         // Add all the options from the configuration files
@@ -639,7 +639,7 @@ public static class Program
                 ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 if (!(configItemAttribute?.DisabledForCli ?? false))
                 {
-                    options.Add($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}");
+                    options.Add($"{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}");
                 }
             }
         }
@@ -651,13 +651,14 @@ public static class Program
     {
         // Get all valid options from the configuration files
         var validParameters = GenerateValidConfigOptionsHash();
+        var argumentsNames = GetArgumentNames(args).Select(a => a.ToString()).ToArray();
 
-        foreach (var arg in args)
+        foreach (var argumentName in argumentsNames)
         {
-            // Check if the argument is a parameter (starts with --)
-            if (arg.StartsWith("--") && !validParameters.Contains(arg))
+            // Check if the argument is a valid parameter/option/argument
+            if (!validParameters.Contains(argumentName))
             {
-                string message = $"Unrecognized parameter: {arg}.\nRun --help for a list of available options and commands.";
+                string message = $"Unrecognized argument: {argumentName}.\nRun --help for a list of available options and commands.";
                 throw new ArgumentException(message);
             }
         }
