@@ -552,10 +552,14 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
         List<BlobAndProofV1?> blobsAndProofs = new(numberOfBlobs);
-        for (int i = 0; i < numberOfBlobs; i++)
+        if (blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
         {
-            blobsAndProofs.Add(new BlobAndProofV1(blobTx, i));
+            for (int i = 0; i < numberOfBlobs; i++)
+            {
+                blobsAndProofs.Add(new BlobAndProofV1(wrapper.Blobs[i], wrapper.Proofs[i]));
+            }
         }
+
         GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
 
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
@@ -628,7 +632,9 @@ public partial class EngineModuleTests
         {
             bool addActualHash = i % 10 == 0;
 
-            blobsAndProofs.Add(addActualHash ? new BlobAndProofV1(blobTx, actualIndex) : null);
+            blobsAndProofs.Add(addActualHash && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.Proofs[actualIndex])
+                : null);
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
         GetBlobsV1Result expected = new(blobsAndProofs.ToArray());

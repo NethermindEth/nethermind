@@ -27,9 +27,10 @@ public class BlobCatcher(BlobTxDistinctSortedPool blobPool)
         {
             for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
             {
-                if (blobTx.BlobVersionedHashes[indexOfBlob] == requestedBlobVersionedHash)
+                if (blobTx.BlobVersionedHashes[indexOfBlob] == requestedBlobVersionedHash
+                    && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                 {
-                    return new BlobAndProofV1(blobTx, indexOfBlob);
+                    return new BlobAndProofV1(wrapper.Blobs[indexOfBlob], wrapper.Proofs[indexOfBlob]);
                 }
             }
         }
