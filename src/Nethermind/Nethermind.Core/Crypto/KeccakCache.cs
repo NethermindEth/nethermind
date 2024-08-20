@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -14,7 +15,7 @@ namespace Nethermind.Core.Crypto;
 /// <summary>
 /// This is a minimalistic one-way set associative cache for Keccak values.
 ///
-/// It allocates only 8MB of memory to store 64k of entries.
+/// It allocates only 12MB of memory to store 128k of entries.
 /// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
 /// Requires a single CAS to lock and <see cref="Volatile.Write(ref int,int)"/> to unlock.
 /// On a lock failure, it just moves on with execution.
@@ -27,8 +28,8 @@ public static unsafe class KeccakCache
     /// </summary>
     public const int Count = BucketMask + 1;
 
-    private const int BucketMask = 0x0000_FFFF;
-    private const uint HashMask = 0xFFFF_0000;
+    private const int BucketMask = 0x0001_FFFF;
+    private const uint HashMask = unchecked((uint)~BucketMask);
     private const uint LockMarker = 0x0000_8000;
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
@@ -41,7 +42,7 @@ public static unsafe class KeccakCache
         const UIntPtr size = Count * Entry.Size;
 
         // Aligned, so that no torn reads if fields of Entry are properly aligned.
-        Memory = (Entry*)NativeMemory.AlignedAlloc(size, Entry.Size);
+        Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
         NativeMemory.Clear(Memory, size);
     }
 
@@ -179,9 +180,10 @@ public static unsafe class KeccakCache
     private struct Entry
     {
         /// <summary>
-        /// Should work for both ARM and x64 and be aligned.
+        /// The size will make it 1.5 CPU cache entry or 0.75 which may result in some collisions.
+        /// Still, it's better to save these 32 bytes per entry and have a bigger cache.
         /// </summary>
-        public const int Size = 128;
+        public const int Size = 96;
 
         private const int PayloadStart = sizeof(uint);
         private const int ValueStart = Size - ValueHash256.MemorySize;
@@ -195,8 +197,8 @@ public static unsafe class KeccakCache
         /// <summary>
         /// The actual value
         /// </summary>
-        /// Alignments 4+8+16+64
         [FieldOffset(PayloadStart)] public Payload Value;
+
         /// <summary>
         /// The Keccak of the Value
         /// </summary>
