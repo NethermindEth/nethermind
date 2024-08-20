@@ -532,7 +532,7 @@ public partial class EngineModuleTests
         else
         {
             result.Result.Should().Be(Result.Success);
-            result.Data.BlobsAndProofs.Length.Should().Be(requestSize);
+            result.Data.BlobsAndProofs.ToArray().Length.Should().Be(requestSize);
         }
     }
 
@@ -561,11 +561,12 @@ public partial class EngineModuleTests
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         result.Data.Should().BeEquivalentTo(expected);
-        result.Data.BlobsAndProofs.Length.Should().Be(numberOfBlobs);
+        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
+        resultBlobsAndProofs.Length.Should().Be(numberOfBlobs);
         for (int i = 0; i < numberOfBlobs; i++)
         {
-            result.Data.BlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i]);
-            result.Data.BlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i]);
+            resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i]);
+            resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i]);
         }
     }
 
@@ -594,10 +595,11 @@ public partial class EngineModuleTests
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         result.Data.Should().BeEquivalentTo(expected);
-        result.Data.BlobsAndProofs.Length.Should().Be(numberOfRequestedBlobs);
+        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
+        resultBlobsAndProofs.Length.Should().Be(numberOfRequestedBlobs);
         for (int i = 0; i < numberOfRequestedBlobs; i++)
         {
-            result.Data.BlobsAndProofs[i]!.Should().BeNull();
+            resultBlobsAndProofs[i]!.Should().BeNull();
         }
     }
 
@@ -634,17 +636,18 @@ public partial class EngineModuleTests
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
 
         result.Data.Should().BeEquivalentTo(expected);
-        result.Data.BlobsAndProofs.Length.Should().Be(requestSize);
+        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
+        resultBlobsAndProofs.Length.Should().Be(requestSize);
         for (int i = 0; i < requestSize; i++)
         {
             if (i % 10 == 0)
             {
-                result.Data.BlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
-                result.Data.BlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
+                resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
+                resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
             }
             else
             {
-                result.Data.BlobsAndProofs[i].Should().BeNull();
+                result.Data.BlobsAndProofs.ToArray()[i].Should().BeNull();
             }
         }
     }

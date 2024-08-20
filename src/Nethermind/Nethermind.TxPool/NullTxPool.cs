@@ -53,7 +53,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => new();
+        public IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] blobVersionedHashes) => Array.Empty<BlobAndProofV1>();
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 

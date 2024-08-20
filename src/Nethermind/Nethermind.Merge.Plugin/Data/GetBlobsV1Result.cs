@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetBlobsV1Result(BlobAndProofV1?[] blobsAndProofs)
+public class GetBlobsV1Result(IEnumerable<BlobAndProofV1?> blobsAndProofs)
 {
-    public readonly BlobAndProofV1?[] BlobsAndProofs = blobsAndProofs;
+    public readonly IEnumerable<BlobAndProofV1?> BlobsAndProofs = blobsAndProofs;
 }

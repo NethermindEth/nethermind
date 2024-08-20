@@ -5,7 +5,7 @@
 using System;
 using Nethermind.Core;
 
-namespace Nethermind.Merge.Plugin.Data;
+namespace Nethermind.TxPool;
 
 public class BlobAndProofV1
 {

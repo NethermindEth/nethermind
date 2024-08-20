@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -16,7 +15,7 @@ namespace Nethermind.TxPool
         int GetPendingTransactionsCount();
         int GetPendingBlobTransactionsCount();
         Transaction[] GetPendingTransactions();
-        ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex();
+        IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] blobVersionedHashes);
 
         /// <summary>
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
