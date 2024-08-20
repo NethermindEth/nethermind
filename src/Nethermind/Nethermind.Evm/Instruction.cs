@@ -341,6 +341,16 @@ namespace Nethermind.Evm
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
 
+            Instruction.TLOAD => (1, 1, 0),
+            Instruction.TSTORE => (2, 0, 0),
+            Instruction.MCOPY => (3, 0, 0),
+            Instruction.CALLCODE => (6, 1, 0),
+            Instruction.SELFDESTRUCT => (1, 0, 0),
+            Instruction.JUMP => (1, 0, 0),
+            Instruction.JUMPI => (2, 0, 0),
+            Instruction.PC => (0, 1, 0),
+            Instruction.BLOBBASEFEE => (0, 1, 0),
+
             Instruction.EOFCREATE => (4, 1, 1),
             Instruction.RETURNCONTRACT => (2, 2, 1),
             Instruction.DATALOAD => (1, 1, 0),

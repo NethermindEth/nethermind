@@ -59,12 +59,7 @@ namespace Nethermind.State
             _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
             _preBlockCache = preBlockCache;
             _populatePreBlockCache = populatePreBlockCache;
-            _loadFromTree = storageCell =>
-            {
-                StorageTree tree = GetOrCreateStorage(storageCell.Address);
-                Db.Metrics.IncrementStorageTreeReads();
-                return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
-            };
+            _loadFromTree = LoadFromTreeStorage;
         }
 
         public Hash256 StateRoot { get; set; } = null!;
@@ -414,6 +409,13 @@ namespace Nethermind.State
                 value = _loadFromTree(storageCell);
             }
             return value;
+        }
+
+        private byte[] LoadFromTreeStorage(StorageCell storageCell)
+        {
+            StorageTree tree = GetOrCreateStorage(storageCell.Address);
+            Db.Metrics.IncrementStorageTreeReads();
+            return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
