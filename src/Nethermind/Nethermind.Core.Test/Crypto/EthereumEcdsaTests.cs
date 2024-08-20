@@ -21,7 +21,7 @@ namespace Nethermind.Core.Test.Crypto
         [TestCaseSource(nameof(TestCaseSources))]
         public void Signature_verify_test((string Name, Transaction Tx) testCase)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             ecdsa.Verify(testCase.Tx.SenderAddress!, testCase.Tx);
         }
 
@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(false)]
         public void Signature_test_sepolia(bool eip155)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, eip155);
@@ -42,7 +42,7 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(false)]
         public void Signature_test_sepolia_1559(bool eip155)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).TestObject;
             ecdsa.Sign(key, tx, eip155);
@@ -54,7 +54,7 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(false)]
         public void Signature_test_olympic(bool isEip155Enabled)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, isEip155Enabled);
@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test.Crypto
         public void Sign_generic_network()
         {
             // maybe make random id so it captures the idea that signature should work irrespective of chain
-            EthereumEcdsa ecdsa = new(BlockchainIds.GenericNonRealNetwork, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.GenericNonRealNetwork);
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, true);
