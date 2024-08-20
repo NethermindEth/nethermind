@@ -8,7 +8,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Merge.Plugin.Test;
 
 namespace Nethermind.Shutter.Test;
 

@@ -126,7 +126,7 @@ public class ShutterP2P(
         await (_cancellationTokenSource?.CancelAsync() ?? Task.CompletedTask);
     }
 
-    internal class MyProto : IDiscoveryProtocol
+    private class MyProto : IDiscoveryProtocol
     {
         private readonly TaskCompletionSource taskCompletionSource = new();
         public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
@@ -141,7 +141,7 @@ public class ShutterP2P(
         }
     }
 
-    internal void ProcessP2PMessage(byte[] msg)
+    private void ProcessP2PMessage(byte[] msg)
     {
         _logger.Trace("Processing Shutter P2P message.");
 

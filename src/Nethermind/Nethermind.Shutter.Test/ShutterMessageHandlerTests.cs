@@ -43,6 +43,19 @@ class ShutterMessageHandlerTests
         Assert.That(!eventFired);
     }
 
+    [Test]
+    public void Can_reject_outdated_decryption_keys()
+    {
+        ShutterMessageHandler msgHandler = CreateMessageHandler();
+        bool eventFired = false;
+        msgHandler.KeysValidated += (_, _) => eventFired = true;
+        msgHandler.OnDecryptionKeysReceived(new Dto.DecryptionKeys()
+        {
+
+        });
+        Assert.That(!eventFired);
+    }
+
     private ShutterMessageHandler CreateMessageHandler()
     {
         ShutterConfig cfg = new()

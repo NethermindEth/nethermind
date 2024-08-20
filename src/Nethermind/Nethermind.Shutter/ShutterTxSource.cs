@@ -26,7 +26,6 @@ public class ShutterTxSource(
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
-    private ulong _highestLoadedSlot = 0;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
     private readonly object _syncObject = new();
 
@@ -93,11 +92,6 @@ public class ShutterTxSource(
     {
         _txCache.Set(keys.Slot, txLoader.LoadTransactions(head, parentHeader, keys));
 
-        if (_highestLoadedSlot < keys.Slot)
-        {
-            _highestLoadedSlot = keys.Slot;
-        }
-
         lock (_syncObject)
         {
             if (_keyWaitTasks.Remove(keys.Slot, out TaskCompletionSource? tcs))
@@ -106,8 +100,6 @@ public class ShutterTxSource(
             }
         }
     }
-
-    public ulong HighestLoadedSlot() => _highestLoadedSlot;
 
     private void CancelWaitForTransactions(ulong slot)
     {
