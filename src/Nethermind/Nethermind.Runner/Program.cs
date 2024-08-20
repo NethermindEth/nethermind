@@ -114,7 +114,7 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-        ValidateCommandLineFlags(args);
+        ValidateArguments(args);
 
         string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
         if (!string.IsNullOrEmpty(duplicateArgumentsList))
@@ -654,7 +654,7 @@ public static class Program
         return options;
     }
 
-    private static void ValidateCommandLineFlags(string[] args)
+    private static void ValidateArguments(string[] args)
     {
         // Get all valid options from the configuration files
         var validParameters = generateValidConfigOptionsHash();
