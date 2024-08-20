@@ -114,15 +114,8 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-        ValidateArguments(args);
-
-        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
-        if (!string.IsNullOrEmpty(duplicateArgumentsList))
-        {
-            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
-            Environment.ExitCode = ExitCodes.DuplicatedArguments;
-            return;
-        }
+        bool validArgs = ValidateArguments(args);
+        if (!validArgs) return;
 
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
@@ -654,7 +647,7 @@ public static class Program
         return options;
     }
 
-    private static void ValidateArguments(string[] args)
+    private static bool ValidateArguments(string[] args)
     {
         // Get all valid options from the configuration files
         var validParameters = generateValidConfigOptionsHash();
@@ -668,5 +661,15 @@ public static class Program
                 throw new ArgumentException(message);
             }
         }
+
+        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
+        if (!string.IsNullOrEmpty(duplicateArgumentsList))
+        {
+            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
+            Environment.ExitCode = ExitCodes.DuplicatedArguments;
+            return false;
+        }
+
+        return true;
     }
 }
