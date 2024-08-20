@@ -12,6 +12,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Facade;
@@ -221,6 +222,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
                 traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
 
+            StatsAnalyzer stats = StatsAnalyzer.GetInstance(1000, $"{traceFilterForRpc.FromBlock.BlockNumber}-{traceFilterForRpc.ToBlock.BlockNumber}");
             foreach (SearchResult<Block> blockSearch in blocksSearch)
             {
                 if (blockSearch.IsError)
@@ -231,6 +233,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 Block block = blockSearch.Object;
                 if (!_stateReader.HasStateForBlock(block.Header))
                 {
+                    //write the stats to disk
+                    stats.WriteTopN();
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
                 }
 
@@ -240,6 +244,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             IEnumerable<ParityTxTraceFromStore> txTracesResult = txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
 
+            //write the stats to disk
+            stats.WriteTopN();
             TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
