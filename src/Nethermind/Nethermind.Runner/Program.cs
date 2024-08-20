@@ -590,14 +590,14 @@ public static class Program
     private static bool ValidateArguments(string[] args, CommandLineApplication app)
     {
         // Get all valid options from the configuration files
-        var validParameters = app.GetOptions().SelectMany(o => new[] { o.LongName, o.ShortName }).ToArray();
+        var validArguments = app.GetOptions().SelectMany(o => new[] { o.LongName, o.ShortName }).ToArray();
 
-        var argumentsNames = GetArgumentNames(args).Select(a => a.ToString()).ToArray();
+        var argumentsNamesProvided = GetArgumentNames(args).Select(a => a.ToString()).ToArray();
 
-        foreach (var argumentName in argumentsNames)
+        foreach (var argumentName in argumentsNamesProvided)
         {
-            // Check if the argument is a valid parameter/option/argument
-            if (!validParameters.Contains(argumentName))
+            // Check if the argument provided is a valid option/argument
+            if (!validArguments.Contains(argumentName))
             {
                 string message = $"Unrecognized argument: {argumentName}.\nRun --help for a list of available options and commands.";
                 throw new ArgumentException(message);
