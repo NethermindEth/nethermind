@@ -107,7 +107,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
         ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists)
     {
         KeyValuePair<AddressAsKey, Queue<Transaction>>[] pendingTxs =
-            _txPoolBridge.GetPendingTransactionsBySender()
+            _txPool.GetPendingTransactionsBySender()
                 .ToDictionary(tx => tx.Key, tx => new Queue<Transaction>(tx.Value.Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee))))
                 .ToArray();
 
