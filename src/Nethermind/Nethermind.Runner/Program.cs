@@ -251,29 +251,29 @@ public static class Program
         }
     }
 
-    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
+    private static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
+    private static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
     {
-        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
-        static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
+        bool lastWasArgument = false;
+        foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
         {
-            bool lastWasArgument = false;
-            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
+            if (!lastWasArgument)
             {
-                if (!lastWasArgument)
+                bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
+                if (isCurrentArgument)
                 {
-                    bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
-                    if (isCurrentArgument)
-                    {
-                        yield return potentialArgument;
-                    }
-                }
-                else
-                {
-                    lastWasArgument = false;
+                    yield return potentialArgument;
                 }
             }
+            else
+            {
+                lastWasArgument = false;
+            }
         }
+    }
 
+    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
+    {
         return GetArgumentNames(args).GroupBy(n => n, new MemoryContentsComparer<char>())
             .Where(g => g.Count() > 1)
             .Select(g => g.Key);
