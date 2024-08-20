@@ -114,9 +114,6 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-        bool validArgs = ValidateArguments(args);
-        if (!validArgs) return;
-
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
@@ -154,6 +151,9 @@ public static class Program
         TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
         BuildOptionsFromConfigFiles(app);
+
+        bool validArgs = ValidateArguments(args, app);
+        if (!validArgs) return;
 
         app.OnExecute(async () =>
         {
@@ -587,70 +587,11 @@ public static class Program
         return info.ToString();
     }
 
-    private static HashSet<string> GenerateValidConfigOptionsHash()
-    {
-        // Initialize with the default options
-        var options = new HashSet<string>
-        {
-            "?",
-            "h",
-            "help",
-            "v",
-            "version",
-            "dd",
-            "datadir",
-            "c",
-            "config",
-            "d",
-            "baseDbPath",
-            "l",
-            "log",
-            "cd",
-            "configsDirectory",
-            "lcs",
-            "loggerConfigSource",
-            "pd",
-            "pluginsDirectory",
-        };
-
-        // Add all the options from the configuration files
-        Type configurationType = typeof(IConfig);
-        IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindBasedTypes(configurationType)
-            .Where(ct => ct.IsInterface);
-
-        foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
-        {
-            if (configType is null)
-            {
-                continue;
-            }
-
-            ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
-
-            if (typeLevel is not null && (typeLevel?.DisabledForCli ?? true))
-            {
-                continue;
-            }
-
-            foreach (PropertyInfo propertyInfo in configType
-                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                            .OrderBy(p => p.Name))
-            {
-                ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                if (!(configItemAttribute?.DisabledForCli ?? false))
-                {
-                    options.Add($"{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}");
-                }
-            }
-        }
-
-        return options;
-    }
-
-    private static bool ValidateArguments(string[] args)
+    private static bool ValidateArguments(string[] args, CommandLineApplication app)
     {
         // Get all valid options from the configuration files
-        var validParameters = GenerateValidConfigOptionsHash();
+        var validParameters = app.GetOptions().SelectMany(o => new[] { o.LongName, o.ShortName }).ToArray();
+
         var argumentsNames = GetArgumentNames(args).Select(a => a.ToString()).ToArray();
 
         foreach (var argumentName in argumentsNames)
