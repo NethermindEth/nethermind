@@ -587,7 +587,7 @@ public static class Program
         return info.ToString();
     }
 
-    private static HashSet<string> generateValidConfigOptionsHash()
+    private static HashSet<string> GenerateValidConfigOptionsHash()
     {
         // Initialize with the default options
         var options = new HashSet<string>
@@ -650,7 +650,7 @@ public static class Program
     private static bool ValidateArguments(string[] args)
     {
         // Get all valid options from the configuration files
-        var validParameters = generateValidConfigOptionsHash();
+        var validParameters = GenerateValidConfigOptionsHash();
 
         foreach (var arg in args)
         {
