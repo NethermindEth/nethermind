@@ -159,7 +159,7 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, null, LimboLogs.Instance);
+        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);

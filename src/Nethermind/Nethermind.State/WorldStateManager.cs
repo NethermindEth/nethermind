@@ -13,9 +13,9 @@ public class WorldStateManager(
     IWorldState worldState,
     ITrieStore trieStore,
     IDbProvider dbProvider,
-    PreBlockCaches? preBlockCaches,
-    ILogManager logManager)
-    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), preBlockCaches, logManager)
+    ILogManager logManager,
+    PreBlockCaches? preBlockCaches = null)
+    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager, preBlockCaches)
 {
     public override IWorldState GlobalWorldState => worldState;
 

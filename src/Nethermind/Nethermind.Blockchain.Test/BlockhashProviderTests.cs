@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Test
             var worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
             worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
             worldState.Commit(Frontier.Instance);
-            return new WorldStateManager(worldState, trieStore, dbProvider, null, LimboLogs.Instance);
+            return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
         }
 
         private static BlockhashProvider CreateBlockHashProvider(IBlockFinder tree, IReleaseSpec spec)

@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.Test
             stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
             var worldStateManager =
-                new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
+                new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
 
             InMemoryReceiptStorage receiptStorage = new();
 
@@ -315,7 +315,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
             WorldState devState = new(trieStore, codeDb, logManager);
-            var devWorldStateManager = new WorldStateManager(devState, trieStore, dbProvider, null, LimboLogs.Instance);
+            var devWorldStateManager = new WorldStateManager(devState, trieStore, dbProvider, LimboLogs.Instance);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devEvm, codeInfoRepository, logManager);
 

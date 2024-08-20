@@ -22,12 +22,10 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public PreBlockCaches? Caches { get; }
 
-    public ReadOnlyWorldStateManager(
-        IDbProvider dbProvider,
+    public ReadOnlyWorldStateManager(IDbProvider dbProvider,
         IReadOnlyTrieStore readOnlyTrieStore,
-        PreBlockCaches? preBlockCaches,
-        ILogManager logManager
-    )
+        ILogManager logManager,
+        PreBlockCaches? preBlockCaches = null)
     {
         _readOnlyTrieStore = readOnlyTrieStore;
         _logManager = logManager;

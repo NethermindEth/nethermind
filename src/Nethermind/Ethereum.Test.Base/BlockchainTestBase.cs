@@ -136,7 +136,7 @@ namespace Ethereum.Test.Base
 
             TrieStore trieStore = new(stateDb, _logManager);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
-            var worldStateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, null, _logManager);
+            var worldStateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, _logManager);
             IBlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(specProvider)
                 .WithoutSettingHead

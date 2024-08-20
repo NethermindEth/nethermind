@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
             var worldStateManager =
-                new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
+                new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, worldStateManager, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();

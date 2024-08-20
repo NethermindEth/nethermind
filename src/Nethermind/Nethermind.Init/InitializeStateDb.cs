@@ -165,8 +165,7 @@ public class InitializeStateDb : IStep
             worldState,
             trieStore,
             getApi.DbProvider,
-            preBlockCaches,
-            getApi.LogManager);
+            getApi.LogManager, preBlockCaches);
 
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);

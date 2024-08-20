@@ -14,10 +14,11 @@ namespace Nethermind.State;
 public class OverlayWorldStateManager(
     IReadOnlyDbProvider dbProvider,
     OverlayTrieStore overlayTrieStore,
-    ILogManager? logManager)
+    ILogManager? logManager,
+    PreBlockCaches? caches = null)
     : IWorldStateManager
 {
-    public PreBlockCaches Caches { get; }
+    public PreBlockCaches? Caches { get; } = caches;
 
     private readonly IDb _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
 

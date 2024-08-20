@@ -96,7 +96,7 @@ namespace Nethermind.Clique.Test
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
                 var worldStateManager =
-                    new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
+                    new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
 
                 BlockTree blockTree = Build.A.BlockTree()
                     .WithSpecProvider(goerliSpecProvider)
@@ -149,7 +149,7 @@ namespace Nethermind.Clique.Test
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
                 WorldState minerStateProvider = new(minerTrieStore, dbProvider.CodeDb, nodeLogManager);
-                var minerWorldStateManager = new WorldStateManager(minerStateProvider, minerTrieStore, dbProvider, null,
+                var minerWorldStateManager = new WorldStateManager(minerStateProvider, minerTrieStore, dbProvider,
                     LimboLogs.Instance);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);

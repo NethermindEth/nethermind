@@ -39,7 +39,7 @@ public class ReorgTests
         WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         var worldStateManager =
-            new WorldStateManager(stateProvider, trieStore, memDbProvider, null, LimboLogs.Instance);
+            new WorldStateManager(stateProvider, trieStore, memDbProvider, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =

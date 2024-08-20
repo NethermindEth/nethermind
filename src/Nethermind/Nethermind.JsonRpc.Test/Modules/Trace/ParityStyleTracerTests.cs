@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             _stateReader = new StateReader(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
 
             var worldStateManager =
-                new WorldStateManager(stateProvider, trieStore, _dbProvider, null, LimboLogs.Instance);
+                new WorldStateManager(stateProvider, trieStore, _dbProvider, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, specProvider, worldStateManager, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
