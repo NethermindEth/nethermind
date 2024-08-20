@@ -9,11 +9,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
-using static Nethermind.Facade.BlockchainBridge;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -27,9 +27,10 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash);
         (TxReceipt? Receipt, Transaction? Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
-        CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
+        CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken);
+        CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken) => Call(header, tx, null, cancellationToken);
         SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken);
-        CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, CancellationToken cancellationToken);
+        CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken);
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
         ulong GetChainId();

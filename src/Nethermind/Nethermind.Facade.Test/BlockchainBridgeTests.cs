@@ -36,7 +36,7 @@ namespace Nethermind.Facade.Test
 {
     public class BlockchainBridgeTests
     {
-        private BlockchainBridge _blockchainBridge;
+        private IBlockchainBridge _blockchainBridge;
         private IBlockTree _blockTree;
         private ITxPool _txPool;
         private IReceiptStorage _receiptStorage;

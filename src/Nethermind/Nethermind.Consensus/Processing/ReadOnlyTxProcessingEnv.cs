@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Processing
 
         public IVirtualMachine Machine { get; }
 
-        public ICodeInfoRepository CodeInfoRepository { get; }
+        public OverridableCodeInfoRepository CodeInfoRepository { get; }
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Processing
             IWorldState? worldStateToWarmUp = null
             ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
         {
-            CodeInfoRepository = new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
+            CodeInfoRepository = new(new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache));
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);

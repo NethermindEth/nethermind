@@ -26,6 +26,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
+using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
@@ -40,7 +41,7 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IReadOnlyTxProcessorSource _processingEnv;
+        private readonly ReadOnlyTxProcessingEnv _processingEnv;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
@@ -147,10 +148,10 @@ namespace Nethermind.Facade
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(header, tx, stateOverride, false,
                 callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput
             {
@@ -183,7 +184,7 @@ namespace Nethermind.Facade
             return result;
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
             using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
 
@@ -191,6 +192,7 @@ namespace Nethermind.Facade
             TransactionResult tryCallResult = TryCallAndRestore(
                 header,
                 tx,
+                stateOverride,
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
@@ -214,7 +216,7 @@ namespace Nethermind.Facade
                     tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
                 : new(header.GasBeneficiary);
 
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(header, tx, null, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput
@@ -230,12 +232,13 @@ namespace Nethermind.Facade
         private TransactionResult TryCallAndRestore(
             BlockHeader blockHeader,
             Transaction transaction,
+            Dictionary<Address, AccountOverride>? stateOverride,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer);
+                return CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer);
             }
             catch (InsufficientBalanceException ex)
             {
@@ -246,6 +249,7 @@ namespace Nethermind.Facade
         private TransactionResult CallAndRestore(
             BlockHeader blockHeader,
             Transaction transaction,
+            Dictionary<Address, AccountOverride>? stateOverride,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
@@ -280,6 +284,8 @@ namespace Nethermind.Facade
                     blockHeader.ExtraData);
 
             IReleaseSpec releaseSpec = _specProvider.GetSpec(callHeader);
+            scope.WorldState.ApplyStateOverrides(_processingEnv.CodeInfoRepository, stateOverride, releaseSpec, blockHeader.Number, false);
+
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
                 ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
                 : blockHeader.BaseFeePerGas;
