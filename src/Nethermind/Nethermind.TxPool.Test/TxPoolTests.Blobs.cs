@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -12,6 +13,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
@@ -613,7 +617,11 @@ namespace Nethermind.TxPool.Test
                 InMemoryBlobPoolSize = isPersistentStorage ? 0 : poolSize
             };
 
-            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+
+            BlobTxDistinctSortedPool blobPool = isPersistentStorage
+                ? new PersistentBlobTxDistinctSortedPool(new BlobTxStorage(), txPoolConfig, comparer, LimboLogs.Instance)
+                : new BlobTxDistinctSortedPool(txPoolConfig.InMemoryBlobPoolSize, comparer, LimboLogs.Instance);
 
             Transaction[] blobTxs = new Transaction[poolSize * 2];
 
@@ -643,10 +651,10 @@ namespace Nethermind.TxPool.Test
                         blobTxs[i].BlobVersionedHashes[0].AsSpan());
                 }
 
-                _txPool.SubmitTx(blobTxs[i], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+                blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _).Should().BeTrue();
             }
 
-            _txPool.GetBlobIndex().Count.Should().Be(uniqueBlobs ? poolSize : 1);
+            blobPool.GetBlobIndex.Count.Should().Be(uniqueBlobs ? poolSize : 1);
 
             // first half of txs (0, poolSize - 1) was evicted and should be removed from index
             // second half (poolSize, 2x poolSize - 1) should be indexed
@@ -655,7 +663,7 @@ namespace Nethermind.TxPool.Test
                 // if blobs are unique, we expect index to have 10 keys (poolSize, 2x poolSize - 1) with 1 value each
                 if (uniqueBlobs)
                 {
-                    _txPool.GetBlobIndex().TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> txHashes).Should().Be(i >= poolSize);
+                    blobPool.GetBlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> txHashes).Should().Be(i >= poolSize);
                     if (i >= poolSize)
                     {
                         txHashes.Count.Should().Be(1);
@@ -665,7 +673,7 @@ namespace Nethermind.TxPool.Test
                 // if blobs are not unique, we expect index to have 1 key with 10 values (poolSize, 2x poolSize - 1)
                 else
                 {
-                    _txPool.GetBlobIndex().TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> values).Should().BeTrue();
+                    blobPool.GetBlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> values).Should().BeTrue();
                     values.Count.Should().Be(poolSize);
                     values.Contains(blobTxs[i].Hash).Should().Be(i >= poolSize);
                 }

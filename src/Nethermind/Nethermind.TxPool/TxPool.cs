@@ -184,9 +184,6 @@ namespace Nethermind.TxPool
         // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
-        // only for testing reasons
-        internal ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex() => _blobTransactions.GetBlobIndex;
-
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
         public IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] blobVersionedHashes) =>

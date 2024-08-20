@@ -16,7 +16,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 {
     protected override string ShortPoolName => "BlobPool";
 
-    public ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex => _blobIndex;
+    internal ConcurrentDictionary<byte[], List<Hash256>> GetBlobIndex => _blobIndex;
 
     private readonly ConcurrentDictionary<byte[], List<Hash256>> _blobIndex = new(Bytes.EqualityComparer);
 
