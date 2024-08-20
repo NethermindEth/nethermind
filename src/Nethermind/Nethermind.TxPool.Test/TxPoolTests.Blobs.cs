@@ -14,7 +14,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
