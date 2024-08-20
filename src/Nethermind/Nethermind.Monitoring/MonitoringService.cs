@@ -22,7 +22,6 @@ namespace Nethermind.Monitoring
         private readonly string _exposeHost;
         private readonly int? _exposePort;
         private readonly string _nodeName;
-        private readonly bool _pushEnabled;
         private readonly string _pushGatewayUrl;
         private readonly int _intervalSeconds;
 
@@ -34,7 +33,6 @@ namespace Nethermind.Monitoring
             int? exposePort = metricsConfig.ExposePort;
             string nodeName = metricsConfig.NodeName;
             string pushGatewayUrl = metricsConfig.PushGatewayUrl;
-            bool pushEnabled = metricsConfig.Enabled;
             int intervalSeconds = metricsConfig.IntervalSeconds;
 
             _exposeHost = exposeHost;
@@ -43,7 +41,6 @@ namespace Nethermind.Monitoring
                 ? throw new ArgumentNullException(nameof(nodeName))
                 : nodeName;
             _pushGatewayUrl = pushGatewayUrl;
-            _pushEnabled = pushEnabled;
             _intervalSeconds = intervalSeconds <= 0
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;

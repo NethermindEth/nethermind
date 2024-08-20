@@ -8,6 +8,8 @@ namespace Nethermind.Monitoring.Config
         public string ExposeHost { get; set; } = "+";
         public int? ExposePort { get; set; } = null;
         public bool Enabled { get; set; } = false;
+
+        public bool PushAfterBlock { get; set; } = false;
         public bool CountersEnabled { get; set; } = false;
         public string PushGatewayUrl { get; set; } = "";
         public int IntervalSeconds { get; set; } = 5;
