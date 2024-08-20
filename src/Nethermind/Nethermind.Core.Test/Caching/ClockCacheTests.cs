@@ -298,5 +298,25 @@ namespace Nethermind.Core.Test.Caching
 
             count.Should().Be(itemsToKeep);
         }
+
+        [Test]
+        public void Capacity_zero()
+        {
+            ClockCache<AddressAsKey, int> cache = new(0);
+            for (int i = 0; i < Capacity * 2; i++)
+            {
+                cache.Set(_addresses[i], 0).Should().BeTrue();
+            }
+
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.TryGet(_addresses[i], out _).Should().BeFalse();
+            }
+            // Check in reverse order
+            for (int i = Capacity * 2 - 1; i >= Capacity; i--)
+            {
+                cache.TryGet(_addresses[i], out _).Should().BeFalse();
+            }
+        }
     }
 }
