@@ -84,7 +84,6 @@ namespace Ethereum.Test.Base
 
             TransactionProcessor transactionProcessor = new(
                 specProvider,
-                stateProvider,
                 virtualMachine,
                 codeInfoRepository,
                 _logManager);
@@ -140,7 +139,7 @@ namespace Ethereum.Test.Base
 
             if (isValid)
             {
-                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                transactionProcessor.Execute(stateProvider, test.Transaction, new BlockExecutionContext(header), txTracer);
             }
 
             stopwatch.Stop();

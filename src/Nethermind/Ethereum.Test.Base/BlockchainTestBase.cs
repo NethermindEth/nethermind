@@ -82,8 +82,9 @@ namespace Ethereum.Test.Base
                 TestContext.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
+            IDbProvider? dbProvider = TestMemDbProvider.Init();
+            IDb stateDb = dbProvider.StateDb;
+            IDb codeDb = dbProvider.CodeDb;
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition is not null)
@@ -135,6 +136,7 @@ namespace Ethereum.Test.Base
 
             TrieStore trieStore = new(stateDb, _logManager);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            var worldStateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, null, _logManager);
             IBlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(specProvider)
                 .WithoutSettingHead
@@ -143,7 +145,7 @@ namespace Ethereum.Test.Base
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, _logManager);
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, worldStateManager, _logManager);
             ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
@@ -162,14 +164,12 @@ namespace Ethereum.Test.Base
                 new BlockProcessor.BlockValidationTransactionsExecutor(
                     new TransactionProcessor(
                         specProvider,
-                        stateProvider,
                         virtualMachine,
                         codeInfoRepository,
-                        _logManager),
-                    stateProvider),
-                stateProvider,
+                        _logManager)),
+                worldStateManager,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
