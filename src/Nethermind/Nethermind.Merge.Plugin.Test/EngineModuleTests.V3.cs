@@ -537,6 +537,18 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task GetBlobsV1_should_handle_empty_request()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1([]);
+
+        result.Result.Should().Be(Result.Success);
+        result.Data.Should().BeEquivalentTo(new GetBlobsV1Result(ArraySegment<BlobAndProofV1?>.Empty));
+    }
+
+    [Test]
     public async Task GetBlobsV1_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
