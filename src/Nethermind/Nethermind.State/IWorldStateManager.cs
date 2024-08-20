@@ -8,7 +8,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public interface IWorldStateManager: IPreBlockCaches
+public interface IWorldStateManager : IPreBlockCaches
 {
 
     // dod we need this here, now that we are going to use worldState per use case?

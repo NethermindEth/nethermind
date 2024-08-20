@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingEnvBase
 {
-    public IWorldStateManager WorldStateManager { get; protected set;  }
+    public IWorldStateManager WorldStateManager { get; protected set; }
     public IStateReader StateReader { get; protected set; }
     protected IWorldState StateProvider { get; set; }
     public IBlockTree BlockTree { get; protected set; }

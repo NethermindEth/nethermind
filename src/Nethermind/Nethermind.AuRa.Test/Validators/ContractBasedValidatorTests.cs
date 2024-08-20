@@ -192,7 +192,7 @@ public class ContractBasedValidatorTests
 
         // finalizeChange should be called
         _transactionProcessor.Received(finalizeChangeCalled ? 1 : 0)
-            .Execute(Arg.Any<IWorldState>(),Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
+            .Execute(Arg.Any<IWorldState>(), Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(block.Header)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 

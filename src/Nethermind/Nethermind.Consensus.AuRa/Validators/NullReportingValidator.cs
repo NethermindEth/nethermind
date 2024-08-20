@@ -10,7 +10,8 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         public static NullReportingValidator Instance { get; } = new NullReportingValidator();
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof,
-            IReportingValidator.MaliciousCause cause, IWorldState worldState) { }
+            IReportingValidator.MaliciousCause cause, IWorldState worldState)
+        { }
         public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause) { }
         public void TryReportSkipped(BlockHeader header, BlockHeader parent) { }
     }

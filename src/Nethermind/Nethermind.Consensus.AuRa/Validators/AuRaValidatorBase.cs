@@ -62,6 +62,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
         public virtual void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, IWorldState worldState,
-            ProcessingOptions options = ProcessingOptions.None) { }
+            ProcessingOptions options = ProcessingOptions.None)
+        { }
     }
 }

@@ -176,9 +176,11 @@ namespace Nethermind.Consensus.AuRa
         {
             public Address[] Validators => Array.Empty<Address>();
             public void OnBlockProcessingStart(Block block, IWorldState worldState,
-                ProcessingOptions options = ProcessingOptions.None) { }
+                ProcessingOptions options = ProcessingOptions.None)
+            { }
             public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, IWorldState worldState,
-                ProcessingOptions options = ProcessingOptions.None) { }
+                ProcessingOptions options = ProcessingOptions.None)
+            { }
         }
     }
 }
