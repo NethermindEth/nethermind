@@ -17,6 +17,7 @@ using FluentAssertions;
 using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Test;
 
@@ -70,17 +71,38 @@ public class CodeInfoRepositoryTests
         Address codeSource = TestItem.AddressB;
         IWorldState mockWorldState = Substitute.For<IWorldState>();
         mockWorldState.HasCode(authority.Address).Returns(true);
+        mockWorldState.GetCode(authority.Address).Returns(new byte[32]);
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
             CreateAuthorizationTuple(authority, 1, codeSource, (UInt256)0),
         };
 
-        IEnumerable<Address> result = sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
+        sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
 
-        result.Count().Should().Be(0);
+        mockWorldState.DidNotReceive().InsertCode(Arg.Any<Address>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IReleaseSpec>());
     }
 
+    [Test]
+    public void InsertFromAuthorizations_AuthorityHasDelegatedCode_CodeIsInserted()
+    {
+        PrivateKey authority = TestItem.PrivateKeyA;
+        Address codeSource = TestItem.AddressB;
+        IWorldState mockWorldState = Substitute.For<IWorldState>();
+        mockWorldState.HasCode(authority.Address).Returns(true);
+        byte[] code = new byte[23];
+        Eip7702Constants.DelegationHeader.CopyTo(code);
+        mockWorldState.GetCode(authority.Address).Returns(code);
+        CodeInfoRepository sut = new(1);
+        var tuples = new[]
+        {
+            CreateAuthorizationTuple(authority, 1, codeSource, (UInt256)0),
+        };
+
+        sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
+
+        mockWorldState.Received().InsertCode(authority.Address, Arg.Any<Hash256>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IReleaseSpec>(), Arg.Any<bool>());
+    }
 
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
     {
