@@ -28,10 +28,10 @@ public class ShutterBlockHandler(
     IReadOnlyBlockTree blockTree,
     IAbiEncoder abiEncoder,
     IReceiptFinder receiptFinder,
-    ISpecProvider specProvider,
     Dictionary<ulong, byte[]> validatorsInfo,
     ShutterEon eon,
     ShutterTxLoader txLoader,
+    ShutterTime shutterTime,
     ILogManager logManager) : IShutterBlockHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
@@ -39,11 +39,11 @@ public class ShutterBlockHandler(
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
     private readonly object _syncObject = new();
-    private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
+    private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
 
     public void OnNewHeadBlock(Block head)
     {
-        if (ShutterHelpers.IsBlockUpToDate(head))
+        if (shutterTime.IsBlockUpToDate(head))
         {
             _logger.Debug($"Shutter block handler {head.Number}");
 
@@ -57,7 +57,7 @@ public class ShutterBlockHandler(
 
             lock (_syncObject)
             {
-                ulong slot = ShutterHelpers.GetSlot(head.Timestamp * 1000, _genesisTimestampMs);
+                ulong slot = shutterTime.GetSlot(head.Timestamp * 1000, _genesisTimestampMs);
                 _slotToBlockHash.Set(slot, head.Hash);
 
                 if (_blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? tcs))
@@ -84,7 +84,7 @@ public class ShutterBlockHandler(
 
             _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
-            long offset = ShutterHelpers.GetCurrentOffsetMs(slot, _genesisTimestampMs);
+            long offset = shutterTime.GetCurrentOffsetMs(slot, _genesisTimestampMs);
             long waitTime = (long)cutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {

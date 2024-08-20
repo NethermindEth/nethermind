@@ -7,7 +7,6 @@ using Nethermind.Core;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Blockchain.Find;
-using Nethermind.Logging;
 using System.Linq;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
@@ -20,6 +19,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter.Test;
 
@@ -31,13 +31,19 @@ class ShutterTxLoaderTests : EngineModuleTests
     const int _seed = 100;
     const ulong _initialSlot = 16082024;
     const ulong _initialTxPointer = 1000;
-    private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Chiado);
-    private readonly AbiEncoder _abiEncoder = new();
+    private static readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Chiado);
+    private static readonly ISpecProvider _specProvider = ChiadoSpecProvider.Instance;
+    private static readonly AbiEncoder _abiEncoder = new();
     private static readonly ShutterConfig _cfg = new()
     {
-        SequencerContractAddress = "0x0000000000000000000000000000000000000000",
+        SequencerContractAddress = Address.Zero.ToString(),
         EncryptedGasLimit = 21000 * 20
     };
+    private static readonly ShutterTime _time = new(
+        _specProvider,
+        new Timestamper(),
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(5));
 
     [Test]
     public async Task Can_load_transactions_over_slots()
@@ -51,12 +57,12 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = InitTxLoader(chain.LogFinder);
-        IEnumerable<ShutterEventEmitter.Event> eventSource = EmitEvents(rnd, 0, txPointer, txLoader.GetAbi());
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
+        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, txPointer, txLoader.GetAbi());
 
         for (int i = 0; i < 10; i++)
         {
-            (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = GetFromEventsSource(eventSource, 20);
+            (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 20);
         
             ShutterTransactions txs = OnNewLogs(rnd, chain, txLoader, events.Logs, new() {
                 Slot = slot++,
@@ -83,10 +89,10 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = InitTxLoader(chain.LogFinder);
-        IEnumerable<ShutterEventEmitter.Event> eventSource = EmitHalfInvalidEvents(rnd, _initialTxPointer, txLoader.GetAbi());
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
+        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitHalfInvalidEvents(rnd, _initialTxPointer, txLoader.GetAbi());
 
-        (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = GetFromEventsSource(eventSource, 20);
+        (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 20);
     
         Block head = chain.BlockTree.Head!;
         BlockHeader parentHeader = chain.BlockTree.FindParentHeader(head.Header, Blockchain.BlockTreeLookupOptions.None)!;
@@ -114,8 +120,8 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = InitTxLoader(chain.LogFinder);
-        IEnumerable<ShutterEventEmitter.Event> eventSource = EmitEvents(rnd, 0, _initialTxPointer, txLoader.GetAbi());
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
+        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, _initialTxPointer, txLoader.GetAbi());
 
         List<ShutterEventEmitter.Event> events = eventSource.Take(40).ToList();
         LogEntry[] logs = events.Select(e => e.LogEntry).ToArray();
@@ -172,10 +178,10 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = InitTxLoader(chain.LogFinder);
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
 
-        IEnumerable<ShutterEventEmitter.Event> eventSource = EmitEvents(rnd, 0, _initialTxPointer, txLoader.GetAbi());
-        (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = GetFromEventsSource(eventSource, 5);
+        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, _initialTxPointer, txLoader.GetAbi());
+        (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 5);
     
         ShutterTransactions txs = OnNewLogs(rnd, chain, txLoader, events.Logs, new() {
             Slot = _initialSlot,
@@ -189,8 +195,8 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true);
         lastPayload = payloads[0];
 
-        eventSource = EmitEvents(rnd, 1, 0, txLoader.GetAbi());
-        events = GetFromEventsSource(eventSource, 5);
+        eventSource = ShutterTestsCommon.EmitEvents(rnd, 1, 0, txLoader.GetAbi());
+        events = ShutterTestsCommon.GetFromEventsSource(eventSource, 5);
     
         txs = OnNewLogs(rnd, chain, txLoader, events.Logs, new() {
             Slot = _initialSlot + 1,
@@ -216,62 +222,6 @@ class ShutterTxLoaderTests : EngineModuleTests
         }
 
         return txLoader.LoadTransactions(head, parentHeader, keys);
-    }
-
-    private (LogEntry[], List<(byte[] IdentityPreimage, byte[] Key)>) GetFromEventsSource(IEnumerable<ShutterEventEmitter.Event> eventSource, int count)
-    {
-        List<ShutterEventEmitter.Event> events = eventSource.Take(count).ToList();
-        LogEntry[] logs = events.Select(e => e.LogEntry).ToArray();
-        List<(byte[] IdentityPreimage, byte[] Key)> keys = events.Select(e => (e.IdentityPreimage, e.Key)).ToList();
-        keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
-        return (logs, keys);
-    }
-
-    private ShutterTxLoader InitTxLoader(ILogFinder logFinder)
-        => new(
-            logFinder,
-            _cfg,
-            ChiadoSpecProvider.Instance,
-            _ecdsa,
-            LimboLogs.Instance
-        );
-
-    private IEnumerable<ShutterEventEmitter.Event> EmitEvents(Random rnd, ulong eon, ulong initialTxPointer, AbiEncodingInfo abi)
-        => new ShutterEventEmitter(
-            rnd,
-            BlockchainIds.Chiado,
-            eon,
-            initialTxPointer,
-            _abiEncoder,
-            new(_cfg.SequencerContractAddress!),
-            abi
-        ).EmitEvents();
-
-    private IEnumerable<ShutterEventEmitter.Event> EmitHalfInvalidEvents(Random rnd, ulong initialTxPointer, AbiEncodingInfo abi)
-    {
-        ShutterEventEmitter emitter = new(
-            rnd,
-            BlockchainIds.Chiado,
-            0,
-            initialTxPointer,
-            _abiEncoder,
-            new(_cfg.SequencerContractAddress!),
-            abi
-        );
-
-        IEnumerable<Transaction> emitHalfInvalid()
-        {
-            bool valid = false;
-            while (true)
-            {
-                valid = !valid;
-                yield return valid
-                    ? emitter.DefaultTx
-                    : Build.A.Transaction.TestObject;
-            }
-        }
-
-        return emitter.EmitEvents(emitter.EmitDefaultGasLimits(), emitHalfInvalid());
     }
 
     private static TxReceipt[] InsertShutterReceipts(Random rnd, IReceiptStorage receiptStorage, Block block, in LogEntry[] logs)

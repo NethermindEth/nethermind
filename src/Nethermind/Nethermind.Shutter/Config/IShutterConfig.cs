@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
+using Multiformats.Address;
 using Nethermind.Config;
+using Nethermind.Core;
 
 namespace Nethermind.Shutter.Config;
 
@@ -64,4 +68,64 @@ public interface IShutterConfig : IConfig
     [ConfigItem(Description = "Maximum amount of milliseconds into the slot to wait for Shutter keys before building block.",
         DefaultValue = "1666")]
     ushort MaxKeyDelay { get; }
+
+    public void Validate()
+    {
+        if (Validator && ValidatorInfoFile is null)
+        {
+            throw new ArgumentException($"Must set Shutter.ValidatorInfoFile to a valid json file.");
+        }
+
+        if (ValidatorInfoFile is not null && !File.Exists(ValidatorInfoFile))
+        {
+            throw new ArgumentException($"Shutter validator info file \"{ValidatorInfoFile}\" does not exist.");
+        }
+
+        if (SequencerContractAddress is null || !Address.TryParse(SequencerContractAddress, out _))
+        {
+            throw new ArgumentException("Must set Shutter sequencer contract address to valid address.");
+        }
+
+        if (ValidatorRegistryContractAddress is null || !Address.TryParse(ValidatorRegistryContractAddress, out _))
+        {
+            throw new ArgumentException("Must set Shutter validator registry contract address to valid address.");
+        }
+
+        if (KeyBroadcastContractAddress is null || !Address.TryParse(KeyBroadcastContractAddress, out _))
+        {
+            throw new ArgumentException("Must set Shutter key broadcast contract address to valid address.");
+        }
+
+        if (KeyperSetManagerContractAddress is null || !Address.TryParse(KeyperSetManagerContractAddress, out _))
+        {
+            throw new ArgumentException("Must set Shutter keyper set manager contract address to valid address.");
+        }
+
+        if (P2PAgentVersion is null)
+        {
+            throw new ArgumentNullException(nameof(P2PAgentVersion));
+        }
+
+        if (P2PProtocolVersion is null)
+        {
+            throw new ArgumentNullException(nameof(P2PProtocolVersion));
+        }
+
+        if (KeyperP2PAddresses is null)
+        {
+            throw new ArgumentNullException(nameof(KeyperP2PAddresses));
+        }
+
+        foreach (string addr in KeyperP2PAddresses)
+        {
+            try
+            {
+                Multiaddress.Decode(addr);
+            }
+            catch (NotSupportedException)
+            {
+                throw new ArgumentException($"Could not decode Shutter keyper p2p address \"{addr}\".");
+            }
+        }
+    }
 }

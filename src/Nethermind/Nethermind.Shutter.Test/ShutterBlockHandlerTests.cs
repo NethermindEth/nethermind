@@ -2,19 +2,35 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using NUnit.Framework;
-using NSubstitute;
-using Nethermind.Logging;
-using Nethermind.Shutter.Config;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
-using Nethermind.Abi;
-using Nethermind.State;
-using Nethermind.Specs;
-using Nethermind.Core;
+using System;
+using Nethermind.Core.Test.Builders;
+using System.Threading;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
 class ShutterBlockHandlerTests
 {
+    [Test]
+    public void Can_wait_for_valid_block()
+    {
+        ShutterBlockHandler blockHandler = ShutterTestsCommon.InitBlockHandler();
+
+        bool waitReturned = false;
+        CancellationTokenSource source = new();
+        blockHandler.WaitForBlockInSlot(10, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), source.Token)
+            .ContinueWith((_) => waitReturned = true)
+            .WaitAsync(source.Token);
+        
+        blockHandler.OnNewHeadBlock(Build.A.Block.TestObject);
+
+        Assert.That(waitReturned);
+    }
+
+    [Test]
+    public void Ignores_outdated_block()
+    {
+
+    }
+
 }

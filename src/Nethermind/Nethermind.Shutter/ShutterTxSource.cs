@@ -19,13 +19,13 @@ namespace Nethermind.Shutter;
 public class ShutterTxSource(
     ShutterTxLoader txLoader,
     IShutterConfig shutterConfig,
-    ISpecProvider specProvider,
+    ShutterTime shutterTime,
     ILogManager logManager)
     : ITxSource, IShutterTxSignal
 {
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
+    private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
     private readonly object _syncObject = new();
 
@@ -45,9 +45,9 @@ public class ShutterTxSource(
         ulong buildingSlot;
         try
         {
-            (buildingSlot, long offset) = ShutterHelpers.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs);
+            (buildingSlot, long offset) = shutterTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs);
         }
-        catch (ShutterHelpers.ShutterSlotCalulationException e)
+        catch (ShutterTime.ShutterSlotCalulationException e)
         {
             if (_logger.IsDebug) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             return [];

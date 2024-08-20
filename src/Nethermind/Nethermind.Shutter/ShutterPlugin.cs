@@ -17,6 +17,8 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Find;
+using System.IO;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Shutter;
 
@@ -38,6 +40,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     private IShutterMessageHandler? _msgHandler;
     private ILogger _logger;
     private readonly TimeSpan _slotLength = GnosisSpecProvider.SlotLength;
+    private readonly TimeSpan _blockUpToDateCutoff = GnosisSpecProvider.SlotLength;
     private readonly TimeSpan _blockWaitCutoff = TimeSpan.FromMilliseconds(1333);
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
@@ -89,14 +92,14 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
             _logger.Info("Initializing Shutter block producer.");
 
-            ShutterHelpers.ValidateConfig(_shutterConfig!);
+            _shutterConfig!.Validate();
 
             Dictionary<ulong, byte[]> validatorsInfo = [];
             if (_shutterConfig!.ValidatorInfoFile is not null)
             {
                 try
                 {
-                    validatorsInfo = ShutterHelpers.LoadValidatorInfo(_shutterConfig!.ValidatorInfoFile);
+                    validatorsInfo = LoadValidatorInfo(_shutterConfig!.ValidatorInfoFile);
                 }
                 catch (Exception e)
                 {
@@ -107,16 +110,16 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
             ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-            ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, _api.SpecProvider!, _api.EthereumEcdsa!, _api.LogManager);
+            ShutterTime time = new(_api.SpecProvider!, _api.Timestamper!, _slotLength, _blockUpToDateCutoff);
+            ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, time, _api.SpecProvider!, _api.EthereumEcdsa!, _api.LogManager);
             ShutterEon eon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, _api.LogManager);
             ShutterBlockHandler blockHandler = new(
                 _api.SpecProvider!.ChainId,
                 _shutterConfig.ValidatorRegistryContractAddress!,
                 _shutterConfig.ValidatorRegistryMessageVersion,
-                readOnlyTxProcessingEnvFactory,
-                readOnlyBlockTree,
-                _api.AbiEncoder, _api.ReceiptFinder!, _api.SpecProvider!,
-                validatorsInfo, eon, txLoader, _api.LogManager);
+                readOnlyTxProcessingEnvFactory, readOnlyBlockTree,
+                _api.AbiEncoder, _api.ReceiptFinder!, validatorsInfo,
+                eon, txLoader, time, _api.LogManager);
 
             _newHeadBlockHandler = (_, e) =>
             {
@@ -124,7 +127,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             };
             _api.BlockTree!.NewHeadBlock += _newHeadBlockHandler;
 
-            _txSource = new ShutterTxSource(txLoader, _shutterConfig, _api.SpecProvider!, _api.LogManager);
+            _txSource = new ShutterTxSource(txLoader, _shutterConfig, time, _api.LogManager);
 
             _msgHandler = new ShutterMessageHandler(_shutterConfig, eon, _api.LogManager);
             _keysValidatedHandler = async (_, keys) =>
@@ -164,5 +167,11 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             _msgHandler!.KeysValidated -= _keysValidatedHandler;
         }
         await (_shutterP2P?.DisposeAsync() ?? default);
+    }
+
+    private static Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)
+    {
+        FileStream fstream = new FileStream(fp, FileMode.Open, FileAccess.Read, FileShare.None);
+        return new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
     }
 }

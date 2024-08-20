@@ -29,6 +29,7 @@ using G1 = Bls.P1;
 public class ShutterTxLoader(
     ILogFinder logFinder,
     IShutterConfig shutterConfig,
+    ShutterTime shutterTime,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
     ILogManager logManager)
@@ -42,7 +43,7 @@ public class ShutterTxLoader(
     private readonly ITxFilter _txFilter = new ShutterTxFilter(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
-    private readonly ulong _genesisTimestampMs = ShutterHelpers.GetGenesisTimestampMs(specProvider);
+    private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
 
     // keys should not contain placeholder
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterMessageHandler.ValidatedKeyArgs keys)
@@ -50,7 +51,7 @@ public class ShutterTxLoader(
         List<SequencedTransaction>? sequencedTransactions = null;
         sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
 
-        long offset = ShutterHelpers.GetCurrentOffsetMs(keys.Slot, _genesisTimestampMs);
+        long offset = shutterTime.GetCurrentOffsetMs(keys.Slot, _genesisTimestampMs);
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
