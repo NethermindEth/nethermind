@@ -5,11 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
 public interface IBlockCachePreWarmer
 {
-    Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken = default);
+    Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, IWorldState? worldState,
+        CancellationToken cancellationToken = default);
     void ClearCaches();
 }

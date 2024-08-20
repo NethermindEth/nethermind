@@ -146,9 +146,10 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
 
-        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, IWorldState worldState,
+            ProcessingOptions options = ProcessingOptions.None)
         {
-            _currentValidator?.OnBlockProcessingEnd(block, receipts, options);
+            _currentValidator?.OnBlockProcessingEnd(block, receipts, worldState, options);
 
             if (!block.IsGenesis)
             {
@@ -210,9 +211,10 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) =>
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
 
-        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
+        public void ReportMalicious(Address validator, long blockNumber, byte[] proof,
+            IReportingValidator.MaliciousCause cause, IWorldState worldState)
         {
-            _currentValidator.GetReportingValidator().ReportMalicious(validator, blockNumber, proof, cause);
+            _currentValidator.GetReportingValidator().ReportMalicious(validator, blockNumber, proof, cause, worldState);
         }
 
         public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)

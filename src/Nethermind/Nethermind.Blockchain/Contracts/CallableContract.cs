@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Contracts
         /// Creates <see cref="Address.SystemUser"/> account if its not in current state.
         /// </summary>
         /// <param name="stateProvider">State provider.</param>
-        protected static void EnsureSystemAccount(IWorldState stateProvider)
+        public static void EnsureSystemAccount(IWorldState stateProvider)
         {
             if (!stateProvider.AccountExists(Address.SystemUser))
             {

@@ -10,6 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -65,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private void ResendPersistedReports(BlockHeader blockHeader)
+        private void ResendPersistedReports(BlockHeader blockHeader, IWorldState worldState)
         {
             var blockNumber = blockHeader.Number;
             if (!IsPosdao(blockNumber))
@@ -84,7 +85,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         try
                         {
-                            SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport));
+                            SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport, worldState));
                         }
                         catch (AbiException e)
                         {

@@ -128,10 +128,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
+                WorldStateManager,
                 ReceiptStorage,
-                new BlockhashStore(SpecProvider, State),
+                new BlockhashStore(SpecProvider),
                 LogManager,
                 WithdrawalProcessor);
 

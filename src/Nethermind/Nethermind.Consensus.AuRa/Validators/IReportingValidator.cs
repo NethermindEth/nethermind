@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
     public interface IReportingValidator
     {
-        void ReportMalicious(Address validator, long blockNumber, byte[] proof, MaliciousCause cause);
+        void ReportMalicious(Address validator, long blockNumber, byte[] proof, MaliciousCause cause,
+            IWorldState worldState);
         void ReportBenign(Address validator, long blockNumber, BenignCause cause);
         void TryReportSkipped(BlockHeader header, BlockHeader parent);
 

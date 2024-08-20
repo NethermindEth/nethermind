@@ -120,7 +120,6 @@ public class StartBlockProducerAuRa
             new LocalTxFilter(_api.EngineSigner));
 
         _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                changeableTxProcessingEnv.WorldState,
                 changeableTxProcessingEnv.TransactionProcessor,
                 _api.BlockTree,
                 _api.CreateReadOnlyTransactionProcessorSource(),
@@ -152,7 +151,7 @@ public class StartBlockProducerAuRa
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-            changeableTxProcessingEnv.WorldState,
+            _api.WorldStateManager!,
             _api.ReceiptStorage,
             _api.LogManager,
             _api.BlockTree,

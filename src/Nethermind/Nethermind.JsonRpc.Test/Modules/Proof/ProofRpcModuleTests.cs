@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .OfChainLength(10)
                 .TestObject;
 
-            _worldStateManager = new WorldStateManager(worldState, trieStore, _dbProvider, LimboLogs.Instance);
+            _worldStateManager = new WorldStateManager(worldState, trieStore, _dbProvider, null, LimboLogs.Instance);
             ProofModuleFactory moduleFactory = new(
                 _worldStateManager,
                 _blockTree,

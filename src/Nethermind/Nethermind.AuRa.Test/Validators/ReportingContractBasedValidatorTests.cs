@@ -38,7 +38,7 @@ namespace Nethermind.AuRa.Test.Validators
             byte[] proof = TestItem.KeccakA.BytesToArray();
             Transaction transaction = Build.A.Transaction.TestObject;
             context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, 5, proof).Returns(transaction);
-            context.Validator.ReportMalicious(reportingValidator ? MaliciousMinerAddress : NodeAddress, 5, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+            context.Validator.ReportMalicious(reportingValidator ? MaliciousMinerAddress : NodeAddress, 5, proof, IReportingValidator.MaliciousCause.DuplicateStep, context.WorldState);
             context.TxSender.Received(reportingValidator ? 1 : 0).SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
         }
 
@@ -62,7 +62,7 @@ namespace Nethermind.AuRa.Test.Validators
             for (ulong i = 5; i < 20; i++)
             {
                 context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
-                context.Validator.ReportMalicious(MaliciousMinerAddress, (long)i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+                context.Validator.ReportMalicious(MaliciousMinerAddress, (long)i, proof, IReportingValidator.MaliciousCause.DuplicateStep, context.WorldState);
             }
 
             context = new TestContext(false, cache);
@@ -83,11 +83,11 @@ namespace Nethermind.AuRa.Test.Validators
             bool isPosDao = blockNumber >= context.PosdaoTransition;
 
             // resend transactions
-            context.Validator.OnBlockProcessingEnd(block, Array.Empty<TxReceipt>());
+            context.Validator.OnBlockProcessingEnd(block, Array.Empty<TxReceipt>(), context.WorldState);
 
             // not resending on next block!
             Block childBlock = Build.A.Block.WithParent(block).TestObject;
-            context.Validator.OnBlockProcessingEnd(childBlock, Array.Empty<TxReceipt>());
+            context.Validator.OnBlockProcessingEnd(childBlock, Array.Empty<TxReceipt>(), context.WorldState);
 
             context.TxSender.Received(isPosDao ? Math.Min(ReportingContractBasedValidator.MaxQueuedReports, validatorsToReport) : 0)
                 .SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
@@ -105,7 +105,7 @@ namespace Nethermind.AuRa.Test.Validators
             for (ulong i = startReportBlockNumber; i < startReportBlockNumber + (ulong)validatorsToReport; i++)
             {
                 context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
-                context.Validator.ReportMalicious(MaliciousMinerAddress, (long)i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+                context.Validator.ReportMalicious(MaliciousMinerAddress, (long)i, proof, IReportingValidator.MaliciousCause.DuplicateStep, context.WorldState);
             }
 
             BlockHeader parent = Build.A.BlockHeader.WithNumber(parentBlockNumber).TestObject;
@@ -155,10 +155,10 @@ namespace Nethermind.AuRa.Test.Validators
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // ignored
-            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep); // sent
-            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep); // ignored
-            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // ignored
-            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // ignored
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep, context.WorldState); // sent
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep, context.WorldState); // ignored
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep, context.WorldState); // ignored
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep, context.WorldState); // ignored
             context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // sent
             context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //sent
@@ -176,6 +176,7 @@ namespace Nethermind.AuRa.Test.Validators
             public ITxSender TxSender { get; }
             public IReportingValidatorContract ReportingValidatorContract { get; }
             public ContractBasedValidator ContractBasedValidator { get; }
+            public IWorldState WorldState { get; }
 
             public TestContext(bool forSealing, ReportingContractBasedValidator.Cache cache = null, Address[] initialValidators = null)
             {
@@ -204,9 +205,9 @@ namespace Nethermind.AuRa.Test.Validators
 
                 TxSender = Substitute.For<ITxSender>();
                 ITxPool txPool = Substitute.For<ITxPool>();
-                IWorldState stateProvider = Substitute.For<IWorldState>();
+                WorldState = Substitute.For<IWorldState>();
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(UInt256.One);
+                WorldState.GetNonce(ReportingValidatorContract.NodeAddress).Returns(UInt256.One);
 
                 Validator = new ReportingContractBasedValidator(
                     ContractBasedValidator,
@@ -215,7 +216,6 @@ namespace Nethermind.AuRa.Test.Validators
                     TxSender,
                     txPool,
                     new BlocksConfig(),
-                    stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
                     specProvider,
                     Substitute.For<IGasPriceOracle>(),

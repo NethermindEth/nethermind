@@ -31,7 +31,7 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 {
     private readonly IJsonRpcClient? _sequencerRpcClient;
-    private readonly IAccountStateProvider _accountStateProvider;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
     private readonly IOptimismSpecHelper _opSpecHelper;
@@ -51,9 +51,8 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         ulong? secondsPerSlot,
-
         IJsonRpcClient? sequencerRpcClient,
-        IAccountStateProvider accountStateProvider,
+        IWorldStateManager worldStateManager,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
         IOptimismSpecHelper opSpecHelper) : base(
@@ -73,7 +72,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;
-        _accountStateProvider = accountStateProvider;
+        _worldStateManager = worldStateManager;
         _ecdsa = ecdsa;
         _sealer = sealer;
         _opSpecHelper = opSpecHelper;
@@ -118,7 +117,10 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
         if (rpcTx.Nonce is null)
         {
-            tx.Nonce = _accountStateProvider.GetNonce(tx.SenderAddress);
+            // TODO: this kind of defeats the purpose of the refactor - but how do we deal with these situations?
+            // here we want to get the data technically for the head, but getting head from blockTree and then using
+            // that for the result seems like overkill? though it is the correct way of doing it?
+            tx.Nonce = _worldStateManager.GlobalWorldState.GetNonce(tx.SenderAddress);
         }
 
         await _sealer.Seal(tx, TxHandlingOptions.None);

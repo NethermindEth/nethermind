@@ -260,6 +260,8 @@ namespace Nethermind.Synchronization.Test
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
+            var worldStateManager =
+                new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
 
             InMemoryReceiptStorage receiptStorage = new();
 
@@ -275,7 +277,7 @@ namespace Nethermind.Synchronization.Test
                 new TxValidator(specProvider.ChainId),
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(tree, specProvider, worldStateManager, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
@@ -298,10 +300,10 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
-                stateProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor),
+                worldStateManager,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -313,6 +315,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
             WorldState devState = new(trieStore, codeDb, logManager);
+            var devWorldStateManager = new WorldStateManager(devState, trieStore, dbProvider, null, LimboLogs.Instance);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devEvm, codeInfoRepository, logManager);
 
@@ -321,9 +324,9 @@ namespace Nethermind.Synchronization.Test
                 blockValidator,
                 rewardCalculator,
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
-                devState,
+                devWorldStateManager,
                 receiptStorage,
-                new BlockhashStore(specProvider, devState),
+                new BlockhashStore(specProvider),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

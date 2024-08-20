@@ -12,12 +12,12 @@ namespace Nethermind.Optimism;
 public class OptimismBlockReceiptTracer : BlockReceiptsTracer
 {
     private readonly IOptimismSpecHelper _opSpecHelper;
-    private readonly IWorldState _worldState;
+    private readonly IWorldStateManager _worldStateManager;
 
-    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldState worldState)
+    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldStateManager worldStateManager)
     {
         _opSpecHelper = opSpecHelper;
-        _worldState = worldState;
+        _worldStateManager = worldStateManager;
     }
 
     private (ulong?, ulong?) GetDepositReceiptData(BlockHeader header)
@@ -26,10 +26,10 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
 
         ulong? depositNonce = null;
         ulong? version = null;
-
+        IWorldState worldStateToUse = _worldStateManager.GetGlobalWorldState(header);
         if (CurrentTx.IsDeposit())
         {
-            depositNonce = _worldState.GetNonce(CurrentTx.SenderAddress!).ToUInt64(null);
+            depositNonce = worldStateToUse.GetNonce(CurrentTx.SenderAddress!).ToUInt64(null);
             // We write nonce after tx processing, so need to subtract one
             if (depositNonce > 0)
             {

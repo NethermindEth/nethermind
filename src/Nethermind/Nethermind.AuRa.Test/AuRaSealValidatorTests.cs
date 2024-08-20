@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -57,6 +58,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IValidatorStore>(),
                 _validSealerStrategy,
                 _ethereumEcdsa,
+                Substitute.For<IWorldStateManager>(),
                 _logManager)
             {
                 ReportingValidator = _reportingValidator
@@ -149,7 +151,7 @@ namespace Nethermind.AuRa.Test
             object cause = null;
 
             _reportingValidator.ReportBenign(Arg.Any<Address>(), Arg.Any<long>(), Arg.Do<IReportingValidator.BenignCause>(c => cause ??= c));
-            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<long>(), Arg.Any<byte[]>(), Arg.Do<IReportingValidator.MaliciousCause>(c => cause ??= c));
+            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<long>(), Arg.Any<byte[]>(), Arg.Do<IReportingValidator.MaliciousCause>(c => cause ??= c), Arg.Any<IWorldState>());
             BlockHeader header = null, parent = null;
             _reportingValidator.TryReportSkipped(Arg.Do<BlockHeader>(h => header = h), Arg.Do<BlockHeader>(h => parent = h));
 

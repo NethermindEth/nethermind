@@ -16,6 +16,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -40,7 +41,7 @@ public class OptimismEthRpcModuleTest
             .WithTxSender(txSender)
             .WithOptimismEthRpcModule(
                 sequencerRpcClient: null /* explicitly using null to behave as Sequencer */,
-                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                worldStateManager: Substitute.For<IWorldStateManager>(),
                 ecdsa: new OptimismEthereumEcdsa(ethereumEcdsa),
                 sealer: Substitute.For<ITxSealer>(),
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
@@ -61,7 +62,7 @@ internal static class TestRpcBlockchainExt
     public static TestRpcBlockchain.Builder<TestRpcBlockchain> WithOptimismEthRpcModule(
         this TestRpcBlockchain.Builder<TestRpcBlockchain> @this,
         IJsonRpcClient? sequencerRpcClient,
-        IAccountStateProvider accountStateProvider,
+        IWorldStateManager worldStateManager,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
         IOptimismSpecHelper opSpecHelper)
@@ -84,7 +85,7 @@ internal static class TestRpcBlockchainExt
             new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),
             new BlocksConfig().SecondsPerSlot,
 
-            sequencerRpcClient, accountStateProvider, ecdsa, sealer, opSpecHelper
+            sequencerRpcClient, worldStateManager, ecdsa, sealer, opSpecHelper
         ));
     }
 }

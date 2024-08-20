@@ -33,7 +33,6 @@ namespace Nethermind.AuRa.Test
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
             AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
-                Substitute.For<IWorldState>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReadOnlyTxProcessorSource>(),

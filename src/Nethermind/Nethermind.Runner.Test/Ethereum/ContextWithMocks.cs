@@ -94,7 +94,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
-                WorldState = Substitute.For<IWorldState>(),
                 StateReader = Substitute.For<IStateReader>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
@@ -122,7 +121,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 BadBlocksStore = Substitute.For<IBlockStore>()
             };
 
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), null, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }

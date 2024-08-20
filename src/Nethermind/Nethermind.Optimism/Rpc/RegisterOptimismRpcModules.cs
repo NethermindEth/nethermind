@@ -46,7 +46,6 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
 
@@ -81,9 +80,8 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.EthSyncingInfo,
             feeHistoryOracle,
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
-
-        sequencerJsonRpcClient,
-            _api.WorldState,
+            sequencerJsonRpcClient,
+            _api.WorldStateManager!,
             _api.EthereumEcdsa,
             sealer,
             _api.SpecHelper);
@@ -99,7 +97,6 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
         StepDependencyException.ThrowIfNull(_api.L1CostHelper);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
 

@@ -24,50 +24,47 @@ namespace Nethermind.Consensus.Processing
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
 
-        public ReadOnlyChainProcessingEnv(
-            IReadOnlyTxProcessingScope scope,
+        public ReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
             IBlockValidator blockValidator,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             IBlockTree blockTree,
-            IStateReader stateReader,
+            IWorldStateManager worldStateManager,
             ILogManager logManager,
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor);
 
-            BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
+            BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor, worldStateManager);
 
-            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, worldStateManager.GlobalStateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
-            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, worldStateManager.GlobalStateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
         }
 
-        protected virtual IBlockProcessor CreateBlockProcessor(
-            IReadOnlyTxProcessingScope scope,
+        protected virtual IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor
-        )
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IWorldStateManager worldStateManager)
         {
             return new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,
-                scope.WorldState,
+                worldStateManager,
                 receiptStorage,
-                new BlockhashStore(specProvider, scope.WorldState),
+                new BlockhashStore(specProvider),
                 logManager);
         }
 

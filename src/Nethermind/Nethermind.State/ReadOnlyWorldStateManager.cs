@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -18,9 +20,12 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _codeDb;
 
+    public PreBlockCaches? Caches { get; }
+
     public ReadOnlyWorldStateManager(
         IDbProvider dbProvider,
         IReadOnlyTrieStore readOnlyTrieStore,
+        PreBlockCaches? preBlockCaches,
         ILogManager logManager
     )
     {
@@ -30,9 +35,11 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
+        Caches = preBlockCaches;
     }
 
-    public virtual IWorldState GlobalWorldState => throw new InvalidOperationException("global world state not supported");
+    public virtual IWorldState GlobalWorldState =>
+        throw new InvalidOperationException("global world state not supported");
 
     public IStateReader GlobalStateReader { get; }
 
@@ -58,4 +65,8 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
         add => throw new InvalidOperationException("Unsupported operation");
         remove => throw new InvalidOperationException("Unsupported operation");
     }
+
+    public virtual IWorldState GetGlobalWorldState(BlockHeader blockHeader) => throw new InvalidOperationException("global world state not supported");
+    public bool ClearCache() => Caches?.Clear() == true;
+    public bool HasStateRoot(Hash256 root) => GlobalStateReader.HasStateForRoot(root);
 }

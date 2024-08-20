@@ -37,17 +37,19 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Prepared_block_contains_author_field()
         {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            var dbProvider = TestMemDbProvider.Init();
+            TrieStore trieStore = new(dbProvider.StateDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
+            var worldStateManger =
+                new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
+
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
                 HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+                worldStateManger,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);
@@ -66,17 +68,18 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Recovers_state_on_cancel()
         {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            var dbProvider = TestMemDbProvider.Init();
+            TrieStore trieStore = new(dbProvider.StateDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
+            var worldStateManger =
+                new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
                 HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+                worldStateManger,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);

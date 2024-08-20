@@ -326,7 +326,7 @@ namespace Nethermind.Blockchain.Test
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.StartNewBlockTrace(blockToProduce);
 
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
+            txExecutor.ProcessTransactions(stateProvider, blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
             blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
     }

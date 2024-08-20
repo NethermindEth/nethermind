@@ -38,6 +38,8 @@ public class ReorgTests
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
         WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+        var worldStateManager =
+            new WorldStateManager(stateProvider, trieStore, memDbProvider, null, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
@@ -56,7 +58,7 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, worldStateManager, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             blockhashProvider,
@@ -73,10 +75,10 @@ public class ReorgTests
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-            stateProvider,
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+            worldStateManager,
             NullReceiptStorage.Instance,
-            new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            new BlockhashStore(MainnetSpecProvider.Instance),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

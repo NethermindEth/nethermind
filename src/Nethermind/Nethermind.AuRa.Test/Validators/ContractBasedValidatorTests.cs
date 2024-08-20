@@ -91,7 +91,7 @@ public class ContractBasedValidatorTests
             .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "finalizeChange"), Arg.Any<object[]>())
             .Returns(_finalizeChangeData.TransactionData);
 
-        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
+        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
     }
 
     [TearDown]
@@ -524,7 +524,7 @@ public class ContractBasedValidatorTests
 
             Action preProcess = () => validator.OnBlockProcessingStart(_block, _stateProvider);
             preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
-            validator.OnBlockProcessingEnd(_block, txReceipts);
+            validator.OnBlockProcessingEnd(_block, txReceipts, _stateProvider);
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
             _blockFinalizationManager.BlocksFinalized += Raise.EventWith(

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -15,6 +17,8 @@ public class OverlayWorldStateManager(
     ILogManager? logManager)
     : IWorldStateManager
 {
+    public PreBlockCaches Caches { get; }
+
     private readonly IDb _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
 
     private readonly StateReader _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
@@ -47,4 +51,9 @@ public class OverlayWorldStateManager(
         add => overlayTrieStore.ReorgBoundaryReached += value;
         remove => overlayTrieStore.ReorgBoundaryReached -= value;
     }
+
+    public IWorldState GetGlobalWorldState(BlockHeader blockHeader) => GlobalWorldState;
+    public bool ClearCache() => Caches.Clear();
+
+    public bool HasStateRoot(Hash256 root) => GlobalStateReader.HasStateForRoot(root);
 }

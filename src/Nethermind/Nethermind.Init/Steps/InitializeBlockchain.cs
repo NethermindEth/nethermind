@@ -1,20 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -24,22 +19,10 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Db;
-using Nethermind.Db.FullPruning;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.Synchronization.Trie;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -82,7 +65,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
+            PreBlockCaches? preBlockCaches = (_api.WorldStateManager as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
             _api.TransactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
@@ -108,7 +91,7 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager, _api.WorldState), _api.SpecProvider, _api.LogManager, _api.WorldState)
+                ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager), _api.SpecProvider, _api.WorldStateManager!, _api.LogManager)
                 : null;
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor(preWarmer);
 
@@ -178,11 +161,11 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+            if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
+                _api.BlockTree, _api.SpecProvider, _api.WorldStateManager, _api.LogManager);
 
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -228,15 +211,14 @@ namespace Nethermind.Init.Steps
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            IWorldState worldState = _api.WorldState!;
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
-                worldState,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor),
+                _api.WorldStateManager,
                 _api.ReceiptStorage,
-                new BlockhashStore(_api.SpecProvider!, worldState),
+                new BlockhashStore(_api.SpecProvider!),
                 _api.LogManager,
                 preWarmer: preWarmer
             );

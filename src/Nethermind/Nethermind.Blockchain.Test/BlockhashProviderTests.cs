@@ -21,18 +21,19 @@ namespace Nethermind.Blockchain.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class BlockhashProviderTests
     {
-        private static IWorldState CreateWorldState()
+        private static IWorldStateManager CreateWorldStateManager()
         {
-            var trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
-            var worldState = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+            var dbProvider = TestMemDbProvider.Init();
+            var trieStore = new TrieStore(dbProvider.StateDb, LimboLogs.Instance);
+            var worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
             worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
             worldState.Commit(Frontier.Instance);
-            return worldState;
+            return new WorldStateManager(worldState, trieStore, dbProvider, null, LimboLogs.Instance);
         }
 
         private static BlockhashProvider CreateBlockHashProvider(IBlockFinder tree, IReleaseSpec spec)
         {
-            IWorldState worldState = CreateWorldState();
+            IWorldStateManager worldState = CreateWorldStateManager();
             BlockhashProvider provider = new(tree, new TestSpecProvider(spec), worldState, LimboLogs.Instance);
             return provider;
         }
@@ -254,12 +255,12 @@ namespace Nethermind.Blockchain.Test
             Block current = Build.A.Block.WithParent(head!).TestObject;
             tree.SuggestHeader(current.Header);
 
-            IWorldState worldState = CreateWorldState();
+            IWorldStateManager worldState = CreateWorldStateManager();
             var specProvider = new CustomSpecProvider(
                 (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
                 (new ForkActivation(0, current.Timestamp), Prague.Instance));
             BlockhashProvider provider = new(tree, specProvider, worldState, LimboLogs.Instance);
-            BlockhashStore store = new(specProvider, worldState);
+            BlockhashStore store = new(specProvider);
 
             Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1);
             Assert.That(result, Is.EqualTo(head?.Hash));
@@ -270,7 +271,7 @@ namespace Nethermind.Blockchain.Test
             current = Build.A.Block.WithParent(head!).TestObject;
             tree.SuggestHeader(current.Header);
 
-            store.ApplyBlockhashStateChanges(current.Header);
+            store.ApplyBlockhashStateChanges(current.Header, worldState.GlobalWorldState);
             result = provider.GetBlockhash(current.Header, chainLength);
             Assert.That(result, Is.EqualTo(head?.Hash));
 

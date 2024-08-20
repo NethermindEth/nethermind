@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -22,12 +21,14 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly IBlockhashStore _blockhashStore;
         private readonly ILogger _logger;
+        private readonly IWorldStateManager _worldStateManager;
 
-        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldState worldState, ILogManager? logManager)
+        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldStateManager worldStateManager, ILogManager? logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _specProvider = specProvider;
-            _blockhashStore = new BlockhashStore(specProvider, worldState);
+            _blockhashStore = new BlockhashStore(specProvider);
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -37,7 +38,8 @@ namespace Nethermind.Blockchain
 
             if (spec.IsBlockHashInStateAvailable)
             {
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number);
+                IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(currentBlock);
+                return _blockhashStore.GetBlockHashFromState(currentBlock, number, worldStateToUse);
             }
 
             long current = currentBlock.Number;

@@ -109,11 +109,11 @@ namespace Nethermind.Consensus.Clique
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
-                scope.WorldState,
+                getFromApi.WorldStateManager,
                 NullReceiptStorage.Instance,
-                new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                new BlockhashStore(getFromApi.SpecProvider),
                 getFromApi.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(getFromApi.LogManager)));
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
                 readOnlyBlockTree,

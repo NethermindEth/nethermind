@@ -54,13 +54,6 @@ namespace Nethermind.Api
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }
-        /// <summary>
-        /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
-        /// </summary>
-        /// <remarks>
-        /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
-        /// </remarks>
-        IWorldState? WorldState { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
         IWorldStateManager? WorldStateManager { get; set; }

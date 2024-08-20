@@ -50,7 +50,6 @@ namespace Nethermind.AuRa.Test.Contract
                     _transactionProcessor,
                     AbiEncoder.Instance,
                     null,
-                    _stateProvider,
                     _readOnlyTxProcessorSource,
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             action.Should().Throw<ArgumentNullException>();
@@ -76,7 +75,6 @@ namespace Nethermind.AuRa.Test.Contract
                 _transactionProcessor,
                 AbiEncoder.Instance,
                 _contractAddress,
-                _stateProvider,
                 _readOnlyTxProcessorSource,
                 new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
 

@@ -26,7 +26,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IBlockTree blockTree,
-    IStateReader stateReader,
+    IWorldStateManager worldStateManager,
     ILogManager logManager,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
@@ -39,30 +39,28 @@ public class OptimismReadOnlyChainProcessingEnv(
     receiptStorage,
     specProvider,
     blockTree,
-    stateReader,
+    worldStateManager,
     logManager,
     blockTransactionsExecutor)
 {
 
-    protected override IBlockProcessor CreateBlockProcessor(
-        IReadOnlyTxProcessingScope scope,
+    protected override IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor
-    )
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IWorldStateManager worldStateManager)
     {
         return new OptimismBlockProcessor(
             specProvider,
             blockValidator,
             rewardCalculator,
             transactionsExecutor,
-            scope.WorldState,
+            worldStateManager,
             receiptStorage,
-            new BlockhashStore(specProvider, scope.WorldState),
+            new BlockhashStore(specProvider),
             logManager,
             opSpecHelper,
             contractRewriter,

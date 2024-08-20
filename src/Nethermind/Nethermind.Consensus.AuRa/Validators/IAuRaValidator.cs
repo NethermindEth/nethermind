@@ -12,6 +12,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         Address[] Validators { get; }
         void OnBlockProcessingStart(Block block, IWorldState worldState,
             ProcessingOptions options = ProcessingOptions.None);
-        void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
+        void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, IWorldState worldState,
+            ProcessingOptions options = ProcessingOptions.None);
     }
 }

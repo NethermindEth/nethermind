@@ -159,7 +159,7 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
+        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, null, Lim.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
@@ -186,7 +186,7 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
         CodeInfoRepository codeInfoRepository = new();
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, WorldStateManager, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, virtualMachine, codeInfoRepository, LogManager);
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
@@ -373,10 +373,10 @@ public class TestBlockchain : IDisposable
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-            State,
+            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
+            WorldStateManager,
             ReceiptStorage,
-            new BlockhashStore(SpecProvider, State),
+            new BlockhashStore(SpecProvider),
             LogManager);
 
     public async Task WaitForNewHead()

@@ -14,12 +14,12 @@ using Nethermind.State;
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
+public class BlockhashStore(ISpecProvider specProvider)
     : IBlockhashStore
 {
     private static readonly byte[] EmptyBytes = [0];
 
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader)
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IWorldState worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
@@ -33,7 +33,7 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
+    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IWorldState worldState)
     {
         IReleaseSpec? spec = specProvider.GetSpec(currentHeader);
         if (requiredBlockNumber >= currentHeader.Number ||

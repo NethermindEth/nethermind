@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -24,8 +25,9 @@ namespace Nethermind.Consensus.AuRa
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
+        private readonly IWorldStateManager _worldStateManager;
 
-        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, ILogManager logManager)
+        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, IWorldStateManager worldStateManager, ILogManager logManager)
         {
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
@@ -33,6 +35,7 @@ namespace Nethermind.Consensus.AuRa
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _logger = logManager?.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -58,16 +61,17 @@ namespace Nethermind.Consensus.AuRa
             {
                 long step = header.AuRaStep.Value;
 
+                IWorldState? worldState = _worldStateManager.GetGlobalWorldState(header);
                 if (step == parent.AuRaStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep, worldState);
                     return false;
                 }
                 else if (step < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
                 {
                     if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {parent.AuRaStep}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep, worldState);
                     return false;
                 }
 
@@ -110,7 +114,7 @@ namespace Nethermind.Consensus.AuRa
                 if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.SiblingBlocksInSameStep, worldState);
                 }
 
                 if (header.Number >= _parameters.ValidateScoreTransition)

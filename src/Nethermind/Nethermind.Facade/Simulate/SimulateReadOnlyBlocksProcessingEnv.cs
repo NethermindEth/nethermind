@@ -24,22 +24,22 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockValidationTransactionsExecutor(
     ITransactionProcessor transactionProcessor,
-    IWorldState stateProvider,
     bool validate,
     UInt256? blobBaseFeeOverride)
-    : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
+    : BlockValidationTransactionsExecutor(transactionProcessor)
 {
     protected override BlockExecutionContext CreateBlockExecutionContext(Block block) =>
         blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block);
 
-    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+    protected override void ProcessTransaction(IWorldState worldState, in BlockExecutionContext blkCtx,
+        Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
         if (!validate)
         {
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
         }
 
-        base.ProcessTransaction(in blkCtx, currentTx, index, receiptsTracer, processingOptions);
+        base.ProcessTransaction(worldState, in blkCtx, currentTx, index, receiptsTracer, processingOptions);
     }
 }
 
@@ -66,7 +66,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         _logManager = logManager;
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
-        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
+        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, WorldStateManager, logManager), BlockTree);
         StateProvider = WorldStateManager.GlobalWorldState;
         StateReader = WorldStateManager.GlobalStateReader;
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
@@ -76,7 +76,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
     }
 
-    public IWorldStateManager WorldStateManager { get; }
     public IVirtualMachine VirtualMachine { get; }
     public IReadOnlyDbProvider DbProvider { get; }
     public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }
@@ -110,9 +109,9 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
-            StateProvider,
+            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, validate, blobBaseFeeOverride),
+            WorldStateManager,
             NullReceiptStorage.Instance,
-            new BlockhashStore(SpecProvider, StateProvider),
+            new BlockhashStore(SpecProvider),
             _logManager);
 }

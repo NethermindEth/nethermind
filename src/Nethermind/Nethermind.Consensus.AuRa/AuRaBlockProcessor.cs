@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-            IWorldState stateProvider,
+            IWorldStateManager worldStateManager,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockFinder blockTree,
@@ -52,9 +52,9 @@ namespace Nethermind.Consensus.AuRa
                 blockValidator,
                 rewardCalculator,
                 blockTransactionsExecutor,
-                stateProvider,
+                worldStateManager,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 logManager,
                 withdrawalProcessor,
                 preWarmer: preWarmer)
@@ -78,10 +78,10 @@ namespace Nethermind.Consensus.AuRa
             ProcessingOptions options)
         {
             ValidateAuRa(block);
-            _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
+            _contractRewriter?.RewriteContracts(block.Number, worldState, _specProvider.GetSpec(block.Header));
             AuRaValidator.OnBlockProcessingStart(block, worldState, options);
             TxReceipt[] receipts = base.ProcessBlock(worldState, block, blockTracer, options);
-            AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
+            AuRaValidator.OnBlockProcessingEnd(block, receipts, worldState, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
@@ -177,7 +177,8 @@ namespace Nethermind.Consensus.AuRa
             public Address[] Validators => Array.Empty<Address>();
             public void OnBlockProcessingStart(Block block, IWorldState worldState,
                 ProcessingOptions options = ProcessingOptions.None) { }
-            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
+            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, IWorldState worldState,
+                ProcessingOptions options = ProcessingOptions.None) { }
         }
     }
 }

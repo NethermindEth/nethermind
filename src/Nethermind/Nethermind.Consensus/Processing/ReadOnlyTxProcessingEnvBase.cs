@@ -12,6 +12,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingEnvBase
 {
+    public IWorldStateManager WorldStateManager { get; protected set;  }
     public IStateReader StateReader { get; protected set; }
     protected IWorldState StateProvider { get; set; }
     public IBlockTree BlockTree { get; protected set; }
@@ -30,11 +31,12 @@ public class ReadOnlyTxProcessingEnvBase
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(worldStateManager);
+        WorldStateManager = worldStateManager;
         SpecProvider = specProvider;
         StateReader = worldStateManager.GlobalStateReader;
         StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
         BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-        BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+        BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, WorldStateManager, logManager);
         LogManager = logManager;
     }
 }

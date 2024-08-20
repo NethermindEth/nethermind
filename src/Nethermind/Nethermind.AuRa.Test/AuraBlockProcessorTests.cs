@@ -145,21 +145,22 @@ namespace Nethermind.AuRa.Test
 
         private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            var dbProvider = TestMemDbProvider.Init();
+            TrieStore trieStore = new(dbProvider.StateDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
+            var worldStateManager =
+                new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
                 HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+                worldStateManager,
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
-                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new WithdrawalProcessor(LimboLogs.Instance),
                 null,
                 txFilter,
                 contractRewriter: contractRewriter);

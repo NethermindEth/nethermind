@@ -226,15 +226,15 @@ public partial class EngineModuleTests
         protected override IBlockProcessor CreateBlockProcessor()
         {
             BlockValidator = CreateBlockValidator();
-            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            WithdrawalProcessor = new WithdrawalProcessor(LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
+                WorldStateManager,
                 ReceiptStorage,
-                new BlockhashStore(SpecProvider, State),
+                new BlockhashStore(SpecProvider),
                 LogManager,
                 WithdrawalProcessor);
 

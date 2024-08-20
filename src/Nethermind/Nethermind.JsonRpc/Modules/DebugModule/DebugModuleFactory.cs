@@ -88,7 +88,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
-        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, scope.WorldState);
+        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter);
         ReadOnlyChainProcessingEnv chainProcessingEnv = new(
             scope,
             _blockValidator,
@@ -97,7 +97,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _receiptStorage,
             _specProvider,
             _blockTree,
-            _worldStateManager.GlobalStateReader,
+            _worldStateManager,
             _logManager,
             transactionsExecutor);
 
