@@ -210,7 +210,7 @@ class ShutterTxLoaderTests : EngineModuleTests
 
     // todo: test transactions with overlapping eons
 
-    private ShutterTransactions OnNewLogs(Random rnd, MergeTestBlockchain chain, ShutterTxLoader txLoader, in LogEntry[] logs, IShutterMessageHandler.ValidatedKeyArgs keys)
+    private ShutterTransactions OnNewLogs(Random rnd, MergeTestBlockchain chain, ShutterTxLoader txLoader, in LogEntry[] logs, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
         Block head = chain.BlockTree.Head!;
         BlockHeader parentHeader = chain.BlockTree.FindParentHeader(head.Header, Blockchain.BlockTreeLookupOptions.None)!;

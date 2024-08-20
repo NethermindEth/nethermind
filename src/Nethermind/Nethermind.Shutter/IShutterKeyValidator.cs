@@ -5,7 +5,8 @@ using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Shutter;
-public interface IShutterMessageHandler
+
+public interface IShutterKeyValidator
 {
     void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys);
     event EventHandler<ValidatedKeyArgs> KeysValidated;

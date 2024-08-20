@@ -20,6 +20,7 @@ public class ShutterBlockImprovementContextFactory(
     IBlockProducer blockProducer,
     ShutterTxSource shutterTxSource,
     IShutterConfig shutterConfig,
+    ShutterTime time,
     ISpecProvider spec,
     ILogManager logManager) : IBlockImprovementContextFactory
 {
@@ -33,6 +34,7 @@ public class ShutterBlockImprovementContextFactory(
         new ShutterBlockImprovementContext(blockProducer,
                                            shutterTxSource,
                                            shutterConfig,
+                                           time,
                                            currentBestBlock,
                                            parentHeader,
                                            payloadAttributes,
@@ -59,6 +61,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     private readonly IBlockProducer _blockProducer;
     private readonly IShutterTxSignal _txSignal;
     private readonly IShutterConfig _shutterConfig;
+    private readonly ShutterTime _time;
     private readonly BlockHeader _parentHeader;
     private readonly PayloadAttributes _payloadAttributes;
     private readonly ulong _slotTimestampMs;
@@ -69,6 +72,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         IBlockProducer blockProducer,
         IShutterTxSignal shutterTxSignal,
         IShutterConfig shutterConfig,
+        ShutterTime time,
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
@@ -95,6 +99,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _blockProducer = blockProducer;
         _txSignal = shutterTxSignal;
         _shutterConfig = shutterConfig;
+        _time = time;
         _parentHeader = parentHeader;
         _payloadAttributes = payloadAttributes;
         _genesisTimestampMs = genesisTimestampMs;
@@ -117,9 +122,9 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         long offset;
         try
         {
-            (slot, offset) = ShutterHelpers.GetBuildingSlotAndOffset(_slotTimestampMs, _genesisTimestampMs);
+            (slot, offset) = _time.GetBuildingSlotAndOffset(_slotTimestampMs, _genesisTimestampMs);
         }
-        catch (ShutterHelpers.ShutterSlotCalulationException e)
+        catch (ShutterTime.ShutterSlotCalulationException e)
         {
             _logger.Warn($"Could not calculate Shutter building slot: {e}");
             await TryBuildShutterBlock(0);

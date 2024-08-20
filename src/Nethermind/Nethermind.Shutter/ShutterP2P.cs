@@ -22,7 +22,6 @@ using Google.Protobuf;
 namespace Nethermind.Shutter;
 
 public class ShutterP2P(
-    Action<Dto.DecryptionKeys> onDecryptionKeysReceived,
     IShutterConfig shutterConfig,
     ILogManager logManager)
 {
@@ -35,7 +34,9 @@ public class ShutterP2P(
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-    public void Start(in IEnumerable<string> p2pAddresses)
+    public event EventHandler<Dto.DecryptionKeys>? KeysReceived;
+
+    public void Start(CancellationTokenSource? cancellationTokenSource = null)
     {
         _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
@@ -78,10 +79,10 @@ public class ShutterP2P(
         };
 
         MyProto proto = new();
-        _cancellationTokenSource = new();
+        _cancellationTokenSource = cancellationTokenSource ?? new();
         _ = _router.RunAsync(peer, proto, token: _cancellationTokenSource.Token);
         proto.SetupFinished().GetAwaiter().GetResult();
-        ConnectToPeers(proto, p2pAddresses);
+        ConnectToPeers(proto, shutterConfig.KeyperP2PAddresses!);
 
         Task.Run(async () =>
         {
@@ -150,7 +151,7 @@ public class ShutterP2P(
             Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
             if (envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
             {
-                onDecryptionKeysReceived(decryptionKeys);
+                KeysReceived?.Invoke(this, decryptionKeys);
             }
             else
             {

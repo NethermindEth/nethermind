@@ -33,15 +33,8 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     private INethermindApi? _api;
     private IMergeConfig? _mergeConfig;
     private IShutterConfig? _shutterConfig;
-    private ShutterP2P? _shutterP2P;
-    private EventHandler<BlockEventArgs>? _newHeadBlockHandler;
-    private EventHandler<IShutterMessageHandler.ValidatedKeyArgs>? _keysValidatedHandler;
-    private ShutterTxSource? _txSource;
-    private IShutterMessageHandler? _msgHandler;
+    private ShutterApi? _shutterApi;
     private ILogger _logger;
-    private readonly TimeSpan _slotLength = GnosisSpecProvider.SlotLength;
-    private readonly TimeSpan _blockUpToDateCutoff = GnosisSpecProvider.SlotLength;
-    private readonly TimeSpan _blockWaitCutoff = TimeSpan.FromMilliseconds(1333);
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -60,34 +53,22 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
         if (Enabled)
         {
             if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
-            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
-            if (_txSource is null) throw new ArgumentNullException(nameof(_txSource));
-            if (_shutterConfig is null) throw new ArgumentNullException(nameof(_shutterConfig));
 
             _logger.Info("Initializing Shutter block improvement.");
-            _api.BlockImprovementContextFactory = new ShutterBlockImprovementContextFactory(
-                _api.BlockProducer,
-                _txSource,
-                _shutterConfig,
-                _api.SpecProvider,
-                _api.LogManager);
+            _api.BlockImprovementContextFactory = _shutterApi!.GetBlockImprovementContextFactory(_api.BlockProducer);
         }
         return Task.CompletedTask;
     }
-
 
     public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
     {
         if (Enabled)
         {
-            if (_api!.AbiEncoder is null) throw new ArgumentNullException(nameof(_api.AbiEncoder));
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.BlockProducerEnvFactory is null) throw new ArgumentNullException(nameof(_api.BlockProducerEnvFactory));
+            if (_api!.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
             if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.LogFinder is null) throw new ArgumentNullException(nameof(_api.LogFinder));
-            if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+            if (_api.ReceiptFinder is null) throw new ArgumentNullException(nameof(_api.ReceiptFinder));
             if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
 
             _logger.Info("Initializing Shutter block producer.");
@@ -107,46 +88,25 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 }
             }
 
-            IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
-            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
+            _shutterApi = new ShutterApi(
+                _api.AbiEncoder,
+                _api.BlockTree.AsReadOnly(),
+                _api.EthereumEcdsa,
+                _api.LogFinder,
+                _api.ReceiptFinder,
+                _api.LogManager,
+                _api.SpecProvider,
+                _api.Timestamper,
+                _api.WorldStateManager,
+                _shutterConfig,
+                validatorsInfo
+            );
 
-            ShutterTime time = new(_api.SpecProvider!, _api.Timestamper!, _slotLength, _blockUpToDateCutoff);
-            ShutterTxLoader txLoader = new(_api.LogFinder!, _shutterConfig, time, _api.SpecProvider!, _api.EthereumEcdsa!, _api.LogManager);
-            ShutterEon eon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _shutterConfig, _api.LogManager);
-            ShutterBlockHandler blockHandler = new(
-                _api.SpecProvider!.ChainId,
-                _shutterConfig.ValidatorRegistryContractAddress!,
-                _shutterConfig.ValidatorRegistryMessageVersion,
-                readOnlyTxProcessingEnvFactory, readOnlyBlockTree,
-                _api.AbiEncoder, _api.ReceiptFinder!, validatorsInfo,
-                eon, txLoader, time, _api.LogManager);
-
-            _newHeadBlockHandler = (_, e) =>
-            {
-                blockHandler.OnNewHeadBlock(e.Block);
-            };
-            _api.BlockTree!.NewHeadBlock += _newHeadBlockHandler;
-
-            _txSource = new ShutterTxSource(txLoader, _shutterConfig, time, _api.LogManager);
-
-            _msgHandler = new ShutterMessageHandler(_shutterConfig, eon, _api.LogManager);
-            _keysValidatedHandler = async (_, keys) =>
-            {
-                // wait for latest block before loading transactions
-                Block? head = (await blockHandler.WaitForBlockInSlot(keys.Slot - 1, _slotLength, _blockWaitCutoff, new())) ?? _api.BlockTree.Head;
-                BlockHeader? header = head?.Header;
-                BlockHeader parentHeader = header is not null
-                    ? _api.BlockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
-                    : _api.BlockTree.FindLatestHeader()!;
-                _txSource.LoadTransactions(head, parentHeader, keys);
-            };
-            _msgHandler.KeysValidated += _keysValidatedHandler;
-
-            _shutterP2P = new(_msgHandler.OnDecryptionKeysReceived, _shutterConfig, _api.LogManager);
-            _shutterP2P.Start(_shutterConfig.KeyperP2PAddresses!);
+            _api.BlockTree!.NewHeadBlock += _shutterApi.NewHeadBlockHandler;
         }
 
-        return consensusPlugin.InitBlockProducer(_txSource.Then(txSource));
+        ITxSource? compositeTxSource = _shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource);
+        return consensusPlugin.InitBlockProducer(compositeTxSource);
     }
 
     public bool ShouldRunSteps(INethermindApi api)
@@ -158,15 +118,11 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
     public async ValueTask DisposeAsync()
     {
-        if (_newHeadBlockHandler is not null)
+        if (_shutterApi is not null)
         {
-            _api!.BlockTree!.NewHeadBlock -= _newHeadBlockHandler;
+            _api!.BlockTree!.NewHeadBlock -= _shutterApi.NewHeadBlockHandler;
         }
-        if (_keysValidatedHandler is not null)
-        {
-            _msgHandler!.KeysValidated -= _keysValidatedHandler;
-        }
-        await (_shutterP2P?.DisposeAsync() ?? default);
+        await (_shutterApi?.DisposeAsync() ?? default);
     }
 
     private static Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)

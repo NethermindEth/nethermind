@@ -84,10 +84,10 @@ class ShutterTestsCommon
         );
     }
 
-    public static ShutterMessageHandler InitMessageHandler()
+    public static ShutterKeyValidator InitKeyValidator()
         => new(Cfg, InitEon(), LogManager);
 
-    public static ShutterMessageHandler InitMessageHandler(ShutterEon eon)
+    public static ShutterKeyValidator InitKeyValidator(ShutterEon eon)
         => new(Cfg, eon, LogManager);
 
     public static ShutterBlockHandler InitBlockHandler()

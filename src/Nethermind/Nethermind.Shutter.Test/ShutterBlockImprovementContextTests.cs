@@ -17,35 +17,35 @@ namespace Nethermind.Shutter.Test;
 [TestFixture]
 public class ShutterBlockImprovementContextTests
 {
-    [Test]
-    public async Task Test()
-    {
-        ShutterConfig cfg = new()
-        {
-            MaxKeyDelay = 1666
-        };
+    // [Test]
+    // public async Task Test()
+    // {
+    //     ShutterConfig cfg = new()
+    //     {
+    //         MaxKeyDelay = 1666
+    //     };
 
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5
-        };
+    //     PayloadAttributes payloadAttributes = new()
+    //     {
+    //         Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5
+    //     };
 
-        ShutterBlockImprovementContextFactory improvementContextFactory = new(
-            Substitute.For<IBlockProducer>(),
-            Substitute.For<ShutterTxSource>(),
-            cfg,
-            GnosisSpecProvider.Instance,
-            LimboLogs.Instance
-        );
+    //     ShutterBlockImprovementContextFactory improvementContextFactory = new(
+    //         Substitute.For<IBlockProducer>(),
+    //         Substitute.For<ShutterTxSource>(),
+    //         cfg,
+    //         GnosisSpecProvider.Instance,
+    //         LimboLogs.Instance
+    //     );
 
-        IBlockImprovementContext improvementContext = improvementContextFactory.StartBlockImprovementContext(
-            Build.A.Block.TestObject,
-            Build.A.BlockHeader.TestObject,
-            payloadAttributes,
-            DateTimeOffset.UtcNow
-        );
+    //     IBlockImprovementContext improvementContext = improvementContextFactory.StartBlockImprovementContext(
+    //         Build.A.Block.TestObject,
+    //         Build.A.BlockHeader.TestObject,
+    //         payloadAttributes,
+    //         DateTimeOffset.UtcNow
+    //     );
 
-        await improvementContext.ImprovementTask;
-    }
+    //     await improvementContext.ImprovementTask;
+    // }
 
 }

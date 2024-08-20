@@ -46,7 +46,7 @@ public class ShutterTxLoader(
     private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
 
     // keys should not contain placeholder
-    public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterMessageHandler.ValidatedKeyArgs keys)
+    public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
         List<SequencedTransaction>? sequencedTransactions = null;
         sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();

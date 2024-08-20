@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Consensus.Producers;
 using Nethermind.Shutter.Config;
 using Nethermind.Logging;
@@ -88,7 +87,7 @@ public class ShutterTxSource(
         return _txCache.Contains(slot);
     }
 
-    public void LoadTransactions(Block? head, BlockHeader parentHeader, IShutterMessageHandler.ValidatedKeyArgs keys)
+    public void LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
         _txCache.Set(keys.Slot, txLoader.LoadTransactions(head, parentHeader, keys));
 

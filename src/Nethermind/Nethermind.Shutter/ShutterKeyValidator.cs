@@ -14,17 +14,17 @@ namespace Nethermind.Shutter;
 
 using G1 = Bls.P1;
 
-public class ShutterMessageHandler(
+public class ShutterKeyValidator(
     IShutterConfig shutterConfig,
     ShutterEon eon,
-    ILogManager logManager) : IShutterMessageHandler
+    ILogManager logManager) : IShutterKeyValidator
 {
     private ulong? _highestValidatedSlot;
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
     private readonly object _lockObject = new();
 
-    public event EventHandler<IShutterMessageHandler.ValidatedKeyArgs>? KeysValidated;
+    public event EventHandler<IShutterKeyValidator.ValidatedKeyArgs>? KeysValidated;
 
     public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
