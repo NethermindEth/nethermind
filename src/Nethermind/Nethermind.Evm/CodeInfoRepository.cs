@@ -178,7 +178,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         _codeCache.Set(codeHash, codeInfo);
     }
 
-    
     /// <summary>
     /// Insert code delegations from transaction authorization_list authorized by signature,
     /// and return all authority addresses that was accessed.
@@ -200,10 +199,10 @@ public class CodeInfoRepository : ICodeInfoRepository
                 result.Add(authTuple.Authority);
             string? error;
             if (!IsValidForExecution(authTuple, worldState, _ethereumEcdsa.ChainId, spec, out error))
-            {
                 continue;
-            }
+
             InsertAuthorizedCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
+            worldState.IncrementNonce(authTuple.Authority);
         }
         return result;
 
@@ -214,7 +213,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             Hash256 codeHash = Keccak.Compute(authorizedBuffer);
             state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec);
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
-            state.IncrementNonce(authority);
         }
     }
 
@@ -239,7 +237,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return false;
         }
         if (stateProvider.HasCode(authorizationTuple.Authority)
-         && HasDelegatedCode(stateProvider, authorizationTuple.Authority, spec))
+         && !HasDelegatedCode(stateProvider, authorizationTuple.Authority))
         {
             error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
             return false;
@@ -255,11 +253,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         return true;
     }
 
-    private bool HasDelegatedCode(IWorldState worldState, Address source, IReleaseSpec spec)
+    private bool HasDelegatedCode(IWorldState worldState, Address source)
     {
-        CodeInfo codeInfo = GetCachedCodeInfo(worldState, source, spec);
         return
-            HasDelegatedCode(codeInfo.MachineCode.Span);
+            HasDelegatedCode(worldState.GetCode(source));
     }
 
     private static bool HasDelegatedCode(ReadOnlySpan<byte> code)
@@ -267,7 +264,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         return
             code.Length >= Eip7702Constants.DelegationHeader.Length
             && Eip7702Constants.DelegationHeader.SequenceEqual(
-                code.Slice(Eip7702Constants.DelegationHeader.Length));
+                code.Slice(0, Eip7702Constants.DelegationHeader.Length));
     }
 
     private static Address ParseDelegatedAddress(byte[] code)
