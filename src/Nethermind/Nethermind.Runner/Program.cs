@@ -272,9 +272,9 @@ public static class Program
         }
     }
 
-    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
+    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames)
     {
-        return GetArgumentNames(args).GroupBy(n => n, new MemoryContentsComparer<char>())
+        return argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
             .Where(g => g.Count() > 1)
             .Select(g => g.Key);
     }
@@ -604,7 +604,7 @@ public static class Program
             }
         }
 
-        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
+        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(argumentsNamesProvided));
         if (!string.IsNullOrEmpty(duplicateArgumentsList))
         {
             _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
