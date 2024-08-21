@@ -16,7 +16,7 @@ public class BlobFinder(BlobTxDistinctSortedPool blobPool)
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out byte[]? proof)
     {
-        if (blobPool.GetBlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
+        if (blobPool.BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
             && txHashes[0] is not null
             && blobPool.TryGetValue(txHashes[0], out Transaction? blobTx)
             && blobTx.BlobVersionedHashes?.Length > 0)
