@@ -8,5 +8,5 @@ namespace Nethermind.Merge.Plugin.Data;
 
 public class GetBlobsV1Result(IEnumerable<BlobAndProofV1?> blobsAndProofs)
 {
-    public readonly IEnumerable<BlobAndProofV1?> BlobsAndProofs = blobsAndProofs;
+    public IEnumerable<BlobAndProofV1?> BlobsAndProofs { get; } = blobsAndProofs;
 }
