@@ -563,24 +563,12 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<BlobAndProofV1?> blobsAndProofs = new(numberOfBlobs);
-        if (blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-        {
-            for (int i = 0; i < numberOfBlobs; i++)
-            {
-                blobsAndProofs.Add(new BlobAndProofV1(wrapper.Blobs[i], wrapper.Proofs[i]));
-            }
-        }
-
-        GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
-
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
-        result.Data.Should().BeEquivalentTo(expected);
         BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
-        ShardBlobNetworkWrapper wrapper = ((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!);
-        resultBlobsAndProofs.Select(b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        resultBlobsAndProofs.Select(b => b.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        resultBlobsAndProofs.Select(b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        resultBlobsAndProofs.Select(b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
     }
 
     [Test]
@@ -597,23 +585,11 @@ public partial class EngineModuleTests
             .WithMaxFeePerBlobGas(1000.Wei())
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        List<BlobAndProofV1?> blobsAndProofs = new(numberOfRequestedBlobs);
-        for (int i = 0; i < numberOfRequestedBlobs; i++)
-        {
-            blobsAndProofs.Add(null);
-        }
-        GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
-
         // requesting hashes that are not present in TxPool
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
-        result.Data.Should().BeEquivalentTo(expected);
-        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
-        resultBlobsAndProofs.Length.Should().Be(numberOfRequestedBlobs);
-        for (int i = 0; i < numberOfRequestedBlobs; i++)
-        {
-            resultBlobsAndProofs[i]!.Should().BeNull();
-        }
+        result.Data.BlobsAndProofs.Should().HaveCount(numberOfRequestedBlobs);
+        result.Data.BlobsAndProofs.Should().AllBeEquivalentTo<BlobAndProofV1?>(null);
     }
 
     [Test]
