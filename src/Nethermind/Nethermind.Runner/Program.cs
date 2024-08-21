@@ -251,27 +251,6 @@ public static class Program
         }
     }
 
-    private static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
-    private static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
-    {
-        bool lastWasArgument = false;
-        foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
-        {
-            if (!lastWasArgument)
-            {
-                bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
-                if (isCurrentArgument)
-                {
-                    yield return potentialArgument;
-                }
-            }
-            else
-            {
-                lastWasArgument = false;
-            }
-        }
-    }
-
     private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames)
     {
         return argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
@@ -605,6 +584,27 @@ public static class Program
             }
 
             return validArguments;
+        }
+
+        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
+        static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
+        {
+            bool lastWasArgument = false;
+            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
+            {
+                if (!lastWasArgument)
+                {
+                    bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
+                    if (isCurrentArgument)
+                    {
+                        yield return potentialArgument;
+                    }
+                }
+                else
+                {
+                    lastWasArgument = false;
+                }
+            }
         }
 
         // Get all valid options from the configuration files
