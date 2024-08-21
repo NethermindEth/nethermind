@@ -587,12 +587,28 @@ public static class Program
         return info.ToString();
     }
 
+    private static HashSet<string> GetValidArguments(CommandLineApplication app)
+    {
+        var validArguments = new HashSet<string>();
+        foreach (var option in app.GetOptions())
+        {
+            if (!string.IsNullOrEmpty(option.LongName))
+            {
+                validArguments.Add(option.LongName);
+            }
+            if (!string.IsNullOrEmpty(option.ShortName))
+            {
+                validArguments.Add(option.ShortName);
+            }
+        }
+
+        return validArguments;
+    }
+
     private static bool ValidateArguments(string[] args, CommandLineApplication app)
     {
         // Get all valid options from the configuration files
-        var validArguments = new HashSet<string>(
-            app.GetOptions().SelectMany(o => new[] { o.LongName, o.ShortName }).Where(name => !string.IsNullOrEmpty(name))
-        );
+        var validArguments = GetValidArguments(app);
 
         var argumentsNamesProvided = GetArgumentNames(args).ToList();
         foreach (var argumentName in argumentsNamesProvided)
