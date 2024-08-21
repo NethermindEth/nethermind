@@ -21,7 +21,7 @@ class ShutterBlockHandlerTests
         blockHandler.WaitForBlockInSlot(10, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
-        
+
         blockHandler.OnNewHeadBlock(Build.A.Block.TestObject);
 
         Assert.That(waitReturned);

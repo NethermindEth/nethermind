@@ -42,8 +42,9 @@ class ShutterTxLoaderTests : EngineModuleTests
         for (int i = 0; i < 1; i++)
         {
             (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 20);
-        
-            ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
+
+            ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new()
+            {
                 Slot = slot++,
                 Eon = 0,
                 TxPointer = txPointer,
@@ -72,13 +73,14 @@ class ShutterTxLoaderTests : EngineModuleTests
         IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitHalfInvalidEvents(rnd, ShutterTestsCommon.InitialTxPointer, txLoader.GetAbi());
 
         (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 20);
-    
+
         Block head = chain.BlockTree.Head!;
         BlockHeader parentHeader = chain.BlockTree.FindParentHeader(head.Header, Blockchain.BlockTreeLookupOptions.None)!;
         TxReceipt[] receipts = InsertShutterReceipts(rnd, chain.ReceiptStorage, head, events.Logs);
         txLoader.LoadFromReceipts(head, receipts);
 
-        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
+        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new()
+        {
             Slot = ShutterTestsCommon.InitialSlot,
             Eon = 0,
             TxPointer = ShutterTestsCommon.InitialTxPointer,
@@ -112,8 +114,9 @@ class ShutterTxLoaderTests : EngineModuleTests
 
         List<(byte[] IdentityPreimage, byte[] Key)> slot2Keys = keys[20..];
         slot2Keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
-    
-        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, logs, new() {
+
+        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, logs, new()
+        {
             Slot = ShutterTestsCommon.InitialSlot,
             Eon = 0,
             TxPointer = ShutterTestsCommon.InitialTxPointer,
@@ -125,7 +128,8 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true);
         lastPayload = payloads[0];
 
-        txs = InsertAndLoadLogs(rnd, chain, txLoader, [], new() {
+        txs = InsertAndLoadLogs(rnd, chain, txLoader, [], new()
+        {
             Slot = ShutterTestsCommon.InitialSlot + 1,
             Eon = 0,
             TxPointer = ShutterTestsCommon.InitialTxPointer + 20,
@@ -137,7 +141,8 @@ class ShutterTxLoaderTests : EngineModuleTests
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true);
         lastPayload = payloads[0];
 
-        txs = InsertAndLoadLogs(rnd, chain, txLoader, [], new() {
+        txs = InsertAndLoadLogs(rnd, chain, txLoader, [], new()
+        {
             Slot = ShutterTestsCommon.InitialSlot + 2,
             Eon = 0,
             TxPointer = ShutterTestsCommon.InitialTxPointer + 40,
@@ -161,8 +166,9 @@ class ShutterTxLoaderTests : EngineModuleTests
 
         IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, ShutterTestsCommon.InitialTxPointer, txLoader.GetAbi());
         (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 5);
-    
-        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
+
+        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new()
+        {
             Slot = ShutterTestsCommon.InitialSlot,
             Eon = 0,
             TxPointer = ShutterTestsCommon.InitialTxPointer,
@@ -176,8 +182,9 @@ class ShutterTxLoaderTests : EngineModuleTests
 
         eventSource = ShutterTestsCommon.EmitEvents(rnd, 1, 0, txLoader.GetAbi());
         events = ShutterTestsCommon.GetFromEventsSource(eventSource, 5);
-    
-        txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
+
+        txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new()
+        {
             Slot = ShutterTestsCommon.InitialSlot + 1,
             Eon = 1,
             TxPointer = 0,

@@ -63,7 +63,7 @@ class ShutterTestsCommon
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
             chain.LogManager, chain.SpecProvider, chain.Timestamper, chain.WorldStateManager, Cfg, []
         );
-    
+
     public static IEnumerable<ShutterEventEmitter.Event> EmitEvents(Random rnd, ulong eon, ulong initialTxPointer, AbiEncodingInfo abi)
         => new ShutterEventEmitter(
             rnd,

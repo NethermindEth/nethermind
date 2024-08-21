@@ -34,14 +34,14 @@ public class ShutterApiTests : ShutterApi
         Dictionary<ulong, byte[]> validatorsInfo
         ) : base(abiEncoder, readOnlyBlockTree, ecdsa, logFinder, receiptFinder,
             logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo)
-    {}
+    { }
 
     public override void NewHeadBlockHandler(object? sender, BlockEventArgs e)
-    {}
+    { }
 
     protected override void InitP2P(IShutterConfig cfg, ILogManager logManager)
-    {}
+    { }
 
     protected override void RegisterOnKeysValidated()
-    {}
+    { }
 }

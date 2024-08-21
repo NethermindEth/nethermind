@@ -68,7 +68,7 @@ public class ShutterEventEmitter
 
     public IEnumerable<Event> EmitEvents(IEnumerable<UInt256> gasLimits, IEnumerable<Transaction> transactions)
     {
-        foreach((UInt256 gasLimit, Transaction tx) in gasLimits.Zip(transactions))
+        foreach ((UInt256 gasLimit, Transaction tx) in gasLimits.Zip(transactions))
         {
             byte[] identityPreimage = new byte[52];
             byte[] sigma = new byte[32];
