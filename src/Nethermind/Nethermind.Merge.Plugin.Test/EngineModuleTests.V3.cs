@@ -532,7 +532,7 @@ public partial class EngineModuleTests
         else
         {
             result.Result.Should().Be(Result.Success);
-            result.Data.BlobsAndProofs.ToArray().Length.Should().Be(requestSize);
+            result.Data.BlobsAndProofs.Should().HaveCount(requestSize);
         }
     }
 
