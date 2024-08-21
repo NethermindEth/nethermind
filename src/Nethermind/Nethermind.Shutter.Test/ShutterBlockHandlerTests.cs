@@ -14,7 +14,7 @@ class ShutterBlockHandlerTests
     [Test]
     public void Can_wait_for_valid_block()
     {
-        ShutterBlockHandler blockHandler = ShutterTestsCommon.InitBlockHandler();
+        IShutterBlockHandler blockHandler = ShutterTestsCommon.InitApi().BlockHandler;
 
         bool waitReturned = false;
         CancellationTokenSource source = new();

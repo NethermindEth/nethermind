@@ -90,7 +90,7 @@ public class ShutterApi : IShutterApi
     public void StartP2P(CancellationTokenSource? cancellationTokenSource = null)
         => P2P!.Start(cancellationTokenSource);
 
-    public void NewHeadBlockHandler(object? sender, BlockEventArgs e)
+    public virtual void NewHeadBlockHandler(object? sender, BlockEventArgs e)
     {
         BlockHandler.OnNewHeadBlock(e.Block);
     }
@@ -130,13 +130,13 @@ public class ShutterApi : IShutterApi
         TxSource.LoadTransactions(head, parentHeader, keys);
     }
 
-    protected void InitP2P(IShutterConfig cfg, ILogManager logManager)
+    protected virtual void InitP2P(IShutterConfig cfg, ILogManager logManager)
     {
         P2P = new(cfg, logManager);
         P2P.KeysReceived += KeysReceivedHandler;
     }
 
-    protected void RegisterOnKeysValidated()
+    protected virtual void RegisterOnKeysValidated()
     {
         KeyValidator.KeysValidated += KeysValidatedHandler;
     }

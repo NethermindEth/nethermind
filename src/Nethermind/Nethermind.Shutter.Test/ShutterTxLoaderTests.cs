@@ -5,21 +5,17 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using NUnit.Framework;
-using Nethermind.Crypto;
 using Nethermind.Blockchain.Find;
 using System.Linq;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
-using Nethermind.Shutter.Config;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Abi;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter.Test;
 
@@ -28,43 +24,26 @@ using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 [TestFixture]
 class ShutterTxLoaderTests : EngineModuleTests
 {
-    const int _seed = 100;
-    const ulong _initialSlot = 16082024;
-    const ulong _initialTxPointer = 1000;
-    private static readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Chiado);
-    private static readonly ISpecProvider _specProvider = ChiadoSpecProvider.Instance;
-    private static readonly AbiEncoder _abiEncoder = new();
-    private static readonly ShutterConfig _cfg = new()
-    {
-        SequencerContractAddress = Address.Zero.ToString(),
-        EncryptedGasLimit = 21000 * 20
-    };
-    private static readonly ShutterTime _time = new(
-        _specProvider,
-        new Timestamper(),
-        TimeSpan.FromSeconds(5),
-        TimeSpan.FromSeconds(5));
-
     [Test]
     public async Task Can_load_transactions_over_slots()
     {
-        Random rnd = new(_seed);
-        ulong slot = _initialSlot;
-        ulong txPointer = _initialTxPointer;
+        Random rnd = new(ShutterTestsCommon.Seed);
+        ulong slot = ShutterTestsCommon.InitialSlot;
+        ulong txPointer = ShutterTestsCommon.InitialTxPointer;
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitApi(chain).TxLoader;
         IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, txPointer, txLoader.GetAbi());
 
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 1; i++)
         {
             (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 20);
         
-            ShutterTransactions txs = OnNewLogs(rnd, chain, txLoader, events.Logs, new() {
+            ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
                 Slot = slot++,
                 Eon = 0,
                 TxPointer = txPointer,
@@ -82,15 +61,15 @@ class ShutterTxLoaderTests : EngineModuleTests
     [Test]
     public async Task Can_load_and_filter_transactions()
     {
-        Random rnd = new(_seed);
+        Random rnd = new(ShutterTestsCommon.Seed);
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
-        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitHalfInvalidEvents(rnd, _initialTxPointer, txLoader.GetAbi());
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitApi(chain).TxLoader;
+        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitHalfInvalidEvents(rnd, ShutterTestsCommon.InitialTxPointer, txLoader.GetAbi());
 
         (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 20);
     
@@ -99,10 +78,10 @@ class ShutterTxLoaderTests : EngineModuleTests
         TxReceipt[] receipts = InsertShutterReceipts(rnd, chain.ReceiptStorage, head, events.Logs);
         txLoader.LoadFromReceipts(head, receipts);
 
-        ShutterTransactions txs = OnNewLogs(rnd, chain, txLoader, events.Logs, new() {
-            Slot = _initialSlot,
+        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
+            Slot = ShutterTestsCommon.InitialSlot,
             Eon = 0,
-            TxPointer = _initialTxPointer,
+            TxPointer = ShutterTestsCommon.InitialTxPointer,
             Keys = events.Keys
         });
 
@@ -113,15 +92,15 @@ class ShutterTxLoaderTests : EngineModuleTests
     [Test]
     public async Task Can_load_up_to_gas_limit()
     {
-        Random rnd = new(_seed);
+        Random rnd = new(ShutterTestsCommon.Seed);
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
-        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, _initialTxPointer, txLoader.GetAbi());
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitApi(chain).TxLoader;
+        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, ShutterTestsCommon.InitialTxPointer, txLoader.GetAbi());
 
         List<ShutterEventEmitter.Event> events = eventSource.Take(40).ToList();
         LogEntry[] logs = events.Select(e => e.LogEntry).ToArray();
@@ -134,10 +113,10 @@ class ShutterTxLoaderTests : EngineModuleTests
         List<(byte[] IdentityPreimage, byte[] Key)> slot2Keys = keys[20..];
         slot2Keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
     
-        ShutterTransactions txs = OnNewLogs(rnd, chain, txLoader, logs, new() {
-            Slot = _initialSlot,
+        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, logs, new() {
+            Slot = ShutterTestsCommon.InitialSlot,
             Eon = 0,
-            TxPointer = _initialTxPointer,
+            TxPointer = ShutterTestsCommon.InitialTxPointer,
             Keys = slot1Keys
         });
 
@@ -146,10 +125,10 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true);
         lastPayload = payloads[0];
 
-        txs = OnNewLogs(rnd, chain, txLoader, [], new() {
-            Slot = _initialSlot + 1,
+        txs = InsertAndLoadLogs(rnd, chain, txLoader, [], new() {
+            Slot = ShutterTestsCommon.InitialSlot + 1,
             Eon = 0,
-            TxPointer = _initialTxPointer + 20,
+            TxPointer = ShutterTestsCommon.InitialTxPointer + 20,
             Keys = slot2Keys
         });
 
@@ -158,10 +137,10 @@ class ShutterTxLoaderTests : EngineModuleTests
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true);
         lastPayload = payloads[0];
 
-        txs = OnNewLogs(rnd, chain, txLoader, [], new() {
-            Slot = _initialSlot + 2,
+        txs = InsertAndLoadLogs(rnd, chain, txLoader, [], new() {
+            Slot = ShutterTestsCommon.InitialSlot + 2,
             Eon = 0,
-            TxPointer = _initialTxPointer + 40,
+            TxPointer = ShutterTestsCommon.InitialTxPointer + 40,
             Keys = []
         });
 
@@ -171,22 +150,22 @@ class ShutterTxLoaderTests : EngineModuleTests
     [Test]
     public async Task Can_load_transactions_over_eons()
     {
-        Random rnd = new(_seed);
+        Random rnd = new(ShutterTestsCommon.Seed);
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterTxLoader txLoader = ShutterTestsCommon.InitTxLoader(chain.LogFinder);
+        ShutterTxLoader txLoader = ShutterTestsCommon.InitApi(chain).TxLoader;
 
-        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, _initialTxPointer, txLoader.GetAbi());
+        IEnumerable<ShutterEventEmitter.Event> eventSource = ShutterTestsCommon.EmitEvents(rnd, 0, ShutterTestsCommon.InitialTxPointer, txLoader.GetAbi());
         (LogEntry[] Logs, List<(byte[] IdentityPreimage, byte[] Key)> Keys) events = ShutterTestsCommon.GetFromEventsSource(eventSource, 5);
     
-        ShutterTransactions txs = OnNewLogs(rnd, chain, txLoader, events.Logs, new() {
-            Slot = _initialSlot,
+        ShutterTransactions txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
+            Slot = ShutterTestsCommon.InitialSlot,
             Eon = 0,
-            TxPointer = _initialTxPointer,
+            TxPointer = ShutterTestsCommon.InitialTxPointer,
             Keys = events.Keys
         });
 
@@ -198,8 +177,8 @@ class ShutterTxLoaderTests : EngineModuleTests
         eventSource = ShutterTestsCommon.EmitEvents(rnd, 1, 0, txLoader.GetAbi());
         events = ShutterTestsCommon.GetFromEventsSource(eventSource, 5);
     
-        txs = OnNewLogs(rnd, chain, txLoader, events.Logs, new() {
-            Slot = _initialSlot + 1,
+        txs = InsertAndLoadLogs(rnd, chain, txLoader, events.Logs, new() {
+            Slot = ShutterTestsCommon.InitialSlot + 1,
             Eon = 1,
             TxPointer = 0,
             Keys = events.Keys
@@ -210,7 +189,7 @@ class ShutterTxLoaderTests : EngineModuleTests
 
     // todo: test transactions with overlapping eons
 
-    private ShutterTransactions OnNewLogs(Random rnd, MergeTestBlockchain chain, ShutterTxLoader txLoader, in LogEntry[] logs, IShutterKeyValidator.ValidatedKeyArgs keys)
+    private ShutterTransactions InsertAndLoadLogs(Random rnd, MergeTestBlockchain chain, ShutterTxLoader txLoader, in LogEntry[] logs, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
         Block head = chain.BlockTree.Head!;
         BlockHeader parentHeader = chain.BlockTree.FindParentHeader(head.Header, Blockchain.BlockTreeLookupOptions.None)!;

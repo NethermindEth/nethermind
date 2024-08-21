@@ -9,7 +9,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -21,6 +20,8 @@ using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 
+using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
+
 namespace Nethermind.Shutter.Test;
 class ShutterTestsCommon
 {
@@ -28,8 +29,8 @@ class ShutterTestsCommon
     public const ulong InitialSlot = 16082024;
     public const ulong InitialTxPointer = 1000;
     public const int ChainId = BlockchainIds.Chiado;
-    public static readonly TimeSpan SlotLength = GnosisSpecProvider.SlotLength;
-    public static readonly TimeSpan BlockUpToDateCutoff = GnosisSpecProvider.SlotLength;
+    public static readonly TimeSpan SlotLength = ChiadoSpecProvider.SlotLength;
+    public static readonly TimeSpan BlockUpToDateCutoff = ChiadoSpecProvider.SlotLength;
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;
     public static readonly IEthereumEcdsa Ecdsa = new EthereumEcdsa(ChainId);
     public static readonly ILogManager LogManager = LimboLogs.Instance;
@@ -44,84 +45,25 @@ class ShutterTestsCommon
         EncryptedGasLimit = 21000 * 20
     };
 
-    public static readonly ShutterTime Time = new(
-        SpecProvider,
-        new Timestamper(),
-        SlotLength,
-        BlockUpToDateCutoff);
+    public static ShutterApiTests InitApi()
+    {
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IReadOnlyBlockTree readOnlyBlockTree = Substitute.For<IReadOnlyBlockTree>();
+        ILogFinder logFinder = Substitute.For<ILogFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        ITimestamper timestamper = Substitute.For<ITimestamper>();
+        return new(
+            AbiEncoder, readOnlyBlockTree, Ecdsa, logFinder, receiptFinder,
+            LogManager, SpecProvider, timestamper, worldStateManager, Cfg, []
+        );
+    }
 
-    public static ShutterTxLoader InitTxLoader(ILogFinder logFinder)
+    public static ShutterApiTests InitApi(MergeTestBlockchain chain)
         => new(
-            logFinder,
-            Cfg,
-            Time,
-            ChiadoSpecProvider.Instance,
-            Ecdsa,
-            LimboLogs.Instance
+            AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
+            chain.LogManager, chain.SpecProvider, chain.Timestamper, chain.WorldStateManager, Cfg, []
         );
-
-    public static ShutterEon InitEon()
-        => InitEon(
-            Substitute.For<IWorldStateManager>(),
-            Substitute.For<IReadOnlyBlockTree>()
-        );
-
-    public static ShutterEon InitEon(IWorldStateManager worldStateManager, IReadOnlyBlockTree readOnlyBlockTree)
-    {
-        ReadOnlyTxProcessingEnvFactory txProcessingEnvFactory = new(
-            worldStateManager,
-            readOnlyBlockTree,
-            SpecProvider,
-            LogManager
-        );
-
-        return new(
-            readOnlyBlockTree,
-            txProcessingEnvFactory,
-            AbiEncoder,
-            Cfg,
-            LogManager
-        );
-    }
-
-    public static ShutterKeyValidator InitKeyValidator()
-        => new(Cfg, InitEon(), LogManager);
-
-    public static ShutterKeyValidator InitKeyValidator(ShutterEon eon)
-        => new(Cfg, eon, LogManager);
-
-    public static ShutterBlockHandler InitBlockHandler()
-        => InitBlockHandler(
-            Substitute.For<IWorldStateManager>(),
-            Substitute.For<IReadOnlyBlockTree>(),
-            Substitute.For<ILogFinder>(),
-            Substitute.For<IReceiptFinder>()
-        );
-    public static ShutterBlockHandler InitBlockHandler(IWorldStateManager worldStateManager, IReadOnlyBlockTree readOnlyBlockTree, ILogFinder logFinder, IReceiptFinder receiptFinder)
-    {
-        ReadOnlyTxProcessingEnvFactory txProcessingEnvFactory = new(
-            worldStateManager,
-            readOnlyBlockTree,
-            SpecProvider,
-            LogManager
-        );
-
-        return new(
-            BlockchainIds.Gnosis,
-            Cfg.ValidatorRegistryContractAddress!,
-            Cfg.ValidatorRegistryMessageVersion,
-            txProcessingEnvFactory,
-            readOnlyBlockTree,
-            AbiEncoder,
-            receiptFinder,
-            [],
-            InitEon(worldStateManager, readOnlyBlockTree),
-            InitTxLoader(logFinder),
-            Time,
-            LogManager
-        );
-    }
-
+    
     public static IEnumerable<ShutterEventEmitter.Event> EmitEvents(Random rnd, ulong eon, ulong initialTxPointer, AbiEncodingInfo abi)
         => new ShutterEventEmitter(
             rnd,

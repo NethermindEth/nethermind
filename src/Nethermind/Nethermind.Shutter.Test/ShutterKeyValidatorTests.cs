@@ -11,7 +11,7 @@ class ShutterKeyValidatorTests
     [Test]
     public void Can_accept_valid_decryption_keys()
     {
-        ShutterKeyValidator keyValidator = ShutterTestsCommon.InitKeyValidator();
+        IShutterKeyValidator keyValidator = ShutterTestsCommon.InitApi().KeyValidator;
         bool eventFired = false;
         keyValidator.KeysValidated += (_, _) => eventFired = true;
         keyValidator.OnDecryptionKeysReceived(new Dto.DecryptionKeys()
@@ -24,7 +24,7 @@ class ShutterKeyValidatorTests
     [Test]
     public void Can_reject_invalid_decryption_keys()
     {
-        ShutterKeyValidator keyValidator = ShutterTestsCommon.InitKeyValidator();
+        IShutterKeyValidator keyValidator = ShutterTestsCommon.InitApi().KeyValidator;
         bool eventFired = false;
         keyValidator.KeysValidated += (_, _) => eventFired = true;
         keyValidator.OnDecryptionKeysReceived(new Dto.DecryptionKeys()
@@ -37,7 +37,7 @@ class ShutterKeyValidatorTests
     [Test]
     public void Can_reject_outdated_decryption_keys()
     {
-        ShutterKeyValidator keyValidator = ShutterTestsCommon.InitKeyValidator();
+        IShutterKeyValidator keyValidator = ShutterTestsCommon.InitApi().KeyValidator;
         bool eventFired = false;
         keyValidator.KeysValidated += (_, _) => eventFired = true;
         keyValidator.OnDecryptionKeysReceived(new Dto.DecryptionKeys()
