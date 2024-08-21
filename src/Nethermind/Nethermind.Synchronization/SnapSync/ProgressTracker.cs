@@ -201,13 +201,13 @@ namespace Nethermind.Synchronization.SnapSync
                 bool rangePhaseFinished = IsSnapGetRangesFinished();
                 if (rangePhaseFinished)
                 {
-                    //TODO - force flush after the state - used to provide input for diagnosis
-                    //might require a change, depending on healing strategy
-                    using (IRawState rawState = _stateFactory.GetRaw())
-                    {
-                        rawState.Finalize((uint)_pivot.GetPivotHeader().Number);
-                    }
-                    _stateFactory.ForceFlush();
+                    ////TODO - force flush after the state - used to provide input for diagnosis
+                    ////might require a change, depending on healing strategy
+                    //using (IRawState rawState = _stateFactory.GetRaw())
+                    //{
+                    //    rawState.Finalize((uint)_pivot.GetPivotHeader().Number);
+                    //}
+                    //_stateFactory.ForceFlush();
 
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
                     FinishRangePhase();

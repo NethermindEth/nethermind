@@ -20,14 +20,17 @@ public class FullStateFinder : IFullStateFinder
     // note that we will be doing that every second or so
     private const int MaxLookupBack = 128;
     private readonly IStateReader _stateReader;
+    private readonly IStateFactory _stateFactory;
     private readonly IBlockTree _blockTree;
 
     public FullStateFinder(
         IBlockTree blockTree,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        IStateFactory stateFactory)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _stateFactory = stateFactory ?? throw new ArgumentNullException(nameof(stateFactory));
     }
 
     private bool IsFullySynced(Hash256 stateRoot)
@@ -37,7 +40,8 @@ public class FullStateFinder : IFullStateFinder
             return true;
         }
 
-        return _stateReader.HasStateForRoot(stateRoot);
+        //return _stateReader.HasStateForRoot(stateRoot);
+        return _stateFactory.HasRoot(stateRoot);
     }
 
     public long FindBestFullState()

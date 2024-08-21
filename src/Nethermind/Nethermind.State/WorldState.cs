@@ -163,7 +163,7 @@ namespace Nethermind.State
             _state.Commit(blockNumber);
 
             _stateRoot = _state.StateRoot;
-            ResetStateToNull();
+            ResetState(_stateRoot);
         }
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);

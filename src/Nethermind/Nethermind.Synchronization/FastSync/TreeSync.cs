@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -384,7 +385,7 @@ namespace Nethermind.Synchronization.FastSync
             try
             {
                 // it finished downloading
-                rootNodeKeyExists = _nodeStorage.KeyExists(null, TreePath.Empty, _rootNode);
+                //rootNodeKeyExists = _nodeStorage.KeyExists(null, TreePath.Empty, _rootNode);
                 //rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
                 {
                     using var rawState = _stateFactory.GetRaw();
@@ -789,6 +790,8 @@ namespace Nethermind.Synchronization.FastSync
                                 node.Key.CopyTo(fullPath.Slice(syncItem.Level));
 
                                 rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), rlpContext.DecodeByteArray());
+                                if (node.Key.Length > 0)
+                                    rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level, 0);
                                 //no hash recalc
                                 rawState.Commit(false);
                             }
@@ -802,16 +805,35 @@ namespace Nethermind.Synchronization.FastSync
                                 List<byte> children = new List<byte>();
                                 List<Hash256?> childHashes = new List<Hash256?>();
 
+                                using var rawState = _stateFactory.GetRaw();
                                 int pathIndex = syncItem.Level;
                                 for (int i = 0; i < 16; i++)
                                 {
                                     fullPath[pathIndex] = (byte)i;
-                                    if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash)) continue;
-                                    children.Add((byte)i);
-                                    childHashes.Add(childHash.ToCommitment());
+                                    if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                                    {
+                                        TreePath p = TreePath.Empty;
+                                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref p, i);
+                                        if (childNode is not null)
+                                        {
+                                            children.Add((byte)i);
+                                            childHashes.Add(null);
+
+                                            childNode.ResolveNode(NullTrieNodeResolver.Instance, in p);
+                                            childNode.Key.CopyTo(fullPath.Slice(pathIndex + 1));
+                                            rawState.SetStorage(accountHash, new Hash256(Nibbles.ToBytes(fullPath)), childNode.Value);
+                                            if (childNode.Key.Length > 0)
+                                                rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level + 1, 0);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        children.Add((byte)i);
+                                        childHashes.Add(childHash.ToCommitment());
+                                    }
                                 }
 
-                                using var rawState = _stateFactory.GetRaw();
+                                
 
                                 rawState.CreateProofBranch(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
                                     children.ToArray(), childHashes.ToArray());
@@ -866,6 +888,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 using var rawState = _stateFactory.GetRaw();
                 rawState.Finalize((uint)_branchProgress.CurrentSyncBlock);
+                _stateFactory.ForceFlush();
 
                 //_stateDb.Flush();
                 _nodeStorage.Flush();

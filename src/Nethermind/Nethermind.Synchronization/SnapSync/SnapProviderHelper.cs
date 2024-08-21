@@ -114,9 +114,10 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, state);
+            //StitchBoundaries(sortedBoundaryList, state);
 
-            state.Commit(true);
+            //state.Commit(true);
+            state.Commit(false);
 
 
             //tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
@@ -209,7 +210,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 node.Key.CopyTo(path.Slice(pathIndex));
                 FillInProofNodes(state, accountHash, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0), path, pathIndex + node.Key.Length);
-                state.CreateProofExtension(accountHash, Nibbles.ToBytes(path), pathIndex, node.Key.Length);
+                state.CreateProofExtension(accountHash, Nibbles.ToBytes(path), pathIndex, node.Key.Length, false);
             }
             else if (node.IsBranch)
             {
@@ -231,8 +232,13 @@ namespace Nethermind.Synchronization.SnapSync
                             if (childNode is not null)
                             {
                                 children.Add((byte)i);
-                                //var k = Keccak.Compute(childNode.FullRlp.AsSpan());
                                 childHashes.Add(null);
+                                childNode.ResolveNode(NullTrieNodeResolver.Instance, in emptyPath);
+                                childNode.Key.CopyTo(path.Slice(pathIndex + 1));
+
+                                //Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(childNode.Value);
+
+                                state.SetStorage(accountHash, new Hash256(Nibbles.ToBytes(path)), childNode.Value);
                             }
                         }
                     }
@@ -261,7 +267,7 @@ namespace Nethermind.Synchronization.SnapSync
                 else
                 {
                     state.CreateProofBranch(accountHash, Nibbles.ToBytes(path), pathIndex, children.ToArray(),
-                        childHashes.ToArray());
+                        childHashes.ToArray(), false);
                 }
             }
         }
@@ -494,6 +500,8 @@ namespace Nethermind.Synchronization.SnapSync
             for (int i = 0; i < proofs.Count; i++)
             {
                 byte[] proof = proofs[i];
+                if (proof.Length == 0)
+                    continue;
                 TrieNode node = new(NodeType.Unknown, proof, isDirty: true);
                 node.IsBoundaryProofNode = true;
 

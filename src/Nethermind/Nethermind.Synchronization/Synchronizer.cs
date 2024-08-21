@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization
         private ISyncProgressResolver? _syncProgressResolver;
         public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
             _blockTree,
-            new FullStateFinder(_blockTree, _stateReader),
+            new FullStateFinder(_blockTree, _stateReader, _stateFactory),
             _syncConfig,
             HeadersSyncFeed,
             BodiesSyncFeed,
@@ -188,6 +188,15 @@ namespace Nethermind.Synchronization
 
             s_trimmer ??= new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
             SyncModeSelector.Changed += _syncReport.SyncModeSelectorOnChanged;
+            SyncModeSelector.Changing += SyncModeSelector_Changing;
+        }
+
+        private void SyncModeSelector_Changing(object? sender, SyncModeChangedEventArgs e)
+        {
+            bool wasNotSyncing = !e.Previous.HasFlag(SyncMode.SnapSync) && !e.Previous.HasFlag(SyncMode.StateNodes);
+            bool isSyncing = e.Current.HasFlag(SyncMode.SnapSync) || e.Current.HasFlag(SyncMode.StateNodes);
+            if (wasNotSyncing && isSyncing)
+                _stateFactory.ResetAccessor();
         }
 
         private HeadersSyncFeed? CreateHeadersSyncFeed()

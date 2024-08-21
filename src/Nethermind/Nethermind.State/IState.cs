@@ -69,10 +69,10 @@ public interface IRawState : IReadOnlyState
     void RemoveBoundaryProof(ReadOnlySpan<byte> path, int pathLength);
 
     void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
-        byte[] childNibbles, Hash256[] childHashes);
+        byte[] childNibbles, Hash256[] childHashes, bool persist = true);
 
     void CreateProofExtension(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
-        int extPathLength);
+        int extPathLength, bool persist = true);
 
     void CreateProofLeaf(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, int leafKeyIndex);
 
@@ -105,6 +105,7 @@ public interface IStateFactory : IAsyncDisposable
 
     void ForceFlush();
 
+    void ResetAccessor();
 }
 
 public interface IStateOwner
