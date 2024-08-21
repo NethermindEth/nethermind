@@ -590,7 +590,9 @@ public static class Program
     private static bool ValidateArguments(string[] args, CommandLineApplication app)
     {
         // Get all valid options from the configuration files
-        var validArguments = app.GetOptions().SelectMany(o => new[] { o.LongName, o.ShortName }).ToArray();
+        var validArguments = new HashSet<string>(
+            app.GetOptions().SelectMany(o => new[] { o.LongName, o.ShortName }).Where(name => !string.IsNullOrEmpty(name))
+        );
 
         var argumentsNamesProvided = GetArgumentNames(args).ToList();
         foreach (var argumentName in argumentsNamesProvided)
