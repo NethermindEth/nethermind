@@ -12,6 +12,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV1Result>
 {
     private const int MaxRequest = 128;
+
     public Task<ResultWrapper<GetBlobsV1Result>> HandleAsync(byte[][] request)
     {
         if (request.Length > MaxRequest)

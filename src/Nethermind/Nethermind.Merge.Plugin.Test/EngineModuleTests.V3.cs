@@ -565,10 +565,9 @@ public partial class EngineModuleTests
 
         ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
-        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        resultBlobsAndProofs.Select(b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        resultBlobsAndProofs.Select(b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+        result.Data.BlobsAndProofs.Select(b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data.BlobsAndProofs.Select(b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
     }
 
     [Test]
@@ -638,7 +637,7 @@ public partial class EngineModuleTests
             }
             else
             {
-                result.Data.BlobsAndProofs.ToArray()[i].Should().BeNull();
+                resultBlobsAndProofs[i].Should().BeNull();
             }
         }
     }
