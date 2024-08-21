@@ -4,9 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-
 namespace Nethermind.Core.Caching;
 
 public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCacheBase<TKey>(maxCapacity)
@@ -39,7 +36,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
 
     private bool SetSlow(TKey key)
     {
-        int offset = _cacheMap.Count;
+        int offset = _count;
         if (FreeOffsets.Count > 0)
         {
             offset = FreeOffsets.Dequeue();
@@ -51,6 +48,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
 
         _cacheMap[key] = offset;
         KeyToOffset[offset] = key;
+        _count++;
 
         return true;
     }
@@ -58,7 +56,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
     private int Replace(TKey key)
     {
         int position = Clock;
-        int max = _cacheMap.Count;
+        int max = _count;
         while (true)
         {
             if (position >= max)
@@ -73,6 +71,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
                 {
                     ThrowInvalidOperationException();
                 }
+                _count--;
                 break;
             }
 
@@ -93,6 +92,7 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
     {
         if (_cacheMap.Remove(key, out int offset))
         {
+            _count--;
             ref var node = ref KeyToOffset[offset];
             ClearAccessedNonConcurrent(offset);
             FreeOffsets.Enqueue(offset);
@@ -112,6 +112,4 @@ public sealed class ClockKeyCacheNonConcurrent<TKey>(int maxCapacity) : ClockCac
     {
         return _cacheMap.ContainsKey(key);
     }
-
-    public int Count => _cacheMap.Count;
 }

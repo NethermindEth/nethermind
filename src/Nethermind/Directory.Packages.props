@@ -40,12 +40,12 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="8.0.7" />
-    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.1" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
-    <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.1.0" />
-    <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.2.1" />
+    <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.1.1" />
+    <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.2.2" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1" />
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
@@ -60,7 +60,7 @@
     <PackageVersion Include="NUnit.Analyzers" Version="3.9.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.5.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
-    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.3" />
+    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.4" />
     <PackageVersion Include="Polly" Version="8.4.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
@@ -75,8 +75,8 @@
     <PackageVersion Include="System.IO.Pipelines" Version="8.0.0" />
     <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
-    <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="21.0.26" />
-    <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="21.0.26" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="21.0.29" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="21.0.29" />
     <PackageVersion Include="Websocket.Client" Version="5.1.2" />
   </ItemGroup>
 </Project>

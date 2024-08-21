@@ -15,26 +15,30 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockValidationTransactionsExecutor : BlockValidationTransactionsExecutor
+public class SimulateBlockValidationTransactionsExecutor(
+    ITransactionProcessor transactionProcessor,
+    IWorldState stateProvider,
+    bool validate,
+    UInt256? blobBaseFeeOverride)
+    : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    public SimulateBlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
-    {
-    }
+    protected override BlockExecutionContext CreateBlockExecutionContext(Block block) =>
+        blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block);
 
-    public SimulateBlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
+    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
-    }
+        if (!validate)
+        {
+            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
+        }
 
-    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index,
-        BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-    {
-        processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
         base.ProcessTransaction(in blkCtx, currentTx, index, receiptsTracer, processingOptions);
     }
 }
@@ -102,13 +106,11 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         return new SimulateBlockValidatorProxy(blockValidator);
     }
 
-    public IBlockProcessor GetProcessor(bool validate) =>
+    public IBlockProcessor GetProcessor(bool validate, UInt256? blobBaseFeeOverride) =>
         new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            validate
-                ? new BlockValidationTransactionsExecutor(_transactionProcessor, StateProvider)
-                : new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider),
+            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
             new BlockhashStore(SpecProvider, StateProvider),
