@@ -22,9 +22,9 @@ public class TaikoEngineRpcModule : ITaikoEngineRpcModule
         return _engineRpcModule.engine_exchangeTransitionConfigurationV1(beaconTransitionConfiguration);
     }
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
-        return await _engineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
+        return _engineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
     }
 
     public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId)
@@ -37,9 +37,9 @@ public class TaikoEngineRpcModule : ITaikoEngineRpcModule
         return _engineRpcModule.engine_newPayloadV1(executionPayload);
     }
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
-        return await _engineRpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
+        return _engineRpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
     }
 
     public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId)
@@ -52,9 +52,9 @@ public class TaikoEngineRpcModule : ITaikoEngineRpcModule
         return _engineRpcModule.engine_newPayloadV2(executionPayload);
     }
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
-        return await _engineRpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+        return _engineRpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
     }
 
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId)

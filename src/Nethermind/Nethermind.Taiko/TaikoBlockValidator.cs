@@ -26,7 +26,7 @@ public class TaikoBlockValidator(
     private static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
     private readonly Address TaikoL2Address = new(
-        specProvider.ChainId.ToString().TrimStart('0')
+        specProvider.ChainId.ToString()
         .PadRight(40 - TaikoL2AddressSuffix.Length, '0') +
         TaikoL2AddressSuffix);
     private const string TaikoL2AddressSuffix = "10001";
