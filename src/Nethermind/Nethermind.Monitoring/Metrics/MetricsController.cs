@@ -229,12 +229,12 @@ namespace Nethermind.Monitoring.Metrics
                 if (info.LabelNames is null)
                 {
                     IDictionary dict = info.Dictionary;
-                    // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
-                    // impact the performance of whatever is updating the metrics.
-                    foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
+                    // It's fine that the key here need to call `ToString()`.
+                    // Better here then in the metrics, where it might impact the performance of whatever is updating the metrics.
+                    foreach (DictionaryEntry kvp in dict)
                     {
-                        string keyStr = keyObj.ToString();
-                        double value = Convert.ToDouble(dict[keyObj]);
+                        string keyStr = kvp.Key.ToString();
+                        double value = Convert.ToDouble(kvp.Value);
                         string gaugeName = GetGaugeNameKey(info.DictionaryName, keyStr);
 
                         if (ReplaceValueIfChanged(value, gaugeName) is null)
@@ -250,10 +250,10 @@ namespace Nethermind.Monitoring.Metrics
                 {
                     IDictionary dict = info.Dictionary;
                     string gaugeName = info.GaugeName;
-                    foreach (object key in dict.Keys)
+                    foreach (DictionaryEntry kvp in dict)
                     {
-                        double value = Convert.ToDouble(dict[key]);
-                        switch (key)
+                        double value = Convert.ToDouble(kvp.Value);
+                        switch (kvp.Key)
                         {
                             case IMetricLabels label:
                                 ReplaceValueIfChanged(value, gaugeName, label.Labels);
@@ -270,7 +270,7 @@ namespace Nethermind.Monitoring.Metrics
                                     break;
                                 }
                             default:
-                                ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                                ReplaceValueIfChanged(value, gaugeName, kvp.Key.ToString());
                                 break;
                         }
                     }
