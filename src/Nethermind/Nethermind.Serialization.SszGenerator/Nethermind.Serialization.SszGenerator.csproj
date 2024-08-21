@@ -16,7 +16,6 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="All" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\SszGenerated\SszGenerated.csproj" />
   </ItemGroup>
 
 </Project>

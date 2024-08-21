@@ -264,6 +264,19 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int DecodeInt(ReadOnlySpan<byte> span)
+    {
+        const int expectedLength = 4;
+        if (span.Length != expectedLength)
+        {
+            throw new InvalidDataException(
+                $"{nameof(DecodeUInt)} expects input of length {expectedLength} and received {span.Length}");
+        }
+
+        return BinaryPrimitives.ReadInt32LittleEndian(span);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong DecodeULong(ReadOnlySpan<byte> span)
     {
         const int expectedLength = 8;

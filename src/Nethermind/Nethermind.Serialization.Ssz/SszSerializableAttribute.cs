@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,7 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MainApp.Samples;
-internal class ExecutionPayloadV3
+namespace Nethermind.Serialization.Ssz;
+
+public class SszSerializableAttribute : Attribute
 {
 }

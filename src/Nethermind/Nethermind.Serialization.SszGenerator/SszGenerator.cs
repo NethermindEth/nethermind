@@ -5,7 +5,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
-using Nethermind.Generated.Ssz;
 using Microsoft.CodeAnalysis.Operations;
 
 [Generator]
@@ -13,7 +12,7 @@ public partial class SszGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var classDeclarations = context.SyntaxProvider
+        IncrementalValuesProvider<TypeDeclaration?> classDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: (syntaxNode, _) => IsClassWithAttribute(syntaxNode),
                 transform: (context, _) => GetClassWithAttribute(context))
@@ -81,16 +80,15 @@ public partial class SszGenerator : IIncrementalGenerator
 
     private static TypeDeclaration? GetClassWithAttribute(GeneratorSyntaxContext context)
     {
-        var classDeclaration = (TypeDeclarationSyntax)context.Node;
-        foreach (var attributeList in classDeclaration.AttributeLists)
+        TypeDeclarationSyntax classDeclaration = (TypeDeclarationSyntax)context.Node;
+        foreach (AttributeListSyntax attributeList in classDeclaration.AttributeLists)
         {
-            foreach (var attribute in attributeList.Attributes)
+            foreach (AttributeSyntax attribute in attributeList.Attributes)
             {
-                var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
-                if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-                    methodSymbol.ContainingType.ToString() == "Nethermind.Generated.Ssz.SszSerializableAttribute")
+                IMethodSymbol? methodSymbol = context.SemanticModel.GetSymbolInfo(attribute).Symbol as IMethodSymbol;
+                if (methodSymbol is not null && methodSymbol.ContainingType.ToString() == "Nethermind.Serialization.Ssz.SszSerializableAttribute")
                 {
-                    var props = context.SemanticModel.GetDeclaredSymbol(classDeclaration)?.GetMembers().OfType<IPropertySymbol>();
+                    IEnumerable<IPropertySymbol>? props = context.SemanticModel.GetDeclaredSymbol(classDeclaration)?.GetMembers().OfType<IPropertySymbol>();
                     if (props?.Any() != true)
                     {
                         continue;
@@ -98,7 +96,7 @@ public partial class SszGenerator : IIncrementalGenerator
 
                     return new(
                         GetNamespace(classDeclaration),
-                        classDeclaration.Identifier.Text,
+                        GetTypeName(classDeclaration),
                         classDeclaration is StructDeclarationSyntax,
                         props.Select(x => new PropertyDeclaration(SszType.From(x), x.Name)).ToArray());
                 }
@@ -143,10 +141,15 @@ public partial class SszGenerator : IIncrementalGenerator
     //    return null;
     //}
 
-    private static string GetNamespace(SyntaxNode syntaxNode)
+    private static string? GetNamespace(SyntaxNode syntaxNode)
     {
-        var namespaceDeclaration = syntaxNode.Ancestors().OfType<NamespaceDeclarationSyntax>().FirstOrDefault();
-        return namespaceDeclaration?.Name.ToString() ?? "GlobalNamespace";
+        return syntaxNode.Ancestors().OfType<NamespaceDeclarationSyntax>().FirstOrDefault()?.Name.ToString() ?? null;
+    }
+
+    private static string GetTypeName(TypeDeclarationSyntax syntaxNode)
+    {
+        IEnumerable<string> namespaceDeclarations = syntaxNode.Ancestors().OfType<TypeDeclarationSyntax>().Reverse().Select(m => m.Identifier.ToString());
+        return string.Join(".", [.. namespaceDeclarations, syntaxNode.Identifier.ToString()]);
     }
 
     struct Dyn
@@ -154,6 +157,7 @@ public partial class SszGenerator : IIncrementalGenerator
         public string OffsetDeclaration { get; init; }
         public string DynamicEncode { get; init; }
         public string DynamicLength { get; init; }
+        public string DynamicDecode { get; init; }
     }
 
     private static string GenerateClassCode(TypeDeclaration decl)
@@ -162,7 +166,7 @@ public partial class SszGenerator : IIncrementalGenerator
         List<Dyn> dynOffsets = new();
         PropertyDeclaration? prevM = null;
 
-        foreach (var prop in decl.Members)
+        foreach (PropertyDeclaration prop in decl.Members)
         {
             if (prop.Type.IsDynamic)
             {
@@ -171,19 +175,23 @@ public partial class SszGenerator : IIncrementalGenerator
                     OffsetDeclaration = prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
                     DynamicEncode = prop.Type.DynamicEncode ?? "",
                     DynamicLength = prop.Type.DynamicLength!,
+                    DynamicDecode = prop.Type.DynamicDecode ?? "", //prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
                 });
                 prevM = prop;
             }
         }
 
         var offset = 0;
+        var offsetDecode = 0;
         var dynOffset = 0;
+        var dynOffsetDecode = 1;
 
         var result = $@"using Nethermind.Serialization.Ssz;
+using System;
 
-namespace {decl.TypeNamespaceName}.Generated;
+namespace {(decl.TypeNamespaceName is not null ? decl.TypeNamespaceName + "." : "")}Generated;
 
-public partial class {decl.TypeName}SszSerializer
+public partial class {decl.TypeName.Split('.').Last()}SszSerializer
 {{
     public int GetLength({(decl.IsStruct ? "ref " : "")}{decl.TypeName} container)
     {{
@@ -207,6 +215,34 @@ public partial class {decl.TypeName}SszSerializer
         {string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicEncode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{length}", m.DynamicLength)))};
 
         return buf;
+    }}
+
+    public {(decl.IsStruct ? "ref " : "")}{decl.TypeName} Deserialize(ReadOnlySpan<byte> data)
+    {{
+        {(decl.IsStruct ? "ref " : "")}{decl.TypeName} container = new();
+
+        {string.Join(";\n        ", dynOffsets.First().OffsetDeclaration)};
+
+        {string.Join(";\n        ", decl.Members.Select(m =>
+        {
+            if (m.Type.IsDynamic) dynOffsetDecode++;
+            string result = m.Type.StaticDecode.Replace("{offset}", $"{offsetDecode}").Replace("{dynOffset}", $"dynOffset{dynOffsetDecode}");
+            offsetDecode += m.Type.StaticLength;
+            return result;
+        }))};
+
+        {string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}")))};
+
+        return container;
+    }}
+
+    public static void Merkleize(out UInt256 root, {(decl.IsStruct ? "ref " : "")}{decl.TypeName} container)
+    {{
+        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members.Length}));
+
+        {string.Join(";\n        ", decl.Members.Select(m => $"merkleizer.Feed(container.{m.Name})"))};
+
+        merkleizer.CalculateRoot(out root);
     }}
 }}
 ";

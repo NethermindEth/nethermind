@@ -73,6 +73,20 @@ public ref struct Merkleizer
         Merkle.Ize(out _chunks[^1], value);
         Feed(_chunks[^1]);
     }
+    public void Feed(int value)
+    {
+        Merkle.Ize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+    public void Feed(int? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+        Merkle.Ize(out _chunks[^1], value.Value);
+        Feed(_chunks[^1]);
+    }
 
     public void Feed(ulong value)
     {

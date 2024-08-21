@@ -9,14 +9,15 @@ public partial class SszGenerator
             bool? isNullable = prop.Type.NullableAnnotation switch { NullableAnnotation.NotAnnotated => false, NullableAnnotation.Annotated => true, _ => null };
 
             var isDynamic = prop.Type.NullableAnnotation == NullableAnnotation.Annotated || prop.Type.TypeKind != TypeKind.Structure;
-            var valueAccessor = GetValueAcccesor(prop);
+            var valueGetter = GetValueGetter(prop);
+            var valueSetter = GetValueSetter(prop);
             var staticLength = isDynamic ? PointerLength : GetStaticLength(prop.Type);
 
             return new SszType
             {
                 Namespace = prop.ContainingNamespace.ToString(),
                 Name = prop.Name,
-                ValueAccessor = valueAccessor,
+                ValueAccessor = valueGetter,
 
                 IsNullable = isDynamic,
                 IsDynamic = isDynamic,
@@ -24,8 +25,11 @@ public partial class SszGenerator
                 StaticLength = staticLength,
                 DynamicLength = isDynamic ? GetDynamicLength(prop) : null,
 
-                StaticEncode = $"Ssz.Encode(buf.Slice({{offset}}, {staticLength}), {(isDynamic ? $"{{dynOffset}}" : $"{valueAccessor}")})",
-                DynamicEncode = isDynamic ? $"if (container.{prop.Name} is not null) Ssz.Encode(buf.Slice({{dynOffset}}, {{length}}), {GetValueAcccesor(prop)})" : null,
+                StaticEncode = $"Ssz.Ssz.Encode(buf.Slice({{offset}}, {staticLength}), {(isDynamic ? $"{{dynOffset}}" : $"{valueGetter}")})",
+                DynamicEncode = isDynamic ? $"if (container.{prop.Name} is not null) Ssz.Ssz.Encode(buf.Slice({{dynOffset}}, {{length}}), {valueGetter})" : null,
+
+                StaticDecode = $"{(isDynamic ? $"int {{dynOffset}}" : $"{valueSetter}")} = Ssz.Ssz.{(isDynamic ? "DecodeInt" : GetDecode(prop.Type))}(data.Slice({{offset}}, {staticLength}))",
+                DynamicDecode = isDynamic ? $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {valueSetter} = Ssz.Ssz.{GetDecode(prop.Type)}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}))" : null,
             };
         }
 
@@ -33,12 +37,24 @@ public partial class SszGenerator
 
         private static int GetStaticLength(ITypeSymbol type)
         {
-            return type.Name switch
+            return type.ToString() switch
             {
                 "int" => 4,
                 "long" => 8,
                 "ulong" => 8,
                 _ => 4,
+            };
+        }
+        private static string GetDecode(ITypeSymbol type)
+        {
+            return type.ToString() switch
+            {
+                "int" => "DecodeInt",
+                "int?" => "DecodeInt",
+                "long" => "DecodeLong",
+                "ulong" => "DecodeUlong",
+                "byte[]" or "byte[]?" => "DecodeBytes",
+                _ => "Decode",
             };
         }
 
@@ -56,7 +72,7 @@ public partial class SszGenerator
             };
         }
 
-        private static string GetValueAcccesor(IPropertySymbol prop)
+        private static string GetValueGetter(IPropertySymbol prop)
         {
             if (prop.Type.NullableAnnotation == NullableAnnotation.Annotated)
             {
@@ -66,6 +82,10 @@ public partial class SszGenerator
                 }
             }
 
+            return $"container.{prop.Name}";
+        }
+        private static string GetValueSetter(IPropertySymbol prop)
+        {
             return $"container.{prop.Name}";
         }
 
@@ -85,6 +105,8 @@ public partial class SszGenerator
 
         public required string StaticEncode { get; init; }
         public required string? DynamicEncode { get; init; }
+        public required string StaticDecode { get; init; }
+        public required string? DynamicDecode { get; init; }
     }
 }
 
