@@ -14,9 +14,10 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Collections.Concurrent;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain;
+using Nethermind.Core.Collections;
+using Org.BouncyCastle.Crypto.Prng.Drbg;
 
 namespace Nethermind.Shutter;
 
@@ -29,11 +30,13 @@ public class ShutterBlockHandler(
     IAbiEncoder abiEncoder,
     IReceiptFinder receiptFinder,
     Dictionary<ulong, byte[]> validatorsInfo,
-    ShutterEon eon,
+    IShutterEon eon,
     ShutterTxLoader txLoader,
     ShutterTime shutterTime,
     ILogManager logManager) : IShutterBlockHandler
 {
+    private readonly ArrayPoolList<CancellationTokenSource> _cts = new(100);
+    private readonly ArrayPoolList<CancellationTokenRegistration> _ctr = new(50);
     private readonly ILogger _logger = logManager.GetClassLogger();
     private bool _haveCheckedRegistered = false;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
@@ -93,13 +96,14 @@ public class ShutterBlockHandler(
             }
             waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
 
-            using var timeoutSource = new CancellationTokenSource((int)waitTime);
-            using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            var timeoutSource = new CancellationTokenSource((int)waitTime);
+            var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            CancellationTokenRegistration ctr = source.Token.Register(() => CancelWaitForBlock(slot));
+            tcs = _blockWaitTasks.GetOrAdd(slot, _ => new());
 
-            using (source.Token.Register(() => CancelWaitForBlock(slot)))
-            {
-                tcs = _blockWaitTasks.GetOrAdd(slot, _ => new());
-            }
+            _cts.Add(timeoutSource);
+            _cts.Add(source);
+            _ctr.Add(ctr);
         }
         return await tcs.Task;
     }
@@ -128,6 +132,19 @@ public class ShutterBlockHandler(
         else
         {
             _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (CancellationTokenSource cts in _cts)
+        {
+            cts.Dispose();
+        }
+
+        foreach (CancellationTokenRegistration ctr in _ctr)
+        {
+            ctr.Dispose();
         }
     }
 }

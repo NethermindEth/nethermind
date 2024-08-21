@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.Shutter;
-public interface IShutterBlockHandler
+public interface IShutterBlockHandler : IDisposable
 {
     void OnNewHeadBlock(Block head);
     Task<Block?> WaitForBlockInSlot(ulong slot, TimeSpan slotLength, TimeSpan cutoff, CancellationToken cancellationToken);

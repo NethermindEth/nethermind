@@ -11,8 +11,9 @@ namespace Nethermind.Shutter;
 public class ShutterTime(ISpecProvider specProvider, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
 {
     public class ShutterSlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
+    public readonly ulong GenesisTimestamp = specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
 
-    public ulong GetGenesisTimestampMs() => 1000 * (specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
+    public ulong GetGenesisTimestampMs() => 1000 * GenesisTimestamp;
 
     public ulong GetSlotTimestampMs(ulong slot, ulong genesisTimestampMs)
         => genesisTimestampMs + (ulong)slotLength.TotalMilliseconds * slot;

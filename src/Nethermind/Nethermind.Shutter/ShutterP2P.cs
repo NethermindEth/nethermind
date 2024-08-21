@@ -29,14 +29,14 @@ public class ShutterP2P(
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
     private PubsubRouter? _router;
     private ServiceProvider? _serviceProvider;
-    private CancellationTokenSource? _cancellationTokenSource;
+    private CancellationTokenSource? _cts;
     private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public event EventHandler<Dto.DecryptionKeys>? KeysReceived;
 
-    public void Start(CancellationTokenSource? cancellationTokenSource = null)
+    public void Start(CancellationTokenSource? cts = null)
     {
         _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
@@ -79,8 +79,8 @@ public class ShutterP2P(
         };
 
         MyProto proto = new();
-        _cancellationTokenSource = cancellationTokenSource ?? new();
-        _ = _router.RunAsync(peer, proto, token: _cancellationTokenSource.Token);
+        _cts = cts ?? new();
+        _ = _router.RunAsync(peer, proto, token: _cts.Token);
         proto.SetupFinished().GetAwaiter().GetResult();
         ConnectToPeers(proto, shutterConfig.KeyperP2PAddresses!);
 
@@ -92,7 +92,7 @@ public class ShutterP2P(
                 try
                 {
                     using var timeoutSource = new CancellationTokenSource(DisconnectionLogTimeout);
-                    using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutSource.Token);
+                    using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
 
                     byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                     lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -100,7 +100,7 @@ public class ShutterP2P(
                 }
                 catch (OperationCanceledException)
                 {
-                    if (_cancellationTokenSource.IsCancellationRequested)
+                    if (_cts.IsCancellationRequested)
                     {
                         _logger.Info($"Shutting down Shutter P2P...");
                         break;
@@ -117,14 +117,14 @@ public class ShutterP2P(
                     throw new ShutterP2PException("Shutter processing thread error", e);
                 }
             }
-        }, _cancellationTokenSource.Token);
+        }, _cts.Token);
     }
 
     public async ValueTask DisposeAsync()
     {
         _router?.UnsubscribeAll();
         await (_serviceProvider?.DisposeAsync() ?? default);
-        await (_cancellationTokenSource?.CancelAsync() ?? Task.CompletedTask);
+        await (_cts?.CancelAsync() ?? Task.CompletedTask);
     }
 
     private class MyProto : IDiscoveryProtocol

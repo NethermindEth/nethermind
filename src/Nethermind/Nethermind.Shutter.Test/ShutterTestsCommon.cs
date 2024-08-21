@@ -29,8 +29,7 @@ class ShutterTestsCommon
     public const ulong InitialSlot = 16082024;
     public const ulong InitialTxPointer = 1000;
     public const int ChainId = BlockchainIds.Chiado;
-    public static readonly TimeSpan SlotLength = ChiadoSpecProvider.SlotLength;
-    public static readonly TimeSpan BlockUpToDateCutoff = ChiadoSpecProvider.SlotLength;
+    public const ulong GenesisTimestamp = ChiadoSpecProvider.BeaconChainGenesisTimestamp;
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;
     public static readonly IEthereumEcdsa Ecdsa = new EthereumEcdsa(ChainId);
     public static readonly ILogManager LogManager = LimboLogs.Instance;
@@ -45,16 +44,16 @@ class ShutterTestsCommon
         EncryptedGasLimit = 21000 * 20
     };
 
-    public static ShutterApiTests InitApi()
+    public static ShutterApiTests InitApi(ITimestamper? timestamper = null)
     {
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         IReadOnlyBlockTree readOnlyBlockTree = Substitute.For<IReadOnlyBlockTree>();
         ILogFinder logFinder = Substitute.For<ILogFinder>();
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        ITimestamper timestamper = Substitute.For<ITimestamper>();
         return new(
             AbiEncoder, readOnlyBlockTree, Ecdsa, logFinder, receiptFinder,
-            LogManager, SpecProvider, timestamper, worldStateManager, Cfg, []
+            LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
+            worldStateManager, Cfg, []
         );
     }
 
@@ -109,5 +108,12 @@ class ShutterTestsCommon
         List<(byte[] IdentityPreimage, byte[] Key)> keys = events.Select(e => (e.IdentityPreimage, e.Key)).ToList();
         keys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
         return (logs, keys);
+    }
+
+    public static Timestamper InitTimestamper(ulong slotTimestamp, ulong offsetMs)
+    {
+        ulong timestampMs = slotTimestamp * 1000 + offsetMs;
+        var blockTime = DateTimeOffset.FromUnixTimeMilliseconds((long)timestampMs);
+        return new(blockTime.UtcDateTime);
     }
 }

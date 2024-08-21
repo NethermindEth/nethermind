@@ -19,14 +19,14 @@ public class ShutterEon(
     ReadOnlyTxProcessingEnvFactory envFactory,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
-    ILogManager logManager)
+    ILogManager logManager) : IShutterEon
 {
-    private Info? _currentInfo;
+    private IShutterEon.Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public Info? GetCurrentEonInfo() => _currentInfo;
+    public IShutterEon.Info? GetCurrentEonInfo() => _currentInfo;
 
     public void Update(BlockHeader header)
     {
@@ -78,13 +78,5 @@ public class ShutterEon(
         {
             _logger.Error($"Invalid Shutter Eon key ", e);
         }
-    }
-
-    public readonly struct Info
-    {
-        public ulong Eon { get; init; }
-        public Bls.P2 Key { get; init; }
-        public ulong Threshold { get; init; }
-        public Address[] Addresses { get; init; }
     }
 }

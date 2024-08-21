@@ -16,7 +16,7 @@ using G1 = Bls.P1;
 
 public class ShutterKeyValidator(
     IShutterConfig shutterConfig,
-    ShutterEon eon,
+    IShutterEon eon,
     ILogManager logManager) : IShutterKeyValidator
 {
     private ulong? _highestValidatedSlot;
@@ -36,7 +36,7 @@ public class ShutterKeyValidator(
                 return;
             }
 
-            ShutterEon.Info? eonInfo = eon.GetCurrentEonInfo();
+            IShutterEon.Info? eonInfo = eon.GetCurrentEonInfo();
             if (eonInfo is null)
             {
                 _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");
@@ -60,7 +60,7 @@ public class ShutterKeyValidator(
         }
     }
 
-    private bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys, in ShutterEon.Info eonInfo)
+    private bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys, in IShutterEon.Info eonInfo)
     {
         if (decryptionKeys.InstanceID != _instanceId)
         {

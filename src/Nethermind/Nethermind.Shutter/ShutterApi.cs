@@ -24,26 +24,30 @@ namespace Nethermind.Shutter;
 
 public class ShutterApi : IShutterApi
 {
+
+    public static readonly TimeSpan SlotLength = GnosisSpecProvider.SlotLength;
+    public static readonly TimeSpan BlockUpToDateCutoff = GnosisSpecProvider.SlotLength;
+    public static readonly TimeSpan BlockWaitCutoff = TimeSpan.FromMilliseconds(1333);
+
     public readonly IShutterConfig Cfg;
     public readonly IShutterBlockHandler BlockHandler;
     public readonly IShutterKeyValidator KeyValidator;
+    public readonly IShutterEon Eon;
     public readonly ShutterTxLoader TxLoader;
     public readonly ShutterTime Time;
-    public readonly ShutterEon Eon;
     public ShutterTxSource TxSource { get; }
     public ShutterP2P? P2P;
     public ShutterBlockImprovementContextFactory? BlockImprovementContextFactory;
 
     private readonly IReadOnlyBlockTree _blockTree;
+    private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly ISpecProvider _specProvider;
+    private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
-    private readonly TimeSpan _slotLength = GnosisSpecProvider.SlotLength;
-    private readonly TimeSpan _blockUpToDateCutoff = GnosisSpecProvider.SlotLength;
-    private readonly TimeSpan _blockWaitCutoff = TimeSpan.FromMilliseconds(1333);
 
     public ShutterApi(
         IAbiEncoder abiEncoder,
-        IReadOnlyBlockTree readOnlyBlockTree,
+        IReadOnlyBlockTree blockTree,
         IEthereumEcdsa ecdsa,
         ILogFinder logFinder,
         IReceiptFinder receiptFinder,
@@ -56,21 +60,22 @@ public class ShutterApi : IShutterApi
         )
     {
         Cfg = cfg;
-        _blockTree = readOnlyBlockTree;
+        _blockTree = blockTree;
         _specProvider = specProvider;
+        _abiEncoder = abiEncoder;
         _logManager = logManager;
 
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(worldStateManager, readOnlyBlockTree, specProvider, logManager);
+        _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
 
-        Time = new(specProvider, timestamper, _slotLength, _blockUpToDateCutoff);
+        Time = new(specProvider, timestamper, SlotLength, BlockUpToDateCutoff);
         TxLoader = new(logFinder, cfg, Time, specProvider, ecdsa, logManager);
-        Eon = new(readOnlyBlockTree, readOnlyTxProcessingEnvFactory, abiEncoder, cfg, logManager);
+        Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
             specProvider.ChainId,
             cfg.ValidatorRegistryContractAddress!,
             cfg.ValidatorRegistryMessageVersion,
-            readOnlyTxProcessingEnvFactory,
-            readOnlyBlockTree,
+            _txProcessingEnvFactory,
+            blockTree,
             abiEncoder,
             receiptFinder,
             validatorsInfo,
@@ -85,12 +90,13 @@ public class ShutterApi : IShutterApi
 
         InitP2P(cfg, logManager);
         RegisterOnKeysValidated();
+        RegisterNewHeadBlock();
     }
 
     public void StartP2P(CancellationTokenSource? cancellationTokenSource = null)
         => P2P!.Start(cancellationTokenSource);
 
-    public virtual void NewHeadBlockHandler(object? sender, BlockEventArgs e)
+    protected virtual void NewHeadBlockHandler(object? sender, BlockEventArgs e)
     {
         BlockHandler.OnNewHeadBlock(e.Block);
     }
@@ -110,6 +116,7 @@ public class ShutterApi : IShutterApi
 
     public async ValueTask DisposeAsync()
     {
+        BlockHandler.Dispose();
         await (P2P?.DisposeAsync() ?? default);
     }
 
@@ -122,12 +129,17 @@ public class ShutterApi : IShutterApi
     protected async void KeysValidatedHandler(object? sender, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
         // wait for latest block before loading transactions
-        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, _slotLength, _blockWaitCutoff, new())) ?? _blockTree.Head;
+        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, SlotLength, BlockWaitCutoff, new())) ?? _blockTree.Head;
         BlockHeader? header = head?.Header;
         BlockHeader parentHeader = header is not null
             ? _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
             : _blockTree.FindLatestHeader()!;
         TxSource.LoadTransactions(head, parentHeader, keys);
+    }
+
+    protected virtual void RegisterNewHeadBlock()
+    {
+        _blockTree.NewHeadBlock += NewHeadBlockHandler;
     }
 
     protected virtual void InitP2P(IShutterConfig cfg, ILogManager logManager)
@@ -140,4 +152,7 @@ public class ShutterApi : IShutterApi
     {
         KeyValidator.KeysValidated += KeysValidatedHandler;
     }
+
+    protected virtual IShutterEon InitEon()
+        => new ShutterEon(_blockTree, _txProcessingEnvFactory, _abiEncoder, Cfg, _logManager);
 }

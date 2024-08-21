@@ -12,13 +12,10 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
-using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Core.Crypto;
-using Nethermind.Blockchain.Find;
 using System.IO;
 using Nethermind.Serialization.Json;
+using System.Threading;
 
 namespace Nethermind.Shutter;
 
@@ -35,16 +32,17 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     private IShutterConfig? _shutterConfig;
     private ShutterApi? _shutterApi;
     private ILogger _logger;
+    private readonly CancellationTokenSource _cts = new();
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public Task Init(INethermindApi nethermindApi)
     {
-        _logger.Info($"Initializing Shutter plugin.");
         _api = nethermindApi;
         _mergeConfig = _api.Config<IMergeConfig>();
         _shutterConfig = _api.Config<IShutterConfig>();
         _logger = _api.LogManager.GetClassLogger();
+        _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
     }
 
@@ -102,7 +100,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 validatorsInfo
             );
 
-            _api.BlockTree!.NewHeadBlock += _shutterApi.NewHeadBlockHandler;
+            _shutterApi.StartP2P(_cts);
         }
 
         ITxSource? compositeTxSource = _shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource);
@@ -118,10 +116,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
     public async ValueTask DisposeAsync()
     {
-        if (_shutterApi is not null)
-        {
-            _api!.BlockTree!.NewHeadBlock -= _shutterApi.NewHeadBlockHandler;
-        }
+        _cts.Dispose();
         await (_shutterApi?.DisposeAsync() ?? default);
     }
 

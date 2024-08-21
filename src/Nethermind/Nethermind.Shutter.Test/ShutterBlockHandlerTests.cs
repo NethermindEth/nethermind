@@ -2,35 +2,105 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using NUnit.Framework;
-using System;
 using Nethermind.Core.Test.Builders;
 using System.Threading;
+using Nethermind.Merge.Plugin.Test;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using System;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-class ShutterBlockHandlerTests
+class ShutterBlockHandlerTests : EngineModuleTests
 {
+    // slot 10 timestamp
+    private readonly ulong _slotTimestamp = ShutterTestsCommon.GenesisTimestamp + 10 * (ulong)ShutterApi.SlotLength.TotalSeconds;
     [Test]
-    public void Can_wait_for_valid_block()
+    public async Task Can_wait_for_valid_block()
     {
-        IShutterBlockHandler blockHandler = ShutterTestsCommon.InitApi().BlockHandler;
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 0);
+
+        ShutterApiTests api = ShutterTestsCommon.InitApi(timestamper);
+        IShutterBlockHandler blockHandler = api.BlockHandler;
 
         bool waitReturned = false;
         CancellationTokenSource source = new();
-        blockHandler.WaitForBlockInSlot(10, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), source.Token)
+        _ = blockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, ShutterApi.BlockWaitCutoff, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
 
-        blockHandler.OnNewHeadBlock(Build.A.Block.TestObject);
+        await Task.Delay((int)(ShutterApi.BlockWaitCutoff.TotalMilliseconds / 2));
 
+        Assert.That(waitReturned, Is.False);
+
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(_slotTimestamp).TestObject));
+
+        await Task.Delay(100);
+        Assert.That(waitReturned);
+    }
+
+    [Test]
+    public async Task Wait_times_out_at_cutoff()
+    {
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 0);
+
+        ShutterApiTests api = ShutterTestsCommon.InitApi(timestamper);
+        IShutterBlockHandler blockHandler = api.BlockHandler;
+
+        bool waitReturned = false;
+        CancellationTokenSource source = new();
+        _ = blockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, ShutterApi.BlockWaitCutoff, source.Token)
+            .ContinueWith((_) => waitReturned = true)
+            .WaitAsync(source.Token);
+
+        await Task.Delay((int)(ShutterApi.BlockWaitCutoff.TotalMilliseconds / 2));
+
+        Assert.That(waitReturned, Is.False);
+
+        await Task.Delay((int)(ShutterApi.BlockWaitCutoff.TotalMilliseconds / 2) + 100);
+
+        Assert.That(waitReturned);
+    }
+
+    [Test]
+    public async Task Does_not_wait_after_cutoff()
+    {
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 2 * (ulong)ShutterApi.BlockWaitCutoff.TotalMilliseconds);
+
+        ShutterApiTests api = ShutterTestsCommon.InitApi(timestamper);
+        IShutterBlockHandler blockHandler = api.BlockHandler;
+
+        bool waitReturned = false;
+        CancellationTokenSource source = new();
+        _ = blockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, ShutterApi.BlockWaitCutoff, source.Token)
+            .ContinueWith((_) => waitReturned = true)
+            .WaitAsync(source.Token);
+
+        await Task.Delay(100);
         Assert.That(waitReturned);
     }
 
     [Test]
     public void Ignores_outdated_block()
     {
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 2 * (ulong)ShutterApi.BlockUpToDateCutoff.TotalMilliseconds);
 
+        ShutterApiTests api = ShutterTestsCommon.InitApi(timestamper);
+        IShutterBlockHandler blockHandler = api.BlockHandler;
+
+        bool eonUpdateCalled = false;
+        CancellationTokenSource source = new();
+        api.EonUpdate += (object? sender, EventArgs e) => {
+            eonUpdateCalled = true;
+        };
+
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(_slotTimestamp).TestObject));
+        Assert.That(eonUpdateCalled, Is.False);
+
+        // control: called on up to date block
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(_slotTimestamp + 2 * (ulong)ShutterApi.BlockUpToDateCutoff.TotalSeconds).TestObject));
+        Assert.That(eonUpdateCalled);
     }
 
 }
