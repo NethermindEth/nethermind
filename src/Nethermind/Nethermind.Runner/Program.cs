@@ -592,15 +592,13 @@ public static class Program
         // Get all valid options from the configuration files
         var validArguments = app.GetOptions().SelectMany(o => new[] { o.LongName, o.ShortName }).ToArray();
 
-        var argumentsNamesProvided = GetArgumentNames(args).Select(a => a.ToString()).ToArray();
-
+        var argumentsNamesProvided = GetArgumentNames(args).ToList();
         foreach (var argumentName in argumentsNamesProvided)
         {
             // Check if the argument provided is a valid option/argument
-            if (!validArguments.Contains(argumentName))
+            if (!validArguments.Contains(argumentName.ToString()))
             {
-                string message = $"Unrecognized argument: {argumentName}.\nRun --help for a list of available options and commands.";
-                throw new ArgumentException(message);
+                throw new ArgumentException($"Unrecognized argument: {argumentName}.\nRun --help for a list of available options and commands.");
             }
         }
 
