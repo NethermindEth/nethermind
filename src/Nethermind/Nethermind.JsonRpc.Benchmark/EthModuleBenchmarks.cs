@@ -64,7 +64,8 @@ namespace Nethermind.JsonRpc.Benchmark
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            WorldStateManager stateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, null, LimboLogs.Instance);
+            WorldStateManager stateManager =
+                new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
 
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
