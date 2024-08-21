@@ -42,7 +42,6 @@ namespace Nethermind.TxPool
 
         private readonly TxDistinctSortedPool _transactions;
         private readonly BlobTxDistinctSortedPool _blobTransactions;
-        private readonly BlobFinder _blobFinder;
 
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _accounts;
@@ -120,8 +119,6 @@ namespace Nethermind.TxPool
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
-            _blobFinder = new BlobFinder(_blobTransactions);
-
             _headInfo.HeadChanged += OnHeadChange;
 
             _preHashFilters = new IIncomingTxFilter[]
@@ -188,7 +185,7 @@ namespace Nethermind.TxPool
         public bool TryGetBlobAndProof(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
-            => _blobFinder.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {

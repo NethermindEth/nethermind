@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -20,6 +21,32 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
+
+    public bool TryGetBlobAndProof(byte[] requestedBlobVersionedHash,
+        [NotNullWhen(true)] out byte[]? blob,
+        [NotNullWhen(true)] out byte[]? proof)
+    {
+        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
+            && txHashes[0] is not null
+            && TryGetValue(txHashes[0], out Transaction? blobTx)
+            && blobTx.BlobVersionedHashes?.Length > 0)
+        {
+            for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+            {
+                if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
+                    && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                {
+                    blob = wrapper.Blobs[indexOfBlob];
+                    proof = wrapper.Proofs[indexOfBlob];
+                    return true;
+                }
+            }
+        }
+
+        blob = default;
+        proof = default;
+        return false;
+    }
 
     public override bool TryInsert(ValueHash256 hash, Transaction blobTx, out Transaction? removed)
     {
