@@ -10,11 +10,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
 {
-    public static NoBlockImprovementContextFactory Instance { get; }
-    static NoBlockImprovementContextFactory()
-    {
-        Instance = new NoBlockImprovementContextFactory();
-    }
+    public static NoBlockImprovementContextFactory Instance { get; } = new();
 
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
