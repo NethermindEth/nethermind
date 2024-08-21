@@ -2,23 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool;
 
-public class BlobCatcher(BlobTxDistinctSortedPool blobPool)
+public class BlobFinder(BlobTxDistinctSortedPool blobPool)
 {
-    public IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
-    {
-        foreach (byte[] requestedBlobVersionedHash in request)
-        {
-            yield return GetBlobAndProofV1(requestedBlobVersionedHash);
-        }
-    }
-
-    private BlobAndProofV1? GetBlobAndProofV1(byte[] requestedBlobVersionedHash)
+    public bool TryGetBlobAndProof(byte[] requestedBlobVersionedHash,
+        [NotNullWhen(true)] out byte[]? blob,
+        [NotNullWhen(true)] out byte[]? proof)
     {
         if (blobPool.GetBlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
             && txHashes[0] is not null
@@ -27,14 +23,18 @@ public class BlobCatcher(BlobTxDistinctSortedPool blobPool)
         {
             for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
             {
-                if (blobTx.BlobVersionedHashes[indexOfBlob] == requestedBlobVersionedHash
+                if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                     && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                 {
-                    return new BlobAndProofV1(wrapper.Blobs[indexOfBlob], wrapper.Proofs[indexOfBlob]);
+                    blob = wrapper.Blobs[indexOfBlob];
+                    proof = wrapper.Proofs[indexOfBlob];
+                    return true;
                 }
             }
         }
 
-        return null;
+        blob = default;
+        proof = default;
+        return false;
     }
 }

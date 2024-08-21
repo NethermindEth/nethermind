@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -19,6 +20,16 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV
             return ResultWrapper<GetBlobsV1Result>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        return ResultWrapper<GetBlobsV1Result>.Success(new GetBlobsV1Result(txPool.GetBlobsAndProofs(request)));
+        return ResultWrapper<GetBlobsV1Result>.Success(new GetBlobsV1Result(GetBlobsAndProofs(request)));
+    }
+
+    private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
+    {
+        foreach (byte[] requestedBlobVersionedHash in request)
+        {
+            yield return txPool.TryGetBlobAndProof(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof)
+                ? new BlobAndProofV1(blob, proof)
+                : null;
+        }
     }
 }

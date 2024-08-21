@@ -52,7 +52,14 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] blobVersionedHashes) => Array.Empty<BlobAndProofV1>();
+        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[]? proof)
+        {
+            blob = null;
+            proof = null;
+            return false;
+        }
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
