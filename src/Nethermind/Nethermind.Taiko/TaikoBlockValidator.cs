@@ -80,7 +80,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (!Bytes.AreEqual(tx.Data.AsArray().AsSpan(0..4), AnchorSelector))
+        if (!Bytes.AreEqual(tx.Data?.Span[0..4], AnchorSelector))
         {
             errorMessage = "Anchor Transaction must have the correct selector.";
             return false;
