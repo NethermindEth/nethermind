@@ -11,5 +11,10 @@ namespace Nethermind.Monitoring
         Task StartAsync();
         Task StopAsync();
         void AddMetricsUpdateAction(Action callback);
+
+        /// <summary>
+        /// Forces gathering metrics and reporting them as soon as possible to the underlying sinks.
+        /// </summary>
+        void ForceUpdate();
     }
 }

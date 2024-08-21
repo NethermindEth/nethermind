@@ -26,7 +26,7 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalSeconds;
         private CancellationTokenSource _cts;
-        private readonly SemaphoreSlim _wait = new SemaphoreSlim(0);
+        private readonly SemaphoreSlim _wait = new(0);
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
         private readonly Dictionary<Type, DictionaryMetricInfo[]> _dictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
@@ -195,7 +195,7 @@ namespace Nethermind.Monitoring.Metrics
             _useCounters = metricsConfig.CountersEnabled;
         }
 
-        public void StartUpdating()
+        public void StartUpdating(Action onForced)
         {
             _cts = new CancellationTokenSource();
             Task.Run(() => RunLoop(_cts.Token));
@@ -205,13 +205,22 @@ namespace Nethermind.Monitoring.Metrics
             {
                 while (ct.IsCancellationRequested == false)
                 {
-                    UpdateMetrics();
+                    bool forced = false;
+
                     try
                     {
-                        await _wait.WaitAsync(TimeSpan.FromSeconds(_intervalSeconds), ct);
+                        forced = await _wait.WaitAsync(TimeSpan.FromSeconds(_intervalSeconds), ct);
                     }
                     catch (OperationCanceledException)
                     {
+                    }
+
+                    UpdateMetrics();
+
+                    if (forced && onForced != null)
+                    {
+                        // The update was forced and there's a onForced delegate. Execute it.
+                        onForced();
                     }
                 }
             }

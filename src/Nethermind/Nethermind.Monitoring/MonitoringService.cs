@@ -9,7 +9,6 @@ using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using System.Net.Sockets;
 using Prometheus;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Monitoring
 {
@@ -51,8 +50,10 @@ namespace Nethermind.Monitoring
             _options = GetOptions();
         }
 
-        public async Task StartAsync()
+        public Task StartAsync()
         {
+            MetricPusher pusher = null;
+
             if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
             {
                 MetricPusherOptions pusherOptions = new MetricPusherOptions
@@ -75,17 +76,20 @@ namespace Nethermind.Monitoring
                         if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
                     }
                 };
-                MetricPusher metricPusher = new MetricPusher(pusherOptions);
 
-                metricPusher.Start();
+                pusher = new MetricPusher(pusherOptions);
+                pusher.Start();
             }
             if (_exposePort is not null)
             {
                 new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
             }
-            _metricsController.StartUpdating();
+
+            _metricsController.StartUpdating(pusher != null ? pusher.ForceUpdate : null);
 
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+
+            return Task.CompletedTask;
         }
 
         public void AddMetricsUpdateAction(Action callback)
@@ -93,10 +97,14 @@ namespace Nethermind.Monitoring
             _metricsController.AddMetricsUpdateAction(callback);
         }
 
+        public void ForceUpdate()
+        {
+            _metricsController.ForceUpdate();
+        }
+
         public Task StopAsync()
         {
             _metricsController.StopUpdating();
-
             return Task.CompletedTask;
         }
 
