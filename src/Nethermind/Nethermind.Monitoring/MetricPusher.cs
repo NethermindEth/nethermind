@@ -143,7 +143,7 @@ public class MetricPusher : MetricHandler
         else
         {
             // If there is no error handler registered, we write to trace to at least hopefully get some attention to the problem.
-            Trace.WriteLine(string.Format("Error in MetricPusher: {0}", ex));
+            Trace.WriteLine($"Error in MetricPusher: {ex}");
         }
     }
 
