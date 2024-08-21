@@ -2,7 +2,12 @@ name: CodeQL analysis
 
 on:
   push:
+    branches:
+      - 'master'
     tags: ['*']
+  pull_request:
+    branches:
+      - 'master'
   schedule:
     - cron: '0 0 * * 0'
   workflow_dispatch:
@@ -33,10 +38,6 @@ jobs:
       - name: Build Nethermind
         working-directory: src/Nethermind
         run: dotnet build Nethermind.sln -c release
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@5c02493ebfd65b28fd3b082c65e5af2cd745d91f #v2.18.2
-        with:
-          category: '/language:${{ matrix.language }}'
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@5c02493ebfd65b28fd3b082c65e5af2cd745d91f #v2.18.2
         with:
