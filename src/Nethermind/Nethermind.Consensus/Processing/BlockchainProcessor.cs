@@ -73,8 +73,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
-    public BlockchainProcessor(
-        IBlockTree? blockTree,
+    public BlockchainProcessor(IBlockTree? blockTree,
         IBlockProcessor? blockProcessor,
         IBlockPreprocessorStep? recoveryStep,
         IStateReader stateReader,
@@ -92,6 +91,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(_logger);
+    }
+
+    /// <summary>
+    /// Raised when stats are updated.
+    /// </summary>
+    public event EventHandler<EventArgs> StatsUpdated
+    {
+        add { _stats.StatsUpdated += value; }
+        remove { _stats.StatsUpdated -= value; }
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)

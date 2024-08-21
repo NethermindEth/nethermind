@@ -127,6 +127,8 @@ namespace Nethermind.Init.Steps
                 IsMainProcessor = true
             };
 
+            blockchainProcessor.StatsUpdated += (_, _) => _api.MonitoringService.ForceUpdate();
+
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
 

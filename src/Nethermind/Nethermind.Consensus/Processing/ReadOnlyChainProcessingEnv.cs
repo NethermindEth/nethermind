@@ -44,9 +44,6 @@ namespace Nethermind.Consensus.Processing
             _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
-            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
-            BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
         }
 
         protected virtual IBlockProcessor CreateBlockProcessor(

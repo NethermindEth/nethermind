@@ -25,5 +25,6 @@ namespace Nethermind.Monitoring
         }
 
         public void AddMetricsUpdateAction(Action callback) { }
+        public void ForceUpdate() { }
     }
 }
