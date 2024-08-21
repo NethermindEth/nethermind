@@ -83,7 +83,8 @@ namespace Nethermind.Monitoring
             {
                 new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
             }
-            await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
+            _metricsController.StartUpdating();
+
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
 

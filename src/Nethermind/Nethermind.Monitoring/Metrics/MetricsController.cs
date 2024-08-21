@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -24,7 +25,8 @@ namespace Nethermind.Monitoring.Metrics
     public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
-        private Timer _timer;
+        private CancellationTokenSource _cts;
+        private readonly SemaphoreSlim _wait = new SemaphoreSlim(0);
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
         private readonly Dictionary<Type, DictionaryMetricInfo[]> _dictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
@@ -193,11 +195,33 @@ namespace Nethermind.Monitoring.Metrics
             _useCounters = metricsConfig.CountersEnabled;
         }
 
-        public void StartUpdating() => _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
+        public void StartUpdating()
+        {
+            _cts = new CancellationTokenSource();
+            Task.Run(() => RunLoop(_cts.Token));
 
-        public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
+            return;
+            async Task RunLoop(CancellationToken ct)
+            {
+                while (ct.IsCancellationRequested == false)
+                {
+                    UpdateMetrics();
+                    try
+                    {
+                        await _wait.WaitAsync(TimeSpan.FromSeconds(_intervalSeconds), ct);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                }
+            }
+        }
 
-        public void UpdateMetrics(object state)
+        public void ForceUpdate() => _wait.Release();
+
+        public void StopUpdating() => _cts.Cancel();
+
+        public void UpdateMetrics()
         {
             foreach (Action callback in _callbacks)
             {

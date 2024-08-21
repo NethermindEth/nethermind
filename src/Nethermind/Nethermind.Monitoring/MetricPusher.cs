@@ -99,7 +99,7 @@ public class MetricPusher : MetricHandler
         });
     }
 
-    public void Push() => _wait.Release();
+    public void ForceUpdate() => _wait.Release();
 
     private async Task PushOnce()
     {

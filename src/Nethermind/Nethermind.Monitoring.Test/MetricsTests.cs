@@ -69,7 +69,7 @@ public class MetricsTests
         TestMetrics.WithCustomLabelType[new CustomLabelType(1, 11, 111)] = 1111;
         TestMetrics.OldDictionaryMetrics["metrics0"] = 4;
         TestMetrics.OldDictionaryMetrics["metrics1"] = 5;
-        metricsController.UpdateMetrics(null);
+        metricsController.UpdateMetrics();
 
         var gauges = metricsController._gauges;
         var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
@@ -130,7 +130,7 @@ public class MetricsTests
                 metricsController.RegisterMetrics(metric);
             }
 
-            metricsController.UpdateMetrics(null);
+            metricsController.UpdateMetrics();
         });
     }
 
