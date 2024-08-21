@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-# Nethermind Ethereum client
+# Nethermind Ethereum client.
 
 [![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
