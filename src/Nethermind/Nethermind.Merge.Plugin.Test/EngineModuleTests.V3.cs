@@ -578,12 +578,9 @@ public partial class EngineModuleTests
 
         result.Data.Should().BeEquivalentTo(expected);
         BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
-        resultBlobsAndProofs.Length.Should().Be(numberOfBlobs);
-        for (int i = 0; i < numberOfBlobs; i++)
-        {
-            resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i]);
-            resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i]);
-        }
+        ShardBlobNetworkWrapper wrapper = ((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!);
+        resultBlobsAndProofs.Select(b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        resultBlobsAndProofs.Select(b => b.Proof).Should().BeEquivalentTo(wrapper.Proofs);
     }
 
     [Test]
