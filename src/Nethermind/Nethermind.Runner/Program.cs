@@ -609,7 +609,7 @@ public static class Program
         // Get all valid options from the configuration files
         HashSet<ReadOnlyMemory<char>> validArguments = GetValidArguments(app);
 
-        List<ReadOnlyMemory<char>> argumentsNamesProvided = GetArgumentNames(args).ToList();
+        IEnumerable<ReadOnlyMemory<char>> argumentsNamesProvided = GetArgumentNames(args);
         foreach (ReadOnlyMemory<char> argumentName in argumentsNamesProvided)
         {
             // Check if the argument provided is a valid option/argument
