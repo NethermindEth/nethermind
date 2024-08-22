@@ -131,7 +131,7 @@ namespace Ethereum.Test.Base
                 specProvider.UpdateMergeTransitionInfo(0, 0);
             }
 
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             TrieStore trieStore = new(stateDb, _logManager);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
@@ -148,7 +148,7 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
-            CodeInfoRepository codeInfoRepository = new();
+            CodeInfoRepository codeInfoRepository = new(1);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,

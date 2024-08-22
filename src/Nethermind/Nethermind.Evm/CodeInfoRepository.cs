@@ -183,28 +183,37 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// and return all authority addresses that was accessed.
     /// eip-7702
     /// </summary>
-    public IEnumerable<Address> InsertFromAuthorizations(
+    public CodeInsertResult InsertFromAuthorizations(
         IWorldState worldState,
         AuthorizationTuple?[] authorizations,
         IReleaseSpec spec)
     {
-        List<Address> result = new List<Address>();
+        List<Address> result = new();
+        int refunds = 0;
         //TODO optimize
         foreach (AuthorizationTuple? authTuple in authorizations)
         {
             if (authTuple is null)
                 continue;
             authTuple.Authority = authTuple.Authority ?? _ethereumEcdsa.RecoverAddress(authTuple);
+            string? error;
+
             if (!result.Contains(authTuple.Authority))
                 result.Add(authTuple.Authority);
-            string? error;
+
             if (!IsValidForExecution(authTuple, worldState, _ethereumEcdsa.ChainId, spec, out error))
                 continue;
 
             InsertAuthorizedCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
+
+            if (!worldState.AccountExists(authTuple.Authority))
+                worldState.CreateAccount(authTuple.Authority, 0);
+            else
+                refunds++;
+
             worldState.IncrementNonce(authTuple.Authority);
         }
-        return result;
+        return new CodeInsertResult(result, refunds);
 
         void InsertAuthorizedCode(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
         {
@@ -305,3 +314,18 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 }
+public readonly struct CodeInsertResult
+{
+    public CodeInsertResult(IEnumerable<Address> addresses, int refunds)
+    {
+        Addresses = addresses;
+        Refunds = refunds;
+    }
+    public CodeInsertResult()
+    {
+        Addresses = Array.Empty<Address>();
+    }
+    public readonly IEnumerable<Address> Addresses;
+    public readonly int Refunds;
+}
+

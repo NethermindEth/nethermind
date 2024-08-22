@@ -16,5 +16,5 @@ public interface ICodeInfoRepository
     CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
     CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
-    IEnumerable<Address> InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, IReleaseSpec spec);
+    CodeInsertResult InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, IReleaseSpec spec);
 }

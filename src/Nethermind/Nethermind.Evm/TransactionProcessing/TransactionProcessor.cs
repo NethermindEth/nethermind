@@ -130,20 +130,19 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            IEnumerable<Address> authorities = Array.Empty<Address>();
-
+            CodeInsertResult codeInsertResult = new();
             if (spec.IsEip7702Enabled)
             {                
                 if (tx.HasAuthorizationList)
                 {
-                    authorities = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
+                    codeInsertResult = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
                 }
             }
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, authorities, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, codeInsertResult, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -448,7 +447,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ITxTracer tracer,
             ExecutionOptions opts,
-            IEnumerable<Address> authorities,
+            CodeInsertResult codeInsertResult,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
@@ -482,7 +481,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
-                    WarmUp(tx, header, spec, env, state, authorities);
+                    WarmUp(tx, header, spec, env, state, codeInsertResult.Addresses);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -543,7 +542,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice);
+                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, codeInsertResult.Refunds);
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -620,7 +619,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
+            in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds)
         {
             long spentGas = tx.GasLimit;
             if (!substate.IsError)
@@ -629,7 +628,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 long refund = substate.ShouldRevert
                     ? 0
                     : RefundHelper.CalculateClaimableRefund(spentGas,
-                        substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled), spec);
+                        substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled)
+                        + (GasCostOf.NewAccount-GasCostOf.PerAuthBaseCost) * codeInsertRefunds, spec);
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
