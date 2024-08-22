@@ -64,7 +64,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -99,7 +99,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -136,7 +136,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, null))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -153,17 +153,17 @@ internal class TransactionProcessorEip7702Tests
     public static IEnumerable<object[]> DifferentCommitValues()
     {
         //Base case 
-        yield return new object[] { 1ul, (UInt256)0, TestItem.AddressA.Bytes };
+        yield return new object[] { 1ul, 0, TestItem.AddressA.Bytes };
         //Wrong nonce
-        yield return new object[] { 1ul, (UInt256)1, new[] { (byte)0x0 } };
+        yield return new object[] { 1ul, 1, new[] { (byte)0x0 } };
         //Null nonce means it should be ignored
-        yield return new object[] { 1ul, null, TestItem.AddressA.Bytes };
+        yield return new object[] { 1ul, 0, TestItem.AddressA.Bytes };
         //Wrong chain id
-        yield return new object[] { 2ul, (UInt256)0, new[] { (byte)0x0 } };
+        yield return new object[] { 2ul, 0, new[] { (byte)0x0 } };
     }
 
     [TestCaseSource(nameof(DifferentCommitValues))]
-    public void Execute_CommitMessageHasDifferentData_ExpectedAddressIsSavedInStorageSlot(ulong chainId, UInt256? nonce, byte[] expectedStorageValue)
+    public void Execute_CommitMessageHasDifferentData_ExpectedAddressIsSavedInStorageSlot(ulong chainId, ulong nonce, byte[] expectedStorageValue)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -214,7 +214,7 @@ internal class TransactionProcessorEip7702Tests
                                                  _specProvider.ChainId,
                                                  //Copy empty code so will not add to gas cost
                                                  TestItem.AddressC,
-                                                 null)))
+                                                 0)))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -252,7 +252,7 @@ internal class TransactionProcessorEip7702Tests
                     signer,
                     _specProvider.ChainId,
                     codeSource,
-                    null))
+                    0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -300,12 +300,12 @@ internal class TransactionProcessorEip7702Tests
                     signer,
                     _specProvider.ChainId,
                     firstCodeSource,
-                    null),
+                    0),
             CreateAuthorizationTuple(
                     signer,
                     _specProvider.ChainId,
                     secondCodeSource,
-                    null),
+                    0),
         ];
         if (reverseOrder)
         {
@@ -354,7 +354,7 @@ internal class TransactionProcessorEip7702Tests
                     signer,
                     _specProvider.ChainId,
                     codeSource,
-                    null))
+                    0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Transaction tx2 = Build.A.Transaction
@@ -382,7 +382,7 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.InsertCode(codeSource, Keccak.Compute(code), code, _specProvider.GetSpec(MainnetSpecProvider.PragueActivation));
     }
 
-    private AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
+    private AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
         AuthorizationTupleDecoder decoder = new();
         RlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);

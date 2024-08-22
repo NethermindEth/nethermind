@@ -12,14 +12,14 @@ namespace Nethermind.Core;
 public class AuthorizationTuple(
     ulong chainId,
     Address codeAddress,
-    UInt256? nonce,
+    ulong nonce,
     Signature sig,
     Address? authority = null)
 {
     public AuthorizationTuple(
         ulong chainId,
         Address codeAddress,
-        UInt256? nonce,
+        ulong nonce,
         ulong yParity,
         byte[] r,
         byte[] s,
@@ -28,7 +28,7 @@ public class AuthorizationTuple(
 
     public ulong ChainId { get; } = chainId;
     public Address CodeAddress { get; } = codeAddress ?? throw new ArgumentNullException(nameof(codeAddress));
-    public UInt256? Nonce { get; } = nonce;
+    public ulong Nonce { get; } = nonce;
     public Signature AuthoritySignature { get; } = sig ?? throw new ArgumentNullException(nameof(sig));
 
     /// <summary>

@@ -114,35 +114,11 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _localPrecompiles[codeSource];
         }
 
-        CodeInfo? cachedCodeInfo = null;
-        ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
-        {
-            cachedCodeInfo = CodeInfo.Empty;
-        }
+        CodeInfo cachedCodeInfo = GetCachedCode(worldState, codeSource);
 
-        cachedCodeInfo ??= _codeCache.Get(codeHash);
-        if (cachedCodeInfo is null)
+        if (HasDelegatedCode(cachedCodeInfo.MachineCode.Span))
         {
-            byte[]? code = worldState.GetCode(codeHash);
-
-            if (HasDelegatedCode(code))
-            {
-                code = worldState.GetCode(ParseDelegatedAddress(code));
-            }
-
-            if (code is null)
-            {
-                MissingCode(codeSource, codeHash);
-            }
-            
-            cachedCodeInfo = new CodeInfo(code);
-            cachedCodeInfo.AnalyseInBackgroundIfRequired();
-            _codeCache.Set(codeHash, cachedCodeInfo);
-        }
-        else
-        {
-            Db.Metrics.IncrementCodeDbCache();
+            cachedCodeInfo = GetCachedCode(worldState, ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span));
         }
 
         return cachedCodeInfo;
@@ -152,6 +128,37 @@ public class CodeInfoRepository : ICodeInfoRepository
         static void MissingCode(Address codeSource, in ValueHash256 codeHash)
         {
             throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+        }
+
+        static CodeInfo GetCachedCode(IWorldState worldState, Address codeSource)
+        {
+            CodeInfo? cachedCodeInfo = null;
+            ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+            if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+            {
+                cachedCodeInfo = CodeInfo.Empty;
+            }
+
+            cachedCodeInfo ??= _codeCache.Get(codeHash);
+            if (cachedCodeInfo is null)
+            {
+                byte[]? code = worldState.GetCode(codeHash);
+
+                if (code is null)
+                {
+                    MissingCode(codeSource, codeHash);
+                }
+
+                cachedCodeInfo = new CodeInfo(code);
+                cachedCodeInfo.AnalyseInBackgroundIfRequired();
+                _codeCache.Set(codeHash, cachedCodeInfo);
+            }
+            else
+            {
+                Db.Metrics.IncrementCodeDbCache();
+            }
+
+            return cachedCodeInfo;
         }
     }
 
@@ -218,9 +225,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         void InsertAuthorizedCode(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
         {
             byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
+            Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
             codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
             Hash256 codeHash = Keccak.Compute(authorizedBuffer);
             state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec);
+
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
         }
     }
@@ -252,7 +261,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return false;
         }
         UInt256 authNonce = stateProvider.GetNonce(authorizationTuple.Authority);
-        if (authorizationTuple.Nonce is not null && authNonce != authorizationTuple.Nonce)
+        if (authNonce != authorizationTuple.Nonce)
         {
             error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
             return false;
@@ -276,11 +285,11 @@ public class CodeInfoRepository : ICodeInfoRepository
                 code.Slice(0, Eip7702Constants.DelegationHeader.Length));
     }
 
-    private static Address ParseDelegatedAddress(byte[] code)
+    private static Address ParseDelegatedAddress(ReadOnlySpan<byte> code)
     {
         if (code.Length != Eip7702Constants.DelegationHeader.Length + Address.Size)
             throw new ArgumentException("Not valid delegation code.", nameof(code));
-        return new Address(code.Skip(Eip7702Constants.DelegationHeader.Length).ToArray());
+        return new Address(code.Slice(Eip7702Constants.DelegationHeader.Length).ToArray());
     }
 
     private CodeInfo CreateCachedPrecompile(

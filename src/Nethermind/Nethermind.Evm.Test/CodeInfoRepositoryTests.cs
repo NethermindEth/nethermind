@@ -34,7 +34,7 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
-            CreateAuthorizationTuple(authority, 1, TestItem.AddressB, (UInt256)0),
+            CreateAuthorizationTuple(authority, 1, TestItem.AddressB, 0),
         };
         CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
 
@@ -45,19 +45,19 @@ public class CodeInfoRepositoryTests
     {
         yield return new object[]
         {
-            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressB, (UInt256)0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressB, 0),
             true             
         };
         yield return new object[]
         {
             //Wrong chain id
-            CreateAuthorizationTuple(TestItem.PrivateKeyB, 2, TestItem.AddressB, (UInt256)0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyB, 2, TestItem.AddressB, 0),
             false
         };
         yield return new object[]
         {            
             //wrong nonce
-            CreateAuthorizationTuple(TestItem.PrivateKeyC, 1, TestItem.AddressB, (UInt256)1),
+            CreateAuthorizationTuple(TestItem.PrivateKeyC, 1, TestItem.AddressB, 1),
             false
         };
     }
@@ -87,7 +87,7 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
-            CreateAuthorizationTuple(authority, 1, codeSource, (UInt256)0),
+            CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
 
         sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
@@ -108,7 +108,7 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
-            CreateAuthorizationTuple(authority, 1, codeSource, (UInt256)0),
+            CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
 
         sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
@@ -129,7 +129,7 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
-            CreateAuthorizationTuple(authority, 1, codeSource, (UInt256)0),
+            CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
 
         sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<IReleaseSpec>());
@@ -143,10 +143,10 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
-            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, (UInt256)0),
-            CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressF, (UInt256)0),
-            CreateAuthorizationTuple(TestItem.PrivateKeyC, 2, TestItem.AddressF, (UInt256)0),
-            CreateAuthorizationTuple(TestItem.PrivateKeyD, 1, TestItem.AddressF, (UInt256)1),
+            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressF, 0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyC, 2, TestItem.AddressF, 0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyD, 1, TestItem.AddressF, 1),
         };
         CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
 
@@ -163,8 +163,8 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
-            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, (UInt256)0),
-            CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressF, (UInt256)0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressF, 0),
         };
         stateProvider.CreateAccount(TestItem.AddressA, 0);
 
@@ -173,7 +173,7 @@ public class CodeInfoRepositoryTests
         result.Refunds.Should().Be(1);
     }
 
-    private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
+    private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
         AuthorizationTupleDecoder decoder = new();
         RlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
