@@ -5,7 +5,7 @@ using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Serialization.Rlp.MyTxDecoder;
+namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 public static class SignatureBuilder
 {
@@ -35,20 +35,10 @@ public static class SignatureBuilder
             signatureError = "Both 'r' and 's' are zero when decoding a transaction";
         }
 
-        if (!isSignatureOk)
-        {
-            if (!allowUnsigned)
-            {
-                throw new RlpException(signatureError);
-            }
-            else
-            {
-                return null;
-            }
-        }
-        else
-        {
-            return new Signature(rBytes, sBytes, v);
-        }
+        return isSignatureOk
+            ? new Signature(rBytes, sBytes, v)
+            : allowUnsigned
+                ? null
+                : throw new RlpException(signatureError);
     }
 }
