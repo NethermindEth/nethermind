@@ -152,8 +152,7 @@ public static class Program
 
         BuildOptionsFromConfigFiles(app);
 
-        bool validArgs = ValidateArguments(args, app);
-        if (!validArgs) return;
+        if (!ValidateArguments(args, app)) return;
 
         app.OnExecute(async () =>
         {
