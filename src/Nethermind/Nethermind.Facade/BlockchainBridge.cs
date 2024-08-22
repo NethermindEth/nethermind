@@ -284,7 +284,6 @@ namespace Nethermind.Facade
                     blockHeader.ExtraData);
 
             IReleaseSpec releaseSpec = _specProvider.GetSpec(callHeader);
-            scope.WorldState.ApplyStateOverrides(_processingEnv.CodeInfoRepository, stateOverride, releaseSpec, blockHeader.Number, false);
 
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
                 ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
@@ -300,7 +299,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer, stateOverride);
         }
 
         public ulong GetChainId()
