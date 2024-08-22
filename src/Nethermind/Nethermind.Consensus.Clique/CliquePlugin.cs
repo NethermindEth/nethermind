@@ -112,6 +112,7 @@ namespace Nethermind.Consensus.Clique
                 scope.WorldState,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                getFromApi.TransactionProcessor,
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));
 

@@ -55,8 +55,9 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(ByteCode),
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, new AuthorizedCodeInfoRepository(codeInfoRepository, MainnetSpecProvider.Instance.ChainId)),
-                inputData: default
+                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+                inputData: default,
+                isSystemExecutionEnv: false
             );
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);

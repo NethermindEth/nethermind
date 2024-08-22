@@ -14,6 +14,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -42,8 +43,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null)
-        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService);
+        ILogManager? logManager = null,
+        IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
+        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, logManager, mockedConsensusRequestsProcessor);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
@@ -57,9 +59,17 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
+        "0xe97d919a17fa5011ff3a08ffb07657ed9e1aaf5ff649888e5d7f605006caf598",
+        "0x91675165328fd9a5f25375eb1a468b65b927a1415afd18ff51eeef287ca71fae",
+        "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b",
+        "0x3c6a8926870bdeff")]
+    public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
+        => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
+
+    [TestCase(
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
-        "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
-        "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
+        "0x310f4c8c949eb758faa4497e293bb18ef27a465af16553e5fc03752d3be19cc3",
+        "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f",
         "0xcdd08163eccae523")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);
@@ -91,9 +101,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     {
         private AuRaNethermindApi? _api;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
-            : base(mergeConfig, mockedPayloadPreparationService)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
+            : base(mergeConfig, mockedPayloadPreparationService, logManager, mockedConsensusRequestsProcessor)
         {
+            ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
             SealEngineType = Core.SealEngineType.AuRa;
         }
 
@@ -132,8 +143,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 State,
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
+                TxProcessor,
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                consensusRequestsProcessor: ConsensusRequestsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
@@ -167,7 +180,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager);
+                LogManager,
+                ConsensusRequestsProcessor);
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();

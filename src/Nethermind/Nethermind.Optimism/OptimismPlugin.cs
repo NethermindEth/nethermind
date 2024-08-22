@@ -27,6 +27,9 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Core;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Merge.Plugin.handlers;
 
 namespace Nethermind.Optimism;
 
@@ -224,6 +227,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -256,6 +260,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
+            new GetPayloadBodiesByHashV2Handler(_api.BlockTree, _api.LogManager),
+            new GetPayloadBodiesByRangeV2Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             _api.SpecProvider,

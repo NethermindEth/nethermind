@@ -108,17 +108,13 @@ namespace Nethermind.Specs
 
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip3607Enabled => _spec.IsEip3607Enabled;
-
         public bool IsEip158IgnoredAccount(Address address)
         {
             return _spec.IsEip158IgnoredAccount(address);
         }
-
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
         public ulong WithdrawalTimestamp => _spec.WithdrawalTimestamp;
-
         public ulong Eip4844TransitionTimestamp => _spec.Eip4844TransitionTimestamp;
-
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
@@ -129,6 +125,12 @@ namespace Nethermind.Specs
         public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
+
+        public bool AuRaSystemCalls => false;
+        public bool IsEip7002Enabled => _spec.IsEip7002Enabled;
+        public Address Eip7002ContractAddress => _spec.Eip7002ContractAddress;
+        public bool IsEip7251Enabled => _spec.IsEip7251Enabled;
+        public Address Eip7251ContractAddress => _spec.Eip7251ContractAddress;
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
         public bool IsEip7709Enabled => _spec.IsEip7709Enabled;
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
@@ -136,5 +138,9 @@ namespace Nethermind.Specs
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
+
+        public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
+
+        public Address DepositContractAddress => _spec.DepositContractAddress;
     }
 }

@@ -8,17 +8,33 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
-    public readonly struct ExecutionEnvironment(
-        CodeInfo codeInfo,
-        Address executingAccount,
-        Address caller,
-        Address? codeSource,
-        ReadOnlyMemory<byte> inputData,
-        in TxExecutionContext txExecutionContext,
-        UInt256 transferValue,
-        UInt256 value,
-        int callDepth = 0)
+    public readonly struct ExecutionEnvironment
     {
+        public ExecutionEnvironment
+        (
+            CodeInfo codeInfo,
+            Address executingAccount,
+            Address caller,
+            Address? codeSource,
+            ReadOnlyMemory<byte> inputData,
+            in TxExecutionContext txExecutionContext,
+            UInt256 transferValue,
+            UInt256 value,
+            bool isSystemExecutionEnv,
+            int callDepth = 0)
+        {
+            CodeInfo = codeInfo;
+            ExecutingAccount = executingAccount;
+            Caller = caller;
+            CodeSource = codeSource;
+            InputData = inputData;
+            TxExecutionContext = txExecutionContext;
+            TransferValue = transferValue;
+            Value = value;
+            CallDepth = callDepth;
+            IsSystemEnv = isSystemExecutionEnv;
+        }
+
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
@@ -62,6 +78,10 @@ namespace Nethermind.Evm
         public readonly UInt256 Value = value;
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
-        public readonly int CallDepth = callDepth;
+        public readonly int CallDepth;
+
+        /// <summary>
+        /// this field keeps track of wether the execution envirement was initiated by a systemTx.
+        public readonly bool IsSystemEnv;
     }
 }
