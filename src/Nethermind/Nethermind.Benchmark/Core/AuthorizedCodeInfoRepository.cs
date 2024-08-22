@@ -23,7 +23,7 @@ using System.Linq;
 
 namespace Nethermind.Benchmarks.Core;
 [MemoryDiagnoser]
-public class AuthorizedCodeInfoRepositoryBenchmark
+public class CodeInfoRepositoryBenchmark
 {
 
     private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.PragueActivation);
@@ -31,7 +31,7 @@ public class AuthorizedCodeInfoRepositoryBenchmark
     private AuthorizationTuple[] Tuples100;
     private AuthorizationTuple[] Tuples1k;
 
-    private AuthorizedCodeInfoRepository sut;
+    private CodeInfoRepository sut;
     private static EthereumEcdsa _ethereumEcdsa;
     private WorldState _stateProvider;
 
@@ -45,8 +45,8 @@ public class AuthorizedCodeInfoRepositoryBenchmark
         _stateProvider.CreateAccount(Address.Zero, 100000000000000);
         _stateProvider.Commit(_spec);
 
-        _ethereumEcdsa = new(1, new OneLoggerLogManager(NullLogger.Instance));
-        sut = new AuthorizedCodeInfoRepository(new CodeInfoRepository(), 1, NullLogger.Instance);
+        _ethereumEcdsa = new(1);
+        sut = new(1);
         var list = new List<AuthorizationTuple>();
         var rnd = new Random();
         var addressBuffer = new byte[20];

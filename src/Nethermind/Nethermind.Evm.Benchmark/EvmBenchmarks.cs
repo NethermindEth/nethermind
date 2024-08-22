@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-            CodeInfoRepository codeInfoRepository = new();
+            CodeInfoRepository codeInfoRepository = new(0);
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, LimboLogs.Instance);
 
             _environment = new ExecutionEnvironment
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(ByteCode),
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
                 inputData: default,
                 isSystemExecutionEnv: false
             );
