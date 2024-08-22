@@ -560,18 +560,18 @@ public static class Program
 
     private static bool ValidateArguments(string[] args, CommandLineApplication app)
     {
-        static HashSet<string> GetValidArguments(CommandLineApplication app)
+        static HashSet<ReadOnlyMemory<char>> GetValidArguments(CommandLineApplication app)
         {
-            var validArguments = new HashSet<string>();
+            HashSet<ReadOnlyMemory<char>> validArguments = new(new MemoryContentsComparer<char>());
             foreach (var option in app.GetOptions())
             {
                 if (!string.IsNullOrEmpty(option.LongName))
                 {
-                    validArguments.Add(option.LongName);
+                    validArguments.Add(option.LongName.AsMemory());
                 }
                 if (!string.IsNullOrEmpty(option.ShortName))
                 {
-                    validArguments.Add(option.ShortName);
+                    validArguments.Add(option.ShortName.AsMemory());
                 }
             }
 
@@ -607,13 +607,13 @@ public static class Program
         }
 
         // Get all valid options from the configuration files
-        var validArguments = GetValidArguments(app);
+        HashSet<ReadOnlyMemory<char>> validArguments = GetValidArguments(app);
 
-        var argumentsNamesProvided = GetArgumentNames(args).ToList();
-        foreach (var argumentName in argumentsNamesProvided)
+        List<ReadOnlyMemory<char>> argumentsNamesProvided = GetArgumentNames(args).ToList();
+        foreach (ReadOnlyMemory<char> argumentName in argumentsNamesProvided)
         {
             // Check if the argument provided is a valid option/argument
-            if (!validArguments.Contains(argumentName.ToString()))
+            if (!validArguments.Contains(argumentName))
             {
                 throw new ArgumentException($"Unrecognized argument: {argumentName}.\nRun --help for a list of available options and commands.");
             }
