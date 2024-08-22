@@ -65,7 +65,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        DecodePayload(transaction, ref decoderContext);
+        DecodePayload(transaction, ref decoderContext, rlpBehaviors);
 
         if (decoderContext.Position < lastCheck)
         {
@@ -162,7 +162,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         return DecodeSignature(v, rBytes, sBytes, transaction.Signature, rlpBehaviors);
     }
 
-    private  Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
