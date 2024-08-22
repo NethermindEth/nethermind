@@ -20,6 +20,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Trie.Pruning;
+using System.Diagnostics.Tracing;
 
 namespace Nethermind.Evm.Test;
 
@@ -44,26 +45,35 @@ public class CodeInfoRepositoryTests
     {
         yield return new object[]
         {
-            new[]
-            {
-                CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressB, (UInt256)0),
-                //Wrong chain id
-                CreateAuthorizationTuple(TestItem.PrivateKeyA, 0, TestItem.AddressB, (UInt256)0),
-                //wrong nonce
-                CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressB, (UInt256)1),
-            }
-            , 1
+            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressB, (UInt256)0),
+            true             
+        };
+        yield return new object[]
+        {
+            //Wrong chain id
+            CreateAuthorizationTuple(TestItem.PrivateKeyB, 2, TestItem.AddressB, (UInt256)0),
+            false
+        };
+        yield return new object[]
+        {            
+            //wrong nonce
+            CreateAuthorizationTuple(TestItem.PrivateKeyC, 1, TestItem.AddressB, (UInt256)1),
+            false
         };
     }
 
     [TestCaseSource(nameof(AuthorizationCases))]
-    public void InsertFromAuthorizations_MixOfCorrectAndWrongChainIdAndNonce_InsertsExpectedCount(AuthorizationTuple[] tuples, int expectedCount)
+    public void InsertFromAuthorizations_MixOfCorrectAndWrongChainIdAndNonce_InsertsIfExpected(AuthorizationTuple tuple, bool shouldInsert)
     {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         CodeInfoRepository sut = new(1);
 
-        CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
+        CodeInsertResult result = sut.InsertFromAuthorizations(stateProvider, [tuple], Substitute.For<IReleaseSpec>());
 
-        result.Addresses.Count().Should().Be(expectedCount);
+        Assert.That(stateProvider.HasCode(result.Addresses.First()), Is.EqualTo(shouldInsert));
     }
 
     [Test]
@@ -125,6 +135,42 @@ public class CodeInfoRepositoryTests
         sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<IReleaseSpec>());
 
         Assert.That(stateProvider.GetNonce(authority.Address), Is.EqualTo((UInt256)1));
+    }
+
+    [Test]
+    public void InsertFromAuthorizations_FourAuthorizationInTotalButTwoAreInvalid_ResultContainsAllFour()
+    {
+        CodeInfoRepository sut = new(1);
+        var tuples = new[]
+        {
+            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, (UInt256)0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressF, (UInt256)0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyC, 2, TestItem.AddressF, (UInt256)0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyD, 1, TestItem.AddressF, (UInt256)1),
+        };
+        CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
+
+        result.Addresses.Should().BeEquivalentTo([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD]);
+    }
+
+    [Test]
+    public void InsertFromAuthorizations_AuthorizationsHasOneExistingAccount_ResultHaveOneRefund()
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        CodeInfoRepository sut = new(1);
+        var tuples = new[]
+        {
+            CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, (UInt256)0),
+            CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressF, (UInt256)0),
+        };
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+
+        CodeInsertResult result = sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<IReleaseSpec>());
+
+        result.Refunds.Should().Be(1);
     }
 
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)

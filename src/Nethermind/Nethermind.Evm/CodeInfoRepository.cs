@@ -204,13 +204,13 @@ public class CodeInfoRepository : ICodeInfoRepository
             if (!IsValidForExecution(authTuple, worldState, _ethereumEcdsa.ChainId, spec, out error))
                 continue;
 
-            InsertAuthorizedCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
-
             if (!worldState.AccountExists(authTuple.Authority))
                 worldState.CreateAccount(authTuple.Authority, 0);
             else
                 refunds++;
 
+            InsertAuthorizedCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
+   
             worldState.IncrementNonce(authTuple.Authority);
         }
         return new CodeInsertResult(result, refunds);
