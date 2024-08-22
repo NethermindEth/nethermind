@@ -81,8 +81,8 @@ namespace Nethermind.Core.Test.Crypto
 
         public static IEnumerable<AuthorizationTuple> AuthorityTupleTestCaseSources()
         {
-            yield return CreateAuthorizationTuple(ulong.MaxValue, Build.A.Address.TestObjectInternal, UInt256.MaxValue);
-            yield return CreateAuthorizationTuple(1, Address.Zero, null);
+            yield return CreateAuthorizationTuple(ulong.MaxValue, Build.A.Address.TestObjectInternal, ulong.MaxValue);
+            yield return CreateAuthorizationTuple(1, Address.Zero, 0);
         }
 
         [TestCaseSource(nameof(AuthorityTupleTestCaseSources))]
@@ -95,7 +95,7 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(authority, Is.EqualTo(authorization.Authority));
         }
 
-        private static AuthorizationTuple CreateAuthorizationTuple(ulong chainId, Address codeAddress, UInt256? nonce)
+        private static AuthorizationTuple CreateAuthorizationTuple(ulong chainId, Address codeAddress, ulong nonce)
         {
             AuthorizationTupleDecoder decoder = new();
             RlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);

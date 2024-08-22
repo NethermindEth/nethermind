@@ -20,14 +20,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
 
         var chainId = stream.DecodeULong();
         Address? codeAddress = stream.DecodeAddress();
-        UInt256?[] nonces = stream.DecodeArray<UInt256?>(s => s.DecodeUInt256());
-
-        UInt256? nonce = nonces.Length switch
-        {
-            0 => null,
-            1 => nonces[0],
-            _ => ThrowInvalidNonceRlpException()
-        };
+        ulong nonce = stream.DecodeULong();
 
         ulong yParity = stream.DecodeULong();
         byte[] r = stream.DecodeByteArray();
@@ -51,14 +44,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         var chainId = decoderContext.DecodeULong();
         Address codeAddress = decoderContext.DecodeAddress();
 
-        int nonceLength = decoderContext.ReadSequenceLength();
-        //Nonce is optional and is therefore made as a sequence
-        UInt256? nonce = nonceLength switch
-        {
-            0 => null,
-            1 => decoderContext.DecodeUInt256(),
-            _ => ThrowInvalidNonceRlpException()
-        };
+        ulong nonce = decoderContext.DecodeULong();
 
         ulong yParity = decoderContext.DecodeULong();
         byte[] r = decoderContext.DecodeByteArray();
@@ -87,21 +73,13 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         stream.StartSequence(contentLength);
         stream.Encode(item.ChainId);
         stream.Encode(item.CodeAddress);
-        if (item.Nonce is not null)
-        {
-            stream.StartSequence(Rlp.LengthOf(item.Nonce));
-            stream.Encode((UInt256)item.Nonce);
-        }
-        else
-        {
-            stream.StartSequence(0);
-        }
+        stream.Encode(item.Nonce);
         stream.Encode(item.AuthoritySignature.RecoveryId);
         stream.Encode(item.AuthoritySignature.R);
         stream.Encode(item.AuthoritySignature.S);
     }
 
-    public RlpStream EncodeWithoutSignature(ulong chainId, Address codeAddress, UInt256? nonce)
+    public RlpStream EncodeWithoutSignature(ulong chainId, Address codeAddress, ulong nonce)
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         var totalLength = Rlp.LengthOfSequence(contentLength);
@@ -110,21 +88,13 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         return stream;
     }
 
-    public void EncodeWithoutSignature(RlpStream stream, ulong chainId, Address codeAddress, UInt256? nonce)
+    public void EncodeWithoutSignature(RlpStream stream, ulong chainId, Address codeAddress, ulong nonce)
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         stream.StartSequence(contentLength);
         stream.Encode(chainId);
         stream.Encode(codeAddress ?? throw new RlpException($"Invalid tx {nameof(AuthorizationTuple)} format - address is null"));
-        if (nonce is not null)
-        {
-            stream.StartSequence(Rlp.LengthOf(nonce));
-            stream.Encode((UInt256)nonce);
-        }
-        else
-        {
-            stream.StartSequence(0);
-        }
+        stream.Encode(nonce);
     }
 
     public int GetLength(AuthorizationTuple item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item));
@@ -135,10 +105,10 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         + Rlp.LengthOf(tuple.AuthoritySignature.R.AsSpan())
         + Rlp.LengthOf(tuple.AuthoritySignature.S.AsSpan());
 
-    private static int GetContentLengthWithoutSig(ulong chainId, Address codeAddress, UInt256? nonce) =>
+    private static int GetContentLengthWithoutSig(ulong chainId, Address codeAddress, ulong nonce) =>
         Rlp.LengthOf(chainId)
         + Rlp.LengthOf(codeAddress)
-        + (nonce is not null ? Rlp.LengthOfSequence(Rlp.LengthOf(nonce)) : Rlp.OfEmptySequence.Length);
+        + Rlp.LengthOf(nonce);
 
     [DoesNotReturn]
     [StackTraceHidden]
