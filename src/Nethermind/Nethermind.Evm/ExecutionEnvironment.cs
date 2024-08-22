@@ -38,44 +38,44 @@ namespace Nethermind.Evm
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
-        public readonly CodeInfo CodeInfo = codeInfo;
+        public readonly CodeInfo CodeInfo;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
         /// </summary>
-        public readonly Address ExecutingAccount = executingAccount;
+        public readonly Address ExecutingAccount;
 
         /// <summary>
         /// Caller
         /// </summary>
-        public readonly Address Caller = caller;
+        public readonly Address Caller;
 
         /// <summary>
         /// Bytecode source (account address).
         /// </summary>
-        public readonly Address? CodeSource = codeSource;
+        public readonly Address? CodeSource;
 
         /// <summary>
         /// Parameters / arguments of the current call.
         /// </summary>
-        public readonly ReadOnlyMemory<byte> InputData = inputData;
+        public readonly ReadOnlyMemory<byte> InputData;
 
         /// <summary>
         /// Transaction originator
         /// </summary>
-        public readonly TxExecutionContext TxExecutionContext = txExecutionContext;
+        public readonly TxExecutionContext TxExecutionContext;
 
         /// <summary>
         /// ETH value transferred in this call.
         /// </summary>
-        public readonly UInt256 TransferValue = transferValue;
+        public readonly UInt256 TransferValue;
 
         /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public readonly UInt256 Value = value;
+        public readonly UInt256 Value;
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth;

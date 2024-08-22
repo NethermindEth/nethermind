@@ -49,7 +49,7 @@ public class ConsolidationRequestProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        _codeInfoRepository = new CodeInfoRepository();
+        _codeInfoRepository = new CodeInfoRepository(0);
 
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, _codeInfoRepository, LimboLogs.Instance);
 
@@ -63,7 +63,7 @@ public class ConsolidationRequestProcessorTests
                 return new TransactionResult();
             });
 
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
 

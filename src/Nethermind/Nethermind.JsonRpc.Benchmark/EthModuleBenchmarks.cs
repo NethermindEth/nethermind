@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new SyncConfig(),
                 LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new();
+            CodeInfoRepository codeInfoRepository = new(1);
             _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Benchmark
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
                 stateProvider, NullReceiptStorage.Instance, new BlockhashStore(specProvider, stateProvider), transactionProcessor, LimboLogs.Instance);
 
-            EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,
                 blockProcessor,
