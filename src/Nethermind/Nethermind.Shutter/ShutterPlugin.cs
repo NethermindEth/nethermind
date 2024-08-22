@@ -103,8 +103,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             _shutterApi.StartP2P(_cts);
         }
 
-        ITxSource? compositeTxSource = _shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource);
-        return consensusPlugin.InitBlockProducer(compositeTxSource);
+        return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
     }
 
     public bool ShouldRunSteps(INethermindApi api)

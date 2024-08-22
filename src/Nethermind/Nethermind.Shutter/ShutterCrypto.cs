@@ -316,7 +316,7 @@ public static class ShutterCrypto
         Hash3(preimage, out res);
     }
 
-    private static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages)
+    internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages)
     {
         Ssz.SlotDecryptionIdentites container = new()
         {

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace Nethermind.Shutter.Test;
@@ -9,59 +11,38 @@ namespace Nethermind.Shutter.Test;
 class ShutterKeyValidatorTests
 {
     [Test]
-    public void Can_accept_valid_decryption_keys()
+    public void Accepts_valid_decryption_keys()
     {
-        ShutterApiTests api = ShutterTestsCommon.InitApi();
+        const int threshhold = 10;
+        Random rnd = new(ShutterTestsCommon.Seed);
+        ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
+        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd, 0, threshhold, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi());
+        api.SetEventSimulator(eventSimulator);
 
-        IShutterKeyValidator keyValidator = api.KeyValidator;
         bool eventFired = false;
-        keyValidator.KeysValidated += (_, _) => eventFired = true;
+        api.KeyValidator.KeysValidated += (_, _) => eventFired = true;
 
-        api.SetEon(new() {
-
-        });
-        api.TriggerKeysReceived(new Dto.DecryptionKeys());
+        api.AdvanceSlot(5);
 
         Assert.That(eventFired);
     }
 
     [Test]
-    public void Can_reject_invalid_decryption_keys()
+    public void Rejects_outdated_decryption_keys()
     {
-        ShutterApiTests api = ShutterTestsCommon.InitApi();
+        const int threshhold = 10;
+        Random rnd = new(ShutterTestsCommon.Seed);
+        ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
+        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd, 0, threshhold, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi());
+        api.SetEventSimulator(eventSimulator);
 
-        IShutterKeyValidator keyValidator = api.KeyValidator;
-        bool eventFired = false;
-        keyValidator.KeysValidated += (_, _) => eventFired = true;
-
-        api.SetEon(new() {
-
-        });
-        api.TriggerKeysReceived(new Dto.DecryptionKeys());
-
-        Assert.That(eventFired, Is.False);
-    }
-
-    [Test]
-    public void Can_reject_outdated_decryption_keys()
-    {
-        ShutterApiTests api = ShutterTestsCommon.InitApi();
-        IShutterKeyValidator keyValidator = api.KeyValidator;
-
-        api.SetEon(new() {
-
-        });
-
-        Dto.DecryptionKeys keys = new();
-
-        // load up to date keys
-        api.TriggerKeysReceived(keys);
+        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) x = api.AdvanceSlot(5);
 
         bool eventFired = false;
-        keyValidator.KeysValidated += (_, _) => eventFired = true;
+        api.KeyValidator.KeysValidated += (_, _) => eventFired = true;
 
-        // same slot, should be outdated
-        api.TriggerKeysReceived(keys);
+        // same keys are now outdated
+        api.TriggerKeysReceived(x.keys);
 
         Assert.That(eventFired, Is.False);
     }

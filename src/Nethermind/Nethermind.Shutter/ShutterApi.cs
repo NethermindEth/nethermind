@@ -39,7 +39,7 @@ public class ShutterApi : IShutterApi
     public ShutterP2P? P2P;
     public ShutterBlockImprovementContextFactory? BlockImprovementContextFactory;
 
-    private readonly IReadOnlyBlockTree _blockTree;
+    protected readonly IReadOnlyBlockTree _blockTree;
     private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly ISpecProvider _specProvider;
     private readonly IAbiEncoder _abiEncoder;
@@ -126,7 +126,7 @@ public class ShutterApi : IShutterApi
         KeyValidator.OnDecryptionKeysReceived(keys);
     }
 
-    protected async void KeysValidatedHandler(object? sender, IShutterKeyValidator.ValidatedKeyArgs keys)
+    protected virtual async void KeysValidatedHandler(object? sender, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
         // wait for latest block before loading transactions
         Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, SlotLength, BlockWaitCutoff, new())) ?? _blockTree.Head;

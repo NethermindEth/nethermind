@@ -3,10 +3,16 @@
 
 using System;
 using Nethermind.Int256;
-
+using System.Linq;
+using Google.Protobuf;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Shutter.Test;
 using Nethermind.Core;
 using System.Collections.Generic;
 using Nethermind.Shutter;
+using Nethermind.Shutter.Dto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Abi;
@@ -14,26 +20,32 @@ using Nethermind.Abi;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 using EncryptedMessage = Nethermind.Shutter.ShutterCrypto.EncryptedMessage;
-using System.Linq;
 
-public class ShutterEventEmitter
+public class ShutterEventSimulator
 {
     public readonly Transaction DefaultTx;
     private readonly UInt256 _defaultGasLimit = new(21000);
     private readonly Random _rnd;
     private readonly ulong _chainId;
+    private readonly ulong _threshold;
     private readonly IAbiEncoder _abiEncoder;
     private readonly Address _sequencerContractAddress;
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
+    private ulong _slot;
     private ulong _eon;
-    private ulong _txIndex;
+    private ulong _txIndex; // for tracking events being emitted
+    private ulong _txPointer; // for tracking which keys are released
     private UInt256 _sk;
     private G2 _eonKey;
+    private IEnumerable<Event> _eventSource;
+    private Queue<(byte[] IdentityPreimage, byte[] Key)> _keys = [];
 
-    public ShutterEventEmitter(
+    public ShutterEventSimulator(
         Random rnd,
         ulong chainId,
         ulong eon,
+        ulong threshold,
+        ulong slot,
         ulong txIndex,
         IAbiEncoder abiEncoder,
         Address sequencerContractAddress,
@@ -43,13 +55,17 @@ public class ShutterEventEmitter
         _rnd = rnd;
         _chainId = chainId;
         _eon = eon;
+        _slot = slot;
         _txIndex = txIndex;
+        _txPointer = txIndex;
+        _threshold = threshold;
         _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
         _transactionSubmittedAbi = transactionSubmittedAbi;
         DefaultTx = Build.A.Transaction.WithChainId(_chainId).Signed().TestObject;
 
         NewEon(eon);
+        _eventSource = EmitEvents();
     }
 
     public struct Event
@@ -61,12 +77,37 @@ public class ShutterEventEmitter
         public byte[] Transaction;
     }
 
-    public IEnumerable<Event> EmitEvents()
+    public List<Event> GetEvents(int c)
+    {
+        return _eventSource.Take(c).ToList();
+    }
+
+    public (List<Event> events, DecryptionKeys keys) AdvanceSlot(int eventCount, int keyCount)
+    {
+        var events = _eventSource.Take(eventCount).ToList();
+        foreach (Event e in events)
+        {
+            _keys.Enqueue((e.IdentityPreimage, e.Key));
+        }
+
+        List<(byte[] IdentityPreimage, byte[] Key)> keys = [];
+        for (int i = 0; i < keyCount; i++)
+        {
+            keys.Add(_keys.Dequeue());
+        }
+        DecryptionKeys decryptionKeys = ToDecryptionKeys(keys, GetCurrentEonInfo(), _txPointer, (int)_threshold);
+
+        _slot++;
+        _txPointer += (ulong)keyCount;
+        return (events, decryptionKeys);
+    }
+
+    protected virtual IEnumerable<Event> EmitEvents()
     {
         return EmitEvents(EmitDefaultGasLimits(), EmitDefaultTransactions());
     }
 
-    public IEnumerable<Event> EmitEvents(IEnumerable<UInt256> gasLimits, IEnumerable<Transaction> transactions)
+    protected IEnumerable<Event> EmitEvents(IEnumerable<UInt256> gasLimits, IEnumerable<Transaction> transactions)
     {
         foreach ((UInt256 gasLimit, Transaction tx) in gasLimits.Zip(transactions))
         {
@@ -93,7 +134,7 @@ public class ShutterEventEmitter
         }
     }
 
-    public IEnumerable<UInt256> EmitDefaultGasLimits()
+    protected IEnumerable<UInt256> EmitDefaultGasLimits()
     {
         while (true)
         {
@@ -101,13 +142,22 @@ public class ShutterEventEmitter
         }
     }
 
-    public IEnumerable<Transaction> EmitDefaultTransactions()
+    protected IEnumerable<Transaction> EmitDefaultTransactions()
     {
         while (true)
         {
             yield return DefaultTx;
         }
     }
+
+    public IShutterEon.Info GetCurrentEonInfo()
+        => new()
+        {
+            Eon = _eon,
+            Key = _eonKey,
+            Threshold = _threshold,
+            Addresses = TestItem.Addresses
+        };
 
     public void NewEon()
         => NewEon(_eon + 1);
@@ -142,5 +192,49 @@ public class ShutterEventEmitter
             .WithTopics(_transactionSubmittedAbi.Signature.Hash)
             .WithData(logData)
             .TestObject;
+    }
+
+    private DecryptionKeys ToDecryptionKeys(List<(byte[] IdentityPreimage, byte[] Key)> rawKeys, in IShutterEon.Info eon, ulong txIndex, int signatureCount)
+    {
+        rawKeys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+        rawKeys.Insert(0, ([], []));
+
+        var keys = rawKeys.Select(k => new Key()
+        {
+            Identity = ByteString.CopyFrom(k.IdentityPreimage),
+            Key_ = ByteString.CopyFrom(k.Key),
+        }).ToList();
+
+        var identityPreimages = rawKeys.Select(k => k.IdentityPreimage).ToList();
+        var randomIndices = Enumerable.Range(0, TestItem.PublicKeys.Length).Shuffle(_rnd).ToList();
+
+        List<ulong> signerIndices = [];
+        List<ByteString> signatures = [];
+
+        for (int i = 0; i < signatureCount; i++)
+        {
+            ulong index = (ulong)randomIndices[i];
+            PrivateKey sk = TestItem.PrivateKeys[index];
+            Hash256 h = ShutterCrypto.GenerateHash(ShutterTestsCommon.Cfg.InstanceID, eon.Eon, _slot, txIndex, identityPreimages);
+            byte[] sig = ShutterTestsCommon.Ecdsa.Sign(sk, h).BytesWithRecovery;
+            signerIndices.Add(index);
+            signatures.Add(ByteString.CopyFrom(sig));
+        }
+
+        GnosisDecryptionKeysExtra gnosis = new()
+        {
+            Slot = _slot,
+            TxPointer = txIndex,
+            SignerIndices = { signerIndices },
+            Signatures = { signatures }
+        };
+
+        return new()
+        {
+            InstanceID = ShutterTestsCommon.Cfg.InstanceID,
+            Eon = eon.Eon,
+            Keys = { keys },
+            Gnosis = gnosis
+        };
     }
 }
