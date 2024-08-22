@@ -160,7 +160,7 @@ public class OptimismTransactionProcessor(
     }
 
     protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
+        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int refunds)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
@@ -171,6 +171,6 @@ public class OptimismTransactionProcessor(
             return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
         }
 
-        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);
+        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, refunds);
     }
 }
