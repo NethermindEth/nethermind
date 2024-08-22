@@ -250,13 +250,6 @@ public static class Program
         }
     }
 
-    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames)
-    {
-        return argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key);
-    }
-
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
         var alternativePath = nativeLibraryName switch
@@ -604,6 +597,13 @@ public static class Program
                     lastWasArgument = false;
                 }
             }
+        }
+
+        static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames)
+        {
+            return argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key);
         }
 
         // Get all valid options from the configuration files
