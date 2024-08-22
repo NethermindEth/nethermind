@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
@@ -11,21 +12,25 @@ public interface ITransactionProcessor
     /// <summary>
     /// Execute transaction, commit state
     /// </summary>
-    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+        Dictionary<Address, AccountOverride>? stateOverride = null);
 
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
-    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+        Dictionary<Address, AccountOverride>? stateOverride = null);
 
     /// <summary>
     /// Execute transaction, keep the state uncommitted
     /// </summary>
-    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+        Dictionary<Address, AccountOverride>? stateOverride = null);
 
     /// <summary>
     /// Call transaction, no validations, commit state
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
-    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+        Dictionary<Address, AccountOverride>? stateOverride = null);
 }

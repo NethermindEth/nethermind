@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -84,24 +85,26 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
         }
 
-        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
+        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            Dictionary<Address, AccountOverride>? stateOverride = null) =>
+            Execute(transaction, in blCtx, txTracer, stateOverride, ExecutionOptions.CommitAndRestore);
 
-        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
+        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             WorldState.TakeSnapshot(true);
-            return Execute(transaction, in blCtx, txTracer, ExecutionOptions.None);
+            return Execute(transaction, in blCtx, txTracer, stateOverride, ExecutionOptions.None);
         }
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(transaction, in blCtx, txTracer, ExecutionOptions.Commit);
+        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+            Execute(transaction, in blCtx, txTracer, stateOverride, ExecutionOptions.Commit);
 
-        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
+        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+            Execute(transaction, in blCtx, txTracer, stateOverride, ExecutionOptions.NoValidation);
 
-        protected virtual TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+        protected virtual TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, Dictionary<Address, AccountOverride>? stateOverride, ExecutionOptions opts)
         {
             BlockHeader header = blCtx.Header;
             IReleaseSpec spec = SpecProvider.GetSpec(header);
@@ -123,6 +126,9 @@ namespace Nethermind.Evm.TransactionProcessing
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
+
+            if (_codeInfoRepository is OverridableCodeInfoRepository overridableCodeInfoRepository)
+                WorldState.ApplyStateOverrides(overridableCodeInfoRepository, stateOverride, spec, blCtx.Header.Number, false);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))) return result;

@@ -6,13 +6,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Facade;
+namespace Nethermind.Evm;
 
 public static class StateOverridesExtensions
 {

@@ -13,13 +13,10 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
+using Nethermind.Evm;
 using Nethermind.State;
 using Nethermind.Trie;
 using NSubstitute;
@@ -73,7 +70,8 @@ namespace Nethermind.Blockchain.Test
                     _allowedToFail.Add(hash);
                 }
 
-                public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+                public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
+                    IBlockTracer blockTracer, Dictionary<Address, AccountOverride>? stateOverride)
                 {
                     if (blockTracer != NullBlockTracer.Instance)
                     {

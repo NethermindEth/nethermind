@@ -11,17 +11,14 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.Trie;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -59,20 +56,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. Doesn't charge fees.
         /// </summary>
-        public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null)
+        public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             blockParameter ??= BlockParameter.Latest;
             call.EnsureDefaults(_jsonRpcConfig.GasCap);
 
             Transaction tx = call.ToTransaction();
 
-            return TraceTx(tx, traceTypes, blockParameter);
+            return TraceTx(tx, traceTypes, blockParameter, stateOverride);
         }
 
         /// <summary>
         /// Traces list of transactions. Doesn't charge fees.
         /// </summary>
-        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             blockParameter ??= BlockParameter.Latest;
 
@@ -100,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = new(headerSearch.Object!, txs, Enumerable.Empty<BlockHeader>());
-            IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new ParityLikeBlockTracer(traceTypeByTransaction));
+            IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new(traceTypeByTransaction), stateOverride);
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
         }
 
@@ -144,7 +141,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return new SearchResult<BlockHeader>(header);
         }
 
-        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter)
+        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
+            Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter);
             if (headerSearch.IsError)
@@ -155,7 +153,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = new(headerSearch.Object!, new[] { tx }, Enumerable.Empty<BlockHeader>());
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1));
+            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1), stateOverride);
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(result.SingleOrDefault()));
         }
 
@@ -318,11 +316,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer,
+            Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-            _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
+            _tracer.Trace(block, tracer.WithCancellation(cancellationToken), stateOverride);
             return tracer.BuildResult();
         }
 

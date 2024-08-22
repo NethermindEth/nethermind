@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
@@ -16,7 +18,7 @@ namespace Nethermind.Consensus.Processing
 
         Task StopAsync(bool processRemainingBlocks = false);
 
-        Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer);
+        Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride = null);
 
         bool IsProcessingBlocks(ulong? maxProcessingInterval);
 

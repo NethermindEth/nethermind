@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -16,7 +17,8 @@ internal static class TransactionProcessorAdapterExtensions
         Transaction currentTx,
         BlockReceiptsTracer receiptsTracer,
         ProcessingOptions processingOptions,
-        IWorldState stateProvider)
+        IWorldState stateProvider,
+        Dictionary<Address, AccountOverride>? stateOverride)
     {
         if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
         {
@@ -24,7 +26,7 @@ internal static class TransactionProcessorAdapterExtensions
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
-        TransactionResult result = transactionProcessor.Execute(currentTx, in blkCtx, receiptsTracer);
+        TransactionResult result = transactionProcessor.Execute(currentTx, in blkCtx, receiptsTracer, stateOverride);
         receiptsTracer.EndTxTrace();
         return result;
     }

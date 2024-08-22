@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Evm;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 

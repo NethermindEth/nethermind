@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;

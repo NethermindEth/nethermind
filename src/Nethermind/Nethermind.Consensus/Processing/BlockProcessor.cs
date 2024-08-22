@@ -89,7 +89,8 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer,
+        Dictionary<Address, AccountOverride>? stateOverride = null)
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
@@ -121,7 +122,7 @@ public partial class BlockProcessor : IBlockProcessor
                 Task? preWarmTask = suggestedBlock.Transactions.Length < 3
                     ? null
                     : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer, stateOverride);
                 cancellationTokenSource.Cancel();
                 preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
@@ -212,13 +213,14 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer,
+        Dictionary<Address, AccountOverride>? stateOverride)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, stateOverride);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -249,7 +251,9 @@ public partial class BlockProcessor : IBlockProcessor
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
-        ProcessingOptions options)
+        ProcessingOptions options,
+        Dictionary<Address, AccountOverride>? stateOverride = null
+    )
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
@@ -261,7 +265,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec, stateOverride);
 
         if (spec.IsEip4844Enabled)
         {

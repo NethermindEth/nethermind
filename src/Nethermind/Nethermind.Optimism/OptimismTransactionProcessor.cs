@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -25,7 +26,8 @@ public class OptimismTransactionProcessor(
 {
     private UInt256? _currentTxL1Cost;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer,
+        Dictionary<Address, AccountOverride>? stateOverride, ExecutionOptions opts)
     {
         if (tx.SupportsBlobs)
         {
@@ -42,7 +44,7 @@ public class OptimismTransactionProcessor(
 
         Snapshot snapshot = WorldState.TakeSnapshot();
 
-        TransactionResult result = base.Execute(tx, blCtx, tracer, opts);
+        TransactionResult result = base.Execute(tx, blCtx, tracer, stateOverride, opts);
 
         if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
         {

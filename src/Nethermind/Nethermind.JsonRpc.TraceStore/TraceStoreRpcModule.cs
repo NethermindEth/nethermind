@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
@@ -52,11 +53,13 @@ public class TraceStoreRpcModule : ITraceRpcModule
         _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
     }
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null) =>
-        _traceModule.trace_call(call, traceTypes, blockParameter);
+    public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null,
+        Dictionary<Address, AccountOverride>? stateOverride = null) =>
+        _traceModule.trace_call(call, traceTypes, blockParameter, stateOverride);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
-        _traceModule.trace_callMany(calls, blockParameter);
+    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null,
+        Dictionary<Address, AccountOverride>? stateOverride = null) =>
+        _traceModule.trace_callMany(calls, blockParameter, stateOverride);
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
         _traceModule.trace_rawTransaction(data, traceTypes);

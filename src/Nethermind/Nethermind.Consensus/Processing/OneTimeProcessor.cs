@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 
@@ -35,11 +36,11 @@ namespace Nethermind.Consensus.Processing
             return _processor.StopAsync(processRemainingBlocks);
         }
 
-        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer)
+        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, Dictionary<Address, AccountOverride> stateOverride)
         {
             lock (_lock)
             {
-                return _processor.Process(block, options, tracer);
+                return _processor.Process(block, options, tracer, stateOverride);
             }
         }
 

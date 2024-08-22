@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, Dictionary<Address, AccountOverride>? stateOverride = null)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -79,8 +79,9 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock, stateOverride);
                     if (action == TxAction.Stop) break;
+                    stateOverride = null; // Apply override only before the first transaction
                 }
 
                 _stateProvider.Commit(spec, receiptsTracer);
@@ -97,6 +98,7 @@ namespace Nethermind.Consensus.Processing
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
                 LinkedHashSet<Transaction> transactionsInBlock,
+                Dictionary<Address, AccountOverride>? stateOverride = null,
                 bool addToBlock = true)
             {
                 AddingTxEventArgs args =
@@ -109,7 +111,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider, stateOverride);
 
                     if (result)
                     {

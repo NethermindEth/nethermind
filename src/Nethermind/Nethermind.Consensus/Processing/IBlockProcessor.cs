@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
@@ -19,12 +20,13 @@ namespace Nethermind.Consensus.Processing
         /// <param name="suggestedBlocks">List of blocks to be processed.</param>
         /// <param name="processingOptions">Options to use for processor and transaction processor.</param>
         /// <param name="blockTracer">Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/></param>
+        /// <param name="stateOverride">Optional state overrides by address.</param>
         /// <returns>List of processed blocks.</returns>
-        Block[] Process(
-            Hash256 newBranchStateRoot,
+        Block[] Process(Hash256 newBranchStateRoot,
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
-            IBlockTracer blockTracer);
+            IBlockTracer blockTracer,
+            Dictionary<Address, AccountOverride>? stateOverride = null);
 
         /// <summary>
         /// Fired when a branch is being processed.
@@ -43,7 +45,9 @@ namespace Nethermind.Consensus.Processing
 
         public interface IBlockTransactionsExecutor
         {
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec,
+                Dictionary<Address, AccountOverride>? stateOverride = null);
+
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         }
     }

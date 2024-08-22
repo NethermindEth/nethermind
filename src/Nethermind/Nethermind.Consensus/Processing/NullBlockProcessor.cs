@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
@@ -15,7 +16,8 @@ namespace Nethermind.Consensus.Processing
 
         public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
 
-        public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+        public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer,
+            Dictionary<Address, AccountOverride>? stateOverride)
         {
             return suggestedBlocks.ToArray();
         }

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -27,7 +29,8 @@ namespace Nethermind.Consensus.Tracing
             _processingOptions = processingOptions;
         }
 
-        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor)
+        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor,
+            Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
@@ -36,7 +39,7 @@ namespace Nethermind.Consensus.Tracing
 
             try
             {
-                processor.Process(block, _processingOptions, blockTracer);
+                processor.Process(block, _processingOptions, blockTracer, stateOverride);
             }
             catch (Exception)
             {
@@ -47,7 +50,8 @@ namespace Nethermind.Consensus.Tracing
             blockTracer.EndBlockTrace();
         }
 
-        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor);
+        public void Trace(Block block, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+            Process(block, tracer, _traceProcessor, stateOverride);
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
 
