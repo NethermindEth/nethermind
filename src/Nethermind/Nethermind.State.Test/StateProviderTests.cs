@@ -69,7 +69,7 @@ namespace Nethermind.Store.Test
             provider.Commit(Homestead.Instance);
 
             var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true };
-            provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
+            provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec, false);
             provider.Commit(releaseSpec);
 
             provider.GetAccount(systemUser).Should().NotBeNull();
@@ -182,7 +182,7 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
-            provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance);
+            provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance, false);
             provider.UpdateStorageRoot(_address1, Hash2);
 
             Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));

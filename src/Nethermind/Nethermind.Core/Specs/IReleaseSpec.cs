@@ -203,7 +203,6 @@ namespace Nethermind.Core.Specs
         /// <param name="address"></param>
         /// <returns></returns>
         bool IsEip158IgnoredAccount(Address address);
-
         /// <summary>
         /// BaseFee opcode
         /// </summary>
@@ -266,7 +265,31 @@ namespace Nethermind.Core.Specs
         /// Parent Beacon Block precompile
         /// </summary>
         bool IsEip4788Enabled { get; }
-        Address Eip4788ContractAddress { get; }
+        Address? Eip4788ContractAddress { get; }
+
+
+        /// <summary>
+        /// EIP-6110: Supply validator deposits on chain
+        /// </summary>
+        bool IsEip6110Enabled { get; }
+        bool DepositsEnabled => IsEip6110Enabled;
+        Address DepositContractAddress { get; }
+
+        /// <summary>
+        /// Execution layer triggerable exits
+        /// </summary>
+        bool IsEip7002Enabled { get; }
+        bool WithdrawalRequestsEnabled => IsEip7002Enabled;
+        Address Eip7002ContractAddress { get; }
+
+
+        /// <summary>
+        /// EIP-7251: triggered consolidations
+        /// </summary>
+        bool IsEip7251Enabled { get; }
+        bool ConsolidationRequestsEnabled => IsEip7251Enabled;
+        Address Eip7251ContractAddress { get; }
+
 
         /// <summary>
         /// Save historical block hashes in state
@@ -374,8 +397,26 @@ namespace Nethermind.Core.Specs
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
+
+        /// <summary>
+        /// AuRaSystemCalls - true
+        /// GethStyleSystemCalls - false
+        /// </summary>
+        /// <remarks>
+        /// We support two types of system calls in Nethermind:
+        /// 1. Geth-style:
+        /// - We don't create a system account if it doesn't exist.
+        /// - We adhere to geth behavior for State clearing - no state touch for subtraction.
+        /// - We don't use a custom release spec for those transactions.
+        /// 2. AuRa (Parity-style):
+        /// - We create a system account if it doesn't exist.
+        /// - We use a custom release spec with EIP158 disabled.
+        /// </remarks>
+        public bool AuRaSystemCalls { get; }
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
 
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
+
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }

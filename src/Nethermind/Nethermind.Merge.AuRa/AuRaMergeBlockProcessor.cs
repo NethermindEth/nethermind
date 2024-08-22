@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -13,6 +14,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -20,8 +22,7 @@ namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProcessor : AuRaBlockProcessor
 {
-    public AuRaMergeBlockProcessor(
-        ISpecProvider specProvider,
+    public AuRaMergeBlockProcessor(ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
@@ -30,11 +31,13 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         ILogManager logManager,
         IBlockTree blockTree,
         IWithdrawalProcessor withdrawalProcessor,
-        IAuRaValidator? validator,
+        ITransactionProcessor transactionProcessor,
+        IAuRaValidator? validator = null,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
         ContractRewriter? contractRewriter = null,
-        IBlockCachePreWarmer? preWarmer = null
+        IBlockCachePreWarmer? preWarmer = null,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null
     ) : base(
             specProvider,
             blockValidator,
@@ -45,11 +48,13 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             logManager,
             blockTree,
             withdrawalProcessor,
+            transactionProcessor,
             validator,
             txFilter,
             gasLimitOverride,
             contractRewriter,
-            preWarmer
+            preWarmer,
+            consensusRequestsProcessor
         )
     { }
 

@@ -4,14 +4,13 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -24,6 +23,7 @@ namespace Nethermind.Merge.AuRa;
 public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly AuRaNethermindApi _auraApi;
+    private readonly IConsensusRequestsProcessor? _consensusRequestsProcessor;
 
     public AuRaMergeBlockProducerEnvFactory(
         AuRaNethermindApi auraApi,
@@ -37,7 +37,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
-        ILogManager logManager) : base(
+        ILogManager logManager,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null) : base(
             worldStateManager,
             blockTree,
             specProvider,
@@ -48,9 +49,11 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             txPool,
             transactionComparerProvider,
             blocksConfig,
-            logManager)
+            logManager,
+            consensusRequestsProcessor)
     {
         _auraApi = auraApi;
+        _consensusRequestsProcessor = consensusRequestsProcessor;
     }
 
     protected override BlockProcessor CreateBlockProcessor(
@@ -77,9 +80,10 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                     logManager
-                    )
-                ),
-            null);
+                )
+            ),
+            readOnlyTxProcessingEnv.TransactionProcessor,
+            consensusRequestsProcessor: _consensusRequestsProcessor);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

@@ -29,6 +29,7 @@ namespace Nethermind.Evm;
 using System.Linq;
 using Int256;
 
+
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
@@ -235,7 +236,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (typeof(TTracingActions) == typeof(IsTracing)) _txTracer.ReportActionError(callResult.ExceptionType);
                         _state.Restore(currentState.Snapshot);
 
-                        RevertParityTouchBugAccount(spec);
+                        RevertParityTouchBugAccount(spec, state.Env.IsSystemEnv);
 
                         if (currentState.IsTopLevel)
                         {
@@ -335,7 +336,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
                             ReadOnlyMemory<byte> code = callResult.Output;
-                            codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
+                            codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec, state.Env.IsSystemEnv);
 
                             currentState.GasAvailable -= codeDepositGasCost;
 
@@ -413,7 +414,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                 _state.Restore(currentState.Snapshot);
 
-                RevertParityTouchBugAccount(spec);
+                RevertParityTouchBugAccount(spec, state.Env.IsSystemEnv);
 
                 if (txTracer.IsTracingInstructions)
                 {
@@ -444,13 +445,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
     }
 
-    private void RevertParityTouchBugAccount(IReleaseSpec spec)
+    private void RevertParityTouchBugAccount(IReleaseSpec spec, bool isSystemEnv)
     {
         if (_parityTouchBugAccount.ShouldDelete)
         {
             if (_state.AccountExists(_parityTouchBugAccount.Address))
             {
-                _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec);
+                _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec, isSystemEnv);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -555,7 +556,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         else
         {
-            _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
+            _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec, state.Env.IsSystemEnv);
         }
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
@@ -619,7 +620,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
             else
             {
-                _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
+                _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec, vmState.Env.IsSystemEnv);
             }
 
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
@@ -2081,6 +2082,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
         Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+
         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
             ? codeSource
             : env.ExecutingAccount;
@@ -2130,8 +2132,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             gasLimitUl += GasCostOf.CallStipend;
         }
 
-        if (env.CallDepth >= MaxCallDepth ||
-            !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
@@ -2153,7 +2154,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         Snapshot snapshot = _state.TakeSnapshot();
-        _state.SubtractFromBalance(caller, transferValue, spec);
+        _state.SubtractFromBalance(caller, transferValue, spec, env.IsSystemEnv);
 
         if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
         {
@@ -2175,7 +2176,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: codeInfo
+            codeInfo: codeInfo,
+            isSystemExecutionEnv: env.IsSystemEnv
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2301,13 +2303,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            _state.AddToBalance(inheritor, result, spec);
+            _state.AddToBalance(inheritor, result, spec, vmState.Env.IsSystemEnv);
         }
 
         if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
             return EvmExceptionType.None; // don't burn eth when contract is not destroyed per EIP clarification
 
-        _state.SubtractFromBalance(executingAccount, result, spec);
+        _state.SubtractFromBalance(executingAccount, result, spec, vmState.Env.IsSystemEnv);
         return EvmExceptionType.None;
     }
 
@@ -2414,7 +2416,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             _state.ClearStorage(contractAddress);
         }
 
-        _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        _state.SubtractFromBalance(env.ExecutingAccount, value, spec, env.IsSystemEnv);
 
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
@@ -2432,7 +2434,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             codeInfo: codeInfo,
             inputData: default,
             transferValue: value,
-            value: value
+            value: value,
+            isSystemExecutionEnv: env.IsSystemEnv
         );
         EvmState callState = new(
             callGas,
@@ -2748,30 +2751,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _txTracer.ReportOperationError(evmExceptionType);
     }
 
-    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
-    {
-        ExecutionType executionType;
-        if (instruction == Instruction.CALL)
+    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false) =>
+        instruction switch
         {
-            executionType = ExecutionType.CALL;
-        }
-        else if (instruction == Instruction.DELEGATECALL)
-        {
-            executionType = ExecutionType.DELEGATECALL;
-        }
-        else if (instruction == Instruction.STATICCALL)
-        {
-            executionType = ExecutionType.STATICCALL;
-        }
-        else if (instruction == Instruction.CALLCODE)
-        {
-            executionType = ExecutionType.CALLCODE;
-        }
-        else
-        {
-            throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
-        }
-
-        return executionType;
-    }
+            Instruction.CALL => ExecutionType.CALL,
+            Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
+            Instruction.STATICCALL => ExecutionType.STATICCALL,
+            Instruction.CALLCODE => ExecutionType.CALLCODE,
+            _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
+        };
 }

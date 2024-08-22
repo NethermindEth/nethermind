@@ -23,8 +23,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) => codeInfoRepository.GetOrAdd(codeHash, initCode);
 
-    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        codeInfoRepository.InsertCode(state, code, codeOwner, spec);
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, bool isSystemEnv) =>
+        codeInfoRepository.InsertCode(state, code, codeOwner, spec, isSystemEnv);
 
     public void SetCodeOverwrite(
         IWorldState worldState,

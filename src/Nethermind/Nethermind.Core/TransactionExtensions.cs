@@ -65,7 +65,9 @@ namespace Nethermind.Core
         {
             return tx.IsContractCreation && spec.IsEip3860Enabled && (tx.DataLength) > spec.MaxInitCodeSize;
         }
-
-
+        public static bool IsGethStyleSystemCall(this Transaction tx, IReleaseSpec spec) =>
+            tx.IsSystem() && !spec.AuRaSystemCalls;
+        public static bool IsAuRaSystemCall(this Transaction tx, IReleaseSpec spec) =>
+            tx.IsSystem() && spec.AuRaSystemCalls;
     }
 }

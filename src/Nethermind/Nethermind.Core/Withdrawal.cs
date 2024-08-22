@@ -45,3 +45,4 @@ public class Withdrawal
         .Append($"{nameof(AmountInGwei)}: {AmountInGwei}}}")
         .ToString();
 }
+

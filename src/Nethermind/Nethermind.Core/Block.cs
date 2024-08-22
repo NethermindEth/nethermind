@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using Nethermind.Core.ConsensusRequests;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -22,19 +23,23 @@ public class Block
         Body = body ?? throw new ArgumentNullException(nameof(body));
     }
 
-    public Block(
-        BlockHeader header,
+    public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        IEnumerable<ConsensusRequest>? requests = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), requests?.ToArray());
     }
 
     public Block(BlockHeader header) : this(
         header,
-        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+        new(
+            null,
+            null,
+            header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>(),
+            header.RequestsRoot is null ? null : Array.Empty<ConsensusRequest>())
     )
     { }
 
@@ -58,7 +63,8 @@ public class Block
 
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
-    public Withdrawal[]? Withdrawals => Body.Withdrawals;
+    public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
+    public ConsensusRequest[]? Requests => Body.Requests; // do not add setter here
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 
@@ -110,6 +116,8 @@ public class Block
 
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
+
+    public Hash256? RequestsRoot => Header.RequestsRoot; // do not add setter here
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
