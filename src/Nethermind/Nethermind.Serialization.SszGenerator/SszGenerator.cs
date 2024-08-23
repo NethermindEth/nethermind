@@ -1,18 +1,15 @@
-using System.Collections.Immutable;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
-using Microsoft.CodeAnalysis.Operations;
 
 [Generator]
 public partial class SszGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        IncrementalValuesProvider<TypeDeclaration?> classDeclarations = context.SyntaxProvider
+        IncrementalValuesProvider<SszType?> classDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: (syntaxNode, _) => IsClassWithAttribute(syntaxNode),
                 transform: (context, _) => GetClassWithAttribute(context))
@@ -37,7 +34,7 @@ public partial class SszGenerator : IIncrementalGenerator
                 return;
             }
             var generatedCode = GenerateClassCode(decl);
-            spc.AddSource($"{decl.TypeName}SszSerializer.cs", SourceText.From(generatedCode, Encoding.UTF8));
+            spc.AddSource($"{decl.Name}SszSerializer.cs", SourceText.From(generatedCode, Encoding.UTF8));
         });
 
         //context.RegisterSourceOutput(methodDeclarations, (spc, methodNode) =>
@@ -78,7 +75,7 @@ public partial class SszGenerator : IIncrementalGenerator
                classDeclaration.AttributeLists.Any(x => x.Attributes.Any());
     }
 
-    private static TypeDeclaration? GetClassWithAttribute(GeneratorSyntaxContext context)
+    private static SszType? GetClassWithAttribute(GeneratorSyntaxContext context)
     {
         TypeDeclarationSyntax classDeclaration = (TypeDeclarationSyntax)context.Node;
         foreach (AttributeListSyntax attributeList in classDeclaration.AttributeLists)
@@ -88,17 +85,7 @@ public partial class SszGenerator : IIncrementalGenerator
                 IMethodSymbol? methodSymbol = context.SemanticModel.GetSymbolInfo(attribute).Symbol as IMethodSymbol;
                 if (methodSymbol is not null && methodSymbol.ContainingType.ToString() == "Nethermind.Serialization.Ssz.SszSerializableAttribute")
                 {
-                    IEnumerable<IPropertySymbol>? props = context.SemanticModel.GetDeclaredSymbol(classDeclaration)?.GetMembers().OfType<IPropertySymbol>();
-                    if (props?.Any() != true)
-                    {
-                        continue;
-                    }
-
-                    return new(
-                        GetNamespace(classDeclaration),
-                        GetTypeName(classDeclaration),
-                        classDeclaration is StructDeclarationSyntax,
-                        props.Select(x => new PropertyDeclaration(SszType.From(x), x.Name)).ToArray());
+                    return SszType.From(context.SemanticModel, new Dictionary<string, SszType>(SszType.InbuiltTypes), context.SemanticModel.GetDeclaredSymbol(classDeclaration)!);
                 }
             }
         }
@@ -141,17 +128,6 @@ public partial class SszGenerator : IIncrementalGenerator
     //    return null;
     //}
 
-    private static string? GetNamespace(SyntaxNode syntaxNode)
-    {
-        return syntaxNode.Ancestors().OfType<NamespaceDeclarationSyntax>().FirstOrDefault()?.Name.ToString() ?? null;
-    }
-
-    private static string GetTypeName(TypeDeclarationSyntax syntaxNode)
-    {
-        IEnumerable<string> namespaceDeclarations = syntaxNode.Ancestors().OfType<TypeDeclarationSyntax>().Reverse().Select(m => m.Identifier.ToString());
-        return string.Join(".", [.. namespaceDeclarations, syntaxNode.Identifier.ToString()]);
-    }
-
     struct Dyn
     {
         public string OffsetDeclaration { get; init; }
@@ -160,22 +136,23 @@ public partial class SszGenerator : IIncrementalGenerator
         public string DynamicDecode { get; init; }
     }
 
-    private static string GenerateClassCode(TypeDeclaration decl)
+    private static string GenerateClassCode(SszType decl)
     {
+        decl.IsProcessed = true;
         int staticLength = decl.Members.Sum(prop => prop.Type.StaticLength);
         List<Dyn> dynOffsets = new();
-        PropertyDeclaration? prevM = null;
+        SszProperty? prevM = null;
 
-        foreach (PropertyDeclaration prop in decl.Members)
+        foreach (SszProperty prop in decl.Members)
         {
-            if (prop.Type.IsDynamic)
+            if (prop.Type.IsVariable)
             {
                 dynOffsets.Add(new Dyn
                 {
-                    OffsetDeclaration = prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
-                    DynamicEncode = prop.Type.DynamicEncode ?? "",
-                    DynamicLength = prop.Type.DynamicLength!,
-                    DynamicDecode = prop.Type.DynamicDecode ?? "", //prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
+                    OffsetDeclaration = prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.DynamicLength}"),
+                    DynamicEncode = prop.DynamicEncode ?? "",
+                    DynamicLength = prop.DynamicLength!,
+                    DynamicDecode = prop.DynamicDecode ?? "", //prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
                 });
                 prevM = prop;
             }
@@ -186,61 +163,54 @@ public partial class SszGenerator : IIncrementalGenerator
         var dynOffset = 0;
         var dynOffsetDecode = 1;
 
-        var result = $@"using Nethermind.Serialization.Ssz;
+        var result = $@"using Nethermind.Int256;
+using Nethermind.Serialization.Ssz;
 using System;
 
-namespace {(decl.TypeNamespaceName is not null ? decl.TypeNamespaceName + "." : "")}Generated;
+namespace {(decl.Namespace is not null ? decl.Namespace + "." : "")}Serialization;
 
-public partial class {decl.TypeName.Split('.').Last()}SszSerializer
+public partial class Ssz
 {{
-    public int GetLength({(decl.IsStruct ? "ref " : "")}{decl.TypeName} container)
+    public static int GetLength({(decl.IsStruct ? "ref " : "")}{decl.Name} container)
     {{
         return {staticLength}{(dynOffsets.Any() ? $" + \n               {string.Join(" +\n               ", dynOffsets.Select(m => m.DynamicLength))}" : "")};
     }}
 
-    public ReadOnlySpan<byte> Serialize({(decl.IsStruct ? "ref " : "")}{decl.TypeName} container)
+    public static ReadOnlySpan<byte> Serialize({(decl.IsStruct ? "ref " : "")}{decl.Name} container)
     {{
         Span<byte> buf = new byte[GetLength({(decl.IsStruct ? "ref " : "")}container)];
-
-        {string.Join(";\n        ", dynOffsets.Select(m => m.OffsetDeclaration))};
-
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select(m => m.OffsetDeclaration)) + ";\n        \n" : "")}
         {string.Join(";\n        ", decl.Members.Select(m =>
         {
-            if (m.Type.IsDynamic) dynOffset++;
-            string result = m.Type.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
+            if (m.Type.IsVariable) dynOffset++;
+            string result = m.Type.Members.Any() ? m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}").Replace("Ssz.Ssz.Encode", "Serialize") : m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
             offset += m.Type.StaticLength;
             return result;
         }))};
-
-        {string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicEncode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{length}", m.DynamicLength)))};
-
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicEncode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{length}", m.DynamicLength))) + ";\n        \n" : "")}
         return buf;
     }}
 
-    public {(decl.IsStruct ? "ref " : "")}{decl.TypeName} Deserialize(ReadOnlySpan<byte> data)
+    public static void Deserialize(ReadOnlySpan<byte> data, out {decl.Name} container)
     {{
-        {(decl.IsStruct ? "ref " : "")}{decl.TypeName} container = new();
-
-        {string.Join(";\n        ", dynOffsets.First().OffsetDeclaration)};
-
+        container = new();
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.First().OffsetDeclaration) + ";\n        \n" : "")}
         {string.Join(";\n        ", decl.Members.Select(m =>
         {
-            if (m.Type.IsDynamic) dynOffsetDecode++;
-            string result = m.Type.StaticDecode.Replace("{offset}", $"{offsetDecode}").Replace("{dynOffset}", $"dynOffset{dynOffsetDecode}");
+            if (m.Type.IsVariable) dynOffsetDecode++;
+            string result = m.StaticDecode.Replace("{offset}", $"{offsetDecode}").Replace("{dynOffset}", $"dynOffset{dynOffsetDecode}");
             offsetDecode += m.Type.StaticLength;
             return result;
         }))};
-
-        {string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}")))};
-
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) + ";\n        \n" : "")}
         return container;
     }}
 
-    public static void Merkleize(out UInt256 root, {(decl.IsStruct ? "ref " : "")}{decl.TypeName} container)
+    public static void Merkleize({(decl.IsStruct ? "ref " : "")}{decl.Name} container, out UInt256 root)
     {{
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members.Length}));
 
-        {string.Join(";\n        ", decl.Members.Select(m => $"merkleizer.Feed(container.{m.Name})"))};
+        {string.Join(";\n        ", decl.Members.Select(m => m.Type.Members.Any() ? $"Merkleize(out UInt256 rootOf{m.Name}, container.{m.Name});\n        merkleizer.Feed(rootOf{m.Name})" : $"merkleizer.Feed(container.{m.Name})"))};
 
         merkleizer.CalculateRoot(out root);
     }}

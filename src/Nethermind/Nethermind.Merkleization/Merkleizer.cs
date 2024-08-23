@@ -57,6 +57,12 @@ public ref struct Merkleizer
         FeedAtLevel(chunk, 0);
     }
 
+    public void Feed(long value)
+    {
+        Merkle.Ize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+
     public void Feed(Span<byte> bytes)
     {
         FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
