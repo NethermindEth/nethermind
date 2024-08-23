@@ -599,12 +599,10 @@ public static class Program
             }
         }
 
-        static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames)
-        {
-            return argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
+        static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames) =>
+            argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
                 .Where(g => g.Count() > 1)
                 .Select(g => g.Key);
-        }
 
         // Get all valid options from the configuration files
         HashSet<ReadOnlyMemory<char>> validArguments = GetValidArguments(app);
