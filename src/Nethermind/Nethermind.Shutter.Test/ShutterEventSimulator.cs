@@ -24,7 +24,8 @@ using EncryptedMessage = Nethermind.Shutter.ShutterCrypto.EncryptedMessage;
 public class ShutterEventSimulator
 {
     public readonly Transaction DefaultTx;
-    private readonly UInt256 _defaultGasLimit = new(21000);
+    private readonly ulong _defaultGasLimit = 21000;
+    private readonly int _defaultMaxKeyCount;
     private readonly Random _rnd;
     private readonly ulong _chainId;
     private readonly ulong _threshold;
@@ -63,6 +64,7 @@ public class ShutterEventSimulator
         _sequencerContractAddress = sequencerContractAddress;
         _transactionSubmittedAbi = transactionSubmittedAbi;
         DefaultTx = Build.A.Transaction.WithChainId(_chainId).Signed().TestObject;
+        _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / _defaultGasLimit);
 
         NewEon(eon);
         _eventSource = EmitEvents();
@@ -82,13 +84,15 @@ public class ShutterEventSimulator
         return _eventSource.Take(c).ToList();
     }
 
-    public (List<Event> events, DecryptionKeys keys) AdvanceSlot(int eventCount, int keyCount)
+    public (List<Event> events, DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount)
     {
         var events = _eventSource.Take(eventCount).ToList();
         foreach (Event e in events)
         {
             _keys.Enqueue((e.IdentityPreimage, e.Key));
         }
+
+        keyCount ??= Math.Min(_keys.Count, _defaultMaxKeyCount);
 
         List<(byte[] IdentityPreimage, byte[] Key)> keys = [];
         for (int i = 0; i < keyCount; i++)
@@ -138,7 +142,7 @@ public class ShutterEventSimulator
     {
         while (true)
         {
-            yield return _defaultGasLimit;
+            yield return new UInt256(_defaultGasLimit);
         }
     }
 

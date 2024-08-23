@@ -17,7 +17,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain;
 using Nethermind.Core.Collections;
-using Org.BouncyCastle.Crypto.Prng.Drbg;
 
 namespace Nethermind.Shutter;
 
@@ -35,14 +34,13 @@ public class ShutterBlockHandler(
     ShutterTime shutterTime,
     ILogManager logManager) : IShutterBlockHandler
 {
-    private readonly ArrayPoolList<CancellationTokenSource> _cts = new(100);
-    private readonly ArrayPoolList<CancellationTokenRegistration> _ctr = new(50);
+    private readonly ArrayPoolList<CancellationTokenSource> _cts = new(10);
+    private readonly ArrayPoolList<CancellationTokenRegistration> _ctr = new(5);
     private readonly ILogger _logger = logManager.GetClassLogger();
     private bool _haveCheckedRegistered = false;
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<Block?>> _blockWaitTasks = new();
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
     private readonly object _syncObject = new();
-    private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
 
     public void OnNewHeadBlock(Block head)
     {
@@ -60,7 +58,7 @@ public class ShutterBlockHandler(
 
             lock (_syncObject)
             {
-                ulong slot = shutterTime.GetSlot(head.Timestamp * 1000, _genesisTimestampMs);
+                ulong slot = shutterTime.GetSlot(head.Timestamp * 1000);
                 _slotToBlockHash.Set(slot, head.Hash);
 
                 if (_blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? tcs))
@@ -87,7 +85,7 @@ public class ShutterBlockHandler(
 
             _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
-            long offset = shutterTime.GetCurrentOffsetMs(slot, _genesisTimestampMs);
+            long offset = shutterTime.GetCurrentOffsetMs(slot);
             long waitTime = (long)cutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {
@@ -111,7 +109,7 @@ public class ShutterBlockHandler(
     private void CancelWaitForBlock(ulong slot)
     {
         _blockWaitTasks.Remove(slot, out TaskCompletionSource<Block?>? cancelledWaitTask);
-        cancelledWaitTask?.TrySetException(new OperationCanceledException());
+        cancelledWaitTask?.TrySetResult(null);
     }
 
     private void CheckAllValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo)

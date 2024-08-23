@@ -4,16 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
-using Microsoft.AspNetCore.Builder;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -21,8 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.State;
 using NSubstitute;
-using NUnit.Framework;
-using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 
@@ -35,7 +28,6 @@ public class ShutterApiSimulator : ShutterApi
     private readonly Random _rnd;
     private readonly IReceiptStorage _receiptStorage;
     private ShutterEventSimulator? _eventSimulator;
-    // private IShutterEon.Info? _currentEonInfo;
 
     public ShutterApiSimulator(
         IAbiEncoder abiEncoder,
@@ -64,7 +56,7 @@ public class ShutterApiSimulator : ShutterApi
 
     public (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount = null)
     {
-        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) x = _eventSimulator!.AdvanceSlot(eventCount, keyCount ?? eventCount);
+        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) x = _eventSimulator!.AdvanceSlot(eventCount, keyCount);
         LogEntry[] logs = x.events.Select(e => e.LogEntry).ToArray();
         InsertShutterReceipts(_blockTree.Head ?? Build.A.Block.TestObject, logs);
         TriggerKeysReceived(x.keys);
@@ -111,25 +103,6 @@ public class ShutterApiSimulator : ShutterApi
         _receiptStorage.Insert(block, receipts);
         TxLoader.LoadFromReceipts(block, receipts);
     }
-
-    // public ShutterTransactions InsertAndLoadLogs(in LogEntry[] logs, IShutterKeyValidator.ValidatedKeyArgs keys)
-    // {
-    //     Block head = _blockTree.Head!;
-    //     BlockHeader parentHeader = _blockTree.FindParentHeader(head.Header, Blockchain.BlockTreeLookupOptions.None)!;
-
-    //     if (logs.Length > 0)
-    //     {
-    //         TxReceipt[] receipts = InsertShutterReceipts(head, logs);
-    //         TxLoader.LoadFromReceipts(head, receipts);
-    //     }
-
-    //     return TxLoader.LoadTransactions(head, parentHeader, keys);
-    // }
-
-    // public void SetEon(IShutterEon.Info eonInfo)
-    // {
-    //     _currentEonInfo = eonInfo;
-    // }
 
     // fake out P2P module
     protected override void InitP2P(IShutterConfig cfg, ILogManager logManager)

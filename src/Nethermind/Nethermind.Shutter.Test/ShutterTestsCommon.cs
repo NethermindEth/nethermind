@@ -23,7 +23,7 @@ namespace Nethermind.Shutter.Test;
 class ShutterTestsCommon
 {
     public const int Seed = 100;
-    public const ulong InitialSlot = 16082024;
+    public const ulong InitialSlot = 21;
     public const ulong InitialTxPointer = 1000;
     public const int ChainId = BlockchainIds.Chiado;
     public const ulong GenesisTimestamp = ChiadoSpecProvider.BeaconChainGenesisTimestamp;
@@ -39,7 +39,8 @@ class ShutterTestsCommon
         KeyBroadcastContractAddress = Address.Zero.ToString(),
         KeyperSetManagerContractAddress = Address.Zero.ToString(),
         SequencerContractAddress = Address.Zero.ToString(),
-        EncryptedGasLimit = 21000 * 20
+        EncryptedGasLimit = 21000 * 20,
+        Validator = true
     };
 
     public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null)
@@ -55,10 +56,10 @@ class ShutterTestsCommon
         );
     }
 
-    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain)
+    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null)
         => new(
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, chain.Timestamper, chain.WorldStateManager, Cfg, [], rnd
+            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager, Cfg, [], rnd
         );
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd, ulong eon, ulong threshhold, ulong initialTxPointer, AbiEncodingInfo abi)

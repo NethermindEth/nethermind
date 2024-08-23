@@ -125,7 +125,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
         api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi()));
 
-        api.AdvanceSlot(40, 20);
+        api.AdvanceSlot(40);
 
         Assert.Multiple(() =>
         {
@@ -137,7 +137,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
-        api.AdvanceSlot(0, 20);
+        api.AdvanceSlot(0);
 
         Assert.Multiple(() =>
         {

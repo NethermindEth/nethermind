@@ -27,11 +27,11 @@ class ShutterBlockHandlerTests : EngineModuleTests
 
         bool waitReturned = false;
         CancellationTokenSource source = new();
-        _ = blockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, ShutterApi.BlockWaitCutoff, source.Token)
+        _ = blockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, api.BlockWaitCutoff, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
 
-        await Task.Delay((int)(ShutterApi.BlockWaitCutoff.TotalMilliseconds / 2));
+        await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2));
 
         Assert.That(waitReturned, Is.False);
 
@@ -50,15 +50,15 @@ class ShutterBlockHandlerTests : EngineModuleTests
 
         bool waitReturned = false;
         CancellationTokenSource source = new();
-        _ = api.BlockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, ShutterApi.BlockWaitCutoff, source.Token)
+        _ = api.BlockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, api.BlockWaitCutoff, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
 
-        await Task.Delay((int)(ShutterApi.BlockWaitCutoff.TotalMilliseconds / 2));
+        await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2));
 
         Assert.That(waitReturned, Is.False);
 
-        await Task.Delay((int)(ShutterApi.BlockWaitCutoff.TotalMilliseconds / 2) + 100);
+        await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2) + 100);
 
         Assert.That(waitReturned);
     }
@@ -66,13 +66,14 @@ class ShutterBlockHandlerTests : EngineModuleTests
     [Test]
     public async Task Does_not_wait_after_cutoff()
     {
+        const ulong blockWaitCutoff = 1333;
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 2 * (ulong)ShutterApi.BlockWaitCutoff.TotalMilliseconds);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 2 * blockWaitCutoff);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         bool waitReturned = false;
         CancellationTokenSource source = new();
-        _ = api.BlockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, ShutterApi.BlockWaitCutoff, source.Token)
+        _ = api.BlockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, api.BlockWaitCutoff, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
 

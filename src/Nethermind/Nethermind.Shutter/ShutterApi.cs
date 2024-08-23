@@ -27,7 +27,7 @@ public class ShutterApi : IShutterApi
 
     public static readonly TimeSpan SlotLength = GnosisSpecProvider.SlotLength;
     public static readonly TimeSpan BlockUpToDateCutoff = GnosisSpecProvider.SlotLength;
-    public static readonly TimeSpan BlockWaitCutoff = TimeSpan.FromMilliseconds(1333);
+    public virtual TimeSpan BlockWaitCutoff { get => TimeSpan.FromMilliseconds(1333); }
 
     public readonly IShutterConfig Cfg;
     public readonly IShutterBlockHandler BlockHandler;
@@ -67,7 +67,7 @@ public class ShutterApi : IShutterApi
 
         _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
 
-        Time = new(specProvider, timestamper, SlotLength, BlockUpToDateCutoff);
+        Time = InitTime(specProvider, timestamper);
         TxLoader = new(logFinder, cfg, Time, specProvider, ecdsa, logManager);
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
@@ -108,7 +108,6 @@ public class ShutterApi : IShutterApi
             TxSource,
             Cfg,
             Time,
-            _specProvider,
             _logManager
         );
         return BlockImprovementContextFactory;
@@ -116,10 +115,10 @@ public class ShutterApi : IShutterApi
 
     public async ValueTask DisposeAsync()
     {
+        TxSource.Dispose();
         BlockHandler.Dispose();
         await (P2P?.DisposeAsync() ?? default);
     }
-
 
     protected void KeysReceivedHandler(object? sender, DecryptionKeys keys)
     {
@@ -155,4 +154,10 @@ public class ShutterApi : IShutterApi
 
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_blockTree, _txProcessingEnvFactory, _abiEncoder, Cfg, _logManager);
+
+    protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    {
+        ulong genesisTimestamp = specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
+        return new(genesisTimestamp, timestamper, SlotLength, BlockUpToDateCutoff);
+    }
 }

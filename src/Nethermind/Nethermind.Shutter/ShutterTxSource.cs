@@ -12,6 +12,7 @@ using Nethermind.Core.Caching;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Threading;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Shutter;
 
@@ -27,6 +28,7 @@ public class ShutterTxSource(
     private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
     private readonly object _syncObject = new();
+    private readonly ArrayPoolList<CancellationTokenRegistration> _ctr = new(5);
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -44,7 +46,7 @@ public class ShutterTxSource(
         ulong buildingSlot;
         try
         {
-            (buildingSlot, long offset) = shutterTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000, _genesisTimestampMs);
+            (buildingSlot, long offset) = shutterTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
         }
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
@@ -74,10 +76,8 @@ public class ShutterTxSource(
                 return;
             }
 
-            using (cancellationToken.Register(() => CancelWaitForTransactions(slot)))
-            {
-                tcs = _keyWaitTasks.GetOrAdd(slot, _ => new());
-            }
+            _ctr.Add(cancellationToken.Register(() => CancelWaitForTransactions(slot)));
+            tcs = _keyWaitTasks.GetOrAdd(slot, _ => new());
         }
         await tcs.Task;
     }
@@ -102,7 +102,15 @@ public class ShutterTxSource(
 
     private void CancelWaitForTransactions(ulong slot)
     {
-        _keyWaitTasks.Remove(slot, out TaskCompletionSource? cancelledWaitTask);
-        cancelledWaitTask?.TrySetException(new OperationCanceledException());
+        _keyWaitTasks.Remove(slot, out TaskCompletionSource? waitTask);
+        waitTask?.TrySetException(new OperationCanceledException());
+    }
+
+    public void Dispose()
+    {
+        foreach (CancellationTokenRegistration ctr in _ctr)
+        {
+            ctr.Dispose();
+        }
     }
 }

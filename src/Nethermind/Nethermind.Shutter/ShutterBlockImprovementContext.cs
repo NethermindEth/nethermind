@@ -21,11 +21,8 @@ public class ShutterBlockImprovementContextFactory(
     ShutterTxSource shutterTxSource,
     IShutterConfig shutterConfig,
     ShutterTime time,
-    ISpecProvider spec,
     ILogManager logManager) : IBlockImprovementContextFactory
 {
-    private readonly ulong _genesisTimestampMs = 1000 * (spec.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp);
-
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
         BlockHeader parentHeader,
@@ -39,7 +36,6 @@ public class ShutterBlockImprovementContextFactory(
                                            parentHeader,
                                            payloadAttributes,
                                            startDateTime,
-                                           _genesisTimestampMs,
                                            GnosisSpecProvider.SlotLength,
                                            logManager);
     public bool KeepImproving => false;
@@ -65,7 +61,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     private readonly BlockHeader _parentHeader;
     private readonly PayloadAttributes _payloadAttributes;
     private readonly ulong _slotTimestampMs;
-    private readonly ulong _genesisTimestampMs;
     private readonly TimeSpan _slotLength;
 
     internal ShutterBlockImprovementContext(
@@ -77,7 +72,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        ulong genesisTimestampMs,
         TimeSpan slotLength,
         ILogManager logManager)
     {
@@ -87,10 +81,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         }
 
         _slotTimestampMs = payloadAttributes.Timestamp * 1000;
-        if (_slotTimestampMs < genesisTimestampMs)
-        {
-            throw new ArgumentOutOfRangeException(nameof(genesisTimestampMs), genesisTimestampMs, $"Genesis timestamp (ms) cannot be after the payload timestamp ({_slotTimestampMs}).");
-        }
 
         _cancellationTokenSource = new CancellationTokenSource();
         CurrentBestBlock = currentBestBlock;
@@ -102,7 +92,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _time = time;
         _parentHeader = parentHeader;
         _payloadAttributes = payloadAttributes;
-        _genesisTimestampMs = genesisTimestampMs;
         _slotLength = slotLength;
 
         ImprovementTask = Task.Run(ImproveBlock);
@@ -122,7 +111,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         long offset;
         try
         {
-            (slot, offset) = _time.GetBuildingSlotAndOffset(_slotTimestampMs, _genesisTimestampMs);
+            (slot, offset) = _time.GetBuildingSlotAndOffset(_slotTimestampMs);
         }
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
