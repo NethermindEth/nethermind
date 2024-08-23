@@ -378,7 +378,10 @@ public class TestBlockchain : IDisposable
             ReceiptStorage,
             new BlockhashStore(SpecProvider, State),
             LogManager,
-            preWarmer: new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager, WorldStateManager.GlobalWorldState), SpecProvider, LogManager, WorldStateManager.GlobalWorldState));
+            preWarmer: CreateBlockCachePreWarmer());
+
+    protected virtual IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
+        new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager, WorldStateManager.GlobalWorldState), SpecProvider, LogManager, WorldStateManager.GlobalWorldState);
 
     public async Task WaitForNewHead()
     {
