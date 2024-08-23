@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Executes a tx call (does not create a transaction)",
             IsSharable = false,
             ExampleResponse = "0x")]
-        ResultWrapper<string> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address,AccountOverride>? stateOverride = null);
+        ResultWrapper<string> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a simulation across multiple blocks (does not create a transaction or block)",

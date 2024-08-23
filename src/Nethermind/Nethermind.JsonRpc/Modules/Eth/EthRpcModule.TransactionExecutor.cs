@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override Transaction Prepare(TransactionForRpc call) => call.ToTransaction(_blockchainBridge.GetChainId());
 
-            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address,AccountOverride>? stateOverride, CancellationToken token)
+            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
                 if (NoBaseFee)
