@@ -188,8 +188,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         stream.Encode(transaction.GasPrice);
     }
 
-    protected virtual int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
-        bool isEip155Enabled = false, ulong chainId = 0) =>
+    protected virtual int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
         GetPayloadLength(transaction) + GetSignatureLength(transaction.Signature, forSigning, isEip155Enabled, chainId);
 
     protected virtual int GetPayloadLength(Transaction transaction) =>

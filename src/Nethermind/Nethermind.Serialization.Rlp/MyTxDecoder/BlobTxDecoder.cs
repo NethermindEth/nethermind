@@ -91,7 +91,8 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             stream.StartSequence(contentLength);
-            contentLength = GetContentLength(transaction, rlpBehaviors, forSigning);
+            // we want internal content lenght here in normal form
+            contentLength = GetContentLength(transaction, rlpBehaviors & ~RlpBehaviors.InMempoolForm, forSigning);
         }
         base.EncodeTypedWrapped(transaction, stream, rlpBehaviors, forSigning, contentLength);
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
