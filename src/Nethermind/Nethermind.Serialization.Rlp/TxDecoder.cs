@@ -65,7 +65,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         TxType txType = TxType.Legacy;
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
-            if (rlpStream.PeekByte() <= (byte)TxType.MaxTxType) // it is typed transactions
+            if (rlpStream.PeekByte() <= Transaction.MaxTxType) // it is typed transactions
             {
                 transactionSequence = rlpStream.Peek(rlpStream.Length);
                 txType = (TxType)rlpStream.ReadByte(); // read tx type
@@ -105,7 +105,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         TxType txType = TxType.Legacy;
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
-            if (decoderContext.PeekByte() <= (byte)TxType.MaxTxType) // it is typed transactions
+            if (decoderContext.PeekByte() <= Transaction.MaxTxType) // it is typed transactions
             {
                 txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(decoderContext.Length);
