@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -48,7 +49,7 @@ namespace Nethermind.Merge.AuRa
         public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                (AuRaNethermindApi)_api,
+                _auraApi!,
                 _api.WorldStateManager!,
                 _api.BlockTree!,
                 _api.SpecProvider!,
@@ -74,7 +75,11 @@ namespace Nethermind.Merge.AuRa
 
         protected override IBlockFinalizationManager InitializeMergeFinilizationManager()
         {
-            return new AuRaMergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
+            return new AuRaMergeFinalizationManager(_blockFinalizationManager,
+                _auraApi!.FinalizationManager ??
+                throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
+                    "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
+                _poSSwitcher);
         }
 
         public bool ShouldRunSteps(INethermindApi api)
