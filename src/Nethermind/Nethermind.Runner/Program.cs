@@ -615,7 +615,9 @@ public static class Program
             // Check if the argument provided is a valid option/argument
             if (!validArguments.Contains(argumentName))
             {
-                throw new ArgumentException($"Unrecognized argument: {argumentName}.\nRun --help for a list of available options and commands.");
+                _logger.Error($"Failed due to unrecognized argument - [{argumentName}].\nRun --help for a list of available options and commands.");
+                Environment.ExitCode = ExitCodes.UnrecognizedArgument;
+                return false;
             }
         }
 
