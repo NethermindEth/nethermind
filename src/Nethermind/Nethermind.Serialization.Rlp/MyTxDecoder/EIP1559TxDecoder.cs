@@ -15,9 +15,9 @@ public class BaseEIP1559TxDecoder<T>(TxType txType, Func<T>? transactionFactory 
         transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
     }
 
-    protected override void DecodeGasPrice(Transaction transaction, Rlp.ValueDecoderContext decoderContext)
+    protected override void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
-        base.DecodeGasPrice(transaction, decoderContext);
+        base.DecodeGasPrice(transaction, ref decoderContext);
         transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
     }
 
