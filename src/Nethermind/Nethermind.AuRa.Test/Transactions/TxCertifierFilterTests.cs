@@ -157,8 +157,8 @@ public class TxCertifierFilterTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                null
-                );
+                null,
+                preWarmer: CreateBlockCachePreWarmer());
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
