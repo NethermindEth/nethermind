@@ -41,6 +41,8 @@ class ShutterTxLoaderTests : EngineModuleTests
 
     private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong eon, ulong threshold, ulong slot, ulong txIndex, IAbiEncoder abiEncoder, Address sequencerContractAddress, AbiEncodingInfo transactionSubmittedAbi) : ShutterEventSimulator(rnd, chainId, eon, threshold, slot, txIndex, abiEncoder, sequencerContractAddress, transactionSubmittedAbi)
     {
+        private readonly Transaction _validTx = Build.A.Transaction.WithChainId(chainId).Signed().TestObject;
+        private readonly Transaction _invalidTx = Build.A.Transaction.TestObject;
         protected override IEnumerable<Event> EmitEvents()
         {
             IEnumerable<Transaction> emitHalfInvalid()
@@ -49,9 +51,7 @@ class ShutterTxLoaderTests : EngineModuleTests
                 while (true)
                 {
                     valid = !valid;
-                    yield return valid
-                        ? DefaultTx
-                        : Build.A.Transaction.TestObject;
+                    yield return valid ? _validTx : _invalidTx;
                 }
             }
 
@@ -64,7 +64,7 @@ class ShutterTxLoaderTests : EngineModuleTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -88,7 +88,7 @@ class ShutterTxLoaderTests : EngineModuleTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -117,7 +117,7 @@ class ShutterTxLoaderTests : EngineModuleTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -164,7 +164,7 @@ class ShutterTxLoaderTests : EngineModuleTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
 
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(ShutterTestsCommon.SpecProvider);
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];

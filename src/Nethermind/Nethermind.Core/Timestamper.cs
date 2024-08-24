@@ -27,7 +27,7 @@ namespace Nethermind.Core
 
         public static readonly ITimestamper Default = new Timestamper();
 
-        public void SetDate(long timestamp)
+        public void SetTimestamp(long timestamp)
         {
             var blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
             SetDate(blockTime.UtcDateTime);

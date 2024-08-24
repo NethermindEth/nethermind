@@ -23,7 +23,6 @@ using EncryptedMessage = Nethermind.Shutter.ShutterCrypto.EncryptedMessage;
 
 public class ShutterEventSimulator
 {
-    public readonly Transaction DefaultTx;
     private readonly ulong _defaultGasLimit = 21000;
     private readonly int _defaultMaxKeyCount;
     private readonly Random _rnd;
@@ -63,7 +62,6 @@ public class ShutterEventSimulator
         _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
         _transactionSubmittedAbi = transactionSubmittedAbi;
-        DefaultTx = Build.A.Transaction.WithChainId(_chainId).Signed().TestObject;
         _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / _defaultGasLimit);
 
         NewEon(eon);
@@ -148,9 +146,17 @@ public class ShutterEventSimulator
 
     protected IEnumerable<Transaction> EmitDefaultTransactions()
     {
+        ulong nonce = 0;
         while (true)
         {
-            yield return DefaultTx;
+            yield return Build.A.Transaction
+                .WithNonce(nonce++)
+                .WithChainId(_chainId)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithTo(TestItem.AddressA)
+                .WithValue(100)
+                .Signed(TestItem.PrivateKeyA)
+                .TestObject;
         }
     }
 

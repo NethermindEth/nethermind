@@ -130,4 +130,10 @@ public class ShutterApiSimulator : ShutterApi
         eon.When(x => x.Update(Arg.Any<BlockHeader>())).Do((_) => EonUpdate?.Invoke(this, new()));
         return eon;
     }
+
+    // set genesis unix timestamp to 1
+    protected override ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    {
+        return new(1, timestamper, SlotLength, BlockUpToDateCutoff);
+    }
 }

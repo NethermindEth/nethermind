@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -21,11 +18,8 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -38,18 +32,16 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
-using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Merge.AuRa.Test;
 
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
-    private int _blocksProduced;
-    private ExecutionPayload? _parentPayload;
+    private readonly int _blocksProduced;
+    private readonly ExecutionPayload? _parentPayload;
 
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
@@ -99,138 +91,16 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         return base.Can_apply_withdrawals_correctly(input);
     }
 
-    private async Task<ValueTuple<int, Transaction[]>> ProduceBlockWithTransactions(IEngineRpcModule rpc, MergeTestBlockchain chain, uint count)
-    {
-        int id = _blocksProduced;
-
-        _parentPayload!.TryGetBlock(out Block? parentBlock);
-        chain.AddTransactions(BuildTransactions(chain, parentBlock!.CalculateHash(), TestItem.PrivateKeyC, TestItem.AddressF, count, id, out _, out _));
-
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 1, _parentPayload, true);
-        executionPayloads.Should().HaveCount(1);
-
-        _parentPayload = executionPayloads[0];
-        _blocksProduced++;
-
-        return (id, _parentPayload.GetTransactions());
-    }
-
-    [Test]
-    public async Task Can_include_shutter_transactions()
-    {
-        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        // creating chain with 3 blocks
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 3, CreateParentBlockRequestOnHead(chain.BlockTree), true);
-        _parentPayload = executionPayloads.Last();
-
-        // should contain shutter transactions
-        executionPayloads[0].GetTransactions().Should().HaveCount(1);
-        executionPayloads[0].GetTransactions()[0].Value.Should().Be(123);
-
-        executionPayloads[1].GetTransactions().Should().HaveCount(1);
-        executionPayloads[1].GetTransactions()[0].Value.Should().Be(124);
-
-        executionPayloads[2].GetTransactions().Should().HaveCount(1);
-        executionPayloads[2].GetTransactions()[0].Value.Should().Be(125);
-
-        // build blocks with transactions from both shutter and TxPool
-        // id is used as value to differentiate between transactions
-        (int id0, Transaction[] transactions0) = await ProduceBlockWithTransactions(rpc, chain, 3);
-        transactions0.Should().HaveCount(4);
-        transactions0[0].Value.Should().Be(126);
-        transactions0[1].Value.Should().Be(id0.GWei());
-        transactions0[2].Value.Should().Be(id0.GWei());
-        transactions0[3].Value.Should().Be(id0.GWei());
-
-        (int id1, Transaction[] transactions1) = await ProduceBlockWithTransactions(rpc, chain, 3);
-        transactions1.Should().HaveCount(4);
-        transactions1[0].Value.Should().Be(127);
-        transactions1[1].Value.Should().Be(id1.GWei());
-        transactions1[2].Value.Should().Be(id1.GWei());
-        transactions1[3].Value.Should().Be(id1.GWei());
-
-        (int id2, Transaction[] transactions2) = await ProduceBlockWithTransactions(rpc, chain, 1);
-        transactions2.Should().HaveCount(2);
-        transactions2[0].Value.Should().Be(128);
-        transactions2[1].Value.Should().Be(id2.GWei());
-
-        (int id3, Transaction[] transactions3) = await ProduceBlockWithTransactions(rpc, chain, 0);
-        transactions3.Should().HaveCount(1);
-        transactions3[0].Value.Should().Be(129);
-
-        (int id4, Transaction[] transactions4) = await ProduceBlockWithTransactions(rpc, chain, 2);
-        // bad shutter transaction excluded
-        transactions4[0].Value.Should().Be(id4.GWei());
-        transactions4[1].Value.Should().Be(id4.GWei());
-
-        (int id5, Transaction[] transactions5) = await ProduceBlockWithTransactions(rpc, chain, 4);
-        // bad shutter transaction excluded
-        transactions5.Should().HaveCount(4);
-        transactions5[0].Value.Should().Be(id5.GWei());
-        transactions5[1].Value.Should().Be(id5.GWei());
-        transactions5[2].Value.Should().Be(id5.GWei());
-        transactions5[3].Value.Should().Be(id5.GWei());
-    }
-
-    class TestShutterTxSource : ITxSource
-    {
-        private UInt256 _nonce = 0;
-        private Transaction? _transaction;
-        private Hash256? _lastParent;
-
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
-        {
-            if (parent.Hash != _lastParent)
-            {
-                byte[] sigData = new byte[65];
-                sigData[31] = 1; // correct r
-                sigData[63] = 1; // correct s
-                sigData[64] = 27;
-                Signature signature = new(sigData);
-                UInt256 value = 123 + _nonce;
-
-                if (value == (UInt256)130)
-                {
-                    // bad transaction (incorrect nonce)
-                    _transaction = Build.A.Transaction
-                        .WithSenderAddress(TestItem.AddressA)
-                        .WithValue(value)
-                        .WithNonce(_nonce - 5)
-                        .WithSignature(signature)
-                        .TestObject;
-                }
-                else
-                {
-                    _transaction = Build.A.Transaction
-                        .WithSenderAddress(TestItem.AddressA)
-                        .WithValue(value)
-                        .WithNonce(_nonce)
-                        .WithSignature(signature)
-                        .TestObject;
-                }
-
-                _nonce++;
-            }
-
-            _lastParent = parent.Hash;
-
-            return new[] { _transaction! };
-        }
-    }
-
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         private AuRaNethermindApi? _api;
-        private readonly bool _useShutter;
+        protected ITxSource? _additionalTxSource;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, bool useShutter = false)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ITxSource? additionalTxSource = null)
             : base(mergeConfig, mockedPayloadPreparationService)
         {
             SealEngineType = Core.SealEngineType.AuRa;
-            _useShutter = useShutter;
+            _additionalTxSource = additionalTxSource;
         }
 
         protected override IBlockProcessor CreateBlockProcessor()
@@ -306,12 +176,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager);
 
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_useShutter ? new TestShutterTxSource() : null);
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource);
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
+                CreateBlockImprovementContextFactory(PostMergeBlockProducer),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -339,5 +209,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
+
+        protected virtual IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
+            => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
     }
 }
