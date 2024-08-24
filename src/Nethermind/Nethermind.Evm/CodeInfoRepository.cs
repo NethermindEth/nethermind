@@ -114,11 +114,43 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _localPrecompiles[codeSource];
         }
 
-        CodeInfo cachedCodeInfo = GetCachedCode(worldState, codeSource);
+        CodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource);
 
-        if (HasDelegatedCode(cachedCodeInfo.MachineCode.Span))
+        if (IsDelegatedCode(cachedCodeInfo))
         {
-            cachedCodeInfo = GetCachedCode(worldState, ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span));
+            cachedCodeInfo = InternalGetCachedCode(worldState, ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span));
+        }
+
+        return cachedCodeInfo;
+
+    }
+
+    private static CodeInfo InternalGetCachedCode(IWorldState worldState, Address codeSource)
+    {
+        CodeInfo? cachedCodeInfo = null;
+        ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+        {
+            cachedCodeInfo = CodeInfo.Empty;
+        }
+
+        cachedCodeInfo ??= _codeCache.Get(codeHash);
+        if (cachedCodeInfo is null)
+        {
+            byte[]? code = worldState.GetCode(codeHash);
+
+            if (code is null)
+            {
+                MissingCode(codeSource, codeHash);
+            }
+
+            cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo.AnalyseInBackgroundIfRequired();
+            _codeCache.Set(codeHash, cachedCodeInfo);
+        }
+        else
+        {
+            Db.Metrics.IncrementCodeDbCache();
         }
 
         return cachedCodeInfo;
@@ -128,37 +160,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         static void MissingCode(Address codeSource, in ValueHash256 codeHash)
         {
             throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
-        }
-
-        static CodeInfo GetCachedCode(IWorldState worldState, Address codeSource)
-        {
-            CodeInfo? cachedCodeInfo = null;
-            ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
-            if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
-            {
-                cachedCodeInfo = CodeInfo.Empty;
-            }
-
-            cachedCodeInfo ??= _codeCache.Get(codeHash);
-            if (cachedCodeInfo is null)
-            {
-                byte[]? code = worldState.GetCode(codeHash);
-
-                if (code is null)
-                {
-                    MissingCode(codeSource, codeHash);
-                }
-
-                cachedCodeInfo = new CodeInfo(code);
-                cachedCodeInfo.AnalyseInBackgroundIfRequired();
-                _codeCache.Set(codeHash, cachedCodeInfo);
-            }
-            else
-            {
-                Db.Metrics.IncrementCodeDbCache();
-            }
-
-            return cachedCodeInfo;
         }
     }
 
@@ -217,7 +218,6 @@ public class CodeInfoRepository : ICodeInfoRepository
                 refunds++;
 
             InsertAuthorizedCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
-   
             worldState.IncrementNonce(authTuple.Authority);
         }
         return new CodeInsertResult(result, refunds);
@@ -274,15 +274,15 @@ public class CodeInfoRepository : ICodeInfoRepository
     private bool HasDelegatedCode(IWorldState worldState, Address source)
     {
         return
-            HasDelegatedCode(worldState.GetCode(source));
+            IsDelegatedCode(InternalGetCachedCode(worldState, source));
     }
 
-    private static bool HasDelegatedCode(ReadOnlySpan<byte> code)
+    private static bool IsDelegatedCode(CodeInfo code)
     {
         return
-            code.Length >= Eip7702Constants.DelegationHeader.Length
+            code.MachineCode.Length == 23
             && Eip7702Constants.DelegationHeader.SequenceEqual(
-                code.Slice(0, Eip7702Constants.DelegationHeader.Length));
+                code.MachineCode.Span.Slice(0, Eip7702Constants.DelegationHeader.Length));
     }
 
     private static Address ParseDelegatedAddress(ReadOnlySpan<byte> code)
@@ -296,6 +296,18 @@ public class CodeInfoRepository : ICodeInfoRepository
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
         new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+
+    public bool IsDelegation(IWorldState worldState, Address address,[NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
+        if (IsDelegatedCode(codeInfo))
+        {
+            delegatedAddress = ParseDelegatedAddress(codeInfo.MachineCode.Span);
+            return true;
+        }
+        delegatedAddress = null;  
+        return  false;
+    }
 
     private class CachedPrecompile(
         Address address,

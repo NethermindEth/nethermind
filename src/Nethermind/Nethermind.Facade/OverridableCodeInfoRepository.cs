@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -49,5 +50,10 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public CodeInsertResult InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, IReleaseSpec spec)
     {
         return codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, spec);
+    }
+
+    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        return codeInfoRepository.IsDelegation(worldState, address, out delegatedAddress);
     }
 }
