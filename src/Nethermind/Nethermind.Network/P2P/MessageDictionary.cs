@@ -91,6 +91,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         }
         else
         {
+            data?.TryDispose();
             throw new SubprotocolException($"Received a response to {nameof(T66Msg)} that has not been requested");
         }
     }
