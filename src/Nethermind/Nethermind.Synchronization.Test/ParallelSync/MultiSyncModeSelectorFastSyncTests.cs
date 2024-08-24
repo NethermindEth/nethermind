@@ -675,7 +675,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 FastSyncCatchUpHeightDelta = 2,
                 FastSync = true,
-                FastBlocks = true
             };
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);

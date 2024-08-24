@@ -139,7 +139,6 @@ namespace Nethermind.Synchronization.Test
 
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
                 FastSync = true,
                 PivotNumber = "100",
             };
