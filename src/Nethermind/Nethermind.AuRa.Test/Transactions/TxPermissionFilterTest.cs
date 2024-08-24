@@ -299,7 +299,10 @@ public class TxPermissionFilterTest
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
                 null,
-                PermissionBasedTxFilter);
+                PermissionBasedTxFilter,
+                null,
+                null,
+                CreateBlockCachePreWarmer());
         }
 
         protected override async Task AddBlocksOnStart()
