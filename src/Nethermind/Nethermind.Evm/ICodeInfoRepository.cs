@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -17,4 +18,5 @@ public interface ICodeInfoRepository
     CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, bool isSystemEnv);
     CodeInsertResult InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, IReleaseSpec spec);
+    bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress);
 }
