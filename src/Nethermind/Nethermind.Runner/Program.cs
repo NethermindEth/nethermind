@@ -581,11 +581,27 @@ public static class Program
             return validArguments;
         }
 
-        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
+        static IEnumerable<ReadOnlyMemory<char>> GetArgumentName(string arg)
+        {
+            ReadOnlyMemory<char> argument = arg.StartsWith("--") ? arg.AsMemory(2) :
+                arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
+
+            int index = argument.Span.IndexOf('=');
+            if (index == -1)
+            {
+                yield return argument;
+            }
+            else
+            {
+                yield return argument.Slice(0, index);
+                yield return argument.Length > index ? argument.Slice(index + 1) : ReadOnlyMemory<char>.Empty;
+            }
+        }
+
         static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
         {
             bool lastWasArgument = false;
-            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
+            foreach (ReadOnlyMemory<char> potentialArgument in args.SelectMany(GetArgumentName))
             {
                 if (!lastWasArgument)
                 {
