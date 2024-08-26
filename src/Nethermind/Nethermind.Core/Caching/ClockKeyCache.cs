@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 using Nethermind.Core.Threading;
@@ -51,7 +52,8 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
             return false;
         }
 
-        offset = _cacheMap.Count;
+        offset = _count;
+        Debug.Assert(_cacheMap.Count == _count);
         if (FreeOffsets.Count > 0)
         {
             offset = FreeOffsets.Dequeue();
@@ -63,6 +65,8 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
         _cacheMap[key] = offset;
         KeyToOffset[offset] = key;
+        _count++;
+        Debug.Assert(_cacheMap.Count == _count);
 
         return true;
     }
@@ -70,7 +74,7 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
     private int Replace(TKey key)
     {
         int position = Clock;
-        int max = _cacheMap.Count;
+        int max = _count;
         while (true)
         {
             if (position >= max)
@@ -85,6 +89,7 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
                 {
                     ThrowInvalidOperationException();
                 }
+                _count--;
                 break;
             }
 
@@ -108,6 +113,7 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
         if (_cacheMap.Remove(key, out int offset))
         {
+            _count--;
             ClearAccessed(offset);
             FreeOffsets.Enqueue(offset);
             return true;
@@ -130,6 +136,4 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
         if (MaxCapacity == 0) return false;
         return _cacheMap.ContainsKey(key);
     }
-
-    public int Count => _cacheMap.Count;
 }
