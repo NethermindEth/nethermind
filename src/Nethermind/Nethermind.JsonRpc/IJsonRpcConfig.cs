@@ -43,10 +43,10 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The diagnostic recording mode.", DefaultValue = "None")]
     RpcRecorderState RpcRecorderState { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service HTTP port.", DefaultValue = "8545")]
+    [ConfigItem(Description = "The JSON-RPC service HTTP port.", DefaultValue = "8545", IsPortOption = true)]
     int Port { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545")]
+    [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545", IsPortOption = true)]
     int WebSocketsPort { get; set; }
 
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
@@ -147,7 +147,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
     string EngineHost { get; set; }
 
-    [ConfigItem(Description = "The Engine API port.", DefaultValue = "null")]
+    [ConfigItem(Description = "The Engine API port.", DefaultValue = "null", IsPortOption = true)]
     int? EnginePort { get; set; }
 
     [ConfigItem(
