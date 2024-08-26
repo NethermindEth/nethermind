@@ -1220,6 +1220,7 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
+        ConcurrentDictionary<DirtyNodesCache.Key, bool>? _wasPersisted;
         public void PersistCache(CancellationToken cancellationToken)
         {
 
@@ -1254,6 +1255,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets.");
 
             stopwatch.Restart();
+            ConcurrentDictionary<DirtyNodesCache.Key, bool> wasPersisted;
             lock (_dirtyNodes)
             {
                 using (_dirtyNodes.AcquireMapLock())
@@ -1265,7 +1267,9 @@ namespace Nethermind.Trie.Pruning
                     PruneCache(skipRecalculateMemory: true);
                     KeyValuePair<DirtyNodesCache.Key, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
 
-                    NonBlocking.ConcurrentDictionary<DirtyNodesCache.Key, bool> wasPersisted = new(CollectionExtensions.LockPartitions, nodesCopy.Length);
+                    wasPersisted = Interlocked.Exchange(ref _wasPersisted, null) ??
+                        new(CollectionExtensions.LockPartitions, nodesCopy.Length);
+
                     void PersistNode(TrieNode n, Hash256? address, TreePath path)
                     {
                         if (n.Keccak is null) return;
@@ -1296,6 +1300,17 @@ namespace Nethermind.Trie.Pruning
             _persistedLastSeens.Clear();
             _pastPathHash?.Clear();
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
+
+            if (wasPersisted is not null)
+            {
+                // Clear in background outside of lock to not block
+                Task.Run(() =>
+                {
+                    wasPersisted.NoResizeClear();
+                    // Set back to be reused
+                    _wasPersisted = wasPersisted;
+                });
+            }
         }
 
         // Used to serve node by hash
