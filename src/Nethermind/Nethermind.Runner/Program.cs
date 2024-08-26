@@ -45,7 +45,7 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner;
 
-public static class Program
+public static partial class Program
 {
     private const string FailureString = "Failure";
     private const string DefaultConfigsDirectory = "configs";
@@ -152,8 +152,6 @@ public static class Program
 
         BuildOptionsFromConfigFiles(app);
 
-        if (!ValidateArguments(args, app)) return;
-
         app.OnExecute(async () =>
         {
             IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
@@ -232,6 +230,41 @@ public static class Program
         {
             Environment.ExitCode = app.Execute(args);
         }
+        catch (UnrecognizedCommandParsingException e)
+        {
+            string[] matches = e.NearestMatches.Take(3).ToArray();
+            string suggestion = matches.Length switch
+            {
+                0 => "",
+                1 => $" Did you mean {matches[0]}",
+                _ => $" Did you mean one of: {string.Join(", ", matches)}"
+            };
+            _logger.Error($"{e.Message}.{suggestion}");
+            Environment.ExitCode = ExitCodes.UnrecognizedOption;
+        }
+        catch (CommandParsingException e)
+        {
+            Regex regex = GetUnexpectedConfigValueRegex();
+            Match match = regex.Match(e.Message);
+            if (match.Success)
+            {
+                string option = match.Groups["Name"].Value;
+                CommandOption? optionInfo = app.GetOptions().FirstOrDefault(o => o.ShortName == option || o.LongName == option);
+                switch (optionInfo?.OptionType)
+                {
+                    case CommandOptionType.SingleValue or CommandOptionType.SingleOrNoValue:
+                        _logger.Error($"Duplicated option '{option}'");
+                        Environment.ExitCode = ExitCodes.DuplicatedOption;
+                        return;
+                    case CommandOptionType.NoValue:
+                        _logger.Error($"Value {match.Groups["Value"].Value} passed for value-less option '{option}'");
+                        Environment.ExitCode = ExitCodes.ForbiddenOptionValue;
+                        return;
+                }
+            }
+
+            _logger.Error($"{e.Message}");
+        }
         catch (Exception e)
         {
             if (e is IExceptionWithExitCode withExit)
@@ -249,6 +282,9 @@ public static class Program
             _appClosed.Wait();
         }
     }
+
+    [GeneratedRegex("^Unexpected value '(?<Value>.+)' for option '(?<Name>.+)'", RegexOptions.Singleline)]
+    private static partial Regex GetUnexpectedConfigValueRegex();
 
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
@@ -288,8 +324,11 @@ public static class Program
                 ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 if (!(configItemAttribute?.DisabledForCli ?? false))
                 {
-                    _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
-
+                    _ = app.Option($"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                }
+                if (configItemAttribute?.IsPortOption == true)
+                {
+                    ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
                 }
             }
         }
@@ -556,77 +595,5 @@ public static class Program
             .Append("Runtime: ").AppendLine(ProductInfo.Runtime);
 
         return info.ToString();
-    }
-
-    private static bool ValidateArguments(string[] args, CommandLineApplication app)
-    {
-        static HashSet<ReadOnlyMemory<char>> GetValidArguments(CommandLineApplication app)
-        {
-            HashSet<ReadOnlyMemory<char>> validArguments = new(new MemoryContentsComparer<char>());
-            foreach (var option in app.GetOptions())
-            {
-                if (!string.IsNullOrEmpty(option.LongName))
-                {
-                    validArguments.Add(option.LongName.AsMemory());
-                }
-                if (!string.IsNullOrEmpty(option.ShortName))
-                {
-                    validArguments.Add(option.ShortName.AsMemory());
-                }
-            }
-
-            return validArguments;
-        }
-
-        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
-        static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
-        {
-            bool lastWasArgument = false;
-            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
-            {
-                if (!lastWasArgument)
-                {
-                    bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
-                    if (isCurrentArgument)
-                    {
-                        yield return potentialArgument;
-                    }
-                }
-                else
-                {
-                    lastWasArgument = false;
-                }
-            }
-        }
-
-        static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames) =>
-            argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
-                .Where(g => g.Count() > 1)
-                .Select(g => g.Key);
-
-        // Get all valid options from the configuration files
-        HashSet<ReadOnlyMemory<char>> validArguments = GetValidArguments(app);
-
-        IEnumerable<ReadOnlyMemory<char>> argumentsNamesProvided = GetArgumentNames(args);
-        foreach (ReadOnlyMemory<char> argumentName in argumentsNamesProvided)
-        {
-            // Check if the argument provided is a valid option/argument
-            if (!validArguments.Contains(argumentName))
-            {
-                _logger.Error($"Failed due to unrecognized argument - [{argumentName}].\nRun --help for a list of available options and commands.");
-                Environment.ExitCode = ExitCodes.UnrecognizedArgument;
-                return false;
-            }
-        }
-
-        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(argumentsNamesProvided));
-        if (!string.IsNullOrEmpty(duplicateArgumentsList))
-        {
-            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
-            Environment.ExitCode = ExitCodes.DuplicatedArguments;
-            return false;
-        }
-
-        return true;
     }
 }
