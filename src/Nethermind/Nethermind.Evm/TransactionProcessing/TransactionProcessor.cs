@@ -12,7 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EOF;
+using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -20,7 +20,7 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
 using static Nethermind.Core.Extensions.MemoryExtensions;
-
+using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -571,13 +571,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
                             // 2 - 2 - update data section size in the header u16
                             int dataSubheaderSectionStart =
-                                EvmObjectFormat.VERSION_OFFSET // magic + version
-                                + EvmObjectFormat.Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
-                                + EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * deployCodeInfo.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                                + (deployCodeInfo.Header.ContainerSections is null
+                                VERSION_OFFSET // magic + version
+                                + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
+                                + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+                                + (deployCodeInfo.EofContainer.Header.ContainerSections is null
                                     ? 0 // container section :  (0 bytes if no container section is available)
-                                    : EvmObjectFormat.ONE_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.TWO_BYTE_LENGTH * deployCodeInfo.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
-                                + EvmObjectFormat.ONE_BYTE_LENGTH; // data section seperator
+                                    : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                                + ONE_BYTE_LENGTH; // data section seperator
 
                             ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
                             bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);

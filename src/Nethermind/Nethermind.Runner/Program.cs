@@ -114,14 +114,6 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
-        if (!string.IsNullOrEmpty(duplicateArgumentsList))
-        {
-            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
-            Environment.ExitCode = ExitCodes.DuplicatedArguments;
-            return;
-        }
-
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
@@ -159,6 +151,8 @@ public static class Program
         TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
         BuildOptionsFromConfigFiles(app);
+
+        if (!ValidateArguments(args, app)) return;
 
         app.OnExecute(async () =>
         {
@@ -256,34 +250,6 @@ public static class Program
         }
     }
 
-    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
-    {
-        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
-        static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
-        {
-            bool lastWasArgument = false;
-            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
-            {
-                if (!lastWasArgument)
-                {
-                    bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
-                    if (isCurrentArgument)
-                    {
-                        yield return potentialArgument;
-                    }
-                }
-                else
-                {
-                    lastWasArgument = false;
-                }
-            }
-        }
-
-        return GetArgumentNames(args).GroupBy(n => n, new MemoryContentsComparer<char>())
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key);
-    }
-
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
         var alternativePath = nativeLibraryName switch
@@ -322,8 +288,11 @@ public static class Program
                 ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 if (!(configItemAttribute?.DisabledForCli ?? false))
                 {
-                    _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
-
+                    _ = app.Option($"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                }
+                if (configItemAttribute?.IsPortOption == true)
+                {
+                    ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
                 }
             }
         }
@@ -590,5 +559,77 @@ public static class Program
             .Append("Runtime: ").AppendLine(ProductInfo.Runtime);
 
         return info.ToString();
+    }
+
+    private static bool ValidateArguments(string[] args, CommandLineApplication app)
+    {
+        static HashSet<ReadOnlyMemory<char>> GetValidArguments(CommandLineApplication app)
+        {
+            HashSet<ReadOnlyMemory<char>> validArguments = new(new MemoryContentsComparer<char>());
+            foreach (var option in app.GetOptions())
+            {
+                if (!string.IsNullOrEmpty(option.LongName))
+                {
+                    validArguments.Add(option.LongName.AsMemory());
+                }
+                if (!string.IsNullOrEmpty(option.ShortName))
+                {
+                    validArguments.Add(option.ShortName.AsMemory());
+                }
+            }
+
+            return validArguments;
+        }
+
+        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
+        static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
+        {
+            bool lastWasArgument = false;
+            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
+            {
+                if (!lastWasArgument)
+                {
+                    bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
+                    if (isCurrentArgument)
+                    {
+                        yield return potentialArgument;
+                    }
+                }
+                else
+                {
+                    lastWasArgument = false;
+                }
+            }
+        }
+
+        static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(IEnumerable<ReadOnlyMemory<char>> argumentsNames) =>
+            argumentsNames.GroupBy(n => n, new MemoryContentsComparer<char>())
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key);
+
+        // Get all valid options from the configuration files
+        HashSet<ReadOnlyMemory<char>> validArguments = GetValidArguments(app);
+
+        IEnumerable<ReadOnlyMemory<char>> argumentsNamesProvided = GetArgumentNames(args);
+        foreach (ReadOnlyMemory<char> argumentName in argumentsNamesProvided)
+        {
+            // Check if the argument provided is a valid option/argument
+            if (!validArguments.Contains(argumentName))
+            {
+                _logger.Error($"Failed due to unrecognized argument - [{argumentName}].\nRun --help for a list of available options and commands.");
+                Environment.ExitCode = ExitCodes.UnrecognizedArgument;
+                return false;
+            }
+        }
+
+        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(argumentsNamesProvided));
+        if (!string.IsNullOrEmpty(duplicateArgumentsList))
+        {
+            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
+            Environment.ExitCode = ExitCodes.DuplicatedArguments;
+            return false;
+        }
+
+        return true;
     }
 }

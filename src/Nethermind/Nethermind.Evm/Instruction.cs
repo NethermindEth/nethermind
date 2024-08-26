@@ -3,10 +3,12 @@
 
 using FastEnumUtility;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.EOF;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Specs.Forks;
 using System;
 using System.Diagnostics.CodeAnalysis;
+
+using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm
 {
@@ -206,7 +208,7 @@ namespace Nethermind.Evm
             =>
             instruction switch
             {
-                Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH : 0,
+                Instruction.RJUMPV => IsEofContext ? jumpvCount * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH : 0,
                 >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
                 _ => IsEofContext ? instruction.StackRequirements().immediates.Value : 0
             };

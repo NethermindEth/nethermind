@@ -3,7 +3,7 @@
 
 using System;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.EOF;
+using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm
 {
@@ -22,18 +22,18 @@ namespace Nethermind.Evm
             => !CodeIsValid(spec, code, fromVersion);
 
         public static bool CodeIsValid(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion)
-            => spec.IsEofEnabled ? IsValidWithEofRules(spec, code.Span, fromVersion) : IsValidWithLegacyRules(spec, code.Span);
+            => spec.IsEofEnabled ? IsValidWithEofRules(spec, code, fromVersion) : IsValidWithLegacyRules(spec, code);
 
-        public static bool IsValidWithLegacyRules(IReleaseSpec spec, ReadOnlySpan<byte> code)
-            => !spec.IsEip3541Enabled || code is not [InvalidStartingCodeByte, ..];
+        public static bool IsValidWithLegacyRules(IReleaseSpec spec, ReadOnlyMemory<byte> code)
+            => !spec.IsEip3541Enabled || !code.StartsWith(InvalidStartingCodeByte);
 
-        public static bool IsValidWithEofRules(IReleaseSpec spec, ReadOnlySpan<byte> code, int fromVersion, EvmObjectFormat.ValidationStrategy strategy = EvmObjectFormat.ValidationStrategy.Validate)
+        public static bool IsValidWithEofRules(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion, EvmObjectFormat.ValidationStrategy strategy = EvmObjectFormat.ValidationStrategy.Validate)
         {
-            bool isCodeEof = EvmObjectFormat.IsEof(code, out int codeVersion);
+            bool isCodeEof = EofValidator.IsEof(code, out byte codeVersion);
             bool valid = code.Length >= 1
                   && codeVersion >= fromVersion
                   && (isCodeEof
-                        ? EvmObjectFormat.IsValidEof(code, strategy, out _)
+                        ? EofValidator.IsValidEof(code, strategy, out _)
                         : (fromVersion > 0 ? false : IsValidWithLegacyRules(spec, code)));
             return valid;
         }
