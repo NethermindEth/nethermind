@@ -402,6 +402,13 @@ internal class Eof1 : IEofVersionHandler
             + header.CodeSections.Size
             + (header.ContainerSections?.Size ?? 0);
         CompoundSectionHeader codeSections = header.CodeSections;
+
+        if(endOffset > container.Length)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, DataSectionSize indicated in bundled header are incorrect, or DataSection is wrong");
+            return false;
+        }
+
         ReadOnlySpan<byte> contractBody = container[startOffset..endOffset];
         ReadOnlySpan<byte> dataBody = container[endOffset..];
         var typeSection = header.TypeSection;
@@ -932,7 +939,7 @@ internal class Eof1 : IEofVersionHandler
                             short offset = code.Slice(programCounter + 1, immediates.Value).ReadEthInt16();
                             var jumpDestination = posPostInstruction + immediates.Value + offset;
 
-                            if (opcode is Instruction.RJUMPI)
+                            if (opcode is Instruction.RJUMPI && (posPostInstruction + immediates.Value >= recordedStackHeight.Length))
                                 recordedStackHeight[posPostInstruction + immediates.Value].Combine(currentStackBounds);
 
                             if (jumpDestination > programCounter)
@@ -989,8 +996,11 @@ internal class Eof1 : IEofVersionHandler
                 }
                 else
                 {
-                    recordedStackHeight[programCounter].Combine(currentStackBounds);
-                    currentStackBounds = recordedStackHeight[programCounter];
+                    if (programCounter < code.Length)
+                    {
+                        recordedStackHeight[programCounter].Combine(currentStackBounds);
+                        currentStackBounds = recordedStackHeight[programCounter];
+                    }
                 }
             }
 
