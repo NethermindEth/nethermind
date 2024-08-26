@@ -134,6 +134,11 @@ internal class ILCompiler
         {
             OpcodeInfo op = code[i];
 
+            // check if opcode is activated in current spec
+            method.LoadConstant((byte)op.Operation);
+            method.LoadArgument(4);
+            method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+            method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.InvalidCode]);
 
             if (op.Operation is Instruction.JUMPDEST)
             {
