@@ -371,18 +371,8 @@ internal class Eof1 : IEofVersionHandler
                 if (containerQueue.VisitedContainers[worklet.Index] != 0)
                     continue;
 
-                if (TryGetEofContainer(targetContainer.ContainerSections[worklet.Index - 1], worklet.Strategy, out EofContainer ? subContainer))
-                    targetContainer = subContainer.Value;
-                else
-                {
+                if (!TryGetEofContainer(targetContainer.ContainerSections[worklet.Index - 1], worklet.Strategy, out EofContainer ? subContainer))
                     return false;
-                }
-
-                if(!ValidateContainer(targetContainer, worklet.Strategy))
-                {
-                    return false;
-                }
-
             } else
             {
                 if (!ValidateCodeSections(targetContainer, worklet.Strategy, containerQueue))
