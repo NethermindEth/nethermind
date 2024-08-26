@@ -1,5 +1,7 @@
 ﻿using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -98,7 +100,7 @@ namespace Nethermind.VerkleMigration.Cli
         static void ProgressChangedHandler(object? sender, VerkleTreeMigrator.ProgressEventArgs e)
         {
             ILogger logger = _migratorLogManager.GetClassLogger<Program>();
-            logger.Info($"Progress: {e.Progress:F2}%");
+            logger.Info($"Progress: {e.Progress:F2}% Time since last update: {e.TimeSinceLastUpdate.TotalSeconds:F2}s Current address: {e.CurrentAddress?.ToString() ?? "null"} Is storage: {e.IsStorage}");
         }
     }
 }

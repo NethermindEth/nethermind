@@ -22,6 +22,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private Account? _lastAccount;
     private readonly ILogger _logger;
     private int _leafNodeCounter = 0;
+    private DateTime _lastUpdateTime = DateTime.UtcNow;
 
     public event EventHandler<ProgressEventArgs>? _progressChanged;
 
@@ -29,10 +30,16 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     public class ProgressEventArgs : EventArgs
     {
         public decimal Progress { get; }
+        public TimeSpan TimeSinceLastUpdate { get; }
+        public Address? CurrentAddress { get; }
+        public bool IsStorage { get; }
 
-        public ProgressEventArgs(decimal progress)
+        public ProgressEventArgs(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress, bool isStorage)
         {
             Progress = progress;
+            TimeSinceLastUpdate = timeSinceLastUpdate;
+            CurrentAddress = currentAddress;
+            IsStorage = isStorage;
         }
     }
 
@@ -83,8 +90,12 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         TreePath path = nodeContext.Path.Append(node.Key);
         Span<byte> pathBytes = path.Path.BytesAsSpan;
 
-        var progress = CalculateProgress(pathBytes);
-        OnProgressChanged(progress);
+        var (progress, currentAddress) = CalculateProgress(pathBytes);
+        DateTime now = DateTime.UtcNow;
+        TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
+        _lastUpdateTime = now;
+        OnProgressChanged(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
+
 
         if (!trieVisitContext.IsStorage)
         {
@@ -189,22 +200,31 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         _verkleStateTree.CommitTree(blockNumber);
 
         // Ensure we report 100% progress at the end
-        OnProgressChanged(100);
+        DateTime now = DateTime.UtcNow;
+        TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
+        OnProgressChanged(100, timeSinceLastUpdate, null, false);
 
         _logger.Info($"Migration completed");
     }
 
-    private static decimal CalculateProgress(Span<byte> prefix)
+    private static (decimal Progress, Address? CurrentAddress) CalculateProgress(Span<byte> prefix)
     {
         var maxValue = new UInt256(Bytes.FromHexString("0xffffffffffffffffffffffffffffffffffffffff").AsSpan());
         var currentValue = new UInt256(prefix[..20]);
         currentValue.Multiply(10000, out UInt256 progress);
         progress.Divide(maxValue, out UInt256 progressValue);
-        return progressValue.ToDecimal(null) / 100;
+        decimal calculatedProgress = progressValue.ToDecimal(null) / 100;
+
+        Address? currentAddress = null;
+        if (prefix.Length >= 20)
+        {
+            currentAddress = new Address(prefix[..20].ToArray());
+        }
+        return (calculatedProgress, currentAddress);
     }
 
-    protected virtual void OnProgressChanged(decimal progress)
+    protected virtual void OnProgressChanged(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress, bool isStorage)
     {
-        _progressChanged?.Invoke(this, new ProgressEventArgs(progress));
+        _progressChanged?.Invoke(this, new ProgressEventArgs(progress, timeSinceLastUpdate, currentAddress, isStorage));
     }
 }
