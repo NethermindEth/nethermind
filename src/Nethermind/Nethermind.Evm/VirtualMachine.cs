@@ -30,6 +30,7 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using Int256;
+using Nethermind.Evm.Config;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -59,16 +60,22 @@ public class VirtualMachine : IVirtualMachine
 
     private readonly IVirtualMachine _evm;
 
+    private IVMConfig _config;
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
         ICodeInfoRepository codeInfoRepository,
-        ILogManager? logManager)
+        ILogManager? logManager,
+        IVMConfig vmConfig = null)
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _config = vmConfig ?? new VMConfig();
         _evm = logger.IsTrace
-            ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, logger)
-            : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, logger);
+            ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger)
+            : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger);
+
+        IlAnalyzer.CompoundOpThreshold = _config.EnablePatternMatchingThreshold;
+        IlAnalyzer.IlCompilerThreshold = _config.EnableJittingThreshold;
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -144,11 +151,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
     private readonly ICodeInfoRepository _codeInfoRepository;
+    private readonly IVMConfig _vmConfig;
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
         ICodeInfoRepository codeInfoRepository,
+        IVMConfig vmConfig,
         ILogger? logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -156,6 +165,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+        _vmConfig = vmConfig;
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -641,7 +651,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             goto Empty;
         }
 
-        vmState.Env.CodeInfo.NoticeExecution();
+        if(_vmConfig.IsVmOptimizationEnabled)
+        {
+            vmState.Env.CodeInfo.NoticeExecution();
+        }
 
         vmState.InitStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
@@ -729,7 +742,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while ((ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, out shouldJump, out shouldStop, out shouldReturn, out isRevert, out returnData))
+            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, out shouldJump, out shouldStop, out shouldReturn, out isRevert, out returnData))
                    .GetValueOrDefault(false))
             {
                 if (shouldReturn || isRevert) goto DataReturn;

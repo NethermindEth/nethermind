@@ -3,12 +3,16 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -36,19 +40,77 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             UInt256 lhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
             UInt256 rhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
             stack.PushUInt256(lhs + rhs);
+
+            programCounter += 5;
         }
     }
 
+    public class P02JMP : InstructionChunk
+    {
+        public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
+        public byte CallCount { get; set; } = 0;
+
+        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+            int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
+            if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
+            {
+                programCounter = jumpdestionation;
+            }
+            else
+            {
+                throw new Exception(EvmExceptionType.InvalidJumpDestination.ToString());
+            }
+        }
+
+    }
+    public class P02CJMP : InstructionChunk
+    {
+        public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
+        public byte CallCount { get; set; } = 0;
+
+        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+            stack.PopUInt256(out UInt256 condition);
+            int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
+            if (condition.u0 != 0 && jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
+            {
+                programCounter = jumpdestionation;
+            }
+            else
+            {
+                throw new Exception(EvmExceptionType.InvalidJumpDestination.ToString());
+            }
+        }
+    }
     [TestFixture]
     public class IlEvmTests : VirtualMachineTestsBase
     {
         private const string AnalyzerField = "_analyzer";
+        private readonly IVMConfig _vmConfig = new VMConfig()
+        {
+            IsJitEnabled = true,
+            IsPatternMatchingEnabled = true,
+
+            EnablePatternMatchingThreshold = 4,
+            EnableJittingThreshold = 8,
+        };
 
         [SetUp]
         public override void Setup()
         {
             base.Setup();
+            ILogManager logManager = GetLogManager();
+
+            _blockhashProvider = new TestBlockhashProvider(SpecProvider);
+            Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _vmConfig);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
+            
             IlAnalyzer.AddPattern(P01P01ADD.Pattern, new P01P01ADD());
+            IlAnalyzer.AddPattern(P02JMP.Pattern, new P02JMP());
+            IlAnalyzer.AddPattern(P02CJMP.Pattern, new P02CJMP());
         }
 
         [Test]

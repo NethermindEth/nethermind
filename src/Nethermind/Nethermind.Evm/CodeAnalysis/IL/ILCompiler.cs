@@ -128,13 +128,6 @@ internal class ILCompiler
         for (int i = 0; i < code.Length; i++)
         {
             OpcodeInfo op = code[i];
-
-            // check if opcode is activated in current spec
-            method.LoadConstant((byte)op.Operation);
-            method.LoadArgument(4);
-            method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
-            method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.InvalidCode]);
-
             if (op.Operation is Instruction.JUMPDEST)
             {
                 // mark the jump destination
@@ -144,6 +137,13 @@ internal class ILCompiler
                 method.StoreLocal(programCounter);
                 continue;
             }
+
+            // check if opcode is activated in current spec
+            method.LoadConstant((byte)op.Operation);
+            method.LoadArgument(4);
+            method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+            method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.InvalidCode]);
+
             // set pc
             method.LoadConstant(op.ProgramCounter);
             method.StoreLocal(programCounter);
