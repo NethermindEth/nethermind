@@ -929,7 +929,7 @@ internal class Eof1 : IEofVersionHandler
                             short offset = code.Slice(programCounter + 1, immediates.Value).ReadEthInt16();
                             var jumpDestination = posPostInstruction + immediates.Value + offset;
 
-                            if (opcode is Instruction.RJUMPI && (posPostInstruction + immediates.Value >= recordedStackHeight.Length))
+                            if (opcode is Instruction.RJUMPI && (posPostInstruction + immediates.Value < recordedStackHeight.Length))
                                 recordedStackHeight[posPostInstruction + immediates.Value].Combine(currentStackBounds);
 
                             if (jumpDestination > programCounter)
