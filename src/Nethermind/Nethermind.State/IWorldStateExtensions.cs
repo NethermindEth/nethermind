@@ -25,6 +25,9 @@ namespace Nethermind.State
             worldState.InsertCode(address, codeHash, code, spec, isGenesis);
         }
 
+        public static bool IsInvalidContractSender(this IWorldState stateProvider, IReleaseSpec spec, Address address) =>
+           spec.IsEip3607Enabled && stateProvider.HasCode(address) && !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, address));
+
         public static string DumpState(this IWorldState stateProvider)
         {
             TreeDumper dumper = new();

@@ -60,7 +60,7 @@ public class AuthorizationTupleDecoderTests
         Address? codeAddress = null;
         Signature sig = new(new byte[64], 0);
         int length =
-            + Rlp.LengthOf(1)
+            +Rlp.LengthOf(1)
             + Rlp.LengthOf(codeAddress)
             + Rlp.LengthOf(0)
             + Rlp.LengthOf(sig.RecoveryId)
