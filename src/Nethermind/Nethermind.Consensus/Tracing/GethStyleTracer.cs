@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
@@ -71,7 +72,8 @@ public class GethStyleTracer : IGethStyleTracer
         return TraceBlock(GetBlockToTrace(block), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
     }
 
-    public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options,
+        Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockParameter);
         if (block is null) throw new InvalidOperationException($"Cannot find block {blockParameter}");
@@ -82,7 +84,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            return Trace(block, tx.Hash, cancellationToken, options);
+            return Trace(block, tx.Hash, cancellationToken, options, stateOverride);
         }
         finally
         {
@@ -189,7 +191,8 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.FileNames;
     }
 
-    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options)
+    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
+        Dictionary<Address, AccountOverride>? stateOverride = null)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -197,7 +200,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), stateOverride);
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
