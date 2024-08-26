@@ -233,10 +233,10 @@ public static partial class Program
         catch (UnrecognizedCommandParsingException e)
         {
             string[] matches = e.NearestMatches.Take(3).ToArray();
-            string suggestion = matches switch
+            string suggestion = matches.Length switch
             {
-                _ when matches.Length == 0 => "",
-                _ when matches.Length == 1 => $" Did you mean {matches[0]}",
+                0 => "",
+                1 => $" Did you mean {matches[0]}",
                 _ => $" Did you mean one of: {string.Join(", ", matches)}"
             };
             _logger.Error($"{e.Message}.{suggestion}");
