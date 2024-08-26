@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Evm.Config;
-internal class VMConfig : IVMConfig
+public class VMConfig : IVMConfig
 {
     public bool IsPatternMatchingEnabled { get; set; } = false;
     public bool IsJitEnabled { get; set; } = false;
