@@ -98,7 +98,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 NettyDiscoveryV5Handler.Register(s);
             });
 
-        _discv5Protocol = discv5Builder.Build();
+        _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 

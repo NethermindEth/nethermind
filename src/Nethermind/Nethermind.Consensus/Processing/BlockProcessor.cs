@@ -123,8 +123,8 @@ public partial class BlockProcessor : IBlockProcessor
                     ? null
                     : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer, stateOverride);
+                // Block is processed, we can cancel the prewarm task
                 cancellationTokenSource.Cancel();
-                preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
@@ -148,6 +148,8 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 preBlockStateRoot = processedBlock.StateRoot;
+                // Make sure the prewarm task is finished before we reset the state
+                preWarmTask?.GetAwaiter().GetResult();
                 _stateProvider.Reset(resizeCollections: true);
             }
 
