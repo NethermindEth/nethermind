@@ -2,27 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.IL;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.State;
 using Sigil;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
-using System.Text;
-using System.Threading.Tasks;
-using Label = Sigil.Label;
 using static Nethermind.Evm.IL.EmitExtensions;
-using MathGmp.Native;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
-using System.Drawing;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.Evm.Tracing;
+using Label = Sigil.Label;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
@@ -65,6 +58,7 @@ internal class ILCompiler
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
 
         using Local address = method.DeclareLocal(typeof(Address));
+
         using Local hash256 = method.DeclareLocal(typeof(Hash256));
 
         using Local uint256A = method.DeclareLocal(typeof(UInt256));
@@ -124,6 +118,7 @@ internal class ILCompiler
         Label jumpTable = method.DefineLabel(); // jump table
         Label ret = method.DefineLabel();
 
+
         Dictionary<int, Label> jumpDestinations = new();
 
 
@@ -169,7 +164,7 @@ internal class ILCompiler
             // if gas is not available, branch to out of gas
             method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-            // else emit 
+            // else emit
             switch (op.Operation)
             {
                 case Instruction.STOP:
@@ -1272,7 +1267,14 @@ internal class ILCompiler
                     method.LoadLocalAddress(localSpan);
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                     break;
-
+                case Instruction.LOG0:
+                case Instruction.LOG1:
+                case Instruction.LOG2:
+                case Instruction.LOG3:
+                case Instruction.LOG4:
+                    sbyte topicsCount = (sbyte)(op.Operation - Instruction.LOG0);
+                    EmitLogMethod(method, (stack, head), topicsCount, evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
+                    break;
                 case Instruction.TSTORE:
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
@@ -1333,7 +1335,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetSpan);
                     method.StoreLocal(localReadonOnlySpan);
-                    method.StackPop(head,evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
@@ -1603,7 +1605,7 @@ internal class ILCompiler
             }
         }
 
-        Label skipProgramCounterSetting = method    .DefineLabel();
+        Label skipProgramCounterSetting = method.DefineLabel();
         Local isEphemeralJump = method.DeclareLocal<bool>();
         // prepare ILEvmState
         // check if returnState is null
@@ -1760,13 +1762,13 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R);
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(skipPop);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
         il.CleanWord(stack.span, stack.idx);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
 
         il.MarkLabel(endOfOpcode);
     }
@@ -1795,16 +1797,16 @@ internal class ILCompiler
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.RightShift), [typeof(int), typeof(Int256.Int256).MakeByRefType()]));
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
         il.CleanWord(stack.span, stack.idx);
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R);
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(skipPop);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         il.LoadLocalAddress(locals[0]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
@@ -1842,7 +1844,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[1]);
@@ -1866,7 +1868,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[1]);
@@ -1896,7 +1898,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[1]);
@@ -1906,7 +1908,7 @@ internal class ILCompiler
         il.LoadObject<Int256.Int256>();
         il.Call(operation, null);
         il.LoadConstant(0);
-        if(isGreaterThan)
+        if (isGreaterThan)
         {
             il.BranchIfLess(pushZerohandling);
         }
@@ -1942,7 +1944,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -1961,7 +1963,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
     }
 
     private static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1975,7 +1977,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -1997,7 +1999,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow],1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
     }
 
     private static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -2014,7 +2016,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 3);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[2]);
-        il.StackPop(stack.idx,  exceptions[EvmExceptionType.StackUnderflow], 3);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 3);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -2035,6 +2037,124 @@ internal class ILCompiler
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
+    }
+
+
+    private static void EmitLogMethod<T>(
+        Emit<T> il,
+        (Local span, Local idx) stack,
+        sbyte topicsCount,
+        Dictionary<EvmExceptionType, Label> exceptions,
+        Local uint256A, Local uint256B, Local int64A, Local gasAvailable, Local hash256, Local localReadOnlyMemory
+    )
+    {
+        using Local logEntry = il.DeclareLocal<LogEntry>();
+        Action loadExecutingAccount = () =>
+        {
+            // Executing account
+            il.LoadArgument(0);
+            il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+            il.LoadField(
+                GetFieldInfo(
+                    typeof(ExecutionEnvironment),
+                    nameof(ExecutionEnvironment.ExecutingAccount)
+                )
+            );
+        };
+
+        Action loadMemoryIntoByteArray = () =>
+        {
+            // memory load
+            il.LoadArgument(0);
+            il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+            il.LoadLocalAddress(uint256A); // position
+            il.LoadLocalAddress(uint256B); // length
+            il.Call(
+                typeof(EvmPooledMemory).GetMethod(
+                    nameof(EvmPooledMemory.Load),
+                    [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]
+                )
+            );
+            il.StoreLocal(localReadOnlyMemory);
+            il.LoadLocalAddress(localReadOnlyMemory);
+            il.Call(typeof(ReadOnlyMemory<byte>).GetMethod(nameof(ReadOnlyMemory<byte>.ToArray)));
+        };
+
+        // Pop an item off the Stack, create a Hash256 object, store it in a local
+        Action<int> storeLocalHash256AtStackIndex = (int index) =>
+        {
+            using (var keccak = il.DeclareLocal(typeof(ValueHash256)))
+            {
+                il.StackLoadPrevious(stack.span, stack.idx, index);
+                il.Call(Word.GetKeccak);
+                il.StoreLocal(keccak);
+                il.LoadLocalAddress(keccak);
+                il.NewObject(typeof(Hash256), typeof(ValueHash256).MakeByRefType());
+            }
+        };
+
+        il.StackLoadPrevious(stack.span, stack.idx, 1);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(uint256A); // position
+        il.StackLoadPrevious(stack.span, stack.idx, 2);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(uint256B); // length
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        // UpdateMemoryCost
+        il.LoadArgument(0);
+        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+        il.LoadLocalAddress(gasAvailable);
+        il.LoadLocalAddress(uint256A); // position
+        il.LoadLocalAddress(uint256B); // length
+        il.Call(
+            typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(
+                nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)
+            )
+        );
+        il.BranchIfFalse(exceptions[EvmExceptionType.OutOfGas]);
+
+        // update gasAvailable
+        il.LoadLocal(gasAvailable);
+        il.LoadConstant(topicsCount * GasCostOf.LogTopic + GasCostOf.Log);
+        il.Convert<ulong>();
+        il.LoadLocal(uint256B); // length
+        il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+        il.Convert<ulong>();
+        il.LoadConstant(GasCostOf.LogData);
+        il.Multiply();
+        il.Add();
+        il.Subtract();
+        il.Duplicate();
+        il.StoreLocal(gasAvailable); // gasAvailable -= gasCost
+
+        il.LoadConstant((ulong)0);
+        il.BranchIfLess(exceptions[EvmExceptionType.OutOfGas]);
+
+        loadExecutingAccount();
+        loadMemoryIntoByteArray();
+
+        il.LoadConstant(topicsCount);
+        il.NewArray<Hash256>();
+        for (int i = 0; i < topicsCount; i++)
+        {
+            il.Duplicate();
+            il.LoadConstant(i);
+            storeLocalHash256AtStackIndex(i);
+            il.StoreElement<Hash256>();
+        }
+        // Creat an LogEntry Object from Items on the Stack
+        il.NewObject(typeof(LogEntry), typeof(Address), typeof(byte[]), typeof(Hash256[]));
+        il.StoreLocal(logEntry);
+        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], topicsCount);
+
+        il.LoadArgument(0);
+        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        il.CallVirtual(GetPropertyInfo(typeof(EvmState), nameof(EvmState.Logs), getSetter: false, out _));
+        il.LoadLocal(logEntry);
+        il.CallVirtual(
+            typeof(ICollection<LogEntry>).GetMethod(nameof(ICollection<LogEntry>.Add))
+        );
+
     }
 
     private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
