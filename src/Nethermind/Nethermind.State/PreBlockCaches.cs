@@ -4,32 +4,122 @@
 using System;
 using System.Collections.Concurrent;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
+using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.State;
 
 public class PreBlockCaches
 {
-    public ConcurrentDictionary<StorageCell, byte[]> StorageCache { get; } = new(Environment.ProcessorCount * 2, 4096 * 4);
-    public ConcurrentDictionary<AddressAsKey, Account> StateCache { get; } = new(Environment.ProcessorCount * 2, 4096 * 4);
-    public ConcurrentDictionary<NodeKey, byte[]?> RlpCache { get; } = new(Environment.ProcessorCount * 2, 4096 * 4);
-    public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache { get; } = new(Environment.ProcessorCount * 2, 4096 * 4);
+    private const int InitialCapacity = 4096 * 8;
+    private static int LockPartitions => CollectionExtensions.LockPartitions;
 
-    public bool Clear()
+    private readonly ILogger _logger;
+    private readonly Action _clearStorageCache;
+    private readonly Action _clearStateCache;
+    private readonly Action _clearRlpCache;
+    private readonly Action _clearPrecompileCache;
+
+    private ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
+    private ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
+    private ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
+    private ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> _precompileCache = new(LockPartitions, InitialCapacity);
+
+    public PreBlockCaches(ILogManager logManager)
     {
-        bool isDirty = !StorageCache.IsEmpty || !StateCache.IsEmpty || !RlpCache.IsEmpty;
+        _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));
+        _clearStorageCache = () => ClearConcurrentCache(ref _storageCache);
+        _clearStateCache = () => ClearConcurrentCache(ref _stateCache);
+        _clearRlpCache = () => ClearConcurrentCache(ref _rlpCache);
+        _clearPrecompileCache = () => ClearConcurrentCache(ref _precompileCache);
+    }
+
+    public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
+    public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
+    public ConcurrentDictionary<NodeKey, byte[]?> RlpCache { get; } = new(LockPartitions, InitialCapacity);
+    public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache { get; } = new(LockPartitions, InitialCapacity);
+
+    public async Task ClearCachesInBackground()
+    {
+        Task t0 = Task.CompletedTask;
+        Task t1 = Task.CompletedTask;
+        Task t2 = Task.CompletedTask;
+        Task t3 = Task.CompletedTask;
+
+        bool isDirty = false;
+        if (!_storageCache.IsEmpty)
+        {
+            isDirty = true;
+            t0 = Task.Run(_clearStorageCache);
+        }
+        if (!_stateCache.IsEmpty)
+        {
+            isDirty = true;
+            t1 = Task.Run(_clearStateCache);
+        }
+        if (!_rlpCache.IsEmpty)
+        {
+            isDirty = true;
+            t2 = Task.Run(_clearRlpCache);
+        }
+        if (!_precompileCache.IsEmpty)
+        {
+            isDirty = true;
+            t3 = Task.Run(_clearPrecompileCache);
+        }
+
         if (isDirty)
         {
-            StorageCache.Clear();
-            StateCache.Clear();
-            RlpCache.Clear();
+            await Task.WhenAll(t0, t1, t2, t3);
+        }
+    }
+
+    public bool ClearImmediate()
+    {
+        bool isDirty = false;
+        if (!_storageCache.IsEmpty)
+        {
+            isDirty = true;
+            ClearConcurrentCache(ref _storageCache);
+        }
+        if (!_stateCache.IsEmpty)
+        {
+            isDirty = true;
+            ClearConcurrentCache(ref _stateCache);
+        }
+        if (!_rlpCache.IsEmpty)
+        {
+            isDirty = true;
+            ClearConcurrentCache(ref _rlpCache);
+        }
+        if (!_precompileCache.IsEmpty)
+        {
+            isDirty = true;
+            ClearConcurrentCache(ref _precompileCache);
         }
 
         return isDirty;
+    }
+
+    private void ClearConcurrentCache<TKey, TValue>(ref ConcurrentDictionary<TKey, TValue> cache, [CallerArgumentExpression(nameof(cache))] string? paramName = null)
+    {
+        cache.NoResizeClear();
+
+        if (!cache.IsEmpty)
+        {
+            // Guard in case the cache is not empty after the loop
+            if (_logger.IsWarn)
+            {
+                _logger.Warn($"{paramName} didn't empty. Purging.");
+            }
+            // Recreate rather than clear to avoid resizing
+            cache = new(LockPartitions, InitialCapacity);
+        }
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>

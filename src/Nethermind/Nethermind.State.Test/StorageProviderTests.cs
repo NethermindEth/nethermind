@@ -416,7 +416,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Selfdestruct_clears_cache()
         {
-            PreBlockCaches preBlockCaches = new PreBlockCaches();
+            PreBlockCaches preBlockCaches = new PreBlockCaches(LogManager);
             Context ctx = new(preBlockCaches);
             WorldState provider = BuildStorageProvider(ctx);
             StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);

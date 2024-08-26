@@ -140,7 +140,7 @@ public class InitializeStateDb : IStep
         PreBlockCaches? preBlockCaches = null;
         if (blockConfig.PreWarmStateOnBlockProcessing)
         {
-            preBlockCaches = new PreBlockCaches();
+            preBlockCaches = new PreBlockCaches(getApi.LogManager);
             mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
         }
 

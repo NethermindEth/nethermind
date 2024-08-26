@@ -205,8 +205,8 @@ namespace Nethermind.Trie.Pruning
 
             public void Clear()
             {
-                _byHashObjectCache.Clear();
-                _byKeyObjectCache.Clear();
+                _byHashObjectCache.NoResizeClear();
+                _byKeyObjectCache.NoResizeClear();
                 Interlocked.Exchange(ref _count, 0);
                 Metrics.CachedNodesCount = 0;
                 _trieStore.MemoryUsedByDirtyCache = 0;
