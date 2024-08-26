@@ -96,6 +96,12 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Encode(Span<byte> span, long value)
+    {
+        BinaryPrimitives.WriteInt64LittleEndian(span, value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, UInt128 value)
     {
         BinaryPrimitives.WriteUInt64LittleEndian(span[..8], (ulong)(value & ulong.MaxValue));
@@ -287,6 +293,19 @@ public static partial class Ssz
         }
 
         return BinaryPrimitives.ReadUInt64LittleEndian(span);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long DecodeLong(ReadOnlySpan<byte> span)
+    {
+        const int expectedLength = 8;
+        if (span.Length != expectedLength)
+        {
+            throw new InvalidDataException(
+                $"{nameof(DecodeLong)} expects input of length {expectedLength} and received {span.Length}");
+        }
+
+        return BinaryPrimitives.ReadInt64LittleEndian(span);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

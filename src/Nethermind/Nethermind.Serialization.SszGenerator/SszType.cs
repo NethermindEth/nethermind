@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Data.Common;
 
 class SszType
@@ -210,18 +211,20 @@ class SszProperty
 
             ValueAccessor = valueGetter,
 
-            StaticEncode = $"Ssz.Ssz.Encode(buf.Slice({{offset}}, {type.StaticLength}), {(type.IsVariable ? $"{{dynOffset}}" : $"{valueGetter}")})",
-            DynamicEncode = type.IsVariable ? $"if (container.{prop.Name} is not null) Ssz.Ssz.Encode(buf.Slice({{dynOffset}}, {{length}}), {valueGetter})" : null,
+            StaticEncode = $"SszLib.Encode(buf.Slice({{offset}}, {type.StaticLength}), {(type.IsVariable ? $"{{dynOffset}}" : $"{valueGetter}")})",
+            DynamicEncode = type.IsVariable ? $"if (container.{prop.Name} is not null) SszLib.Encode(buf.Slice({{dynOffset}}, {{length}}), {valueGetter})" : null,
 
-            StaticDecode = type.IsVariable ? $"int {{dynOffset}} = Ssz.Ssz.DecodeInt(data.Slice({{offset}}, {type.StaticLength}))" :
-                           type.IsSimple ? $"{valueSetter} = Ssz.Ssz.{type.DecodeMethod}(data.Slice({{offset}}, {type.StaticLength}))" :
-                                            $"Deserialize(data.Slice({{offset}}, {type.StaticLength}), out {valueSetter})",
+            StaticDecode = type.IsVariable ? $"int {{dynOffset}} = SszLib.DecodeInt(data.Slice({{offset}}, {type.StaticLength}))" :
+                           type.IsSimple ? $"{valueSetter} = SszLib.{type.DecodeMethod}(data.Slice({{offset}}, {type.StaticLength}))" :
+                                            $"Decode(data.Slice({{offset}}, {type.StaticLength}), out {type.Name} {LowerStart(prop.Name)}); {valueSetter} = {LowerStart(prop.Name)}",
             DynamicDecode = !type.IsVariable ? null :
-                            type.IsSimple ? $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {valueSetter} = Ssz.Ssz.{type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}))" :
-                                            $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) Deserialize{type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}), out {valueSetter})",
+                            type.IsSimple ? $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {valueSetter} = SszLib.{type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}))" :
+                                            $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) Decode{type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}), out {valueSetter})",
             DynamicLength = type.IsVariable ? GetDynamicLength(prop, type) : null,
         };
     }
+
+    private static string LowerStart(string name) => string.IsNullOrEmpty(name) ? name : (name.Substring(0, 1).ToLower() + name.Substring(1));
 
     private static string GetValueGetter(IPropertySymbol prop)
     {

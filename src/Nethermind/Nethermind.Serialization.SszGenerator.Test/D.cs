@@ -1,81 +1,89 @@
-using Nethermind.Int256;
-using Nethermind.Merkleization;
-using Nethermind.Serialization.Ssz;
-using System;
+//using Nethermind.Int256;
+//using Nethermind.Merkleization;
+//using System;
 
-namespace Nethermind.Serialization.SszGenerator.Test.Generated;
+//using SszLib = Nethermind.Serialization.Ssz.Ssz;
+
+//namespace Nethermind.Serialization.SszGenerator.Test.Serialization;
+
+//public partial class SszEncoding
+//{
+//    public static int GetLength(SszTests.StaticStruct container)
+//    {
+//        return 16;
+//    }
 
 
-public partial class Ssz
-{
-    public static int GetLength(SszTests.BasicSzzClass container)
-    {
-        return 16;
-    }
+//    public static ReadOnlySpan<byte> Encode(SszTests.StaticStruct container)
+//    {
+//        Span<byte> buf = new byte[GetLength(container)];
+//        Encode(buf, container);
+//        return buf;
+//    }
 
-    public static ReadOnlySpan<byte> Serialize(SszTests.BasicSzzClass container)
-    {
-        Span<byte> buf = new byte[GetLength(container)];
+//    public static void Encode(Span<byte> buf, SszTests.StaticStruct container)
+//    {
+//        SszLib.Encode(buf.Slice(0, 8), container.X);
+//        SszLib.Encode(buf.Slice(8, 8), container.Y);
+//    }
 
-        Serialize(buf.Slice(0, 16), container.FixedStruct);
+//    public static void Decode(ReadOnlySpan<byte> data, out SszTests.StaticStruct container)
+//    {
+//        container = new();
 
-        return buf;
-    }
+//        container.X = SszLib.DecodeLong(data.Slice(0, 8));
+//        container.Y = SszLib.DecodeLong(data.Slice(8, 8));
 
-    public static SszTests.BasicSzzClass Deserialize(ReadOnlySpan<byte> data)
-    {
-        SszTests.BasicSzzClass container = new();
+//    }
 
-        container.FixedStruct = Deserialize(data.Slice(0, 16));
+//    public static void Merkleize(SszTests.StaticStruct container, out UInt256 root)
+//    {
+//        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent(2));
 
-        return container;
-    }
+//        merkleizer.Feed(container.X);
+//        merkleizer.Feed(container.Y);
 
-    public static void Merkleize(out UInt256 root, SszTests.BasicSzzClass container)
-    {
-        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent(1));
+//        merkleizer.CalculateRoot(out root);
+//    }
+//}
 
-        Merkleize(out UInt256 rootOfFixedStruct, in container.FixedStruct);
-        merkleizer.Feed(rootOfFixedStruct);
 
-        merkleizer.CalculateRoot(out root);
-    }
-}
-public partial class Ssz
-{
-    public static int GetLength(ref SszTests.StaticStruct container)
-    {
-        return 16;
-    }
 
-    public static ReadOnlySpan<byte> Serialize(ref SszTests.StaticStruct container)
-    {
-        Span<byte> buf = new byte[GetLength(ref container)];
+//public partial class SszEncoding
+//{
+//    public static int GetLength(SszTests.BasicSzzClass container)
+//    {
+//        return 16;
+//    }
 
-        Ssz.Ssz.Encode(buf.Slice(0, 8), container.X);
-        Ssz.Ssz.Encode(buf.Slice(8, 8), container.Y);
 
-        return buf;
-    }
+//    public static ReadOnlySpan<byte> Encode(SszTests.BasicSzzClass container)
+//    {
+//        Span<byte> buf = new byte[GetLength(container)];
+//        Encode(buf, container);
+//        return buf;
+//    }
 
-    public static ref SszTests.StaticStruct Deserialize(ReadOnlySpan<byte> data)
-    {
-        ref SszTests.StaticStruct container = new();
+//    public static void Encode(Span<byte> buf, SszTests.BasicSzzClass container)
+//    {
+//        Encode(buf.Slice(0, 16), container.FixedStruct);
+//    }
 
-        container.X = Ssz.Ssz.DecodeInt(data.Slice(0, 8));
-        container.Y = Ssz.Ssz.DecodeInt(data.Slice(8, 8));
+//    public static void Decode(ReadOnlySpan<byte> data, out SszTests.BasicSzzClass container)
+//    {
+//        container = new();
 
-        return container;
-    }
+//        Decode(data.Slice(0, 16), out SszTests.StaticStruct fixedStruct); container.FixedStruct = fixedStruct;
 
-    public static void Merkleize(out UInt256 root, in SszTests.StaticStruct container)
-    {
-        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent(2));
+//    }
 
-        merkleizer.Feed(container.X);
-        merkleizer.Feed(container.Y);
+//    public static void Merkleize(SszTests.BasicSzzClass container, out UInt256 root)
+//    {
+//        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent(1));
 
-        merkleizer.CalculateRoot(out root);
-    }
-}
+//        Merkleize(container.FixedStruct, out UInt256 rootOfFixedStruct);
+//        merkleizer.Feed(rootOfFixedStruct);
 
+//        merkleizer.CalculateRoot(out root);
+//    }
+//}

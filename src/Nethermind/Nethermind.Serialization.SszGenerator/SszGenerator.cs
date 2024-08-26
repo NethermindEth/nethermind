@@ -138,85 +138,101 @@ public partial class SszGenerator : IIncrementalGenerator
 
     private static string GenerateClassCode(SszType decl)
     {
-        decl.IsProcessed = true;
-        int staticLength = decl.Members.Sum(prop => prop.Type.StaticLength);
-        List<Dyn> dynOffsets = new();
-        SszProperty? prevM = null;
-
-        foreach (SszProperty prop in decl.Members)
+        try
         {
-            if (prop.Type.IsVariable)
+            decl.IsProcessed = true;
+            int staticLength = decl.Members.Sum(prop => prop.Type.StaticLength);
+            List<Dyn> dynOffsets = new();
+            SszProperty? prevM = null;
+
+            foreach (SszProperty prop in decl.Members)
             {
-                dynOffsets.Add(new Dyn
+                if (prop.Type.IsVariable)
                 {
-                    OffsetDeclaration = prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.DynamicLength}"),
-                    DynamicEncode = prop.DynamicEncode ?? "",
-                    DynamicLength = prop.DynamicLength!,
-                    DynamicDecode = prop.DynamicDecode ?? "", //prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
-                });
-                prevM = prop;
+                    dynOffsets.Add(new Dyn
+                    {
+                        OffsetDeclaration = prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.DynamicLength}"),
+                        DynamicEncode = prop.DynamicEncode ?? "",
+                        DynamicLength = prop.DynamicLength!,
+                        DynamicDecode = prop.DynamicDecode ?? "", //prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
+                    });
+                    prevM = prop;
+                }
             }
-        }
 
-        var offset = 0;
-        var offsetDecode = 0;
-        var dynOffset = 0;
-        var dynOffsetDecode = 1;
+            var offset = 0;
+            var offsetDecode = 0;
+            var dynOffset = 0;
+            var dynOffsetDecode = 1;
 
-        var result = $@"using Nethermind.Int256;
-using Nethermind.Serialization.Ssz;
+            var result = $@"using Nethermind.Int256;
+using Nethermind.Merkleization;
 using System;
+
+using SszLib = Nethermind.Serialization.Ssz.Ssz;
 
 namespace {(decl.Namespace is not null ? decl.Namespace + "." : "")}Serialization;
 
-public partial class Ssz
+public partial class SszEncoding
 {{
-    public static int GetLength({(decl.IsStruct ? "ref " : "")}{decl.Name} container)
+    public static int GetLength({decl.Name} container)
     {{
         return {staticLength}{(dynOffsets.Any() ? $" + \n               {string.Join(" +\n               ", dynOffsets.Select(m => m.DynamicLength))}" : "")};
     }}
 
-    public static ReadOnlySpan<byte> Serialize({(decl.IsStruct ? "ref " : "")}{decl.Name} container)
+
+    public static ReadOnlySpan<byte> Encode({decl.Name} container)
     {{
-        Span<byte> buf = new byte[GetLength({(decl.IsStruct ? "ref " : "")}container)];
-        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select(m => m.OffsetDeclaration)) + ";\n        \n" : "")}
-        {string.Join(";\n        ", decl.Members.Select(m =>
-        {
-            if (m.Type.IsVariable) dynOffset++;
-            string result = m.Type.Members.Any() ? m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}").Replace("Ssz.Ssz.Encode", "Serialize") : m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
-            offset += m.Type.StaticLength;
-            return result;
-        }))};
-        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicEncode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{length}", m.DynamicLength))) + ";\n        \n" : "")}
+        Span<byte> buf = new byte[GetLength(container)];
+        Encode(buf, container);
         return buf;
     }}
 
-    public static void Deserialize(ReadOnlySpan<byte> data, out {decl.Name} container)
+    public static void Encode(Span<byte> buf, {decl.Name} container)
     {{
-        container = new();
-        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.First().OffsetDeclaration) + ";\n        \n" : "")}
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select(m => m.OffsetDeclaration)) + ";\n        \n" : "")}
         {string.Join(";\n        ", decl.Members.Select(m =>
-        {
-            if (m.Type.IsVariable) dynOffsetDecode++;
-            string result = m.StaticDecode.Replace("{offset}", $"{offsetDecode}").Replace("{dynOffset}", $"dynOffset{dynOffsetDecode}");
-            offsetDecode += m.Type.StaticLength;
-            return result;
-        }))};
-        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) + ";\n        \n" : "")}
-        return container;
+            {
+                if (m.Type.IsVariable) dynOffset++;
+                string result = m.Type.Members.Any() ? m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}").Replace("SszLib.Encode", "Encode") : m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
+                offset += m.Type.StaticLength;
+                return result;
+            }))};
+
+            {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicEncode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{length}", m.DynamicLength))) + ";\n        \n" : "")}
     }}
 
-    public static void Merkleize({(decl.IsStruct ? "ref " : "")}{decl.Name} container, out UInt256 root)
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
+    {{
+        container = new();
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.First().OffsetDeclaration) + ";\n" : "")}
+        {string.Join(";\n        ", decl.Members.Select(m =>
+            {
+                if (m.Type.IsVariable) dynOffsetDecode++;
+                string result = m.StaticDecode.Replace("{offset}", $"{offsetDecode}").Replace("{dynOffset}", $"dynOffset{dynOffsetDecode}");
+                offsetDecode += m.Type.StaticLength;
+                return result;
+            }))};
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) + ";\n        \n" : "")}
+    }}
+
+    public static void Merkleize({decl.Name} container, out UInt256 root)
     {{
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members.Length}));
 
-        {string.Join(";\n        ", decl.Members.Select(m => m.Type.Members.Any() ? $"Merkleize(out UInt256 rootOf{m.Name}, container.{m.Name});\n        merkleizer.Feed(rootOf{m.Name})" : $"merkleizer.Feed(container.{m.Name})"))};
+        {string.Join(";\n        ", decl.Members.Select(m => m.Type.IsSimple ? $"merkleizer.Feed(container.{m.Name})" : $"Merkleize(container.{m.Name}, out UInt256 rootOf{m.Name});\n        merkleizer.Feed(rootOf{m.Name})"))};
 
         merkleizer.CalculateRoot(out root);
     }}
 }}
 ";
-        return result;
+
+            return result;
+        }
+        catch
+        {
+            throw;
+        }
     }
 
     //private static string GenerateMethodCode(string namespaceName, string className, string methodName)
