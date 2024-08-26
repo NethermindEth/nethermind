@@ -23,15 +23,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private readonly ILogger _logger;
     private int _leafNodeCounter = 0;
 
-    private readonly byte[] _currentPrefix = [0, 0];
     public event EventHandler<ProgressEventArgs>? _progressChanged;
 
 
     public class ProgressEventArgs : EventArgs
     {
-        public float Progress { get; }
+        public decimal Progress { get; }
 
-        public ProgressEventArgs(float progress)
+        public ProgressEventArgs(decimal progress)
         {
             Progress = progress;
         }
@@ -84,16 +83,8 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         TreePath path = nodeContext.Path.Append(node.Key);
         Span<byte> pathBytes = path.Path.BytesAsSpan;
 
-        if (pathBytes.Length >= 2)
-        {
-            if (_currentPrefix[0] != pathBytes[0] || _currentPrefix[1] != pathBytes[1])
-            {
-                _currentPrefix[0] = pathBytes[0];
-                _currentPrefix[1] = pathBytes[1];
-                var progress = CalculateProgress(_currentPrefix);
-                OnProgressChanged(progress);
-            }
-        }
+        var progress = CalculateProgress(pathBytes);
+        OnProgressChanged(progress);
 
         if (!trieVisitContext.IsStorage)
         {
@@ -203,13 +194,13 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         _logger.Info($"Migration completed");
     }
 
-    private static float CalculateProgress(byte[] prefix)
+    private static decimal CalculateProgress(Span<byte> prefix)
     {
-        var prefixValue = prefix[0] << 8 | prefix[1];
-        return (float)prefixValue / 0xFFFF * 100;
+        new UInt256(prefix).Divide(UInt256.MaxValue, out UInt256 progressValue);
+        return progressValue.ToDecimal(null) * 100;
     }
 
-    protected virtual void OnProgressChanged(float progress)
+    protected virtual void OnProgressChanged(decimal progress)
     {
         _progressChanged?.Invoke(this, new ProgressEventArgs(progress));
     }
