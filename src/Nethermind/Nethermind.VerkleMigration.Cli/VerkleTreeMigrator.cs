@@ -196,8 +196,11 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
     private static decimal CalculateProgress(Span<byte> prefix)
     {
-        new UInt256(prefix).Divide(UInt256.MaxValue, out UInt256 progressValue);
-        return progressValue.ToDecimal(null) * 100;
+        var maxValue = new UInt256(Bytes.FromHexString("0xffffffffffffffffffffffffffffffffffffffff").AsSpan());
+        var currentValue = new UInt256(prefix);
+        currentValue.Multiply(10000, out UInt256 progress);
+        progress.Divide(maxValue, out UInt256 progressValue);
+        return progressValue.ToDecimal(null) / 100;
     }
 
     protected virtual void OnProgressChanged(decimal progress)
