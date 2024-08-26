@@ -746,7 +746,7 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     ushort runtimeContainerId = code[postInstructionByte];
-                    if (runtimeContainerId >= eofContainer.Header.ContainerSections?.Count)
+                    if (eofContainer.Header.ContainerSections is null || runtimeContainerId >= eofContainer.Header.ContainerSections?.Count)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate argument must be less than containersection.Count i.e: {eofContainer.Header.ContainerSections?.Count}");
                         return false;
@@ -775,7 +775,7 @@ internal class Eof1 : IEofVersionHandler
                     var initcodeSectionId = code[postInstructionByte];
                     BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
-                    if (initcodeSectionId >= eofContainer.Header.ContainerSections?.Count)
+                    if (eofContainer.Header.ContainerSections is null || initcodeSectionId >= eofContainer.Header.ContainerSections?.Count)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must falls within the Containers' range available, i.e: {eofContainer.Header.CodeSections.Count}");
                         return false;
