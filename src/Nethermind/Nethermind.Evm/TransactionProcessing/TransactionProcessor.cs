@@ -106,7 +106,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             CodeInsertResult codeInsertResult = new();
             if (spec.IsEip7702Enabled)
-            {                
+            {
                 if (tx.HasAuthorizationList)
                 {
                     codeInsertResult = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
@@ -461,7 +461,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
-                    WarmUp(tx, header, spec, env, state, codeInsertResult.Addresses);
+                    WarmUp(tx, header, spec, env, state, codeInsertResult.AccessedAddresses);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -606,7 +606,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     ? 0
                     : RefundHelper.CalculateClaimableRefund(spentGas,
                         substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled)
-                        + (GasCostOf.NewAccount-GasCostOf.PerAuthBaseCost) * codeInsertRefunds, spec);
+                        + (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds, spec);
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);

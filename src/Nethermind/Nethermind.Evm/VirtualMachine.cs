@@ -481,14 +481,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             return true;
         }
-        if (chargeForDelegation
-            && vmState.Env.TxExecutionContext.CodeInfoRepository.IsDelegation(_state, address, out Address delegated))
+        bool notOutOfGas = ChargeAccountGas(ref gasAvailable, vmState, address, spec);
+        if (notOutOfGas
+            && chargeForDelegation
+            && vmState.Env.TxExecutionContext.CodeInfoRepository.IsDelegation(_state, address, out Address delegated)
+            )
         {
-            address = delegated;
-            if (!ChargeAccountGas(ref gasAvailable, vmState, address, spec))
-                return false;
+            return ChargeAccountGas(ref gasAvailable, vmState, delegated, spec);
         }
-        return ChargeAccountGas(ref gasAvailable, vmState, address, spec);
+        return notOutOfGas;
 
         bool ChargeAccountGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
         {
@@ -1264,7 +1265,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
-                       
+
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
 
                         if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
@@ -1891,7 +1892,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address,true, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
 
                         if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
                         {
@@ -1899,7 +1900,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                            stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetCodeHash(_state, address).BytesAsSpan);
                         }
 
                         break;
@@ -2123,7 +2124,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-        
+
         CodeInfo codeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
 

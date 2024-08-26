@@ -38,7 +38,7 @@ public class CodeInfoRepositoryTests
         };
         CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
 
-        result.Addresses.Should().BeEquivalentTo([authority.Address]);
+        result.AccessedAddresses.Should().BeEquivalentTo([authority.Address]);
     }
 
     public static IEnumerable<object[]> AuthorizationCases()
@@ -46,7 +46,7 @@ public class CodeInfoRepositoryTests
         yield return new object[]
         {
             CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressB, 0),
-            true             
+            true
         };
         yield return new object[]
         {
@@ -73,7 +73,7 @@ public class CodeInfoRepositoryTests
 
         CodeInsertResult result = sut.InsertFromAuthorizations(stateProvider, [tuple], Substitute.For<IReleaseSpec>());
 
-        Assert.That(stateProvider.HasCode(result.Addresses.First()), Is.EqualTo(shouldInsert));
+        Assert.That(stateProvider.HasCode(result.AccessedAddresses.First()), Is.EqualTo(shouldInsert));
     }
 
     [Test]
@@ -150,7 +150,7 @@ public class CodeInfoRepositoryTests
         };
         CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
 
-        result.Addresses.Should().BeEquivalentTo([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD]);
+        result.AccessedAddresses.Should().BeEquivalentTo([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD]);
     }
 
     [Test]

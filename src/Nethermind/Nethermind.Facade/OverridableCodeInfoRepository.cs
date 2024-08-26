@@ -56,4 +56,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         return codeInfoRepository.IsDelegation(worldState, address, out delegatedAddress);
     }
+
+    public ValueHash256 GetCodeHash(IWorldState worldState, Address address)
+    {
+        return codeInfoRepository.GetCodeHash(worldState, address);
+    }
 }

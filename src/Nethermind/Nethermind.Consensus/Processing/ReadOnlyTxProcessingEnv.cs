@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Processing
             IWorldState? worldStateToWarmUp = null
             ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
         {
-            CodeInfoRepository = new CodeInfoRepository(1,(worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
+            CodeInfoRepository = new CodeInfoRepository(1, (worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
