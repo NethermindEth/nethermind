@@ -22,6 +22,8 @@ using Nethermind.Logging;
 namespace Nethermind.Trie.Pruning
 {
     using Nethermind.Core.Cpu;
+    using CollectionExtensions = Core.Collections.CollectionExtensions;
+
     /// <summary>
     /// Trie store helps to manage trie commits block by block.
     /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
@@ -109,11 +111,10 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            private static readonly int _concurrencyLevel = HashHelpers.GetPrime(Environment.ProcessorCount * 4);
             private static readonly int _initialBuckets = HashHelpers.GetPrime(Math.Max(31, Environment.ProcessorCount * 16));
 
-            private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new(_concurrencyLevel, _initialBuckets);
-            private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache = new(_concurrencyLevel, _initialBuckets);
+            private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new(CollectionExtensions.LockPartitions, _initialBuckets);
+            private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache = new(CollectionExtensions.LockPartitions, _initialBuckets);
 
             public bool IsNodeCached(in Key key)
             {
@@ -667,7 +668,7 @@ namespace Nethermind.Trie.Pruning
                                     // persisted node have a pretty good hit rate and tend to conflict with the persisted
                                     // nodes (address,path) entry on second PruneCache. So pruning them ahead of time
                                     // really helps increase nodes that can be removed.
-                                    PruneCache(true);
+                                    PruneCache(skipRecalculateMemory: true);
 
                                     SaveSnapshot();
 
@@ -858,7 +859,7 @@ namespace Nethermind.Trie.Pruning
         /// removing ones that are either no longer referenced or already persisted.
         /// </summary>
         /// <exception cref="InvalidOperationException"></exception>
-        private void PruneCache(bool skipRecalculateMemory = false)
+        private void PruneCache(bool skipRecalculateMemory = false, KeyValuePair<DirtyNodesCache.Key, TrieNode>[]? allNodes = null)
         {
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -878,7 +879,7 @@ namespace Nethermind.Trie.Pruning
                     Interlocked.Add(ref newMemory, node.GetMemorySize(false) + _dirtyNodes.KeyMemoryUsage);
                 });
 
-            foreach ((DirtyNodesCache.Key key, TrieNode node) in _dirtyNodes.AllNodes)
+            foreach ((DirtyNodesCache.Key key, TrieNode node) in (allNodes ?? _dirtyNodes.AllNodes))
             {
                 if (node.IsPersisted)
                 {
@@ -1261,10 +1262,10 @@ namespace Nethermind.Trie.Pruning
                     ClearCommitSetQueue();
 
                     // This should clear most nodes. For some reason, not all.
-                    PruneCache();
+                    PruneCache(skipRecalculateMemory: true);
                     KeyValuePair<DirtyNodesCache.Key, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
 
-                    NonBlocking.ConcurrentDictionary<DirtyNodesCache.Key, bool> wasPersisted = new();
+                    NonBlocking.ConcurrentDictionary<DirtyNodesCache.Key, bool> wasPersisted = new(CollectionExtensions.LockPartitions, nodesCopy.Length);
                     void PersistNode(TrieNode n, Hash256? address, TreePath path)
                     {
                         if (n.Keccak is null) return;
@@ -1283,7 +1284,7 @@ namespace Nethermind.Trie.Pruning
                         Hash256? address = key.AddressAsHash256;
                         nodesCopy[i].Value.CallRecursively(PersistNode, address, ref path, GetTrieStore(address), false, _logger, false);
                     });
-                    PruneCache();
+                    PruneCache(allNodes: nodesCopy);
 
                     if (_dirtyNodes.Count != 0)
                     {
