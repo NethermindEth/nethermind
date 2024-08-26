@@ -100,7 +100,7 @@ namespace Nethermind.VerkleMigration.Cli
         static void ProgressChangedHandler(object? sender, VerkleTreeMigrator.ProgressEventArgs e)
         {
             ILogger logger = _migratorLogManager.GetClassLogger<Program>();
-            logger.Info($"Progress: {e.Progress:F2}% Time since last update: {e.TimeSinceLastUpdate.TotalSeconds:F2}s Current address: {e.CurrentAddress?.ToString() ?? "null"} Is storage: {e.IsStorage}");
+            logger.Info($"Progress: {e.Progress:F2}% Time since last update: {e.TimeSinceLastUpdate.Microseconds:F2}μs Current address: {e.CurrentAddress?.ToString() ?? "null"} Is storage: {e.IsStorage}");
         }
     }
 }
