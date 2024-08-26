@@ -4,9 +4,9 @@
 using System;
 using System.Threading;
 
-using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 using System.Diagnostics;
+using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm.CodeAnalysis
 {

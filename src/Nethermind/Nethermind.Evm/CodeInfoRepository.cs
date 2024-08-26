@@ -16,6 +16,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
+using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
 
@@ -126,7 +127,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, Nethermind.Evm.EvmObjectFormat.ValidationStrategy.ExractHeader);
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -148,7 +149,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (!_codeCache.TryGet(codeHash, out ICodeInfo? codeInfo))
         {
-            codeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
+            codeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec, ValidationStrategy.ExractHeader);
 
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
@@ -160,7 +161,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, EOF.EvmObjectFormat.ValidationStrategy.ExractHeader);
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExractHeader);
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);

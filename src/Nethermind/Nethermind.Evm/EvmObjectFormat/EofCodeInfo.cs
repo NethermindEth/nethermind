@@ -3,49 +3,39 @@
 
 using System;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.EOF;
+using Nethermind.Evm.EvmObjectFormat;
+using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public class EofCodeInfo : ICodeInfo
 {
-    private readonly ICodeInfo _codeInfo;
+    public EofContainer EofContainer { get; private set; }
+    public ReadOnlyMemory<byte> MachineCode => EofContainer.Container;
+    public IPrecompile? Precompile => null;
+    public int Version => EofContainer.Header.Version;
+    public bool IsEmpty => EofContainer.IsEmpty;
+    public ReadOnlyMemory<byte> TypeSection => EofContainer.TypeSection;
+    public ReadOnlyMemory<byte> CodeSection => EofContainer.CodeSection;
+    public ReadOnlyMemory<byte> DataSection => EofContainer.DataSection;
+    public ReadOnlyMemory<byte> ContainerSection => EofContainer.ContainerSection;
 
-    public EofHeader Header { get; private set; }
-    public ReadOnlyMemory<byte> MachineCode => _codeInfo.MachineCode;
-    public IPrecompile? Precompile => _codeInfo.Precompile;
-    public int Version => Header.Version;
-    public bool IsEmpty => _codeInfo.IsEmpty;
-    public ReadOnlyMemory<byte> TypeSection { get; }
-    public ReadOnlyMemory<byte> CodeSection { get; }
-    public ReadOnlyMemory<byte> DataSection { get; }
-    public ReadOnlyMemory<byte> ContainerSection { get; }
-
-    public SectionHeader CodeSectionOffset(int sectionId) => Header.CodeSections[sectionId];
-    public SectionHeader? ContainerSectionOffset(int containerId) =>
-        Header.ContainerSections is null
-            ? null
-            : Header.ContainerSections.Value[containerId];
+    public SectionHeader CodeSectionOffset(int sectionId) => EofContainer.Header.CodeSections[sectionId];
+    public SectionHeader? ContainerSectionOffset(int sectionId) => EofContainer.Header.ContainerSections.Value[sectionId];
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
     {
-        ReadOnlySpan<byte> typesectionSpan = TypeSection.Span;
-        int TypeSectionSectionOffset = index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE;
+        ReadOnlySpan<byte> typesectionSpan = EofContainer.TypeSections[index].Span;
         return
             (
-                typesectionSpan[TypeSectionSectionOffset + EvmObjectFormat.Eof1.INPUTS_OFFSET],
-                typesectionSpan[TypeSectionSectionOffset + EvmObjectFormat.Eof1.OUTPUTS_OFFSET],
-                typesectionSpan.Slice(TypeSectionSectionOffset + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET, EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
+                typesectionSpan[Eof1.INPUTS_OFFSET],
+                typesectionSpan[Eof1.OUTPUTS_OFFSET],
+                typesectionSpan.Slice(Eof1.MAX_STACK_HEIGHT_OFFSET, Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
             );
     }
 
-    public EofCodeInfo(ICodeInfo codeInfo, in EofHeader header)
+    public EofCodeInfo(in EofContainer container)
     {
-        _codeInfo = codeInfo;
-        Header = header;
-        TypeSection = MachineCode.Slice(Header.TypeSection.Start, Header.TypeSection.Size);
-        CodeSection = MachineCode.Slice(Header.CodeSections.Start, Header.CodeSections.Size);
-        DataSection = MachineCode.Slice(Header.DataSection.Start);
-        ContainerSection = Header.ContainerSections is null ? Memory<byte>.Empty : MachineCode.Slice(Header.ContainerSections.Value.Start, Header.ContainerSections.Value.Size);
+        EofContainer = container;
     }
 }

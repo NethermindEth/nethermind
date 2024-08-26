@@ -11,5 +11,15 @@ namespace Nethermind.Evm
         {
             return inputData.Span[0] == startingByte;
         }
+
+        public static bool StartsWith(this ReadOnlyMemory<byte> inputData, Span<byte> startingBytes)
+        {
+            return inputData.Span.StartsWith(startingBytes);
+        }
+
+        public static byte ByteAt(this ReadOnlyMemory<byte> inputData, int index)
+        {
+            return inputData.Span[index];
+        }
     }
 }

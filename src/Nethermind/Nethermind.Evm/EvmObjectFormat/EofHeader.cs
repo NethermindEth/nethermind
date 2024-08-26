@@ -1,11 +1,69 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Evm.EvmObjectFormat.Handlers;
 using System;
 using System.Linq;
 
-namespace Nethermind.Evm.EOF;
+namespace Nethermind.Evm.EvmObjectFormat;
 
+
+public struct EofContainer
+{
+    public ReadOnlyMemory<byte> Container;
+    public bool IsEmpty => Container.IsEmpty;
+
+    public EofContainer(ReadOnlyMemory<byte> container, EofHeader eofHeader)
+    {
+        Container = container;
+        Header = eofHeader;
+        Prefix = container.Slice(0, eofHeader.PrefixSize);
+        TypeSection = container[(Range)eofHeader.TypeSection];
+        CodeSection = container[(Range)eofHeader.CodeSections];
+        ContainerSection = eofHeader.ContainerSections.HasValue ? container[(Range)eofHeader.ContainerSections.Value] : ReadOnlyMemory<byte>.Empty;
+
+        TypeSections = new ReadOnlyMemory<byte>[eofHeader.CodeSections.Count];
+        for (var i = 0; i < eofHeader.CodeSections.Count; i++)
+        {
+            TypeSections[i] = TypeSection.Slice(i * Eof1.MINIMUM_TYPESECTION_SIZE, Eof1.MINIMUM_TYPESECTION_SIZE);
+        }
+
+        CodeSections = new ReadOnlyMemory<byte>[eofHeader.CodeSections.Count];
+        for (var i = 0; i < eofHeader.CodeSections.Count; i++)
+        {
+            CodeSections[i] = CodeSection[(Range)Header.CodeSections[i]];
+        }
+
+        if (eofHeader.ContainerSections.HasValue)
+        {
+            ContainerSections = new ReadOnlyMemory<byte>[eofHeader.ContainerSections.Value.Count];
+            for (var i = 0; i < eofHeader.ContainerSections.Value.Count; i++)
+            {
+                ContainerSections[i] = ContainerSection[(Range)Header.ContainerSections.Value[i]];
+            }
+        }
+        else
+        {
+            ContainerSections = Array.Empty<ReadOnlyMemory<byte>>();
+        }
+
+        DataSection = container.Slice(eofHeader.DataSection.Start);
+    }
+
+    public EofHeader Header;
+    public ReadOnlyMemory<byte> Prefix;
+
+    public ReadOnlyMemory<byte> TypeSection;
+    public ReadOnlyMemory<byte>[] TypeSections;
+
+    public ReadOnlyMemory<byte> CodeSection;
+    public ReadOnlyMemory<byte>[] CodeSections;
+
+
+    public ReadOnlyMemory<byte> ContainerSection;
+    public ReadOnlyMemory<byte>[] ContainerSections;
+    public ReadOnlyMemory<byte> DataSection;
+}
 public struct EofHeader()
 {
     public required byte Version;
