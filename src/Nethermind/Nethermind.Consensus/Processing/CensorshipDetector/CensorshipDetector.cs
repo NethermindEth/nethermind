@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -21,7 +22,6 @@ public class CensorshipDetector : IDisposable
     private readonly IBlockProcessor _blockProcessor;
     private readonly ILogger _logger;
     private readonly ICensorshipDetectorConfig _censorshipDetectorConfig;
-    private readonly Dictionary<AddressAsKey, long> _poolAddressCensorshipTxCount = [];
     private readonly Dictionary<AddressAsKey, Transaction?> _poolAddressCensorshipBestTx = [];
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
@@ -46,7 +46,6 @@ public class CensorshipDetector : IDisposable
             {
                 if (Address.TryParse(hexString, out Address address))
                 {
-                    _poolAddressCensorshipTxCount[address!] = 0;
                     _poolAddressCensorshipBestTx[address!] = null;
                 }
             }
@@ -54,50 +53,29 @@ public class CensorshipDetector : IDisposable
 
         _potentiallyCensoredBlocks = new(_cacheSize, _cacheSize, "potentiallyCensoredBlocks");
         _censoredBlocks = new(_cacheSize);
-        _txPool.NewPending += OnAddingTxToPool;
-        _txPool.RemovedPending += OnRemovingTxFromPool;
-        _txPool.EvictedPending += OnRemovingTxFromPool;
         _blockProcessor.BlockProcessing += OnBlockProcessing;
-    }
-
-    private void OnAddingTxToPool(object? sender, TxPool.TxEventArgs e)
-    {
-        Transaction tx = e.Transaction;
-        if (tx.GasBottleneck > 0
-        && tx.To is not null
-        && _poolAddressCensorshipTxCount.TryGetValue(tx.To!, out long txCount)
-        && _poolAddressCensorshipBestTx.TryGetValue(tx.To!, out Transaction? bestTx))
-        {
-            if (txCount == 0)
-            {
-                _poolAddressCensorshipBestTx[tx.To!] = tx;
-            }
-            _poolAddressCensorshipTxCount[tx.To!]++;
-            if (_comparer.Compare(_poolAddressCensorshipBestTx[tx.To!], tx) > 0)
-            {
-                _poolAddressCensorshipBestTx[tx.To!] = tx;
-            }
-        }
-    }
-
-    private void OnRemovingTxFromPool(object? sender, TxPool.TxEventArgs e)
-    {
-        Transaction tx = e.Transaction;
-        if (tx.GasBottleneck > 0
-        && tx.To is not null
-        && _poolAddressCensorshipTxCount.TryGetValue(tx.To!, out long txCount)
-        && _poolAddressCensorshipBestTx.TryGetValue(tx.To!, out Transaction? bestTx))
-        {
-            if (_poolAddressCensorshipTxCount[tx.To!] == 1)
-            {
-                _poolAddressCensorshipBestTx[tx.To] = null;
-            }
-            _poolAddressCensorshipTxCount[tx.To!]--;
-        }
     }
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
+        UInt256 baseFee = e.Block.BaseFeePerGas;
+
+        IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
+        foreach (Transaction tx in poolBestTransactions)
+        {
+            if (tx.To is not null && tx.GasBottleneck > baseFee && _poolAddressCensorshipBestTx.TryGetValue(tx.To!, out Transaction? bestTx))
+            {
+                if (bestTx is null)
+                {
+                    _poolAddressCensorshipBestTx[tx.To!] = tx;
+                }
+                else if (_comparer.Compare(bestTx, tx) > 0)
+                {
+                    _poolAddressCensorshipBestTx[tx.To!] = tx;
+                }
+            }
+        }
+
         Task.Run(() => Cache(e.Block));
     }
 
@@ -113,8 +91,7 @@ public class CensorshipDetector : IDisposable
         {
             if (!tx.SupportsBlobs)
             {
-                if (_poolAddressCensorshipTxCount.ContainsKey(tx.To!)
-                && _poolAddressCensorshipBestTx.ContainsKey(tx.To!)
+                if (_poolAddressCensorshipBestTx.ContainsKey(tx.To!)
                 && !blockAddressCensorshipDetectorHelper.Contains(tx.To!))
                 {
                     blockAddressCensorshipDetectorHelper.Add(tx.To!);
@@ -148,6 +125,8 @@ public class CensorshipDetector : IDisposable
         _potentiallyCensoredBlocks.Set(new BlockNumberHash(block), blockCensorshipInfo);
 
         CensorshipDetection(block, isCensored);
+
+        ClearAddressCensorshipDetectionDictionary();
     }
 
     public void CensorshipDetection(Block block, bool isCensored)
@@ -176,12 +155,17 @@ public class CensorshipDetector : IDisposable
 
     public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
 
+    public void ClearAddressCensorshipDetectionDictionary()
+    {
+        foreach (AddressAsKey key in _poolAddressCensorshipBestTx.Keys)
+        {
+            _poolAddressCensorshipBestTx[key] = null;
+        }
+    }
+
     public void Dispose()
     {
         _blockProcessor.BlockProcessing -= OnBlockProcessing;
-        _txPool.NewPending -= OnAddingTxToPool;
-        _txPool.RemovedPending -= OnRemovingTxFromPool;
-        _txPool.EvictedPending -= OnRemovingTxFromPool;
     }
 }
 
