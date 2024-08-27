@@ -132,7 +132,7 @@ internal static class IlAnalyzer
 
                     if (found)
                     {
-                        patternFound.Add((ushort)i, mapping);
+                        patternFound.Add((ushort)strippedBytecode[i].ProgramCounter, mapping);
                         i += pattern.Length - 1;
                     }
                 }

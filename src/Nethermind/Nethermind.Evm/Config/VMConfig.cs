@@ -13,6 +13,6 @@ public class VMConfig : IVMConfig
 {
     public bool IsPatternMatchingEnabled { get; set; } = false;
     public bool IsJitEnabled { get; set; } = false;
-    public int EnablePatternMatchingThreshold { get; set; } = 32;
-    public int EnableJittingThreshold { get; set; } = 128;
+    public int PatternMatchingThreshold { get; set; } = 32;
+    public int JittingThreshold { get; set; } = 128;
 }

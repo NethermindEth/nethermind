@@ -24,12 +24,12 @@ public interface IVMConfig : IConfig
     [ConfigItem(
         Description = "Threshold for enabling JIT optimizations",
         DefaultValue = "128")]
-    public int EnableJittingThreshold { get; set; }
+    public int JittingThreshold { get; set; }
 
     [ConfigItem(
         Description = "Threshold for enabling n-gram pattern optimizations",
         DefaultValue = "32")]
-    public int EnablePatternMatchingThreshold { get; set; }
+    public int PatternMatchingThreshold { get; set; }
 
     public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsJitEnabled;
 }

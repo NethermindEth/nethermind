@@ -74,8 +74,8 @@ public class VirtualMachine : IVirtualMachine
             ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger)
             : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger);
 
-        IlAnalyzer.CompoundOpThreshold = _config.EnablePatternMatchingThreshold;
-        IlAnalyzer.IlCompilerThreshold = _config.EnableJittingThreshold;
+        IlAnalyzer.CompoundOpThreshold = _config.PatternMatchingThreshold;
+        IlAnalyzer.IlCompilerThreshold = _config.JittingThreshold;
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -1590,7 +1590,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.SSTORE:
                     {
-                        if (stack.PopUInt256(out result)) goto OutOfGas;
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         ReadOnlySpan<byte> bytesSpan = stack.PopWord256();
                         exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, _state, ref gasAvailable, ref result, ref bytesSpan, spec, _txTracer);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;

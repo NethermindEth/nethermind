@@ -94,8 +94,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IsJitEnabled = true,
             IsPatternMatchingEnabled = true,
 
-            EnablePatternMatchingThreshold = 4,
-            EnableJittingThreshold = 8,
+            PatternMatchingThreshold = 4,
+            JittingThreshold = 8,
         };
 
         [SetUp]
@@ -147,7 +147,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(42)
                     .PushSingle(5)
                     .ADD()
-                    .JUMP(0)
+                    .PUSHx([0, 0])
+                    .JUMP()
                     .Done;
 
             /*
@@ -171,7 +172,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     var address = receipts.TxReceipts[0].ContractAddress;
             */
 
-            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++)
+            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 32; i++)
             {
                 ExecuteBlock(new NullBlockTracer(), bytecode);
             }
