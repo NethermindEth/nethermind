@@ -21,25 +21,22 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly IBlockhashStore _blockhashStore;
         private readonly ILogger _logger;
-        private readonly IWorldStateManager _worldStateManager;
 
-        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldStateManager worldStateManager, ILogManager? logManager)
+        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, ILogManager? logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _specProvider = specProvider;
             _blockhashStore = new BlockhashStore(specProvider);
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, IWorldState worldState, in long number)
         {
             IReleaseSpec? spec = _specProvider.GetSpec(currentBlock);
 
             if (spec.IsBlockHashInStateAvailable)
             {
-                IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(currentBlock);
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number, worldStateToUse);
+                return _blockhashStore.GetBlockHashFromState(currentBlock, number, worldState);
             }
 
             long current = currentBlock.Number;

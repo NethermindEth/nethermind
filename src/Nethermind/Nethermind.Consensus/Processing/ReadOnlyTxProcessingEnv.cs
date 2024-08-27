@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Processing
             CodeInfoRepository = new CodeInfoRepository(worldStateManager.Caches?.PrecompileCache);
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, WorldStateManager, logManager);
+            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, logManager);
 
             _logManager = logManager;
         }

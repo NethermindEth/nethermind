@@ -32,7 +32,7 @@ public class ReadOnlyTxProcessingEnvBase
         SpecProvider = specProvider;
         StateReader = worldStateManager.GlobalStateReader;
         BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-        BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, WorldStateManager, logManager);
+        BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, logManager);
         LogManager = logManager;
     }
 }

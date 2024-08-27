@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             var worldStateManager =
                 new WorldStateManager(stateProvider, trieStore, _dbProvider, LimboLogs.Instance);
 
-            BlockhashProvider blockhashProvider = new(_blockTree, specProvider, worldStateManager, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(_blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new(specProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);

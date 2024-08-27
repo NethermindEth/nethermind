@@ -28,7 +28,7 @@ public class OptimismReadOnlyTxProcessingEnv(
     {
         ArgumentNullException.ThrowIfNull(LogManager);
 
-        BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, WorldStateManager, LogManager);
+        BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, LogManager);
         VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, CodeInfoRepository, LogManager);
         return new OptimismTransactionProcessor(SpecProvider, virtualMachine, LogManager, l1CostHelper, opSpecHelper, CodeInfoRepository);
     }

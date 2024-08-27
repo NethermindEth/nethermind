@@ -1383,7 +1383,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
-                        Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+                        Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, _state, number);
 
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 

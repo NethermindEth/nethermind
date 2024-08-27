@@ -117,7 +117,7 @@ namespace Nethermind.Clique.Test
                     transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
-                BlockhashProvider blockhashProvider = new(blockTree, specProvider, worldStateManager, LimboLogs.Instance);
+                BlockhashProvider blockhashProvider = new(blockTree, specProvider, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
 
                 SnapshotManager snapshotManager = new(_cliqueConfig, dbProvider.BlocksDb, blockTree, _ethereumEcdsa, nodeLogManager);

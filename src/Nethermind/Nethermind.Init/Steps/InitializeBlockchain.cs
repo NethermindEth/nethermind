@@ -165,7 +165,7 @@ namespace Nethermind.Init.Steps
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.SpecProvider, _api.WorldStateManager, _api.LogManager);
+                _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
             VirtualMachine virtualMachine = new(
                 blockhashProvider,

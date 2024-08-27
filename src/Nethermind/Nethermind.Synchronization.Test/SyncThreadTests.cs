@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization.Test
                 new TxValidator(specProvider.ChainId),
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new(tree, specProvider, worldStateManager, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(tree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
