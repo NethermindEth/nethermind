@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -33,10 +32,10 @@ public class PreBlockCaches
     public PreBlockCaches(ILogManager logManager)
     {
         _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));
-        _clearStorageCache = () => ClearConcurrentCache(ref _storageCache);
-        _clearStateCache = () => ClearConcurrentCache(ref _stateCache);
-        _clearRlpCache = () => ClearConcurrentCache(ref _rlpCache);
-        _clearPrecompileCache = () => ClearConcurrentCache(ref _precompileCache);
+        _clearStorageCache = () => _storageCache.NoResizeClear();
+        _clearStateCache = () => _stateCache.NoResizeClear();
+        _clearRlpCache = () => _rlpCache.NoResizeClear();
+        _clearPrecompileCache = () => _precompileCache.NoResizeClear();
     }
 
     public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
@@ -85,41 +84,25 @@ public class PreBlockCaches
         if (!_storageCache.IsEmpty)
         {
             isDirty = true;
-            ClearConcurrentCache(ref _storageCache);
+            _storageCache.NoResizeClear();
         }
         if (!_stateCache.IsEmpty)
         {
             isDirty = true;
-            ClearConcurrentCache(ref _stateCache);
+            _stateCache.NoResizeClear();
         }
         if (!_rlpCache.IsEmpty)
         {
             isDirty = true;
-            ClearConcurrentCache(ref _rlpCache);
+            _rlpCache.NoResizeClear();
         }
         if (!_precompileCache.IsEmpty)
         {
             isDirty = true;
-            ClearConcurrentCache(ref _precompileCache);
+            _precompileCache.NoResizeClear();
         }
 
         return isDirty;
-    }
-
-    private void ClearConcurrentCache<TKey, TValue>(ref ConcurrentDictionary<TKey, TValue> cache, [CallerArgumentExpression(nameof(cache))] string? paramName = null)
-    {
-        cache.NoResizeClear();
-
-        if (!cache.IsEmpty)
-        {
-            // Guard in case the cache is not empty after the loop
-            if (_logger.IsWarn)
-            {
-                _logger.Warn($"{paramName} didn't empty. Purging.");
-            }
-            // Recreate rather than clear to avoid resizing
-            cache = new(LockPartitions, InitialCapacity);
-        }
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
