@@ -36,7 +36,7 @@ public class VirtualMachineTestsBase
     protected IDb _stateDb;
 
     protected VirtualMachine Machine { get; set; }
-    protected CodeInfoRepository CodeInfoRepository { get;  set; }
+    protected CodeInfoRepository CodeInfoRepository { get; set; }
     protected IWorldState TestState { get; set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;

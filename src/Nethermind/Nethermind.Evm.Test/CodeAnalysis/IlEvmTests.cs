@@ -107,7 +107,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             _blockhashProvider = new TestBlockhashProvider(SpecProvider);
             Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _vmConfig);
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
-            
+
             IlAnalyzer.AddPattern(P01P01ADD.Pattern, new P01P01ADD());
             IlAnalyzer.AddPattern(P02JMP.Pattern, new P02JMP());
             IlAnalyzer.AddPattern(P02CJMP.Pattern, new P02CJMP());

@@ -651,7 +651,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             goto Empty;
         }
 
-        if(_vmConfig.IsVmOptimizationEnabled)
+        if (_vmConfig.IsVmOptimizationEnabled)
         {
             vmState.Env.CodeInfo.NoticeExecution();
         }
