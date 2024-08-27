@@ -16,6 +16,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Org.BouncyCastle.Crypto.Agreement.JPake;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Producers
@@ -36,7 +37,7 @@ namespace Nethermind.Consensus.Producers
         private ITimestamper Timestamper { get; }
 
         private ISealer Sealer { get; }
-        private IWorldState StateProvider { get; }
+        private IWorldStateManager WorldStateManager { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
@@ -51,7 +52,7 @@ namespace Nethermind.Consensus.Producers
             IBlockchainProcessor? processor,
             ISealer? sealer,
             IBlockTree? blockTree,
-            IWorldState? stateProvider,
+            IWorldStateManager? worldStateManager,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -63,7 +64,7 @@ namespace Nethermind.Consensus.Producers
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            WorldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -127,7 +128,8 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
-            if (TrySetState(parent.StateRoot))
+            var worldStateToUse = WorldStateManager.CreateResettableWorldState(parent);
+            if (TrySetState(parent))
             {
                 Block block = PrepareBlock(parent, payloadAttributes);
                 if (PreparedBlockCanBeMined(block))
@@ -182,14 +184,15 @@ namespace Nethermind.Consensus.Producers
         /// <summary>
         /// Sets the state to produce block on
         /// </summary>
-        /// <param name="parentStateRoot">Parent block state</param>
+        /// <param name="parent"></param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Hash256? parentStateRoot)
+        protected bool TrySetState(BlockHeader? parent)
         {
-            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
+            if (parent is not null && WorldStateManager.HasStateRoot(parent.StateRoot!))
             {
-                StateProvider.StateRoot = parentStateRoot;
+                var worldStateToUse = WorldStateManager.CreateResettableWorldState(parent);
+                worldStateToUse.StateRoot = parent.StateRoot;
                 return true;
             }
 

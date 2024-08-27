@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -21,7 +22,7 @@ namespace Nethermind.Consensus.Producers
         public DevBlockProducer(
             ITxSource? txSource,
             IBlockchainProcessor? processor,
-            IWorldState? stateProvider,
+            IWorldStateManager? worldStateManager,
             IBlockTree? blockTree,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -32,7 +33,7 @@ namespace Nethermind.Consensus.Producers
                 processor,
                 new NethDevSealEngine(),
                 blockTree,
-                stateProvider,
+                worldStateManager,
                 new FollowOtherMiners(specProvider!),
                 timestamper,
                 specProvider,

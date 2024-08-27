@@ -74,9 +74,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         [NotNullWhen(false)] out string? error)
     {
         IBlockTree blockTree = env.BlockTree;
-        IWorldState stateProvider = env.WorldState;
         parent = GetParent(parent, payload, blockTree);
         IReleaseSpec spec = env.SpecProvider.GetSpec(parent);
+        var worldStateToUse = env.WorldStateManager.CreateResettableWorldState(parent);
 
         if (payload.BlockStateCalls is not null)
         {
@@ -89,12 +89,12 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
                 BlockHeader callHeader = GetCallHeader(blockCall, parent, payload.Validation, spec); //currentSpec is still parent spec
                 spec = env.SpecProvider.GetSpec(callHeader);
-                PrepareState(callHeader, parent, blockCall, env.WorldState, env.CodeInfoRepository, spec);
-                Transaction[] transactions = CreateTransactions(payload, blockCall, callHeader, stateProvider, nonceCache);
+                PrepareState(callHeader, parent, blockCall, worldStateToUse, env.CodeInfoRepository, spec);
+                Transaction[] transactions = CreateTransactions(payload, blockCall, callHeader, worldStateToUse, nonceCache);
                 callHeader.TxRoot = TxTrie.CalculateRoot(transactions);
                 callHeader.Hash = callHeader.CalculateHash();
 
-                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
+                if (!TryGetBlock(payload, env, callHeader, transactions, worldStateToUse, out Block currentBlock, out error))
                 {
                     return false;
                 }
@@ -106,9 +106,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 suggestedBlocks[0] = currentBlock;
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
+                Block processedBlock = processor.Process(worldStateToUse.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
-                FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
+                FinalizeStateAndBlock(worldStateToUse, processedBlock, spec, currentBlock, blockTree);
                 CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
                 parent = processedBlock.Header;
@@ -165,22 +165,21 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         return parent;
     }
 
-    private static bool TryGetBlock(
-        SimulatePayload<TransactionWithSourceDetails> payload,
+    private static bool TryGetBlock(SimulatePayload<TransactionWithSourceDetails> payload,
         SimulateReadOnlyBlocksProcessingEnv env,
         BlockHeader callHeader,
         Transaction[] transactions,
+        IWorldState worldState,
         out Block currentBlock,
         [NotNullWhen(false)] out string? error)
     {
-        IWorldState stateProvider = env.WorldState;
-        Snapshot shoot = stateProvider.TakeSnapshot();
+        Snapshot shoot = worldState.TakeSnapshot();
         currentBlock = new Block(callHeader);
         LinkedHashSet<Transaction> testedTxs = new();
         for (int index = 0; index < transactions.Length; index++)
         {
             Transaction transaction = transactions[index];
-            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction, testedTxs, stateProvider);
+            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction, testedTxs, worldState);
 
             if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
             {
@@ -188,12 +187,12 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 return false;
             }
 
-            stateProvider.IncrementNonce(transaction.SenderAddress!);
+            worldState.IncrementNonce(transaction.SenderAddress!);
             testedTxs.Add(transaction);
         }
 
-        stateProvider.Restore(shoot);
-        stateProvider.RecalculateStateRoot();
+        worldState.Restore(shoot);
+        worldState.RecalculateStateRoot();
 
         currentBlock = currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(testedTxs.ToArray()));
         error = null;

@@ -48,7 +48,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
     private readonly TransactionProcessor _transactionProcessor;
-    public IWorldState WorldState => StateProvider;
 
     public SimulateReadOnlyBlocksProcessingEnv(
         IWorldStateManager worldStateManager,
@@ -67,7 +66,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
         BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, WorldStateManager, logManager), BlockTree);
-        StateProvider = WorldStateManager.GlobalWorldState;
         StateReader = WorldStateManager.GlobalStateReader;
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
         VirtualMachine = new SimulateVirtualMachine(new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager));

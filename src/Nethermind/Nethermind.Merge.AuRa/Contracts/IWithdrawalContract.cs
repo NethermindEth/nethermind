@@ -10,6 +10,6 @@ namespace Nethermind.Merge.AuRa.Contracts;
 
 public interface IWithdrawalContract
 {
-    void ExecuteWithdrawals(IWorldState worldState, BlockHeader blockHeader, UInt256 failedMaxCount,
-        IList<ulong> amounts, IList<Address> addresses);
+    void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount,
+        IList<ulong> amounts, IList<Address> addresses, IWorldState worldState);
 }

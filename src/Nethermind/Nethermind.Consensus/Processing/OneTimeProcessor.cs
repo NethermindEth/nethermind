@@ -15,13 +15,11 @@ namespace Nethermind.Consensus.Processing
         public ITracerBag Tracers => _processor.Tracers;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly IWorldState _worldState;
 
         private readonly object _lock = new();
 
-        public OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor)
+        public OneTimeChainProcessor(IBlockchainProcessor processor)
         {
-            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         }
 

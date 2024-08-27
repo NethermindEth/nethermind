@@ -53,7 +53,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
 
         try
         {
-            _contract.ExecuteWithdrawals(worldState, block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
+            _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses, worldState);
         }
         catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException)
         {

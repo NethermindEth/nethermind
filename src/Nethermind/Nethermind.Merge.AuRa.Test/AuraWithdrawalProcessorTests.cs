@@ -46,19 +46,19 @@ public class AuraWithdrawalProcessorTests
         ulong[] values = Array.Empty<ulong>();
         Address[] addresses = Array.Empty<Address>();
         IWorldState worldState = Substitute.For<IWorldState>();
-        contract.ExecuteWithdrawals(worldState, block.Header,
+        contract.ExecuteWithdrawals(block.Header,
             4,
             Arg.Do<IList<ulong>>(a => values = a.ToArray()),
-            Arg.Do<IList<Address>>(a => addresses = a.ToArray()));
+            Arg.Do<IList<Address>>(a => addresses = a.ToArray()), worldState);
 
         withdrawalProcessor.ProcessWithdrawals(block, spec, worldState);
 
         contract
             .Received(1)
-            .ExecuteWithdrawals(worldState, Arg.Is(block.Header),
+            .ExecuteWithdrawals(Arg.Is(block.Header),
                 Arg.Is<UInt256>(4),
                 Arg.Is<IList<ulong>>(a => values.SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
-                Arg.Is<IList<Address>>(a => addresses.SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
+                Arg.Is<IList<Address>>(a => addresses.SequenceEqual(new[] { Address.SystemUser, Address.Zero })), worldState);
     }
 
     [Test]
@@ -76,9 +76,9 @@ public class AuraWithdrawalProcessorTests
 
         contract
             .Received(0)
-            .ExecuteWithdrawals(Arg.Any<IWorldState>(), Arg.Any<BlockHeader>(),
+            .ExecuteWithdrawals(Arg.Any<BlockHeader>(),
                 Arg.Any<UInt256>(),
                 Arg.Any<ulong[]>(),
-                Arg.Any<Address[]>());
+                Arg.Any<Address[]>(), Arg.Any<IWorldState>());
     }
 }

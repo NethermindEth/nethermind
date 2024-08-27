@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -19,7 +20,7 @@ namespace Nethermind.Consensus.Processing
         protected readonly ILogManager _logManager;
 
         protected ITransactionProcessor? _transactionProcessor;
-        protected ITransactionProcessor TransactionProcessor
+        public ITransactionProcessor TransactionProcessor
         {
             get
             {
@@ -34,9 +35,8 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null)
-            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+            ILogManager? logManager)
+            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
         {
         }
 
@@ -44,11 +44,10 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null
-            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+            ILogManager? logManager
+            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager)
         {
-            CodeInfoRepository = new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
+            CodeInfoRepository = new CodeInfoRepository(worldStateManager.Caches?.PrecompileCache);
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, WorldStateManager, logManager);
@@ -61,11 +60,12 @@ namespace Nethermind.Consensus.Processing
             return new TransactionProcessor(SpecProvider, Machine, CodeInfoRepository, _logManager);
         }
 
-        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot, BlockHeader header)
         {
-            Hash256 originalStateRoot = StateProvider.StateRoot;
-            StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+            IWorldState? worldStateToUse = WorldStateManager.CreateResettableWorldState(header);
+            Hash256 originalStateRoot = worldStateToUse.StateRoot;
+            worldStateToUse.StateRoot = stateRoot;
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, worldStateToUse, originalStateRoot);
         }
     }
 }

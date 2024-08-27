@@ -217,8 +217,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         throw new EthSyncException($"{bestPeer} didn't send body for block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
-                    // TODO: how do we handle things here, because we need to validate the suggested block? probabaly need
-                    // worldState manager here?
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out _))
                     {

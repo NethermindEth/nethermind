@@ -42,7 +42,7 @@ namespace Nethermind.Merge.AuRa
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,
-                producerEnv.ReadOnlyStateProvider,
+                producerEnv.ReadOnlyWorldStateManager,
                 _gasLimitCalculator ?? targetAdjustedGasLimitCalculator,
                 _sealEngine,
                 _timestamper,

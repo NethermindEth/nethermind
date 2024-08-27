@@ -282,7 +282,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
 public class CliqueBlockProducer : IBlockProducer
 {
-    private readonly IWorldState _stateProvider;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly ITxSource _txSource;
     private readonly IBlockchainProcessor _processor;
     private readonly ISealer _sealer;
@@ -298,7 +298,7 @@ public class CliqueBlockProducer : IBlockProducer
     public CliqueBlockProducer(
         ITxSource txSource,
         IBlockchainProcessor blockchainProcessor,
-        IWorldState stateProvider,
+        IWorldStateManager stateProvider,
         ITimestamper timestamper,
         ICryptoRandom cryptoRandom,
         ISnapshotManager snapshotManager,
@@ -312,7 +312,7 @@ public class CliqueBlockProducer : IBlockProducer
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
         _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
-        _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+        _worldStateManager = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
         _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));
@@ -486,7 +486,8 @@ public class CliqueBlockProducer : IBlockProducer
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
-        _stateProvider.StateRoot = parentHeader.StateRoot!;
+        var worldStateToUse = _worldStateManager.CreateResettableWorldState(parentHeader);
+        worldStateToUse.StateRoot = parentHeader.StateRoot!;
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit);
         Block block = new BlockToProduce(

@@ -71,11 +71,10 @@ namespace Nethermind.Consensus.Producers
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 CreateReadonlyTxProcessingEnv(_worldStateManager, readOnlyBlockTree);
 
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(
-                    scope,
+                    txProcessingEnv.TransactionProcessor,
                     _specProvider,
                     _blockValidator,
                     _rewardCalculatorSource,
@@ -93,15 +92,13 @@ namespace Nethermind.Consensus.Producers
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 
-            OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
-                blockchainProcessor);
+            OneTimeChainProcessor chainProcessor = new(blockchainProcessor);
 
             return new BlockProducerEnv
             {
+                ReadOnlyWorldStateManager = _worldStateManager,
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = scope.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
@@ -136,7 +133,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig) =>
             TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, blocksConfig);
 
-        protected virtual BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
+        protected virtual BlockProcessor CreateBlockProcessor(ITransactionProcessor readOnlyTxProcessor,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -144,8 +141,8 @@ namespace Nethermind.Consensus.Producers
             ILogManager logManager, IBlocksConfig blocksConfig, IWorldStateManager worldStateManager) =>
             new(specProvider,
                 blockValidator,
-                rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
+                rewardCalculatorSource.Get(readOnlyTxProcessor),
+                TransactionsExecutorFactory.Create(readOnlyTxProcessor),
                 worldStateManager,
                 receiptStorage,
                 new BlockhashStore(_specProvider),

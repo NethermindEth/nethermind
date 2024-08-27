@@ -323,7 +323,7 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, specProvider, logManager),
                 devWorldStateManager,
                 receiptStorage,
                 new BlockhashStore(specProvider),
@@ -340,7 +340,7 @@ namespace Nethermind.Synchronization.Test
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
-                stateProvider,
+                worldStateManager,
                 tree,
                 Timestamper.Default,
                 specProvider,

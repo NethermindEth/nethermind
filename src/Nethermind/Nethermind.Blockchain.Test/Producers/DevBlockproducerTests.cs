@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Test.Producers
             DevBlockProducer devBlockProducer = new(
                 EmptyTxSource.Instance,
                 blockchainProcessor,
-                stateProvider,
+                worldStateManager,
                 blockTree,
                 timestamper,
                 specProvider,

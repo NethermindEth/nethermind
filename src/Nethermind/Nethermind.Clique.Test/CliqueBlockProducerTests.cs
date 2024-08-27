@@ -158,7 +158,7 @@ namespace Nethermind.Clique.Test
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
+                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, goerliSpecProvider, _logManager),
                     minerWorldStateManager,
                     NullReceiptStorage.Instance,
                     new BlockhashStore(goerliSpecProvider),
@@ -179,7 +179,7 @@ namespace Nethermind.Clique.Test
                 CliqueBlockProducer blockProducer = new(
                     txPoolTxSource,
                     minerProcessor,
-                    minerStateProvider,
+                    minerWorldStateManager,
                     _timestamper,
                     new CryptoRandom(),
                     snapshotManager,

@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
-            _tracer = new Tracer(stateProvider, _processor, _processor);
+            _tracer = new Tracer(worldStateManager, _processor, _processor);
         }
 
         [TearDown]

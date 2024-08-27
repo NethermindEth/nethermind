@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -22,9 +23,10 @@ public interface IWorldStateManager : IPreBlockCaches
     /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
+    /// <param name="header"></param>
     /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState(IWorldState? forWarmup = null);
+    IWorldState CreateResettableWorldState(BlockHeader header);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -33,4 +35,8 @@ public interface IWorldStateManager : IPreBlockCaches
     bool ClearCache();
 
     bool HasStateRoot(Hash256 root);
+
+    public void Accept(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) =>
+        GlobalStateReader.RunTreeVisitor(treeVisitor, stateRoot, visitingOptions);
+
 }

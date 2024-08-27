@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Ethash
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
-            IWorldState stateProvider,
+            IWorldStateManager stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,

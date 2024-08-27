@@ -32,15 +32,14 @@ public class OverlayWorldStateManager(
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
 
-    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
+    public IWorldState CreateResettableWorldState(BlockHeader header)
     {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
+        return Caches is not null
             ? new WorldState(
-                new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache),
+                new PreCachedTrieStore(overlayTrieStore, Caches.RlpCache),
                 _codeDb,
                 logManager,
-                preBlockCaches)
+                Caches)
             : new WorldState(
                 overlayTrieStore,
                 _codeDb,

@@ -293,7 +293,7 @@ public class TestBlockchain : IDisposable
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
-            env.ReadOnlyStateProvider,
+            env.ReadOnlyWorldStateManager,
             sealer,
             BlockTree,
             Timestamper,

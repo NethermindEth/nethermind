@@ -25,27 +25,14 @@ namespace Nethermind.Consensus.Processing
             private readonly ILogger _logger;
 
             public BlockProductionTransactionsExecutor(
-                IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-                ISpecProvider specProvider,
-                ILogManager logManager)
-                : this(
-                    readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessingEnv.WorldState,
-                    specProvider,
-                    logManager)
-            {
-            }
-
-            public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
-                IWorldState stateProvider,
                 ISpecProvider specProvider,
-                ILogManager logManager) : this(transactionProcessor, stateProvider,
+                ILogManager logManager) : this(transactionProcessor,
                 new BlockProductionTransactionPicker(specProvider), logManager)
             {
             }
 
-            public BlockProductionTransactionsExecutor(ITransactionProcessor txProcessor, IWorldState stateProvider,
+            public BlockProductionTransactionsExecutor(ITransactionProcessor txProcessor,
                 IBlockProductionTransactionPicker txPicker, ILogManager logManager)
             {
                 _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);

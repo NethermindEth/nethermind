@@ -44,7 +44,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,
-                producerEnv.ReadOnlyStateProvider,
+                producerEnv.ReadOnlyWorldStateManager,
                 _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(_specProvider, _blocksConfig),
                 _sealEngine,
                 _timestamper,

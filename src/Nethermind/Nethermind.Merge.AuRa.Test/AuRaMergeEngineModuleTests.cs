@@ -188,7 +188,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             AuRaBlockProducer preMergeBlockProducer = new(
                 txPoolTxSource,
                 blockProducerEnvFactory.Create().ChainProcessor,
-                State,
+                WorldStateManager,
                 sealer,
                 BlockTree,
                 Timestamper,

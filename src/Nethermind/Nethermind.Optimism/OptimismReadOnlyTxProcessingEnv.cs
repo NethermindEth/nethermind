@@ -13,19 +13,16 @@ using System;
 namespace Nethermind.Optimism;
 
 public class OptimismReadOnlyTxProcessingEnv(
-      IWorldStateManager worldStateManager,
-      IReadOnlyBlockTree readOnlyBlockTree,
-      ISpecProvider specProvider,
-      ILogManager logManager,
-      IL1CostHelper l1CostHelper,
-      IOptimismSpecHelper opSpecHelper,
-      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
-      worldStateManager,
-      readOnlyBlockTree,
-      specProvider,
-      logManager,
-      worldStateToWarmUp
-     )
+    IWorldStateManager worldStateManager,
+    IReadOnlyBlockTree readOnlyBlockTree,
+    ISpecProvider specProvider,
+    ILogManager logManager,
+    IL1CostHelper l1CostHelper,
+    IOptimismSpecHelper opSpecHelper) : ReadOnlyTxProcessingEnv(
+    worldStateManager,
+    readOnlyBlockTree,
+    specProvider,
+    logManager)
 {
     protected override TransactionProcessor CreateTransactionProcessor()
     {

@@ -82,14 +82,15 @@ namespace Nethermind.Blockchain.Contracts
 
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using var scope = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
+                    using IReadOnlyTxProcessingScope? scope =
+                        _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader), callInfo.ParentHeader);
                     return CallRaw(callInfo, scope);
                 }
             }
 
             protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
             {
-                var transaction = GenerateTransaction(callInfo);
+                Transaction? transaction = GenerateTransaction(callInfo);
                 if (_contract.ContractAddress is not null && scope.WorldState.IsContract(_contract.ContractAddress))
                 {
                     var result = _contract.CallCore(scope.TransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, scope.WorldState, true);

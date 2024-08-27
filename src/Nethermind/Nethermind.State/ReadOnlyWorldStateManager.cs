@@ -43,15 +43,14 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
 
-    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
+    public IWorldState CreateResettableWorldState(BlockHeader header)
     {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
+        return Caches is not null
             ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
+                new PreCachedTrieStore(_readOnlyTrieStore, Caches.RlpCache),
                 _codeDb,
                 _logManager,
-                preBlockCaches)
+                Caches)
             : new WorldState(
                 _readOnlyTrieStore,
                 _codeDb,

@@ -20,10 +20,10 @@ public class OptimismTransactionsExecutorFactory : IBlockTransactionsExecutorFac
         _logManager = logManager;
     }
 
-    public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
+    public IBlockProcessor.IBlockTransactionsExecutor Create(ITransactionProcessor readOnlyTranstionProcessor)
     {
-        return new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv.TransactionProcessor,
-            readOnlyTxProcessingEnv.WorldState, new OptimismBlockProductionTransactionPicker(_specProvider),
+        return new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTranstionProcessor,
+            new OptimismBlockProductionTransactionPicker(_specProvider),
             _logManager);
     }
 }

@@ -317,7 +317,6 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
                 new(
                     transactionProcessor,
-                    stateProvider,
                     specProvider,
                     LimboLogs.Instance);
 

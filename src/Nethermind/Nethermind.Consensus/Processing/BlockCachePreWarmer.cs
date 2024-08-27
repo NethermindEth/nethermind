@@ -89,7 +89,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                         int i = 0;
                         try
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                            using IReadOnlyTxProcessingScope scope = env.Build(stateRoot, block.Header);
                             // Process withdrawals in sequential order, rather than partitioning scheme from Parallel.For
                             // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
                             i = Interlocked.Increment(ref progress) - 1;
@@ -128,7 +128,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
                     tx = block.Transactions[i];
                     tx.CopyTo(systemTransaction);
-                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot, block.Header);
                     if (spec.UseTxAccessLists)
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930

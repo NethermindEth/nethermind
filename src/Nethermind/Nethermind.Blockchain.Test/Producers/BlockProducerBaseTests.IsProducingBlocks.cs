@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Producers
             DevBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
-                testRpc.State,
+                testRpc.WorldStateManager,
                 testRpc.BlockTree,
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Producers
             TestBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
-                testRpc.State,
+                testRpc.WorldStateManager,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
                 testRpc.Timestamper,
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockchainProcessor,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                testRpc.State,
+                testRpc.WorldStateManager,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Test.Producers
             AuRaBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
-                Substitute.For<IWorldState>(),
+                Substitute.For<IWorldStateManager>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<ITimestamper>(),
@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Producers
             CliqueBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
-                testRpc.State,
+                testRpc.WorldStateManager,
                 testRpc.Timestamper,
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
