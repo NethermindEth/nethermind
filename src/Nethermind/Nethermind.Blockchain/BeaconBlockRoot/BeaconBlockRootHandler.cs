@@ -7,12 +7,13 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
 
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider)
+    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider, ITxTracer txTracer)
     {
         if (!spec.IsBeaconBlockRootAvailable ||
             block.IsGenesis ||
@@ -33,6 +34,12 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         StorageCell tsStorageCell = new(eip4788Account, timestampReduced);
         StorageCell brStorageCell = new(eip4788Account, rootIndex);
 
+        if (txTracer.IsTracingOpLevelStorage)
+        {
+            txTracer.SetOperationStorage(eip4788Account, timestampReduced,
+                Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray(), null);
+            txTracer.SetOperationStorage(eip4788Account, rootIndex, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray(), null);
+        }
         stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
         stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
     }

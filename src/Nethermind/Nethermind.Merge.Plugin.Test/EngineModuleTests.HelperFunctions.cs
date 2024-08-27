@@ -21,6 +21,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Consensus.BeaconBlockRoot;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -124,7 +125,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV3.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
+            _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State, NullTxTracer.Instance);
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
