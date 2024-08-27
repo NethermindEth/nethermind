@@ -286,7 +286,7 @@ namespace Nethermind.Trie.Pruning
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
-        private readonly NonBlocking.ConcurrentDictionary<HashAndTinyPathAndHash, long> _persistedLastSeens = new();
+        private readonly ConcurrentDictionary<HashAndTinyPathAndHash, long> _persistedLastSeens = new();
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -1297,7 +1297,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            _persistedLastSeens.Clear();
+            _persistedLastSeens.NoResizeClear();
             _pastPathHash?.Clear();
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
 
