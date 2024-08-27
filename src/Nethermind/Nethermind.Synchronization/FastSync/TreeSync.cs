@@ -687,75 +687,10 @@ namespace Nethermind.Synchronization.FastSync
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
 
-                            //ignore any other type - just missing accounts
-                            if (node.NodeType == NodeType.Leaf)
-                            {
-                                Span<byte> fullPath = stackalloc byte[64];
-                                var account = new AccountDecoder().Decode(node.Value.AsRlpStream());
+                            using var rawState = _stateFactory.GetRaw();
+                            SaveNode(rawState, node, syncItem, Keccak.Zero);
+                            rawState.Commit(false);
 
-                                syncItem.PathNibbles.CopyTo(fullPath);
-                                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
-
-                                using var rawState = _stateFactory.GetRaw();
-                                rawState.SetAccount(new ValueHash256(Nibbles.ToBytes(fullPath)), account);
-
-                                if (_additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
-                                {
-                                    foreach (byte nibble in additionalNibbles)
-                                    {
-                                        fullPath[syncItem.Level - 1] = nibble;
-                                        rawState.SetAccount(new ValueHash256(Nibbles.ToBytes(fullPath)), account);
-                                    }
-                                }
-                                if (node.Key.Length > 0)
-                                    rawState.CreateProofLeaf(Keccak.Zero, Nibbles.ToBytes(fullPath), syncItem.Level, 0);
-                                rawState.Commit(false);
-                            } else if (node.NodeType == NodeType.Branch)
-                            {
-                                Span<byte> fullPath = stackalloc byte[64];
-                                syncItem.PathNibbles.CopyTo(fullPath);
-
-                                List<byte> children = new List<byte>();
-                                List<Hash256?> childHashes = new List<Hash256?>();
-
-                                int pathIndex = syncItem.Level;
-                                for (int i = 0; i < 16; i++)
-                                {
-                                    fullPath[pathIndex] = (byte)i;
-                                    if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
-                                    {
-                                        TreePath p = TreePath.Empty;
-                                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref p, i);
-                                        if (childNode is not null)
-                                        {
-                                            children.Add((byte)i);
-                                            childHashes.Add(null);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        children.Add((byte)i);
-                                        childHashes.Add(childHash.ToCommitment());
-                                    }
-                                }
-
-                                using var rawState = _stateFactory.GetRaw();
-
-                                rawState.CreateProofBranch(Keccak.Zero, Nibbles.ToBytes(fullPath), syncItem.Level,
-                                    children.ToArray(), childHashes.ToArray());
-                                rawState.Commit(false);
-                            } else if (node.NodeType == NodeType.Extension)
-                            {
-                                Span<byte> fullPath = stackalloc byte[64];
-                                syncItem.PathNibbles.CopyTo(fullPath);
-                                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
-
-                                using var rawState = _stateFactory.GetRaw();
-
-                                rawState.CreateProofExtension(Keccak.Zero, Nibbles.ToBytes(fullPath), syncItem.Level,
-                                    node.Key.Length);
-                                rawState.Commit(false);
-                            }
                             //_stateDb.Set(syncItem.Hash, data);
                             //_nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                         }
@@ -776,83 +711,12 @@ namespace Nethermind.Synchronization.FastSync
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
 
-                            //ignore any other type - just missing accounts
-                            if (node.NodeType == NodeType.Leaf)
-                            {
-                                using var rawState = _stateFactory.GetRaw();
+                            using var rawState = _stateFactory.GetRaw();
+                            ValueHash256 accountHash = new ValueHash256(Nibbles.ToBytes(syncItem.AccountPathNibbles));
+                            SaveNode(rawState, node, syncItem, accountHash);
+                            rawState.Commit(false);
 
-                                ValueHash256 accountHash = new ValueHash256(Nibbles.ToBytes(syncItem.AccountPathNibbles));
 
-                                Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(node.Value);
-
-                                Span<byte> fullPath = stackalloc byte[64];
-                                syncItem.PathNibbles.CopyTo(fullPath);
-                                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
-
-                                rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), rlpContext.DecodeByteArray());
-                                if (node.Key.Length > 0)
-                                    rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level, 0);
-                                //no hash recalc
-                                rawState.Commit(false);
-                            }
-                            else if (node.NodeType == NodeType.Branch)
-                            {
-                                Span<byte> fullPath = stackalloc byte[64];
-                                syncItem.PathNibbles.CopyTo(fullPath);
-
-                                ValueHash256 accountHash = new ValueHash256(Nibbles.ToBytes(syncItem.AccountPathNibbles));
-
-                                List<byte> children = new List<byte>();
-                                List<Hash256?> childHashes = new List<Hash256?>();
-
-                                using var rawState = _stateFactory.GetRaw();
-                                int pathIndex = syncItem.Level;
-                                for (int i = 0; i < 16; i++)
-                                {
-                                    fullPath[pathIndex] = (byte)i;
-                                    if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
-                                    {
-                                        TreePath p = TreePath.Empty;
-                                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref p, i);
-                                        if (childNode is not null)
-                                        {
-                                            children.Add((byte)i);
-                                            childHashes.Add(null);
-
-                                            childNode.ResolveNode(NullTrieNodeResolver.Instance, in p);
-                                            childNode.Key.CopyTo(fullPath.Slice(pathIndex + 1));
-                                            rawState.SetStorage(accountHash, new Hash256(Nibbles.ToBytes(fullPath)), childNode.Value);
-                                            if (childNode.Key.Length > 0)
-                                                rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level + 1, 0);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        children.Add((byte)i);
-                                        childHashes.Add(childHash.ToCommitment());
-                                    }
-                                }
-
-                                
-
-                                rawState.CreateProofBranch(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
-                                    children.ToArray(), childHashes.ToArray());
-                                rawState.Commit(false);
-                            }
-                            else if (node.NodeType == NodeType.Extension)
-                            {
-                                ValueHash256 accountHash =
-                                    new ValueHash256(Nibbles.ToBytes(syncItem.AccountPathNibbles));
-                                Span<byte> fullPath = stackalloc byte[64];
-                                syncItem.PathNibbles.CopyTo(fullPath);
-                                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
-
-                                using var rawState = _stateFactory.GetRaw();
-
-                                rawState.CreateProofExtension(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
-                                    node.Key.Length);
-                                rawState.Commit(false);
-                            }
                             //_stateDb.Set(syncItem.Hash, data);
                             //_nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                         }
@@ -1182,6 +1046,93 @@ namespace Nethermind.Synchronization.FastSync
             AlreadySaved,
             AlreadyRequested,
             Added
+        }
+
+        private void SaveNode(IRawState rawState, TrieNode node, StateSyncItem syncItem, ValueHash256 accountHash)
+        {
+            Span<byte> fullPath = stackalloc byte[64];
+            syncItem.PathNibbles.CopyTo(fullPath);
+            if (node.NodeType == NodeType.Leaf)
+            {
+                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
+
+                if (syncItem.NodeDataType == NodeDataType.Storage)
+                {
+                    Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(node.Value);
+                    rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), rlpContext.DecodeByteArray());
+                }
+                else
+                {
+                    var account = new AccountDecoder().Decode(node.Value.AsRlpStream());
+                    rawState.SetAccount(new ValueHash256(Nibbles.ToBytes(fullPath)), account);
+                }
+
+                if (_additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
+                {
+                    foreach (byte nibble in additionalNibbles)
+                    {
+                        fullPath[syncItem.Level - 1] = nibble;
+                        if (syncItem.NodeDataType == NodeDataType.Storage)
+                        {
+                            rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), new Rlp.ValueDecoderContext(node.Value).DecodeByteArray());
+                        }
+                        else
+                        {
+                            var account = new AccountDecoder().Decode(node.Value.AsRlpStream());
+                            rawState.SetAccount(new ValueHash256(Nibbles.ToBytes(fullPath)), account);
+                        }
+                    }
+                }
+                if (node.Key.Length > 0)
+                    rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level, 0);
+            }
+            else if (node.NodeType == NodeType.Branch)
+            {
+                List<byte> children = new List<byte>();
+                List<Hash256?> childHashes = new List<Hash256?>();
+
+                int pathIndex = syncItem.Level;
+                for (int i = 0; i < 16; i++)
+                {
+                    fullPath[pathIndex] = (byte)i;
+                    if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                    {
+                        TreePath p = TreePath.Empty;
+                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref p, i);
+                        if (childNode is not null)
+                        {
+                            children.Add((byte)i);
+                            childHashes.Add(null);
+
+                            if (syncItem.NodeDataType == NodeDataType.Storage)
+                            {
+                                childNode.ResolveNode(NullTrieNodeResolver.Instance, in p);
+                                childNode.Key.CopyTo(fullPath.Slice(pathIndex + 1));
+                                rawState.SetStorage(accountHash, new Hash256(Nibbles.ToBytes(fullPath)),
+                                    childNode.Value);
+                                if (childNode.Key.Length > 0)
+                                    rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level + 1,
+                                        0);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        children.Add((byte)i);
+                        childHashes.Add(childHash.ToCommitment());
+                    }
+                }
+                rawState.CreateProofBranch(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
+                    children.ToArray(), childHashes.ToArray());
+            }
+            else if (node.NodeType == NodeType.Extension)
+            {
+                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
+
+                rawState.CreateProofExtension(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
+                    node.Key.Length);
+                rawState.Commit(false);
+            }
         }
     }
 }
