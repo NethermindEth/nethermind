@@ -59,7 +59,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly IStateFactory _stateFactory;
         private IRawState? _rawState;
-        private readonly ReaderWriterLockSlim _commitLock = new();
 
         public ProgressTracker(IBlockTree blockTree, IDb db, IStateFactory stateFactory, ILogManager logManager, int accountRangePartitionCount = 8)
         {
@@ -144,16 +143,6 @@ namespace Nethermind.Synchronization.SnapSync
             return _stateFactory.GetRaw();
         }
 
-        public void AquireRawStateLock()
-        {
-            _commitLock.EnterWriteLock();
-        }
-
-        public void ReleaseRawStateLock()
-        {
-            _commitLock.ExitWriteLock();
-        }
-
         public void UpdatePivot()
         {
             _pivot.UpdateHeaderForcefully();
@@ -201,14 +190,6 @@ namespace Nethermind.Synchronization.SnapSync
                 bool rangePhaseFinished = IsSnapGetRangesFinished();
                 if (rangePhaseFinished)
                 {
-                    ////TODO - force flush after the state - used to provide input for diagnosis
-                    ////might require a change, depending on healing strategy
-                    //using (IRawState rawState = _stateFactory.GetRaw())
-                    //{
-                    //    rawState.Finalize((uint)_pivot.GetPivotHeader().Number);
-                    //}
-                    //_stateFactory.ForceFlush();
-
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
                     FinishRangePhase();
                 }
