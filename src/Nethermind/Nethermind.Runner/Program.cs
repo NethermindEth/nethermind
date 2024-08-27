@@ -45,7 +45,7 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner;
 
-public static class Program
+public static partial class Program
 {
     private const string FailureString = "Failure";
     private const string DefaultConfigsDirectory = "configs";
@@ -113,14 +113,6 @@ public static class Program
     {
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
-
-        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
-        if (!string.IsNullOrEmpty(duplicateArgumentsList))
-        {
-            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
-            Environment.ExitCode = ExitCodes.DuplicatedArguments;
-            return;
-        }
 
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
@@ -238,6 +230,41 @@ public static class Program
         {
             Environment.ExitCode = app.Execute(args);
         }
+        catch (UnrecognizedCommandParsingException e)
+        {
+            string[] matches = e.NearestMatches.Take(3).ToArray();
+            string suggestion = matches.Length switch
+            {
+                0 => "",
+                1 => $" Did you mean {matches[0]}",
+                _ => $" Did you mean one of: {string.Join(", ", matches)}"
+            };
+            _logger.Error($"{e.Message}.{suggestion}");
+            Environment.ExitCode = ExitCodes.UnrecognizedOption;
+        }
+        catch (CommandParsingException e)
+        {
+            Regex regex = GetUnexpectedConfigValueRegex();
+            Match match = regex.Match(e.Message);
+            if (match.Success)
+            {
+                string option = match.Groups["Name"].Value;
+                CommandOption? optionInfo = app.GetOptions().FirstOrDefault(o => o.ShortName == option || o.LongName == option);
+                switch (optionInfo?.OptionType)
+                {
+                    case CommandOptionType.SingleValue or CommandOptionType.SingleOrNoValue:
+                        _logger.Error($"Duplicated option '{option}'");
+                        Environment.ExitCode = ExitCodes.DuplicatedOption;
+                        return;
+                    case CommandOptionType.NoValue:
+                        _logger.Error($"Value {match.Groups["Value"].Value} passed for value-less option '{option}'");
+                        Environment.ExitCode = ExitCodes.ForbiddenOptionValue;
+                        return;
+                }
+            }
+
+            _logger.Error($"{e.Message}");
+        }
         catch (Exception e)
         {
             if (e is IExceptionWithExitCode withExit)
@@ -256,33 +283,8 @@ public static class Program
         }
     }
 
-    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
-    {
-        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
-        static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
-        {
-            bool lastWasArgument = false;
-            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
-            {
-                if (!lastWasArgument)
-                {
-                    bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
-                    if (isCurrentArgument)
-                    {
-                        yield return potentialArgument;
-                    }
-                }
-                else
-                {
-                    lastWasArgument = false;
-                }
-            }
-        }
-
-        return GetArgumentNames(args).GroupBy(n => n, new MemoryContentsComparer<char>())
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key);
-    }
+    [GeneratedRegex("^Unexpected value '(?<Value>.+)' for option '(?<Name>.+)'", RegexOptions.Singleline)]
+    private static partial Regex GetUnexpectedConfigValueRegex();
 
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
@@ -322,8 +324,11 @@ public static class Program
                 ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 if (!(configItemAttribute?.DisabledForCli ?? false))
                 {
-                    _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
-
+                    _ = app.Option($"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                }
+                if (configItemAttribute?.IsPortOption == true)
+                {
+                    ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
                 }
             }
         }
