@@ -493,7 +493,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         bool ChargeAccountGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
         {
-            bool result = false;
+            bool result = true;
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
                 vmState.WarmUp(address);
