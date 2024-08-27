@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Ssz;
 public class SszSerializableAttribute : Attribute;
 
 [AttributeUsage(AttributeTargets.Property)]
-public class SszListAttribute(int limit) : Attribute
+public class SszListAttribute(int limit = 0) : Attribute
 {
     public int Limit { get; } = limit;
 }

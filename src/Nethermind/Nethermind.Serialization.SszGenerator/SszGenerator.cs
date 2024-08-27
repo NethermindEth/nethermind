@@ -205,7 +205,7 @@ public partial class SszEncoding
         {string.Join(";\n        ", decl.Members.Select(m =>
             {
                 if (m.Type.IsVariable) dynOffset++;
-                string result = m.Type.Members.Any() ? m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}").Replace("SszLib.Encode", "Encode") : m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
+                string result = !m.Type.IsVariable && !m.Type.IsBasic ? m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}").Replace("SszLib.Encode", "Encode") : m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
                 offset += m.Type.StaticLength;
                 return result;
             }))};
@@ -219,7 +219,7 @@ public partial class SszEncoding
         int itemOffset = 0;
         foreach({decl.Name} item in container)
         {{
-            Encode(buf.Slice(itemOffset, {(SszType.PointerLength)}), offset);
+            SszLib.Encode(buf.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
             int length = GetLength(item);
             Encode(buf.Slice(offset, length), item);
@@ -244,7 +244,8 @@ public partial class SszEncoding
                 offsetDecode += m.Type.StaticLength;
                 return result;
             }))};
-        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) + ";\n        \n" : "")}
+        {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) =>
+                m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) + ";\n        \n" : "")}
     }}
 
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
@@ -262,9 +263,9 @@ public partial class SszEncoding
 
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
-        for(int index = 0, nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
+        for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
         {{
-            int nextOffset = SszLib.DecodeInt(data.Slice(nextOffsetIndex, {SszType.PointerLength}))
+            int nextOffset = SszLib.DecodeInt(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}

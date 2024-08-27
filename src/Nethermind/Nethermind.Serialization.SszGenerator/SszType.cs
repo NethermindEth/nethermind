@@ -160,7 +160,7 @@ class SszType
 
             result.IsVariable = type.NullableAnnotation == NullableAnnotation.Annotated || type.TypeKind != TypeKind.Structure;
             result.Members = type.GetMembers().OfType<IPropertySymbol>().Where(p => p.GetMethod is not null && p.SetMethod is not null).Select(prop => SszProperty.From(semanticModel, types, prop)).ToArray() ?? [];
-            result.IsVariable |= result.Members.Any(m => m.Type.IsVariable);
+            result.IsVariable |= result.Members.Any(m => m.Type.IsVariable) || (result.ElementType?.IsVariable ?? false);
             result.StaticLength = result.IsVariable ? PointerLength : result.Members.Sum(m => m.Type.StaticLength);
             return result;
         }
@@ -299,14 +299,14 @@ class SszProperty
             ValueAccessor = valueGetter,
 
             StaticEncode = $"SszLib.Encode(buf.Slice({{offset}}, {type.StaticLength}), {(type.IsVariable ? $"{{dynOffset}}" : $"{valueGetter}")})",
-            DynamicEncode = type.IsVariable ? $"if (container.{prop.Name} is not null) SszLib.Encode(buf.Slice({{dynOffset}}, {{length}}), {valueGetter})" : null,
+            DynamicEncode = type.IsVariable ? $"if (container.{prop.Name} is not null) {(type.IsCollection && !(type.ElementType?.IsBasic ?? false) ? "Encode" : "SszLib.Encode")}(buf.Slice({{dynOffset}}, {{length}}), {valueGetter})" : null,
 
             StaticDecode = type.IsVariable ? $"int {{dynOffset}} = SszLib.DecodeInt(data.Slice({{offset}}, {type.StaticLength}))" :
                            type.IsBasic ? $"{valueSetter} = SszLib.{type.DecodeMethod}(data.Slice({{offset}}, {type.StaticLength}))" :
                                             $"Decode(data.Slice({{offset}}, {type.StaticLength}), out {type.Name} {LowerStart(prop.Name)}); {valueSetter} = {LowerStart(prop.Name)}",
             DynamicDecode = !type.IsVariable ? null :
                             type.IsBasic ? $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {valueSetter} = SszLib.{type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}))" :
-                                            $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}), out {valueSetter})",
+                                           $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {{ {type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}), out {type.Name} value); {valueSetter} = value; }}",
             DynamicLength = type.IsVariable ? GetDynamicLength(prop, type) : null,
 
             IsVector = prop.GetAttributes().Any(a=>a.AttributeClass?.Name == "SszVectorAttribute"),
