@@ -5,6 +5,8 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq.Expressions;
+using System.Reflection;
 
 namespace Nethermind.Core.Collections
 {
@@ -31,13 +33,55 @@ namespace Nethermind.Core.Collections
         public static void NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
                 where TKey : notnull
         {
+            if (dictionary is null || dictionary.IsEmpty)
+            {
+                return;
+            }
+
             using var handle = dictionary.AcquireLock();
 
-            // We iterate over the keys and remove them one by one because calling Clear() on
-            // the ConcurrentDictionary resets its capacity to 31 and then it has to constantly resize.
-            foreach (TKey key in dictionary.Keys)
+            ClearCache<TKey, TValue>.Clear(dictionary);
+        }
+
+        private static class ClearCache<TKey, TValue> where TKey : notnull
+        {
+            public static readonly Action<ConcurrentDictionary<TKey, TValue>> Clear = CreateNoResizeClearExpression();
+
+            private static Action<ConcurrentDictionary<TKey, TValue>> CreateNoResizeClearExpression()
             {
-                dictionary.TryRemove(key, out _);
+                // Parameters
+                var dictionaryParam = Expression.Parameter(typeof(ConcurrentDictionary<TKey, TValue>), "dictionary");
+
+                // Access _tables field
+                var tablesField = typeof(ConcurrentDictionary<TKey, TValue>).GetField("_tables", BindingFlags.NonPublic | BindingFlags.Instance);
+                var tablesAccess = Expression.Field(dictionaryParam, tablesField!);
+
+                // Access _buckets and _countPerLock fields
+                var tablesType = tablesField!.FieldType;
+                var bucketsField = tablesType.GetField("_buckets", BindingFlags.NonPublic | BindingFlags.Instance);
+                var countPerLockField = tablesType.GetField("_countPerLock", BindingFlags.NonPublic | BindingFlags.Instance);
+
+                var bucketsAccess = Expression.Field(tablesAccess, bucketsField!);
+                var countPerLockAccess = Expression.Field(tablesAccess, countPerLockField!);
+
+                // Clear arrays using Array.Clear
+                var clearMethod = typeof(Array).GetMethod("Clear", new[] { typeof(Array), typeof(int), typeof(int) });
+
+                var clearBuckets = Expression.Call(clearMethod!,
+                    bucketsAccess,
+                    Expression.Constant(0),
+                    Expression.ArrayLength(bucketsAccess));
+
+                var clearCountPerLock = Expression.Call(clearMethod!,
+                    countPerLockAccess,
+                    Expression.Constant(0),
+                    Expression.ArrayLength(countPerLockAccess));
+
+                // Block to execute both clears
+                var block = Expression.Block(clearBuckets, clearCountPerLock);
+
+                // Compile the expression into a lambda
+                return Expression.Lambda<Action<ConcurrentDictionary<TKey, TValue>>>(block, dictionaryParam).Compile();
             }
         }
     }
