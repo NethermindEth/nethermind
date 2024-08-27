@@ -38,6 +38,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         {
             if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
             {
+                AddToBlobIndex(lightBlobTx);
                 numberOfTxsInDb++;
                 numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
@@ -47,6 +48,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         {
             long loadingTime = stopwatch.ElapsedMilliseconds;
             _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime}ms");
+            _logger.Info($"There are {BlobIndex.Count} unique blobs indexed");
         }
         stopwatch.Stop();
     }
