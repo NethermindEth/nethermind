@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Ssz;
-using NUnit.Framework;
-using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Serialization.SszGenerator.Test
@@ -81,14 +79,39 @@ namespace Nethermind.Serialization.SszGenerator.Test
         //    Assert.That(s.Array, Is.EqualTo(new byte[] { 1, 2, 3 }));
         //}
     }
+
+    //[SszSerializable]
+    //public struct SlotDecryptionIdentites
+    //{
+    //    public ulong InstanceID { get; set; }
+    //    public ulong Eon { get; set; }
+    //    public ulong Slot { get; set; }
+    //    public ulong TxPointer { get; set; }
+
+    //    [SszList(1024)]
+    //    public List<byte[]> IdentityPreimages { get; set; }
+    //}
+
+    [SszSerializable]
+    public struct Test0
+    {
+        public Test0()
+        {
+            
+        }
+        //public ulong Test1 { get; set; } = 1;
+
+        [SszList(1024)]
+        public long[] Test2 { get; set; } = [2];
+
+        [SszList(1024)]
+        public List<long> Test3 { get; set; } = [2];
+
+        [SszVector(5)]
+        public List<long> Test4 { get; set; } = [1, 2, 3, 4, 5];
+
+        [SszList(1024)]
+        public List<byte[]> Test5 { get; set; } = [[2]];
+    }
 }
 
-[SszSerializable]
-public struct SlotDecryptionIdentites
-{
-    public ulong InstanceID { get; set; }
-    public ulong Eon { get; set; }
-    public ulong Slot { get; set; }
-    public ulong TxPointer { get; set; }
-    public List<byte[]> IdentityPreimages { get; set; }
-}

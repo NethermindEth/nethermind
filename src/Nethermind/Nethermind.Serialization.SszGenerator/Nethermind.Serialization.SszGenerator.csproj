@@ -17,7 +17,5 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssest="All" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="All" />
   </ItemGroup>
-  <ItemGroup>
-  </ItemGroup>
 
 </Project>

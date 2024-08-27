@@ -85,7 +85,7 @@ public partial class SszGenerator : IIncrementalGenerator
                 IMethodSymbol? methodSymbol = context.SemanticModel.GetSymbolInfo(attribute).Symbol as IMethodSymbol;
                 if (methodSymbol is not null && methodSymbol.ContainingType.ToString() == "Nethermind.Serialization.Ssz.SszSerializableAttribute")
                 {
-                    return SszType.From(context.SemanticModel, new Dictionary<string, SszType>(SszType.InbuiltTypes), context.SemanticModel.GetDeclaredSymbol(classDeclaration)!);
+                    return SszType.From(context.SemanticModel, new Dictionary<string, SszType>(SszType.BasicTypes), context.SemanticModel.GetDeclaredSymbol(classDeclaration)!);
                 }
             }
         }
@@ -168,6 +168,8 @@ public partial class SszGenerator : IIncrementalGenerator
             var result = $@"using Nethermind.Int256;
 using Nethermind.Merkleization;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 
@@ -180,6 +182,15 @@ public partial class SszEncoding
         return {staticLength}{(dynOffsets.Any() ? $" + \n               {string.Join(" +\n               ", dynOffsets.Select(m => m.DynamicLength))}" : "")};
     }}
 
+    public static int GetLength(ICollection<{decl.Name}> container)
+    {{
+        {(decl.IsVariable ? @$"int length = container.Count * {(decl.IsVariable ? SszType.PointerLength : decl.StaticLength)};
+        foreach({decl.Name} item in container)
+        {{
+            length += GetLength(item);
+        }}
+        return length;" : $"return container.Count * {(decl.StaticLength)};")}
+    }}
 
     public static ReadOnlySpan<byte> Encode({decl.Name} container)
     {{
@@ -202,6 +213,26 @@ public partial class SszEncoding
             {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicEncode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{length}", m.DynamicLength))) + ";\n        \n" : "")}
     }}
 
+    public static void Encode(Span<byte> buf, ICollection<{decl.Name}> container)
+    {{
+        {(decl.IsVariable ? @$"int offset = container.Count * {(SszType.PointerLength)};
+        int itemOffset = 0;
+        foreach({decl.Name} item in container)
+        {{
+            Encode(buf.Slice(itemOffset, {(SszType.PointerLength)}), offset);
+            itemOffset += {(SszType.PointerLength)};
+            int length = GetLength(item);
+            Encode(buf.Slice(offset, length), item);
+            offset += length;
+        }}" : @$"int offset = 0;
+        foreach({decl.Name} item in container)
+        {{
+            int length = GetLength(item);
+            Encode(buf.Slice(offset, length), item);
+            offset += length;
+        }}")}
+    }}
+
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
     {{
         container = new();
@@ -216,17 +247,68 @@ public partial class SszEncoding
         {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) => m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) + ";\n        \n" : "")}
     }}
 
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
+    {{
+        if(data.Length is 0)
+        {{
+            container = [];
+            return;
+        }}
+
+        {(decl.IsVariable ? $@"int firstOffset = SszLib.DecodeInt(data.Slice(0, 4));
+        int length = firstOffset / {SszType.PointerLength}" : $"int length = data.Length / {decl.StaticLength}")};
+
+        container = new {decl.Name}[length];
+
+        {(decl.IsVariable ? @$"int index = 0;
+        int offset = firstOffset;
+        for(int index = 0, nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
+        {{
+            int nextOffset = SszLib.DecodeInt(data.Slice(nextOffsetIndex, {SszType.PointerLength}))
+            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            offset = nextOffset;
+        }}
+        Decode(data.Slice(offset, length), out container[index]);" : @$"int offset = 0;
+        for(int index = 0; index < length; index++)
+        {{
+            Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);
+            offset += {decl.StaticLength};
+        }}")}
+    }}
+
+    public static void Decode(ReadOnlySpan<byte> data, out List<{decl.Name}> container)
+    {{
+        Decode(data, out {decl.Name}[] array);
+        container = array.ToList();
+    }}
+
     public static void Merkleize({decl.Name} container, out UInt256 root)
     {{
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members.Length}));
 
-        {string.Join(";\n        ", decl.Members.Select(m => m.Type.IsSimple ? $"merkleizer.Feed(container.{m.Name})" : $"Merkleize(container.{m.Name}, out UInt256 rootOf{m.Name});\n        merkleizer.Feed(rootOf{m.Name})"))};
+        {string.Join(";\n        ", decl.Members.Select(m => m.Type.IsBasic ? $"merkleizer.Feed(container.{m.Name})" : $"Merkleize(container.{m.Name}, out UInt256 rootOf{m.Name});\n        merkleizer.Feed(rootOf{m.Name})"))};
+
+        merkleizer.CalculateRoot(out root);
+    }}
+
+    public static void Merkleize(ICollection<{decl.Name}> container, out UInt256 root)
+    {{
+        Merkleize(container, (ulong)container.Count, out root);
+    }}
+
+    public static void Merkleize(ICollection<{decl.Name}> container, ulong limit, out UInt256 root)
+    {{
+        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent(limit));
+
+        foreach({decl.Name} item in container)
+        {{
+            {(decl.IsBasic ? $"merkleizer.Feed(item)" : $"Merkleize(item, out UInt256 localRoot);\n        merkleizer.Feed(localRoot)")};
+        }}
 
         merkleizer.CalculateRoot(out root);
     }}
 }}
 ";
-
             return result;
         }
         catch
