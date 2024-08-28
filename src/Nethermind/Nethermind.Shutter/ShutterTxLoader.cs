@@ -40,7 +40,7 @@ public class ShutterTxLoader(
     private ulong _txPointer = ulong.MaxValue;
     private ulong _eon = ulong.MaxValue - 1;
     private bool _loadFromReceipts = false;
-    private readonly ITxFilter _txFilter = new ShutterTxFilter(specProvider, logManager);
+    private readonly ShutterTxFilter _txFilter = new(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();

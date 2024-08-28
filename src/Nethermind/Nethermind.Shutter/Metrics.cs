@@ -12,7 +12,16 @@ public class Metrics
     [Description("Number of keys not received.")]
     public static ulong KeysMissed { get; set; }
 
+    [Description("Eon of the latest block.")]
     public static ulong Eon { get; set; }
+
+    [Description("Size of keyper set in current eon.")]
+    public static int Keypers { get; set; }
+
+    [Description("Number of keypers assumed to be honest and online for current eon.")]
+    public static int Threshold { get; set; }
+
+    [Description("Number of transactions since Shutter genesis.")]
     public static ulong TxPointer { get; set; }
 
     [GaugeMetric]

@@ -63,6 +63,8 @@ public class ShutterEon(
                     };
 
                     Metrics.Eon = eon;
+                    Metrics.Threshold = (int)threshold;
+                    Metrics.Keypers = addresses.Length;
 
                     _logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
                 }
