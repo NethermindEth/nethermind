@@ -32,7 +32,8 @@ public partial class BlockProcessor
 
         public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-        public TxReceipt[] ProcessTransactions(IWorldState worldState, Block block, ProcessingOptions processingOptions, BlockExecutionTracer receiptsTracer, IReleaseSpec spec)
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+            BlockExecutionTracer receiptsTracer, IReleaseSpec spec, IWorldState worldState)
         {
             Evm.Metrics.ResetBlockStats();
             if (!block.IsGenesis)

@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Contracts
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
 
-        private byte[] Call(IWorldState worldState, BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, worldState, header, functionName, transaction);
+        private byte[] Call(BlockHeader header, string functionName, Transaction transaction, IWorldState worldState) => CallCore(_transactionProcessor, header, functionName, transaction, worldState);
 
         /// <summary>
         /// Calls the function in contract, state modification is allowed.
@@ -55,18 +55,18 @@ namespace Nethermind.Blockchain.Contracts
         {
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
-            var result = Call(worldState, header, functionName, transaction);
+            var result = Call(header, functionName, transaction, worldState);
             var objects = DecodeData(function.GetReturnInfo(), result);
             return objects;
         }
 
-        private bool TryCall(IWorldState worldState, BlockHeader header, Transaction transaction, out byte[] result)
+        private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result, IWorldState worldState)
         {
             CallOutputTracer tracer = new();
 
             try
             {
-                _transactionProcessor.Execute(transaction, worldState, new BlockExecutionContext(header), tracer);
+                _transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer, worldState);
                 result = tracer.ReturnValue;
                 return tracer.StatusCode == StatusCode.Success;
             }
@@ -80,32 +80,32 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AbiException"/>.
         /// </summary>
-        /// <param name="worldState">worldState for transaction processor</param>
         /// <param name="header">Header in which context the call is done.</param>
         /// <param name="functionName"></param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
+        /// <param name="worldState">worldState for transaction processor</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(IWorldState worldState, BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) =>
-            TryCall(worldState, header, functionName, sender, DefaultContractGasLimit, out result, arguments);
+        protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, IWorldState worldState, params object[] arguments) =>
+            TryCall(header, functionName, sender, DefaultContractGasLimit, out result, worldState, arguments);
 
         /// <summary>
         /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AbiException"/>.
         /// </summary>
-        /// <param name="worldState">worldState for transaction processor</param>
         /// <param name="header">Header in which context the call is done.</param>
         /// <param name="functionName"></param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
         /// <param name="gasLimit">Gas limit for generated transaction.</param>
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
+        /// <param name="worldState">worldState for transaction processor</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(IWorldState worldState, BlockHeader header, string functionName, Address sender, long gasLimit, out object[] result, params object[] arguments)
+        protected bool TryCall(BlockHeader header, string functionName, Address sender, long gasLimit, out object[] result, IWorldState worldState, params object[] arguments)
         {
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
-            if (TryCall(worldState, header, transaction, out var bytes))
+            if (TryCall(header, transaction, out var bytes, worldState))
             {
                 result = DecodeData(function.GetReturnInfo(), bytes);
                 return true;

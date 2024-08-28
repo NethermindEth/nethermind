@@ -12,21 +12,21 @@ public interface ITransactionProcessor
     /// <summary>
     /// Execute transaction, commit state
     /// </summary>
-    TransactionResult Execute(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer, IWorldState worldState);
 
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
-    TransactionResult CallAndRestore(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer, IWorldState worldState);
 
     /// <summary>
     /// Execute transaction, keep the state uncommitted
     /// </summary>
-    TransactionResult BuildUp(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer, IWorldState worldState);
 
     /// <summary>
     /// Call transaction, no validations, commit state
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
-    TransactionResult Trace(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer, IWorldState worldState);
 }

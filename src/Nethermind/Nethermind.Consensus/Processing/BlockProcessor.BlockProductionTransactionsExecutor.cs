@@ -76,8 +76,8 @@ namespace Nethermind.Consensus.Processing
                 remove => _blockProductionTransactionPicker.AddingTransaction -= value;
             }
 
-            public virtual TxReceipt[] ProcessTransactions(IWorldState worldState, Block block, ProcessingOptions processingOptions,
-                BlockExecutionTracer executionTracer, IReleaseSpec spec)
+            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+                BlockExecutionTracer executionTracer, IReleaseSpec spec, IWorldState worldState)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -86,7 +86,7 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(worldState, block, in blkCtx, currentTx, i++, executionTracer, processingOptions, transactionsInBlock);
+                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, executionTracer, processingOptions, transactionsInBlock, worldState);
                     if (action == TxAction.Stop) break;
                 }
 
@@ -97,7 +97,6 @@ namespace Nethermind.Consensus.Processing
             }
 
             protected TxAction ProcessTransaction(
-                IWorldState worldState,
                 Block block,
                 in BlockExecutionContext blkCtx,
                 Transaction currentTx,
@@ -105,6 +104,7 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionTracer executionTracer,
                 ProcessingOptions processingOptions,
                 LinkedHashSet<Transaction> transactionsInBlock,
+                IWorldState worldState,
                 bool addToBlock = true)
             {
                 AddingTxEventArgs args =

@@ -34,7 +34,8 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(IWorldState worldState, Block block, ProcessingOptions processingOptions, BlockExecutionTracer executionTracer, IReleaseSpec spec)
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+                BlockExecutionTracer executionTracer, IReleaseSpec spec, IWorldState worldState)
             {
                 Metrics.ResetBlockStats();
                 BlockExecutionContext blkCtx = new(block.Header);

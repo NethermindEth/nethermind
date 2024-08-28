@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
                     };
 
                     CallOutputTracer outputTracer = new();
-                    _transactionProcessor.Execute(constructorTransaction, worldState, new BlockExecutionContext(genesis.Header), outputTracer);
+                    _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer, worldState);
 
                     if (outputTracer.StatusCode != StatusCode.Success)
                     {

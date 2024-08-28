@@ -23,17 +23,21 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.StateRoot = startState;
         }
 
-        public TransactionResult Execute(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.Execute(transaction, worldState, in blCtx, txTracer);
+        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
+            _transactionProcessor.Execute(transaction, in blCtx, txTracer, worldState);
 
-        public TransactionResult CallAndRestore(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.CallAndRestore(transaction, worldState, in blCtx, txTracer);
+        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx,
+            ITxTracer txTracer, IWorldState worldState) =>
+            _transactionProcessor.CallAndRestore(transaction, in blCtx, txTracer, worldState);
 
-        public TransactionResult BuildUp(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.BuildUp(transaction, worldState, in blCtx, txTracer);
+        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
+            _transactionProcessor.BuildUp(transaction, in blCtx, txTracer, worldState);
 
-        public TransactionResult Trace(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.Trace(transaction, worldState, in blCtx, txTracer);
+        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
+            _transactionProcessor.Trace(transaction, in blCtx, txTracer, worldState);
 
         public bool IsContractDeployed(Address address)
         {

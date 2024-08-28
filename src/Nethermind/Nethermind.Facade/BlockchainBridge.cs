@@ -171,7 +171,7 @@ namespace Nethermind.Facade
         {
             IWorldState worldState = _processingEnv.WorldStateManager.GetGlobalWorldState(header);
 
-            using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(worldState, header.StateRoot!);
+            using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(header.StateRoot!, worldState);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -241,7 +241,7 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
 
             Hash256 stateRoot = blockHeader.StateRoot!;
-            using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(worldState, stateRoot);
+            using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(stateRoot, worldState);
 
             if (transaction.Nonce == 0)
             {
@@ -283,7 +283,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return transactionProcessor.CallAndRestore(transaction, worldState, new(callHeader), tracer);
+            return transactionProcessor.CallAndRestore(transaction, new(callHeader), tracer, worldState);
         }
 
         public ulong GetChainId()

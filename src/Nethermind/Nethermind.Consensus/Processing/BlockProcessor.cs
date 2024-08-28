@@ -313,7 +313,7 @@ public partial class BlockProcessor : IBlockProcessor
         }
         worldState.Commit(spec);
 
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(worldState, block, options, ExecutionTracer, spec);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ExecutionTracer, spec, worldState);
 
         if (spec.IsEip4844Enabled)
         {

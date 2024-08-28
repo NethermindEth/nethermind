@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Contracts
                 _contract.GenerateTransaction<SystemTransaction>(callInfo.ContractAddress, callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
 
             protected byte[] CallCore(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
-                _contract.CallCore(readOnlyTransactionProcessor, readOnlyTransactionProcessor.WorldState, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
+                _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, readOnlyTransactionProcessor.WorldState, true);
 
             protected object[] DecodeReturnData(string functionName, byte[] data) => _contract.DecodeReturnData(functionName, data);
 
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Contracts
                 lock (_readOnlyTxProcessorSource)
                 {
                     // TODO: should I get worldState using parentHeader?
-                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(callInfo.ParentHeader, GetState(callInfo.ParentHeader));
+                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader), callInfo.ParentHeader);
                     return CallRaw(callInfo, readOnlyTransactionProcessor);
                 }
             }

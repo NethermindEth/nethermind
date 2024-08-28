@@ -9,8 +9,8 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public interface IReadOnlyTxProcessorSource
     {
-        IReadOnlyTransactionProcessor Build(Block block, Hash256 stateRoot);
-        IReadOnlyTransactionProcessor Build(BlockHeader header, Hash256 stateRoot);
-        public IReadOnlyTransactionProcessor Build(IWorldState worldState, Hash256 stateRoot);
+        IReadOnlyTransactionProcessor Build(Hash256 stateRoot, Block block);
+        IReadOnlyTransactionProcessor Build(Hash256 stateRoot, BlockHeader header);
+        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot, IWorldState worldState);
     }
 }

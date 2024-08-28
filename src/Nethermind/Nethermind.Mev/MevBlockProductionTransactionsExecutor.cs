@@ -48,7 +48,8 @@ namespace Nethermind.Mev
             _worldStateManager = worldStateManager;
         }
 
-        public override TxReceipt[] ProcessTransactions(IWorldState worldState, Block block, ProcessingOptions processingOptions, BlockExecutionTracer executionTracer, IReleaseSpec spec)
+        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+            BlockExecutionTracer executionTracer, IReleaseSpec spec, IWorldState worldState)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
@@ -70,7 +71,7 @@ namespace Nethermind.Mev
                     else
                     {
                         // otherwise process transaction as usual
-                        TxAction action = ProcessTransaction(worldState, block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock);
+                        TxAction action = ProcessTransaction(block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock, worldState);
                         if (action == TxAction.Stop) break;
                     }
                 }
@@ -107,7 +108,7 @@ namespace Nethermind.Mev
                         if (action == TxAction.Stop) break;
 
                         // process normal transaction
-                        action = ProcessTransaction(worldState, block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock);
+                        action = ProcessTransaction(block, in blkCtx, currentTx, transactionsInBlock.Count, executionTracer, processingOptions, transactionsInBlock, worldState);
                         if (action == TxAction.Stop) break;
                     }
                 }
@@ -196,7 +197,7 @@ namespace Nethermind.Mev
             LinkedHashSet<Transaction> transactionsInBlock)
         {
             IWorldState worldState = _worldStateManager.GetGlobalWorldState(block);
-            TxAction action = ProcessTransaction(worldState, block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, false);
+            TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, worldState, false);
             if (action == TxAction.Add)
             {
                 string? error = executionTracer.LastReceipt.Error;

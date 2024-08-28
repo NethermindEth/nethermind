@@ -50,13 +50,13 @@ namespace Nethermind.Consensus.Processing
             TransactionProcessor = new TransactionProcessor(specProvider, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Block block, Hash256 stateRoot) =>
+        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot, Block block) =>
             new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateManager.GetGlobalWorldState(block), stateRoot);
-        
-        public IReadOnlyTransactionProcessor Build(BlockHeader header, Hash256 stateRoot) =>
+
+        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot, BlockHeader header) =>
             new ReadOnlyTransactionProcessor(TransactionProcessor, WorldStateManager.GetGlobalWorldState(header), stateRoot);
 
-        public IReadOnlyTransactionProcessor Build(IWorldState worldState, Hash256 stateRoot) =>
+        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot, IWorldState worldState) =>
             new ReadOnlyTransactionProcessor(TransactionProcessor, worldState, stateRoot);
     }
 }

@@ -38,11 +38,11 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         public override TxReceipt[] ProcessTransactions(
-            IWorldState worldState,
             Block block,
             ProcessingOptions processingOptions,
             BlockExecutionTracer executionTracer,
-            IReleaseSpec spec)
+            IReleaseSpec spec,
+            IWorldState worldState)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -53,12 +53,12 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 if (IsAccountAbstractionTransaction(transaction))
                 {
-                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(worldState, block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock, worldState);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
                 else
                 {
-                    BlockProcessor.TxAction action = ProcessTransaction(worldState, block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock, worldState);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
             }
@@ -77,18 +77,18 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         private BlockProcessor.TxAction ProcessAccountAbstractionTransaction(
-            IWorldState worldState,
             Block block,
             in BlockExecutionContext blkCtx,
             Transaction currentTx,
             int index,
             BlockExecutionTracer executionTracer,
             ProcessingOptions processingOptions,
-            LinkedHashSet<Transaction> transactionsInBlock)
+            LinkedHashSet<Transaction> transactionsInBlock,
+            IWorldState worldState)
         {
             int snapshot = executionTracer.TakeSnapshot();
 
-            BlockProcessor.TxAction action = ProcessTransaction(worldState, block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, false);
+            BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, worldState, false);
             if (action != BlockProcessor.TxAction.Add)
             {
                 return action;

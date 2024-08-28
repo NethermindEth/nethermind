@@ -80,10 +80,12 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public TransactionResult CallAndRestore(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx,
+            ITxTracer txTracer, IWorldState worldState) =>
             Execute(transaction, worldState, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
 
-        public TransactionResult BuildUp(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer)
+        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
@@ -91,10 +93,12 @@ namespace Nethermind.Evm.TransactionProcessing
             return Execute(transaction, worldState, in blCtx, txTracer, ExecutionOptions.None);
         }
 
-        public TransactionResult Execute(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
             Execute(transaction, worldState, in blCtx, txTracer, ExecutionOptions.Commit);
 
-        public TransactionResult Trace(Transaction transaction, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
             Execute(transaction, worldState, in blCtx, txTracer, ExecutionOptions.NoValidation);
 
         protected virtual TransactionResult Execute(Transaction tx, IWorldState worldState, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)

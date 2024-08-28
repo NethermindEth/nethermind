@@ -89,7 +89,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
             // TODO: should I get worldState using parentHeader?
-            ITransactionProcessor transactionProcessor = _txProcessingEnv.Build(parent, _stateProvider.StateRoot);
+            ITransactionProcessor transactionProcessor = _txProcessingEnv.Build(_stateProvider.StateRoot, parent);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
@@ -133,7 +133,7 @@ namespace Nethermind.AccountAbstraction.Executor
             // TODO: should I get worldState using parentHeader?
             IWorldState worldState = _txProcessingEnv.WorldStateManager.GetGlobalWorldState(parent);
 
-            transactionProcessor.Trace(transaction, worldState, new BlockExecutionContext(parent), txTracer);
+            transactionProcessor.Trace(transaction, new BlockExecutionContext(parent), txTracer, worldState);
 
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
@@ -193,7 +193,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             IWorldState worldState = _txProcessingEnv.WorldStateManager.GetGlobalWorldState(header);
-            using IReadOnlyTransactionProcessor transactionProcessor = _txProcessingEnv.Build(worldState, header.StateRoot!);
+            using IReadOnlyTransactionProcessor transactionProcessor = _txProcessingEnv.Build(header.StateRoot!, worldState);
 
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
@@ -265,7 +265,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             transaction.Hash = transaction.CalculateHash();
             IWorldState worldState = _txProcessingEnv.WorldStateManager.GetGlobalWorldState(callHeader);
-            transactionProcessor.CallAndRestore(transaction, worldState, new BlockExecutionContext(callHeader), tracer);
+            transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(callHeader), tracer, worldState);
         }
     }
 }

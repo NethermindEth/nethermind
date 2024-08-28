@@ -76,8 +76,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public void FinalizeChange(BlockHeader blockHeader) => TryCall(_worldStateManager.GetGlobalWorldState(blockHeader),
-            blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _);
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _, _worldStateManager.GetGlobalWorldState(blockHeader));
 
         internal static readonly string GetValidatorsFunction = AbiDefinition.GetName(nameof(GetValidators));
 
