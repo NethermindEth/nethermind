@@ -32,7 +32,9 @@ public class ShutterBlockHandler(
     IShutterEon eon,
     ShutterTxLoader txLoader,
     ShutterTime shutterTime,
-    ILogManager logManager) : IShutterBlockHandler
+    ILogManager logManager,
+    TimeSpan slotLength,
+    TimeSpan blockWaitCutoff) : IShutterBlockHandler
 {
     private readonly ArrayPoolList<CancellationTokenSource> _cts = new(10);
     private readonly ArrayPoolList<CancellationTokenRegistration> _ctr = new(5);
@@ -73,7 +75,7 @@ public class ShutterBlockHandler(
         }
     }
 
-    public async Task<Block?> WaitForBlockInSlot(ulong slot, TimeSpan slotLength, TimeSpan cutoff, CancellationToken cancellationToken)
+    public async Task<Block?> WaitForBlockInSlot(ulong slot, CancellationToken cancellationToken)
     {
         TaskCompletionSource<Block?>? tcs = null;
         lock (_syncObject)
@@ -86,10 +88,10 @@ public class ShutterBlockHandler(
             _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
             long offset = shutterTime.GetCurrentOffsetMs(slot);
-            long waitTime = (long)cutoff.TotalMilliseconds - offset;
+            long waitTime = (long)blockWaitCutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {
-                _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)cutoff.TotalMilliseconds}ms.");
+                _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)blockWaitCutoff.TotalMilliseconds}ms.");
                 return null;
             }
             waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);

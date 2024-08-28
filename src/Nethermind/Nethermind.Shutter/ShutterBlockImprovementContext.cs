@@ -158,7 +158,6 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         return CurrentBestBlock;
     }
 
-    // builds normal block as fallback
     private async Task<bool> TryBuildShutterBlock(ulong slot)
     {
         bool hasShutterTxs = _txSignal.HaveTransactionsArrived(slot);

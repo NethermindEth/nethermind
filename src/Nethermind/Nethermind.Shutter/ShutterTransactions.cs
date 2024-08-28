@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Shutter;
 
-public struct ShutterTransactions
+public readonly struct ShutterTransactions
 {
     public Transaction[] Transactions { get; init; }
     public ulong Slot { get; init; }

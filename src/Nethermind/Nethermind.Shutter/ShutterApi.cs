@@ -24,12 +24,8 @@ namespace Nethermind.Shutter;
 
 public class ShutterApi : IShutterApi
 {
-
-    public static readonly TimeSpan SlotLength = GnosisSpecProvider.SlotLength;
-    public static readonly TimeSpan BlockUpToDateCutoff = GnosisSpecProvider.SlotLength;
     public virtual TimeSpan BlockWaitCutoff { get => TimeSpan.FromMilliseconds(1333); }
 
-    public readonly IShutterConfig Cfg;
     public readonly IShutterBlockHandler BlockHandler;
     public readonly IShutterKeyValidator KeyValidator;
     public readonly IShutterEon Eon;
@@ -39,11 +35,13 @@ public class ShutterApi : IShutterApi
     public ShutterP2P? P2P;
     public ShutterBlockImprovementContextFactory? BlockImprovementContextFactory;
 
+    protected readonly TimeSpan _slotLength;
+    protected readonly TimeSpan _blockUpToDateCutoff;
     protected readonly IReadOnlyBlockTree _blockTree;
     private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
-    private readonly ISpecProvider _specProvider;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
+    private readonly IShutterConfig _cfg;
 
     public ShutterApi(
         IAbiEncoder abiEncoder,
@@ -56,24 +54,26 @@ public class ShutterApi : IShutterApi
         ITimestamper timestamper,
         IWorldStateManager worldStateManager,
         IShutterConfig cfg,
-        Dictionary<ulong, byte[]> validatorsInfo
+        Dictionary<ulong, byte[]> validatorsInfo,
+        TimeSpan slotLength
         )
     {
-        Cfg = cfg;
+        _cfg = cfg;
         _blockTree = blockTree;
-        _specProvider = specProvider;
         _abiEncoder = abiEncoder;
         _logManager = logManager;
+        _slotLength = slotLength;
+        _blockUpToDateCutoff = slotLength;
 
         _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
 
         Time = InitTime(specProvider, timestamper);
-        TxLoader = new(logFinder, cfg, Time, specProvider, ecdsa, logManager);
+        TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, logManager);
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
             specProvider.ChainId,
-            cfg.ValidatorRegistryContractAddress!,
-            cfg.ValidatorRegistryMessageVersion,
+            _cfg.ValidatorRegistryContractAddress!,
+            _cfg.ValidatorRegistryMessageVersion,
             _txProcessingEnvFactory,
             blockTree,
             abiEncoder,
@@ -82,13 +82,15 @@ public class ShutterApi : IShutterApi
             Eon,
             TxLoader,
             Time,
-            logManager);
+            logManager,
+            _slotLength,
+            BlockWaitCutoff);
 
-        TxSource = new ShutterTxSource(TxLoader, cfg, Time, logManager);
+        TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
 
-        KeyValidator = new ShutterKeyValidator(cfg, Eon, logManager);
+        KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 
-        InitP2P(cfg, logManager);
+        InitP2P(_cfg, logManager);
         RegisterOnKeysValidated();
         RegisterNewHeadBlock();
     }
@@ -106,7 +108,7 @@ public class ShutterApi : IShutterApi
         BlockImprovementContextFactory ??= new(
             blockProducer,
             TxSource,
-            Cfg,
+            _cfg,
             Time,
             _logManager
         );
@@ -130,7 +132,7 @@ public class ShutterApi : IShutterApi
         Metrics.TxPointer = keys.TxPointer;
 
         // wait for latest block before loading transactions
-        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, SlotLength, BlockWaitCutoff, new())) ?? _blockTree.Head;
+        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, new())) ?? _blockTree.Head;
         BlockHeader? header = head?.Header;
         BlockHeader parentHeader = header is not null
             ? _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
@@ -155,11 +157,11 @@ public class ShutterApi : IShutterApi
     }
 
     protected virtual IShutterEon InitEon()
-        => new ShutterEon(_blockTree, _txProcessingEnvFactory, _abiEncoder, Cfg, _logManager);
+        => new ShutterEon(_blockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
 
     protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
     {
         ulong genesisTimestamp = specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
-        return new(genesisTimestamp, timestamper, SlotLength, BlockUpToDateCutoff);
+        return new(genesisTimestamp * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }
 }

@@ -21,6 +21,7 @@ using GT = Bls.PT;
 
 public static class ShutterCrypto
 {
+    // todo: remove bytes32?
     private static readonly string DST = "SHUTTER_V01_BLS12381G1_XMD:SHA-256_SSWU_RO_";
     private static readonly byte CryptoVersion = 0x3;
     private static readonly UInt256 BlsSubgroupOrder = new((byte[])[0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48, 0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05, 0x53, 0xbd, 0xa4, 0x02, 0xff, 0xfe, 0x5b, 0xfe, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01], true);
@@ -108,7 +109,7 @@ public static class ShutterCrypto
 
     public static Bytes32[] ComputeBlockKeys(Bytes32 sigma, int n)
     {
-        Bytes32[] blocks = new Bytes32[n];
+        var blocks = new Bytes32[n];
         Span<byte> preimageBuf = stackalloc byte[36];
         Span<byte> suffix = stackalloc byte[4];
 
@@ -189,7 +190,7 @@ public static class ShutterCrypto
             return false;
         }
 
-        Signature signature = new Signature(signatureBytes[..64], signatureBytes[64]);
+        Signature signature = new(signatureBytes[..64], signatureBytes[64]);
 
         PublicKey? expectedPubkey = ecdsa.RecoverPublicKey(signature, hash);
 
@@ -220,7 +221,7 @@ public static class ShutterCrypto
 
     public static byte[] EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
     {
-        byte[] bytes = new byte[1 + 96 + 32 + (encryptedMessage.C3.Count() * 32)];
+        byte[] bytes = new byte[1 + 96 + 32 + (encryptedMessage.C3.Length * 32)];
 
         bytes[0] = encryptedMessage.VersionId;
         encryptedMessage.C1.compress().CopyTo(bytes.AsSpan()[1..]);
@@ -298,7 +299,7 @@ public static class ShutterCrypto
         padded.Fill((byte)n);
         bytes.CopyTo(padded);
 
-        Bytes32[] res = new Bytes32[padded.Length / 32];
+        var res = new Bytes32[padded.Length / 32];
 
         for (int i = 0; i < padded.Length / 32; i++)
         {

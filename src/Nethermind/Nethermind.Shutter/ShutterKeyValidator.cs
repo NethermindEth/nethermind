@@ -102,7 +102,7 @@ public class ShutterKeyValidator(
             }
         }
 
-        long signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.LongCount();
+        int signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.Count;
 
         if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
         {

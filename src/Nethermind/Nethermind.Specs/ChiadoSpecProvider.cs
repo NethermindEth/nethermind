@@ -44,7 +44,6 @@ public class ChiadoSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;
     public ForkActivation[] TransitionActivations { get; }
-    public static TimeSpan SlotLength => TimeSpan.FromSeconds(5);
 
     public static ChiadoSpecProvider Instance { get; } = new();
 }

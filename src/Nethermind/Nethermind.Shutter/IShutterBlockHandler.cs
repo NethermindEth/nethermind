@@ -10,5 +10,5 @@ namespace Nethermind.Shutter;
 public interface IShutterBlockHandler : IDisposable
 {
     void OnNewHeadBlock(Block head);
-    Task<Block?> WaitForBlockInSlot(ulong slot, TimeSpan slotLength, TimeSpan cutoff, CancellationToken cancellationToken);
+    Task<Block?> WaitForBlockInSlot(ulong slot, CancellationToken cancellationToken);
 }

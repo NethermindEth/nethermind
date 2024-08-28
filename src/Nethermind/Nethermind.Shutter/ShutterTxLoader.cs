@@ -17,24 +17,21 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using System.IO;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Abi;
 
 namespace Nethermind.Shutter;
 
 using G1 = Bls.P1;
 
-// todo: make into more reusable class?
-// maybe ReceiptAccumulator with generic log scanning and receipt following
 public class ShutterTxLoader(
     ILogFinder logFinder,
-    IShutterConfig shutterConfig,
+    IShutterConfig cfg,
     ShutterTime shutterTime,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
     ILogManager logManager)
 {
-    private readonly SequencerContract _sequencerContract = new(new Address(shutterConfig.SequencerContractAddress!), logFinder, logManager);
+    private readonly SequencerContract _sequencerContract = new(new Address(cfg.SequencerContractAddress!), logFinder, logManager);
     // todo: maintain multiple queues for each eon
     private Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     private ulong _txPointer = ulong.MaxValue;
@@ -42,14 +39,12 @@ public class ShutterTxLoader(
     private bool _loadFromReceipts = false;
     private readonly ShutterTxFilter _txFilter = new(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
-    private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
         List<SequencedTransaction>? sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
 
-        long offset = shutterTime.GetCurrentOffsetMs(keys.Slot, _genesisTimestampMs);
+        long offset = shutterTime.GetCurrentOffsetMs(keys.Slot, shutterTime.GenesisTimestampMs);
         Metrics.KeysReceivedTimeOffset = offset;
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
@@ -242,7 +237,7 @@ public class ShutterTxLoader(
                     continue;
                 }
 
-                if (totalGas + e.GasLimit > _encryptedGasLimit)
+                if (totalGas + e.GasLimit > cfg.EncryptedGasLimit)
                 {
                     Metrics.EncryptedGasUsed = (ulong)totalGas;
                     _logger.Debug("Shutter gas limit reached.");

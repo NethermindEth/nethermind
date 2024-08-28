@@ -28,6 +28,8 @@ class ShutterTestsCommon
     public const ulong InitialTxPointer = 1000;
     public const int ChainId = BlockchainIds.Chiado;
     public const ulong GenesisTimestamp = 1;
+    public static readonly TimeSpan SlotLength = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan BlockUpToDateCutoff = TimeSpan.FromSeconds(5);
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;
     public static readonly IEthereumEcdsa Ecdsa = new EthereumEcdsa(ChainId);
     public static readonly ILogManager LogManager = LimboLogs.Instance;

@@ -14,40 +14,35 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
+using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 
 namespace Nethermind.Shutter.Test;
 
-public class ShutterApiSimulator : ShutterApi
+public class ShutterApiSimulator(
+    IAbiEncoder abiEncoder,
+    IReadOnlyBlockTree blockTree,
+    IEthereumEcdsa ecdsa,
+    ILogFinder logFinder,
+    IReceiptStorage receiptStorage,
+    ILogManager logManager,
+    ISpecProvider specProvider,
+    ITimestamper timestamper,
+    IWorldStateManager worldStateManager,
+    IShutterConfig cfg,
+    Dictionary<ulong, byte[]> validatorsInfo,
+    Random rnd
+        ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
+        logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, ShutterTestsCommon.SlotLength)
 {
     public event EventHandler? EonUpdate;
     private event EventHandler<IShutterKeyValidator.ValidatedKeyArgs>? KeysValidated;
     private event EventHandler<Dto.DecryptionKeys>? KeysReceived;
     private event EventHandler<BlockEventArgs>? NewHeadBlock;
-    private readonly Random _rnd;
-    private readonly IReceiptStorage _receiptStorage;
+    private readonly Random _rnd = rnd;
+    private readonly IReceiptStorage _receiptStorage = receiptStorage;
     private ShutterEventSimulator? _eventSimulator;
-
-    public ShutterApiSimulator(
-        IAbiEncoder abiEncoder,
-        IReadOnlyBlockTree blockTree,
-        IEthereumEcdsa ecdsa,
-        ILogFinder logFinder,
-        IReceiptStorage receiptStorage,
-        ILogManager logManager,
-        ISpecProvider specProvider,
-        ITimestamper timestamper,
-        IWorldStateManager worldStateManager,
-        IShutterConfig cfg,
-        Dictionary<ulong, byte[]> validatorsInfo,
-        Random rnd
-        ) : base(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-            logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo)
-    {
-        _rnd = rnd;
-        _receiptStorage = receiptStorage;
-    }
 
     public void SetEventSimulator(ShutterEventSimulator eventSimulator)
     {
@@ -116,7 +111,7 @@ public class ShutterApiSimulator : ShutterApi
 
     // }
 
-    // fakeout blocktree event
+    // fake out blocktree event
     protected override void RegisterNewHeadBlock()
     {
         NewHeadBlock += NewHeadBlockHandler;
@@ -125,7 +120,6 @@ public class ShutterApiSimulator : ShutterApi
     protected override IShutterEon InitEon()
     {
         IShutterEon eon = Substitute.For<IShutterEon>();
-        // eon.GetCurrentEonInfo().Returns(_ => _currentEonInfo);
         eon.GetCurrentEonInfo().Returns(_ => _eventSimulator!.GetCurrentEonInfo());
         eon.When(x => x.Update(Arg.Any<BlockHeader>())).Do((_) => EonUpdate?.Invoke(this, new()));
         return eon;
@@ -134,6 +128,6 @@ public class ShutterApiSimulator : ShutterApi
     // set genesis unix timestamp to 1
     protected override ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
     {
-        return new(1, timestamper, SlotLength, BlockUpToDateCutoff);
+        return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }
 }

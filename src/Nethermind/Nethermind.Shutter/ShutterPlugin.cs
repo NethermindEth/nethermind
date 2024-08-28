@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using System.IO;
 using Nethermind.Serialization.Json;
 using System.Threading;
+using Nethermind.Config;
 
 namespace Nethermind.Shutter;
 
@@ -30,6 +31,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     private INethermindApi? _api;
     private IMergeConfig? _mergeConfig;
     private IShutterConfig? _shutterConfig;
+    private IBlocksConfig? _blocksConfig;
     private ShutterApi? _shutterApi;
     private ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
@@ -39,6 +41,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
+        _blocksConfig = _api.Config<IBlocksConfig>();
         _mergeConfig = _api.Config<IMergeConfig>();
         _shutterConfig = _api.Config<IShutterConfig>();
         _logger = _api.LogManager.GetClassLogger();
@@ -71,7 +74,14 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
             _logger.Info("Initializing Shutter block producer.");
 
-            _shutterConfig!.Validate();
+            try
+            {
+                _shutterConfig!.Validate();
+            }
+            catch (ArgumentException e)
+            {
+                throw new ShutterLoadingException("Invalid Shutter config", e);
+            }
 
             Dictionary<ulong, byte[]> validatorsInfo = [];
             if (_shutterConfig!.ValidatorInfoFile is not null)
@@ -97,7 +107,8 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 _api.Timestamper,
                 _api.WorldStateManager,
                 _shutterConfig,
-                validatorsInfo
+                validatorsInfo,
+                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)
             );
 
             _shutterApi.StartP2P(_cts);
@@ -121,7 +132,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
     private static Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)
     {
-        FileStream fstream = new FileStream(fp, FileMode.Open, FileAccess.Read, FileShare.None);
+        FileStream fstream = new(fp, FileMode.Open, FileAccess.Read, FileShare.None);
         return new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
     }
 }

@@ -14,20 +14,18 @@ namespace Nethermind.Shutter.Test;
 [TestFixture]
 class ShutterBlockHandlerTests : EngineModuleTests
 {
-    // slot 10 timestamp
-    private readonly ulong _slotTimestamp = ShutterTestsCommon.GenesisTimestamp + 10 * (ulong)ShutterApi.SlotLength.TotalSeconds;
     [Test]
     public async Task Can_wait_for_valid_block()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 0);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
 
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
         IShutterBlockHandler blockHandler = api.BlockHandler;
 
         bool waitReturned = false;
         CancellationTokenSource source = new();
-        _ = blockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, api.BlockWaitCutoff, source.Token)
+        _ = blockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
 
@@ -35,7 +33,7 @@ class ShutterBlockHandlerTests : EngineModuleTests
 
         Assert.That(waitReturned, Is.False);
 
-        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(_slotTimestamp).TestObject));
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject));
 
         await Task.Delay(100);
         Assert.That(waitReturned);
@@ -45,12 +43,12 @@ class ShutterBlockHandlerTests : EngineModuleTests
     public async Task Wait_times_out_at_cutoff()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 0);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         bool waitReturned = false;
         CancellationTokenSource source = new();
-        _ = api.BlockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, api.BlockWaitCutoff, source.Token)
+        _ = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
 
@@ -68,12 +66,12 @@ class ShutterBlockHandlerTests : EngineModuleTests
     {
         const ulong blockWaitCutoff = 1333;
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 2 * blockWaitCutoff);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 2 * blockWaitCutoff);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         bool waitReturned = false;
         CancellationTokenSource source = new();
-        _ = api.BlockHandler.WaitForBlockInSlot(10, ShutterApi.SlotLength, api.BlockWaitCutoff, source.Token)
+        _ = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
 
@@ -85,7 +83,7 @@ class ShutterBlockHandlerTests : EngineModuleTests
     public void Ignores_outdated_block()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_slotTimestamp, 2 * (ulong)ShutterApi.BlockUpToDateCutoff.TotalMilliseconds);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 2 * (ulong)ShutterTestsCommon.BlockUpToDateCutoff.TotalMilliseconds);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         bool eonUpdateCalled = false;
@@ -95,11 +93,13 @@ class ShutterBlockHandlerTests : EngineModuleTests
             eonUpdateCalled = true;
         };
 
-        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(_slotTimestamp).TestObject));
+        // not triggered on outdated block
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject));
         Assert.That(eonUpdateCalled, Is.False);
 
-        // control: called on up to date block
-        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(_slotTimestamp + 2 * (ulong)ShutterApi.BlockUpToDateCutoff.TotalSeconds).TestObject));
+        // triggered on up to date block
+        ulong upToDateTimestamp = ShutterTestsCommon.InitialSlotTimestamp + 2 * (ulong)ShutterTestsCommon.BlockUpToDateCutoff.TotalSeconds;
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(upToDateTimestamp).TestObject));
         Assert.That(eonUpdateCalled);
     }
 

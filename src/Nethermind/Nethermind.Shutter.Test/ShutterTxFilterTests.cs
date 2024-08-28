@@ -24,16 +24,16 @@ class ShutterTxFilterTests
     [TestCase("f869820a56849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd5a0b806b9e17c30c4eaad51b290714a407925c82818311a432e4ee656ad23938852a045cd3f087a1f2580ba7d806fa6ba2bfc9933b317ee89fa67713665aab7c22441")]
     public void Rejects_wrong_chain_id(string txHex)
     {
-        Assert.That(!IsAllowed(txHex));
+        Assert.That(IsAllowed(txHex), Is.False);
     }
 
     [TestCase("f869820a56849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a09999999999999999999999999999999999999999999999999999999999999999a09999999999999999999999999999999999999999999999999999999999999999")]
     public void Rejects_bad_signature(string txHex)
     {
-        Assert.That(!IsAllowed(txHex));
+        Assert.That(IsAllowed(txHex), Is.False);
     }
 
-    private bool IsAllowed(string txHex)
+    private static bool IsAllowed(string txHex)
     {
         ShutterTxFilter txFilter = new(ChiadoSpecProvider.Instance, LimboLogs.Instance);
         Transaction tx = Rlp.Decode<Transaction>(Convert.FromHexString(txHex));

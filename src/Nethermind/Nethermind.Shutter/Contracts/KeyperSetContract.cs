@@ -8,16 +8,11 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Shutter.Contracts;
 
-public class KeyperSetContract : CallableContract, IKeyperSetContract
+public class KeyperSetContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyperSetContract
 {
     private const string isFinalized = "isFinalized";
     private const string getThreshold = "getThreshold";
     private const string getMembers = "getMembers";
-
-    public KeyperSetContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
-        : base(transactionProcessor, abiEncoder, contractAddress)
-    {
-    }
 
     public bool IsFinalized(BlockHeader blockHeader)
     {

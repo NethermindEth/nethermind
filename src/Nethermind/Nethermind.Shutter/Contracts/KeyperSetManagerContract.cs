@@ -8,16 +8,11 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Shutter.Contracts;
 
-public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContract
+public class KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyperSetManagerContract
 {
     private const string getKeyperSetAddress = "getKeyperSetAddress";
     private const string getNumKeyperSets = "getNumKeyperSets";
     private const string getKeyperSetIndexByBlock = "getKeyperSetIndexByBlock";
-
-    public KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
-        : base(transactionProcessor, abiEncoder, contractAddress)
-    {
-    }
 
     public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index)
     {

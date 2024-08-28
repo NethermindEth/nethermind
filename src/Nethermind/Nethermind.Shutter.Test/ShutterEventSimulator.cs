@@ -21,6 +21,8 @@ using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 using EncryptedMessage = Nethermind.Shutter.ShutterCrypto.EncryptedMessage;
 
+namespace Nethermind.Shutter.Test;
+
 public class ShutterEventSimulator
 {
     private readonly ulong _defaultGasLimit = 21000;

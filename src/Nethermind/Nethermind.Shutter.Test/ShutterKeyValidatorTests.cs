@@ -36,13 +36,13 @@ class ShutterKeyValidatorTests
         ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd, 0, threshhold, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi());
         api.SetEventSimulator(eventSimulator);
 
-        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) x = api.AdvanceSlot(5);
+        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) = api.AdvanceSlot(5);
 
         bool eventFired = false;
         api.KeyValidator.KeysValidated += (_, _) => eventFired = true;
 
         // same keys are now outdated
-        api.TriggerKeysReceived(x.keys);
+        api.TriggerKeysReceived(keys);
 
         Assert.That(eventFired, Is.False);
     }

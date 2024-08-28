@@ -108,7 +108,7 @@ public class ValidatorRegistryContract(
         return unregistered.Count == 0;
     }
 
-    private ref struct Message
+    private readonly ref struct Message
     {
         public readonly byte Version;
         public readonly ulong ChainId;

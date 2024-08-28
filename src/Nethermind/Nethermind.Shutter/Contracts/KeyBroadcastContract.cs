@@ -8,14 +8,9 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Shutter.Contracts;
 
-public class KeyBroadcastContract : CallableContract, IKeyBroadcastContract
+public class KeyBroadcastContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyBroadcastContract
 {
     private const string getEonKey = "getEonKey";
-
-    public KeyBroadcastContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
-        : base(transactionProcessor, abiEncoder, contractAddress)
-    {
-    }
 
     public byte[] GetEonKey(BlockHeader blockHeader, in ulong eon)
     {

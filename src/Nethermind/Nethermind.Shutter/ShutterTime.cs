@@ -6,18 +6,14 @@ using Nethermind.Core;
 
 namespace Nethermind.Shutter;
 
-public class ShutterTime(ulong genesisTimestamp, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
+public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
 {
     public class ShutterSlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
-    public readonly ulong GenesisTimestamp = genesisTimestamp;
 
-    public ulong GetGenesisTimestampMs() => 1000 * GenesisTimestamp;
-
-    public ulong GetSlotTimestamp(ulong slot)
-        => GenesisTimestamp + (ulong)slotLength.TotalSeconds * slot;
+    public readonly ulong GenesisTimestampMs = genesisTimestampMs;
 
     public ulong GetSlotTimestampMs(ulong slot)
-        => 1000 * GetSlotTimestamp(slot);
+        => GenesisTimestampMs + slot * (ulong)slotLength.TotalMilliseconds;
 
     public long GetCurrentOffsetMs(ulong slot, ulong? slotTimestampMs = null)
         => timestamper.UtcNowOffset.ToUnixTimeMilliseconds() - (long)(slotTimestampMs ?? GetSlotTimestampMs(slot));
@@ -27,10 +23,10 @@ public class ShutterTime(ulong genesisTimestamp, ITimestamper timestamper, TimeS
 
     public ulong GetSlot(ulong slotTimestampMs)
     {
-        long slotTimeSinceGenesis = (long)slotTimestampMs - (long)GetGenesisTimestampMs();
+        long slotTimeSinceGenesis = (long)slotTimestampMs - (long)GenesisTimestampMs;
         if (slotTimeSinceGenesis < 0)
         {
-            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GetGenesisTimestampMs()}ms.");
+            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
         }
 
         return (ulong)slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
