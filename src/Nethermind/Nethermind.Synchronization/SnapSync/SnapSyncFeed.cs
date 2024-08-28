@@ -110,93 +110,92 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
-{
-    if (peer is null)
-    {
-        return SyncResponseHandlingResult.OK;
-    }
-
-    int maxSize = 10 * AllowedInvalidResponses;
-    while (_resultLog.Count > maxSize)
-    {
-        lock (_syncLock)
         {
-            if (_resultLog.Count > 0)
+            if (peer is null)
             {
-                _resultLog.RemoveLast();
+                return SyncResponseHandlingResult.OK;
             }
-        }
-    }
 
-    lock (_syncLock)
-    {
-        _resultLog.AddFirst((peer, result));
-    }
-
-    if (result == AddRangeResult.OK)
-    {
-        return SyncResponseHandlingResult.OK;
-    }
-
-    int allLastSuccess = 0;
-    int allLastFailures = 0;
-    int peerLastFailures = 0;
-    bool peerIsOnlyFailure = true;
-
-    lock (_syncLock)
-    {
-        foreach (var item in _resultLog)
-        {
-            if (item.result == AddRangeResult.OK)
+            int maxSize = 10 * AllowedInvalidResponses;
+            while (_resultLog.Count > maxSize)
             {
-                allLastSuccess++;
-            }
-            else
-            {
-                allLastFailures++;
-
-                if (item.peer != peer)
+                lock (_syncLock)
                 {
-                    peerIsOnlyFailure = false;
+                    if (_resultLog.Count > 0)
+                    {
+                        _resultLog.RemoveLast();
+                    }
+                }
+            }
+
+            lock (_syncLock)
+            {
+                _resultLog.AddFirst((peer, result));
+            }
+
+            if (result == AddRangeResult.OK)
+            {
+                return SyncResponseHandlingResult.OK;
+            }
+
+            int allLastSuccess = 0;
+            int allLastFailures = 0;
+            int peerLastFailures = 0;
+            bool peerIsOnlyFailure = true;
+
+            lock (_syncLock)
+            {
+                foreach (var item in _resultLog)
+                {
+                    if (item.result == AddRangeResult.OK)
+                    {
+                        allLastSuccess++;
+                    }
+                    else
+                    {
+                        allLastFailures++;
+
+                        if (item.peer != peer)
+                        {
+                            peerIsOnlyFailure = false;
+                        }
+                        else
+                        {
+                            peerLastFailures++;
+                        }
+                    }
+                }
+            }
+
+            if (peerLastFailures > AllowedInvalidResponses)
+            {
+                if (peerIsOnlyFailure)
+                {
+                    _logger.Trace($"SNAP - updating pivot and retrying with peer: {peer}");
+                    _snapProvider.UpdatePivot();
+                    _resultLog.Clear();
+                    return SyncResponseHandlingResult.OK;
                 }
                 else
                 {
-                    peerLastFailures++;
+                    _logger.Trace($"SNAP - peer to be punished: {peer}");
+                    return SyncResponseHandlingResult.LesserQuality;
                 }
             }
-        }
-    }
 
-    if (peerLastFailures > AllowedInvalidResponses)
-    {
-        if (peerIsOnlyFailure)
-        {
-            _logger.Trace($"SNAP - updating pivot and retrying with peer: {peer}");
-            _snapProvider.UpdatePivot();
-            _resultLog.Clear();
+            if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
+            {
+                _snapProvider.UpdatePivot();
+                _resultLog.Clear();
+            }
+
+            if (result == AddRangeResult.ExpiredRootHash)
+            {
+                return SyncResponseHandlingResult.NoProgress;
+            }
+
             return SyncResponseHandlingResult.OK;
         }
-        else
-        {
-            _logger.Trace($"SNAP - peer to be punished: {peer}");
-            return SyncResponseHandlingResult.LesserQuality;
-        }
-    }
-
-    if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
-    {
-        _snapProvider.UpdatePivot();
-        _resultLog.Clear();
-    }
-
-    if (result == AddRangeResult.ExpiredRootHash)
-    {
-        return SyncResponseHandlingResult.NoProgress;
-    }
-
-    return SyncResponseHandlingResult.OK;
-}
-
 
         public void Dispose()
         {
