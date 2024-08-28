@@ -219,6 +219,10 @@ namespace Nethermind.Evm.CodeAnalysis
             return _end < _buffer.Length;
         }
 
+        private void IncBlock()
+        {
+            _block = (_block + 1) & (int.MaxValue >> 1);
+        }
 
         private void SendTransactionForProcessing()
         {
@@ -227,7 +231,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 byte[] transaction = new byte[_end - _start];
                 Buffer.BlockCopy(_buffer, _start, transaction, 0, _end - _start);
                 _end = _start;
-                Task task = Task.Run(() => ProcessTransaction(transaction));
+                Task task = Task.Run(() => ProcessTransaction(transaction, _block));
                 lock (_taskLock)
                 {
                     _tasks.Add(task);
@@ -236,7 +240,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
 
-        private void ProcessTransaction(byte[] transaction)
+        private void ProcessTransaction(byte[] transaction, int block)
         {
             ulong ngram = 0;
             _blockTask.Wait();
@@ -247,7 +251,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 Console.WriteLine($"Adding instruction: {(Instruction)instruction}, Ngram SoFar : {AsString(ngram)}");
                 for (int i = 1; i < 7; i++)
                 {
-                    if (byteIndexes[i - 1] < ngram) AddSequence2(ngram & ngramBitMaks[i]);
+                    if (byteIndexes[i - 1] < ngram) AddSequence2(ngram & ngramBitMaks[i], block);
                 }
             }
 
@@ -289,6 +293,18 @@ namespace Nethermind.Evm.CodeAnalysis
         // utility for testing
         public static ulong AsNGram(Instruction[] instructions)
         {
+            byte[] b = new byte[instructions.Length];
+
+            for (int i = 0; i < instructions.Length; i++)
+            {
+                b[i] = (byte)instructions[i];
+            }
+
+            return AsNGram(b);
+        }
+
+        public static ulong AsNGram(byte[] instructions)
+        {
             ulong ngram = 0;
 
             if (instructions.Length > 7)
@@ -296,11 +312,26 @@ namespace Nethermind.Evm.CodeAnalysis
                 throw new ArgumentException("The NGram instructions array cannot have more than 7 elements.");
             }
 
-            foreach (Instruction instruction in instructions)
+            foreach (byte instruction in instructions)
             {
-                ngram = (ngram << 8) | (byte)instruction;
+                ngram = (ngram << 8) | instruction;
             }
             return ngram;
+        }
+
+        public static NGramInfo GetStatInfo(byte[] ngram)
+        {
+            lock (_lock)
+            {
+                if (_instance != null)
+                {
+                    lock (_topNLock)
+                    {
+                        if (_instance._topNStatMap.TryGetValue(AsNGram(ngram), out NGramInfo info)) return info;
+                    }
+                }
+            }
+            return new NGramInfo(0, 0);
         }
 
         public static NGramInfo GetStatInfo(Instruction[] ngram)
@@ -329,14 +360,14 @@ namespace Nethermind.Evm.CodeAnalysis
                 for (int i = 0; i < count; i++)
                 {
                     _topNQueue.TryDequeue(out ulong opcodeSequence, out uint freq);
-                    stackAllocArray[i] = (opcodeSequence, _topNStatMap[opcodeSequence].Freq);
-                    if (!_topNStatMap[opcodeSequence].Updated)
-                    {
-                        _topNStatMap[opcodeSequence] = _topNStatMap[opcodeSequence].UpdateFreq(
-                     ((uint)_block - 2) * _topNStatMap[opcodeSequence].Freq + _sketch.Query(opcodeSequence) >> ((int)(_block / 2))
-                                );
-                    }
+                    //  if (!_topNStatMap[opcodeSequence].Updated)
+                    //  {
+                    _topNStatMap[opcodeSequence] = _topNStatMap[opcodeSequence].UpdateFreq(
+                 ((uint)_block - 2) * _topNStatMap[opcodeSequence].Freq + _sketch.Query(opcodeSequence) >> ((int)(_block / 2))
+                            );
+                    // }
 
+                    stackAllocArray[i] = (opcodeSequence, _topNStatMap[opcodeSequence].Freq);
                     _topNStatMap[opcodeSequence] = _topNStatMap[opcodeSequence].MarkStale();
                 }
 
@@ -348,7 +379,7 @@ namespace Nethermind.Evm.CodeAnalysis
             }
         }
 
-        private void AddSequence2(ulong opcodeSequence)
+        private void AddSequence2(ulong opcodeSequence, int block)
         {
 
 
@@ -358,7 +389,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 NGramInfo info;
                 if (_topNStatMap.TryGetValue(opcodeSequence, out info))
                 {
-                    info.Freq = ((uint)_block - 2) * info.Freq + _sketch.UpdateAndQuery(opcodeSequence) >> ((int)(_block / 2));
+                    info.Freq = ((uint)block - 2) * info.Freq + _sketch.UpdateAndQuery(opcodeSequence) >> ((int)(block / 2));
                     ++info.Count;
                     _topNStatMap[opcodeSequence] = info.MarkFresh();
                     if (!info.Enqueued & _topNQueue.TryPeek(out ulong seq, out uint minFreq))
@@ -377,7 +408,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 }
                 else
                 {
-                    info = new NGramInfo(_sketch.UpdateAndQuery(opcodeSequence) >> ((int)(_block / 2)), _sketch.Query(opcodeSequence));
+                    info = new NGramInfo(_sketch.UpdateAndQuery(opcodeSequence) >> ((int)(block / 2)), _sketch.Query(opcodeSequence));
                     Console.WriteLine($"Not in queue {AsString(opcodeSequence)} , info: {info}");
 
                     if (_topNQueue.TryPeek(out ulong seq, out uint minFreq))

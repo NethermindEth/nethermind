@@ -6,13 +6,105 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Intrinsics;
-
+using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.CodeAnalysis.IL;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
+    public class DynamicInstructionChunk : InstructionChunk
+    {
+        public byte[] Pattern { get; private set; }
+
+        public byte[] InstancePattern { get; private set; }
+        public byte CallCount { get; private set; } = 0;
+
+        public DynamicInstructionChunk(byte[] pattern)
+        {
+            this.Pattern = pattern;
+        }
+
+        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            this.CallCount++;
+        }
+    }
+
+    public record struct TransactionData(byte[] ByteCode, byte[] ExecutionCode);
+
+    public static class LargeByteCodeBuilder
+    {
+        public const string P01P01ADD = "P01P01ADD";
+        public const string P01P01MUL = "P01P01MUL";
+        public const string P01P01SUB = "P01P01SUB";
+        public const string P01P01DIV = "P01P01DIV";
+        public const string FILLER = "FILLER";
+
+        private static Prepare p01p01Mul(Prepare p)
+        {
+            return p.PushSingle(2)
+                    .PushSingle(3)
+                    .ADD();
+        }
+        private static Prepare p01p01Add(Prepare p)
+        {
+            return p.PushSingle(2)
+                    .PushSingle(3)
+                    .ADD();
+        }
+        private static Prepare filler(Prepare p)
+        {
+            return p.NOT();
+        }
+
+
+
+
+        public static Prepare PreparePattern(string pattern, Prepare p)
+        {
+            switch (pattern)
+            {
+                case P01P01ADD: return p01p01Add(p);
+                case P01P01MUL: return p01p01Mul(p);
+                default:
+                    throw new NotSupportedException($"error: a requested {pattern} is not implemented!");
+            }
+        }
+        public static DynamicInstructionChunk PreparePatternChunk(string pattern)
+        {
+
+            return new DynamicInstructionChunk(PrepareTransaction(new (string, int)[] { (pattern, 1) }).ExecutionCode);
+        }
+
+
+        public static TransactionData PrepareTransaction((string, int)[] patternAndCount)
+        {
+
+            Prepare p = Prepare.EvmCode;
+            foreach ((string pattern, int count) in patternAndCount)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    PreparePattern(pattern, p);
+
+                }
+            }
+            byte[] code = p.Done;
+            OpcodeInfo[] strippedCode = IlAnalyzer.StripByteCode(new ReadOnlySpan<byte>(code)).Item1;
+            byte[] b = new byte[strippedCode.Length];
+            for (int i = 0; i < strippedCode.Length; i++)
+            {
+                b[i] = (byte)strippedCode[i].Operation;
+                Console.Write($"{(Instruction)b[i]}");
+            }
+            Console.WriteLine("");
+            return new TransactionData(p.Done, b);
+        }
+    }
+
     [TestFixture]
     public class StatsAnalyzerTests
     {
@@ -135,8 +227,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(NgramTestCases))]
-        public void validate_ngram_generation(Instruction[] transaction, (Instruction[] ngram, int count)[] ngrams)
+        public void validate_ngram_generation_exhaustive(Instruction[] transaction, (Instruction[] ngram, int count)[] ngrams)
         {
+            StatsAnalyzer.Reset();
             Console.WriteLine($"entering test length transaction : {transaction.Length} , ngrams: {ngrams.Count()}");
             StatsAnalyzer.GetInstance(100, transaction.Length, "");
             foreach (Instruction instruction in transaction)
@@ -157,5 +250,82 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
         }
 
+        public void PsuedoBlockExecution(byte[][] transactions)
+        {
+            foreach (byte[] transaction in transactions)
+            {
+                PsuedoTransactionExecution(transaction);
+            }
+            StatsAnalyzer.NoticeBlockCompletionBlocking();
+        }
+
+        public void PsuedoTransactionExecution(byte[] code)
+        {
+
+            OpcodeInfo[] strippedCode = IlAnalyzer.StripByteCode(new ReadOnlySpan<byte>(code)).Item1;
+            byte[] b = new byte[strippedCode.Length];
+            for (int i = 0; i < strippedCode.Length; i++)
+            {
+                StatsAnalyzer.AddInstruction(strippedCode[i].Operation);
+            }
+            StatsAnalyzer.NoticeTransactionCompletion();
+        }
+
+        public static IEnumerable<TestCaseData> BlockTestCase
+        {
+            get
+            {
+                yield return new TestCaseData(
+                        new (string, int)[][] {
+                        new (string, int)[] { (LargeByteCodeBuilder.P01P01MUL, 10) }
+                        }, 2
+                      )
+                    .SetName("SingleTransaction");
+            }
+        }
+
+        [Test, TestCaseSource(nameof(BlockTestCase))]
+        public void validate_ngram_count_large_pattern((string, int)[][] block, int timesTwo)
+        {
+            StatsAnalyzer.Reset();
+            StatsAnalyzer.GetInstance(100, 100000, "");
+            // Console.WriteLine($"Pattern Stats {StatsAnalyzer.GetStatInfo(chunk.Pattern)}");
+            // StatsAnalyzer.NoticeBlockCompletionBlocking();
+            // Console.WriteLine($"Pattern Stats {StatsAnalyzer.GetStatInfo(chunk.Pattern)}");
+
+
+
+            TransactionData t;
+            foreach ((string, int)[] trasaction in block)
+            {
+                t = LargeByteCodeBuilder.PrepareTransaction(trasaction);
+                foreach ((string pattern, int count) in trasaction)
+                {
+
+                    DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePatternChunk(pattern);
+                    for (int i = 0; i < timesTwo; i++)
+                    {
+                        PsuedoBlockExecution(new byte[][] { t.ByteCode });
+                        PsuedoBlockExecution(new byte[][] { t.ByteCode });
+                        Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Count == count * 2 * (i + 1), $" Total count expected {count * 2 * (i + 1)}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Count})");
+                    }
+                }
+                {
+
+                    //CodeInfo codeInfo = new CodeInfo(t.ByteCode);
+
+                    //DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePattern(LargeByteCodeBuilder.P01P01MUL);
+                    //IlAnalyzer.AddPattern(P01P01ADD.Pattern, new P01P01ADD());
+                    //Task.Run(async () => { await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching); }).Wait();
+                    //Task.Run(async () => { await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching); }).Wait();
+                    //  await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching);
+                    //P01P01ADD pattern = IlAnalyzer.GetPatternHandler<P01P01ADD>(P01P01ADD.Pattern);
+                    //Console.WriteLine($"callcount : {pattern.CallCount} codeinfo chuncks: {codeInfo.IlInfo.Chunks.Count}");
+                }
+
+            }
+            StatsAnalyzer.Reset();
+        }
     }
 }
+
