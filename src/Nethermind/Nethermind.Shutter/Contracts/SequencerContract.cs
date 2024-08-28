@@ -21,9 +21,7 @@ public class SequencerContract : Contract
     public readonly AbiEncodingInfo TransactionSubmittedAbi;
     private readonly ILogFinder _logFinder;
     private const long LogScanChunkSize = 16;
-    // private const int LogScanCutoffChunks = 128;
-    // todo: fix for smaller chains with less blocks
-    private const int LogScanCutoffChunks = 1;
+    private const int LogScanCutoffChunks = 128;
     private readonly AddressFilter _addressFilter;
     private readonly TopicsFilter _topicsFilter;
     private readonly ILogger _logger;
@@ -51,7 +49,7 @@ public class SequencerContract : Contract
     }
 
     public LogFilter CreateFilter(long blockNumber)
-        => new LogFilter(0, new(blockNumber), new(blockNumber), _addressFilter, _topicsFilter);
+        => new(0, new(blockNumber), new(blockNumber), _addressFilter, _topicsFilter);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ISequencerContract.TransactionSubmitted ParseTransactionSubmitted(ILogEntry log)
@@ -77,7 +75,14 @@ public class SequencerContract : Contract
         count = 0;
         for (int i = 0; i < LogScanCutoffChunks; i++)
         {
+            bool atGenesis = false;
             long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
+            if (startBlockNumber < 0)
+            {
+                atGenesis = true;
+                startBlockNumber = 0;
+            }
+
             BlockParameter start = new(startBlockNumber);
             LogFilter logFilter = new(0, start, end, _addressFilter, _topicsFilter);
 
@@ -92,9 +97,14 @@ public class SequencerContract : Contract
                 break;
             }
 
-            List<ISequencerContract.TransactionSubmitted> events = eventsFromLogs(logs, eon, txPointer, start.BlockNumber!.Value, end.BlockNumber!.Value, out int len);
+            List<ISequencerContract.TransactionSubmitted> events = EventsFromLogs(logs, eon, txPointer, start.BlockNumber!.Value, end.BlockNumber!.Value, out int len);
             eventBlocks.Add(events);
             count++;
+
+            if (atGenesis)
+            {
+                break;
+            }
 
             if (len > 0)
             {
@@ -112,7 +122,7 @@ public class SequencerContract : Contract
         return eventBlocks;
     }
 
-    private List<ISequencerContract.TransactionSubmitted> eventsFromLogs(List<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock, out int eventCount)
+    private List<ISequencerContract.TransactionSubmitted> EventsFromLogs(List<FilterLog> logs, ulong eon, ulong txPointer, long startBlock, long endBlock, out int eventCount)
     {
         List<ISequencerContract.TransactionSubmitted> events = [];
 

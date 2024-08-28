@@ -195,7 +195,23 @@ class ShutterTxLoaderTests : EngineModuleTests
 
     }
 
-    // // todo: test transactions with overlapping eons
+    [Test]
+    public async Task Can_scan_logs_to_genesis()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null).Build(ShutterTestsCommon.SpecProvider);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
+
+        ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi()));
+
+        Assert.DoesNotThrow(() => api.AdvanceSlot(0));
+    }
+
+    // todo: test transactions with overlapping eons
 
     private static ShutterApiSimulatorLoadedTxs InitApi(Random rnd, MergeTestBlockchain chain)
         => new(
