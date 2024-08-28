@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -21,6 +20,7 @@ public class PreBlockCaches
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<bool>[] _clearCaches;
+    private readonly Action _clearAllCaches;
 
     private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
@@ -36,6 +36,8 @@ public class PreBlockCaches
             _rlpCache.NoResizeClear,
             _precompileCache.NoResizeClear
         ];
+
+        _clearAllCaches = () => ClearImmediate();
     }
 
     public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
@@ -43,16 +45,7 @@ public class PreBlockCaches
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache => _precompileCache;
 
-    public async Task ClearCachesInBackground()
-    {
-        List<Task> tasks = [];
-        foreach (Func<bool> clearCache in _clearCaches)
-        {
-            tasks.Add(Task.Run(clearCache));
-        }
-
-        await Task.WhenAll(tasks);
-    }
+    public Task ClearCachesInBackground() => Task.Run(_clearAllCaches);
 
     public bool ClearImmediate()
     {
