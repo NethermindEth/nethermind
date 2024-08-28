@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
             else
             {
-                throw new Exception(EvmExceptionType.InvalidJumpDestination.ToString());
+                throw new InvalidJumpDestinationException();
             }
         }
 
@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
             else
             {
-                throw new Exception(EvmExceptionType.InvalidJumpDestination.ToString());
+                throw new InvalidJumpDestinationException();
             }
         }
     }
