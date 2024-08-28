@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.State;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
@@ -13,7 +14,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 interface InstructionChunk
 {
     static byte[] Pattern { get; }
-    void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter,
+    void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter,
         ref long gasAvailable,
         ref EvmStack<T> stack) where T : struct, IIsTracing;
 }

@@ -82,7 +82,7 @@ internal class IlInfo
                         return false;
                     }
                     var blkCtx = vmState.Env.TxExecutionContext.BlockExecutionContext;
-                    chunk.Invoke(vmState, spec, ref programCounter, ref gasAvailable, ref stack);
+                    chunk.Invoke(vmState, worldState, spec, ref programCounter, ref gasAvailable, ref stack);
                     break;
                 }
             case ILMode.SubsegmentsCompiling:

@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static byte[] Pattern => [96, 96, 01];
         public byte CallCount { get; set; } = 0;
 
-        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
             UInt256 lhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
@@ -45,12 +45,37 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
     }
 
-    public class P02JMP : InstructionChunk
+    public class IsContractCheck : InstructionChunk
+    {
+        public static byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
+        public byte CallCount { get; set; } = 0;
+
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+
+            Address address = stack.PopAddress();
+            int contractCodeSize =  worldState.GetCode(address).Length;
+            stack.PushUInt32(contractCodeSize);
+            if(contractCodeSize == 0)
+            {
+                stack.PushOne();
+            }
+            else
+            {
+                stack.PushZero();
+            }
+
+            programCounter += 3;
+        }
+
+    }
+    public class EmulatedStaticJump : InstructionChunk
     {
         public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
         public byte CallCount { get; set; } = 0;
 
-        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
             int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
@@ -65,12 +90,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
     }
-    public class P02CJMP : InstructionChunk
+    public class EmulatedStaticCJump : InstructionChunk
     {
         public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
         public byte CallCount { get; set; } = 0;
 
-        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
             stack.PopUInt256(out UInt256 condition);
@@ -109,8 +134,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
 
             IlAnalyzer.AddPattern(P01P01ADD.Pattern, new P01P01ADD());
-            IlAnalyzer.AddPattern(P02JMP.Pattern, new P02JMP());
-            IlAnalyzer.AddPattern(P02CJMP.Pattern, new P02CJMP());
+            IlAnalyzer.AddPattern(EmulatedStaticCJump.Pattern, new EmulatedStaticCJump());
+            IlAnalyzer.AddPattern(EmulatedStaticJump.Pattern, new EmulatedStaticJump());
+            IlAnalyzer.AddPattern(IsContractCheck.Pattern, new IsContractCheck());
         }
 
         [Test]
