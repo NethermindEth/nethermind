@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp.RlpWriter;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
@@ -95,24 +96,6 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         }
     }
 
-    public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
-        int contentLength = GetContentLength(transaction, forSigning, isEip155Enabled, chainId);
-
-        stream.StartSequence(contentLength);
-        EncodePayload(transaction, stream);
-        EncodeSignature(transaction, stream, forSigning, chainId, includeSigChainIdHack);
-    }
-
-    public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        int txContentLength = GetContentLength(transaction, forSigning, isEip155Enabled, chainId);
-        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
-
-        return txPayloadLength;
-    }
-
     private static void DecodePayload(Transaction transaction, RlpStream rlpStream)
     {
         transaction.Nonce = rlpStream.DecodeUInt256();
@@ -149,91 +132,54 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         transaction.Signature = SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
-    private static void EncodePayload(Transaction transaction, RlpStream stream)
+    // NOTE: These methods could be lifted to the top class `TxDecoder`
+    public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        stream.Encode(transaction.Nonce);
-        stream.Encode(transaction.GasPrice);
-        stream.Encode(transaction.GasLimit);
-        stream.Encode(transaction.To);
-        stream.Encode(transaction.Value);
-        stream.Encode(transaction.Data);
+        var writer = new RlpSequenceStreamWriter();
+        WriteTransaction(transaction, writer, forSigning, isEip155Enabled, chainId);
+        writer.WriteToStream(stream);
     }
 
-    private static void EncodeSignature(Transaction transaction, RlpStream stream, bool forSigning, ulong chainId, bool includeSigChainIdHack)
+    public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
+        var writer = new RlpContentLengthWriter();
+        WriteTransaction(transaction, writer, forSigning, isEip155Enabled, chainId);
+        return Rlp.LengthOfSequence(writer.ContentLength);
+    }
+
+    public static void WriteTransaction(Transaction transaction, IRlpWriter writer, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        writer.Push(transaction.Nonce);
+        writer.Push(transaction.GasPrice);
+        writer.Push(transaction.GasLimit);
+        writer.Push(transaction.To);
+        writer.Push(transaction.Value);
+        writer.Push(transaction.Data);
+
         if (forSigning)
         {
+            bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
             if (includeSigChainIdHack)
             {
-                stream.Encode(chainId);
-                stream.Encode(Rlp.OfEmptyByteArray);
-                stream.Encode(Rlp.OfEmptyByteArray);
+                writer.Push(chainId);
+                writer.Push(Rlp.OfEmptyByteArray);
+                writer.Push(Rlp.OfEmptyByteArray);
             }
         }
         else
         {
             if (transaction.Signature is null)
             {
-                stream.Encode(0);
-                stream.Encode(Bytes.Empty);
-                stream.Encode(Bytes.Empty);
+                writer.Push(0);
+                writer.Push(Bytes.Empty);
+                writer.Push(Bytes.Empty);
             }
             else
             {
-                stream.Encode(transaction.Signature.V);
-                stream.Encode(transaction.Signature.RAsSpan.WithoutLeadingZeros());
-                stream.Encode(transaction.Signature.SAsSpan.WithoutLeadingZeros());
+                writer.Push(transaction.Signature.V);
+                writer.Push(transaction.Signature.RAsSpan.WithoutLeadingZeros());
+                writer.Push(transaction.Signature.SAsSpan.WithoutLeadingZeros());
             }
         }
-    }
-
-    private static int GetContentLength(Transaction transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        int payloadLength = GetPayloadLength(transaction);
-        int signatureLength = GetSignatureLength(transaction, forSigning, chainId, includeSigChainIdHack: isEip155Enabled && chainId != 0);
-
-        return payloadLength + signatureLength;
-    }
-
-    private static int GetPayloadLength(Transaction transaction)
-    {
-        return Rlp.LengthOf(transaction.Nonce)
-            + Rlp.LengthOf(transaction.GasPrice)
-            + Rlp.LengthOf(transaction.GasLimit)
-            + Rlp.LengthOf(transaction.To)
-            + Rlp.LengthOf(transaction.Value)
-            + Rlp.LengthOf(transaction.Data);
-    }
-
-    private static int GetSignatureLength(Transaction transaction, bool forSigning, ulong chainId, bool includeSigChainIdHack)
-    {
-        int contentLength = 0;
-
-        if (forSigning)
-        {
-            if (includeSigChainIdHack)
-            {
-                contentLength += Rlp.LengthOf(chainId);
-                contentLength += 1;
-                contentLength += 1;
-            }
-        }
-        else
-        {
-            if (transaction.Signature is null)
-            {
-                contentLength += 1;
-                contentLength += 1;
-                contentLength += 1;
-            }
-            else
-            {
-                contentLength += Rlp.LengthOf(transaction.Signature.V);
-                contentLength += Rlp.LengthOf(transaction.Signature.RAsSpan.WithoutLeadingZeros());
-                contentLength += Rlp.LengthOf(transaction.Signature.SAsSpan.WithoutLeadingZeros());
-            }
-        }
-
-        return contentLength;
     }
 }
