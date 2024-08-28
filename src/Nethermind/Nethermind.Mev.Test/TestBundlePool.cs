@@ -6,12 +6,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Mev.Test
@@ -72,8 +75,55 @@ namespace Nethermind.Mev.Test
         }
     }
 
-    public class MockProvider : IAccountStateProvider
+    public class MockProvider : IReadOnlyStateProvider
     {
+        public Hash256 StateRoot => throw new System.NotImplementedException();
+
+        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public bool AccountExists(Address address)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public byte[]? GetCode(Address address)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public byte[]? GetCode(Hash256 codeHash)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public byte[]? GetCode(ValueHash256 codeHash)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public bool HasStateForRoot(Hash256 stateRoot)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public bool IsContract(Address address)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public bool IsDeadAccount(Address address)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public bool IsEmptyAccount(Address address)
+        {
+            throw new System.NotImplementedException();
+        }
+
         public bool TryGetAccount(Address address, out AccountStruct account)
         {
             account = AccountStruct.TotallyEmpty;
