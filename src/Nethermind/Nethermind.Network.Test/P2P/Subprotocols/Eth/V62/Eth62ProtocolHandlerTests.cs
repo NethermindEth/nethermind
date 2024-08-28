@@ -47,6 +47,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private Eth62ProtocolHandler _handler = null!;
         private IGossipPolicy _gossipPolicy = null!;
         private ITxGossipPolicy _txGossipPolicy = null!;
+        private CompositeDisposable _disposables = null!;
 
         [SetUp]
         public void Setup()
@@ -55,9 +56,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             NetworkDiagTracer.IsEnabled = true;
 
+            _disposables = new();
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
+            _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -90,6 +93,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler?.Dispose();
             _session?.Dispose();
             _syncManager?.Dispose();
+            _disposables.Dispose();
         }
 
         [Test]
@@ -424,41 +428,40 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 .Do((info => getMsg = (GetBlockBodiesMessage)info[0]));
 
             HandleIncomingStatusMessage();
-            Task getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            Task getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None).AddResultTo(_disposables);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
 
-            getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None).AddResultTo(_disposables);
             HandleZeroMessage(largeMsg, Eth62MessageCode.BlockBodies);
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(6));
 
-            getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None).AddResultTo(_disposables);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
-            getMsg.Dispose();
         }
 
         [Test]
-        public void Can_handle_block_bodies()
+        public async Task Can_handle_block_bodies()
         {
             using BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
+            Task task = ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None).AddResultTo(_disposables);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
+            await task;
         }
 
         [Test]
         public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
         {
-            OwnedBlockBodies bodies =
-                await ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(), CancellationToken.None);
+            using OwnedBlockBodies bodies = await ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(), CancellationToken.None);
 
             bodies.Bodies.Should().HaveCount(0);
         }
@@ -473,13 +476,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Can_handle_headers()
+        public async Task Can_handle_headers()
         {
             using BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
 
-            ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
+            Task task = ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None).AddResultTo(_disposables);
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders);
+            await task;
         }
 
         [Test]
@@ -601,7 +605,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private void HandleIncomingStatusMessage()
         {
-            var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
             IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
             statusPacket.ReadByte();
