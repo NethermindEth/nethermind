@@ -13,21 +13,12 @@ namespace Nethermind.State
 {
     public static class WorldStateExtensions
     {
-        public static byte[] GetCode(this IWorldState stateProvider, Address address)
-        {
-            stateProvider.TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash) ?? Array.Empty<byte>();
-        }
-
         public static void InsertCode(this IWorldState worldState, Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
             worldState.InsertCode(address, codeHash, code, spec, isGenesis);
         }
-
-        public static bool IsInvalidContractSender(this IWorldState stateProvider, IReleaseSpec spec, Address address) =>
-           spec.IsEip3607Enabled && stateProvider.HasCode(address) && !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, address));
-
+     
         public static string DumpState(this IWorldState stateProvider)
         {
             TreeDumper dumper = new();

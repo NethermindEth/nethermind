@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
 
@@ -28,7 +29,7 @@ namespace Nethermind.Mev.Source
         private readonly ITimestamper _timestamper;
         private readonly ITxValidator _txValidator;
         private readonly IMevConfig _mevConfig;
-        private readonly IAccountStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
@@ -51,7 +52,7 @@ namespace Nethermind.Mev.Source
             ITxValidator txValidator,
             ISpecProvider specProvider,
             IMevConfig mevConfig,
-            IAccountStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ILogManager logManager,
             IEthereumEcdsa ecdsa)
         {
