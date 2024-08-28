@@ -183,7 +183,7 @@ public class ShutterIntegrationTests : EngineModuleTests
             // KeysMissed will be incremented when get_payload is called
             lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
 
-            time += (long)ShutterApi.SlotLength.TotalSeconds;
+            time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
             timestamper.SetTimestamp(time);
         }
 

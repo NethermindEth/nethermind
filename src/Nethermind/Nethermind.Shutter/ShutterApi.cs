@@ -110,7 +110,8 @@ public class ShutterApi : IShutterApi
             TxSource,
             _cfg,
             Time,
-            _logManager
+            _logManager,
+            _slotLength
         );
         return BlockImprovementContextFactory;
     }

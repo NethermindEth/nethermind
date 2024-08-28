@@ -20,7 +20,8 @@ public class ShutterBlockImprovementContextFactory(
     ShutterTxSource shutterTxSource,
     IShutterConfig shutterConfig,
     ShutterTime time,
-    ILogManager logManager) : IBlockImprovementContextFactory
+    ILogManager logManager,
+    TimeSpan slotLength) : IBlockImprovementContextFactory
 {
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
@@ -35,7 +36,7 @@ public class ShutterBlockImprovementContextFactory(
                                            parentHeader,
                                            payloadAttributes,
                                            startDateTime,
-                                           GnosisSpecProvider.SlotLength,
+                                           slotLength,
                                            logManager);
     public bool KeepImproving => false;
 }
