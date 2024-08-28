@@ -55,9 +55,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             CallCount++;
 
             Address address = stack.PopAddress();
-            int contractCodeSize =  worldState.GetCode(address).Length;
+            int contractCodeSize = worldState.GetCode(address).Length;
             stack.PushUInt32(contractCodeSize);
-            if(contractCodeSize == 0)
+            if (contractCodeSize == 0)
             {
                 stack.PushOne();
             }
