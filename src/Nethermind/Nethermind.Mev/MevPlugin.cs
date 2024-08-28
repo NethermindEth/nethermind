@@ -74,7 +74,7 @@ public class MevPlugin : IConsensusWrapperPlugin
                     getFromApi.TxValidator!,
                     getFromApi.SpecProvider!,
                     _mevConfig,
-                    getFromApi.ChainHeadStateProvider!,
+                    getFromApi.WorldState!,
                     getFromApi.LogManager,
                     getFromApi.EthereumEcdsa!);
             }
