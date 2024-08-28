@@ -30,7 +30,7 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public static bool NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
+        public static bool NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue>? dictionary)
                 where TKey : notnull
         {
             if (dictionary is null || dictionary.IsEmpty)
