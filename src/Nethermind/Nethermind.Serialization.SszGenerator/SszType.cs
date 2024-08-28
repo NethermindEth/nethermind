@@ -17,7 +17,7 @@ class SszType
             IsStruct = true,
             IsUnion = false,
             Members = [],
-            StaticLength = sizeof(int),
+            StaticLength = sizeof(byte),
             DecodeMethod = "DecodeByte"
         });
 
@@ -31,7 +31,7 @@ class SszType
             IsStruct = true,
             IsUnion = false,
             Members = [],
-            StaticLength = sizeof(int),
+            StaticLength = sizeof(ushort),
             DecodeMethod = "DecodeUShort"
         });
 
@@ -158,10 +158,9 @@ class SszType
                 ElementType = itemType is not null ? From(semanticModel, types, itemType) : null,
             };
 
-            result.IsVariable = type.NullableAnnotation == NullableAnnotation.Annotated || type.TypeKind != TypeKind.Structure;
             result.Members = type.GetMembers().OfType<IPropertySymbol>().Where(p => p.GetMethod is not null && p.SetMethod is not null).Select(prop => SszProperty.From(semanticModel, types, prop)).ToArray() ?? [];
-            result.IsVariable |= result.Members.Any(m => m.Type.IsVariable) || (result.ElementType?.IsVariable ?? false);
-            result.StaticLength = result.IsVariable ? PointerLength : result.Members.Sum(m => m.Type.StaticLength);
+            result.IsVariable = result.Members.Any(m => m.Type.IsVariable) || (result.ElementType?.IsVariable ?? false);
+            result.StaticLength = result.IsVariable ? PointerLength : result.Members.Sum(m => m.StaticLength);
             return result;
         }
     }
@@ -197,7 +196,6 @@ class SszType
     public SszProperty[] Members { get; set; } = [];
     public required bool IsStruct { get; init; }
     public string DecodeMethod { get; init; } = "Decode";
-    public bool IsProcessed { get; set; }
     public bool IsBasic => BasicTypes.Values.Contains(this);
 
     public bool IsCollection { get; set; }
@@ -290,6 +288,11 @@ class SszProperty
         var valueGetter = GetValueGetter(prop);
         var valueSetter = GetValueSetter(prop);
         var type = SszType.From(semanticModel, types, prop.Type);
+        var isVector = prop.GetAttributes().Any(a => a.AttributeClass?.Name == "SszVectorAttribute");
+        var limit = prop.GetAttributes().FirstOrDefault()?.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
+        var staticLength = type.IsVariable ? SszType.PointerLength : type.IsCollection ? (isVector ? type.ElementType!.StaticLength * limit : SszType.PointerLength) : type.StaticLength;
+
+        var isVariable = type.IsCollection ? (isVector ? type.IsVariable : true) : type.IsVariable;
 
         return new SszProperty
         {
@@ -298,19 +301,22 @@ class SszProperty
 
             ValueAccessor = valueGetter,
 
-            StaticEncode = $"SszLib.Encode(buf.Slice({{offset}}, {type.StaticLength}), {(type.IsVariable ? $"{{dynOffset}}" : $"{valueGetter}")})",
-            DynamicEncode = type.IsVariable ? $"if (container.{prop.Name} is not null) {(type.IsCollection && !(type.ElementType?.IsBasic ?? false) ? "Encode" : "SszLib.Encode")}(buf.Slice({{dynOffset}}, {{length}}), {valueGetter})" : null,
+            StaticEncode = $"SszLib.Encode(buf.Slice({{offset}}, {staticLength}), {(isVariable ? $"{{dynOffset}}" : $"{valueGetter}")})",
+            DynamicEncode = isVariable ? $"if (container.{prop.Name} is not null) {(type.IsCollection && !(type.ElementType?.IsBasic ?? false) ? "Encode" : "SszLib.Encode")}(buf.Slice({{dynOffset}}, {{length}}), {valueGetter})" : null,
 
-            StaticDecode = type.IsVariable ? $"int {{dynOffset}} = SszLib.DecodeInt(data.Slice({{offset}}, {type.StaticLength}))" :
+            StaticDecode = isVariable ? $"int {{dynOffset}} = SszLib.DecodeInt(data.Slice({{offset}}, {type.StaticLength}))" :
                            type.IsBasic ? $"{valueSetter} = SszLib.{type.DecodeMethod}(data.Slice({{offset}}, {type.StaticLength}))" :
                                             $"Decode(data.Slice({{offset}}, {type.StaticLength}), out {type.Name} {LowerStart(prop.Name)}); {valueSetter} = {LowerStart(prop.Name)}",
-            DynamicDecode = !type.IsVariable ? null :
+            DynamicDecode = !isVariable ? null :
                             type.IsBasic ? $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {valueSetter} = SszLib.{type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}))" :
                                            $"if ({{dynOffsetNext}} - {{dynOffset}} > 0) {{ {type.DecodeMethod}(data.Slice({{dynOffset}}, {{dynOffsetNext}} - {{dynOffset}}), out {type.Name} value); {valueSetter} = value; }}",
-            DynamicLength = type.IsVariable ? GetDynamicLength(prop, type) : null,
+            DynamicLength = isVariable ? GetDynamicLength(prop, type) : null,
 
-            IsVector = prop.GetAttributes().Any(a=>a.AttributeClass?.Name == "SszVectorAttribute"),
-            Limit = prop.GetAttributes().FirstOrDefault()?.ConstructorArguments.FirstOrDefault().Value as int? ?? 0,
+            IsVector = isVector,
+            Limit = limit,
+
+            StaticLength = staticLength,
+            IsVariable = isVariable,
         };
     }
 
@@ -363,4 +369,81 @@ class SszProperty
     public required string StaticDecode { get; init; }
     public required string? DynamicDecode { get; init; }
     public required string? DynamicLength { get; init; }
+    public required int StaticLength { get; init; }
+    public required bool IsVariable { get; init; }
 }
+
+
+//public enum PropertyType
+//{
+//    Basic,
+//    Container,
+//    Vector,
+//    List,
+//    BitVector,
+//    BitList,
+//    Union,
+//}
+//public enum CollectionType
+//{
+//    Array,
+//    List,
+//}
+
+//public class SszType2
+//{
+//    static Dictionary<string, SszType> Cache = [];
+
+//    internal static SszType2? From(SemanticModel semanticModel, INamedTypeSymbol type)
+//    {
+//        var collectionAttributes = GetElementType(type, semanticModel.Compilation);
+//        var members = type.GetMembers().OfType<IPropertySymbol>().Where(p => p.GetMethod is not null && p.SetMethod is not null).Select(prop => SszProperty.From(semanticModel, types, prop)).ToArray() ?? [];
+
+//        return new SszType2
+//        {
+//            CollectionType = collectionAttributes?.Item1,
+//            ElementType = collectionAttributes?.Item2,
+//        };
+//    }
+
+
+//    private static (CollectionType, ITypeSymbol)? GetElementType(ITypeSymbol typeSymbol, Compilation compilation)
+//    {
+//        // Check if the type is an array
+//        if (typeSymbol is IArrayTypeSymbol array)
+//        {
+//            return (CollectionType.Array, array.ElementType!);
+//        }
+
+//        // Check if the type implements IEnumerable<T>
+//        INamedTypeSymbol? ienumerableOfT = compilation.GetTypeByMetadataName("System.Collections.Generic.IList`1");
+//        INamedTypeSymbol? enumerable = typeSymbol.AllInterfaces.FirstOrDefault(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, ienumerableOfT));
+//        if (ienumerableOfT != null && enumerable is not null)
+//        {
+//            return (CollectionType.List, enumerable.TypeArguments.First());
+//        }
+
+//        // Not a collection type
+//        return null;
+//    }
+//}
+
+//public class Container
+//{
+//    public SszProperty2[] Props { get; set; } = [];
+//}
+
+//public class Collection
+//{
+//    public PropertyType ElementType { get; set; }
+//    public int? Limit { get; set; }
+//    public int? Length { get; set; }
+//}
+
+
+//public class SszProperty2
+//{
+//    public PropertyType Type { get; set; }
+
+//    public int Limit { get; set; }
+//}

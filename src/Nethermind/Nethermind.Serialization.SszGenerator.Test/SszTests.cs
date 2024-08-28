@@ -43,19 +43,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
         //    public StaticStruct FixedStruct { get; set; }
         //}
 
-        //public enum SomeEnum
-        //{
-        //    None,
-        //    Type1,
-        //    Type2,
-        //}
-
-        ////[SszSerializable]
-        //public class UnionClass
-        //{
-        //    public SomeEnum Selector { get; set; }
-        //    public BasicSzzStruct? Type2 { get; set; }
-        //}
+    
 
         //[Test]
         //public void Test_roundtrip()
@@ -80,45 +68,80 @@ namespace Nethermind.Serialization.SszGenerator.Test
         //}
     }
 
-    [SszSerializable]
-    public struct SlotDecryptionIdentites
-    {
-        public ulong InstanceID { get; set; }
-        public ulong Eon { get; set; }
-        public ulong Slot { get; set; }
-        public ulong TxPointer { get; set; }
+    //[SszSerializable]
+    //public struct SlotDecryptionIdentites
+    //{
+    //    public ulong InstanceID { get; set; }
+    //    public ulong Eon { get; set; }
+    //    public ulong Slot { get; set; }
+    //    public ulong TxPointer { get; set; }
 
-        [SszList(1024)]
-        public List<IdentityPreimage> IdentityPreimages { get; set; }
-    }
+    //    [SszList(1024)]
+    //    public List<IdentityPreimage> IdentityPreimages { get; set; }
+    //}
 
     [SszSerializable]
     public struct IdentityPreimage
     {
-        [SszList]
+        [SszVector(52)]
         public byte[] Data { get; set; }
     }
 
     //[SszSerializable]
-    //public struct Test0
+    //public struct Test1
     //{
-    //    public Test0()
-    //    {
+    //    public List<ulong> Test10 { get; set; }
+    //    public ulong[] Test11 { get; set; }
 
-    //    }
-    //    //public ulong Test1 { get; set; } = 1;
-
-    //    [SszList(1024)]
-    //    public long[] Test2 { get; set; } = [2];
+    //    [SszList]
+    //    public List<ulong> Test12 { get; set; }
 
     //    [SszList(1024)]
-    //    public List<long> Test3 { get; set; } = [2];
+    //    public List<ulong> Test13 { get; set; }
 
-    //    [SszVector(5)]
-    //    public List<long> Test4 { get; set; } = [1, 2, 3, 4, 5];
+    //    [SszVector(1024)]
+    //    public List<ulong> Test14 { get; set; }
 
-    //    [SszList(1024)]
-    //    public List<byte[]> Test5 { get; set; } = [[2]];
+    //    [SszVector]
+    //    public List<ulong> Test15 { get; set; }
     //}
+
+    //public enum SomeEnum
+    //{
+    //    None,
+    //    Type1,
+    //    Type2,
+    //}
+
+    //[SszSerializable]
+    //public class Test2
+    //{
+    //    public SomeEnum Selector { get; set; }
+    //    public long? Type1 { get; set; }
+    //    public Test1? Type2 { get; set; }
+    //}
+
+    ////[SszSerializable]
+    ////public class Test3
+    ////{
+    ////    public Test3()
+    ////    {
+
+    ////    }
+    ////    //public ulong Test1 { get; set; } = 1;
+
+    ////    [SszList(1024)]
+    ////    public long[] Test2 { get; set; } = [2];
+
+    ////    [SszList(1024)]
+    ////    public List<long> Test3 { get; set; } = [2];
+
+    ////    [SszVector(5)]
+    ////    public List<long> Test4 { get; set; } = [1, 2, 3, 4, 5];
+
+    ////    [SszList(1024)]
+    ////    public List<byte[]> Test5 { get; set; } = [[2]];
+    ////}
+
 }
 

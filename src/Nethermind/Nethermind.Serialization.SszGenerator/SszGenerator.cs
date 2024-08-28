@@ -15,18 +15,6 @@ public partial class SszGenerator : IIncrementalGenerator
                 transform: (context, _) => GetClassWithAttribute(context))
             .Where(classNode => classNode is not null);
 
-        //var methodDeclarations = context.SyntaxProvider
-        //    .CreateSyntaxProvider(
-        //        predicate: (syntaxNode, _) => IsMethodWithAttribute(syntaxNode),
-        //        transform: (context, _) => GetMethodWithAttribute(context))
-        //    .Where(methodNode => methodNode is not null);
-
-        //var fieldDeclarations = context.SyntaxProvider
-        //    .CreateSyntaxProvider(
-        //        predicate: (syntaxNode, _) => IsFieldWithAttribute(syntaxNode),
-        //        transform: (context, _) => GetFieldWithAttribute(context))
-        //    .Where(fieldNode => fieldNode is not null);
-
         context.RegisterSourceOutput(classDeclarations, (spc, decl) =>
         {
             if (decl is null)
@@ -34,39 +22,8 @@ public partial class SszGenerator : IIncrementalGenerator
                 return;
             }
             var generatedCode = GenerateClassCode(decl);
-            spc.AddSource($"{decl.Name}SszSerializer.cs", SourceText.From(generatedCode, Encoding.UTF8));
+            spc.AddSource($"Serialization.SszEncoding.{decl.Name}.cs", SourceText.From(generatedCode, Encoding.UTF8));
         });
-
-        //context.RegisterSourceOutput(methodDeclarations, (spc, methodNode) =>
-        //{
-        //    if (methodNode is MethodDeclarationSyntax methodDeclaration)
-        //    {
-        //        var methodName = methodDeclaration.Identifier.Text;
-        //        var classDeclaration = methodDeclaration.Parent as ClassDeclarationSyntax;
-        //        var className = classDeclaration?.Identifier.Text ?? "default";
-        //        var namespaceName = GetNamespace(methodDeclaration);
-        //        var generatedCode = GenerateMethodCode(namespaceName, className, methodName);
-        //        spc.AddSource($"{className}_{methodName}_method_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
-        //    }
-        //});
-
-        //context.RegisterSourceOutput(fieldDeclarations, (spc, fieldNode) =>
-        //{
-        //    if (fieldNode is FieldDeclarationSyntax fieldDeclaration)
-        //    {
-        //        var variable = fieldDeclaration.Declaration.Variables.FirstOrDefault();
-        //        if (variable != null)
-        //        {
-        //            var fieldName = variable.Identifier.Text;
-        //            var classDeclaration = fieldDeclaration.Parent as ClassDeclarationSyntax;
-        //            var className = classDeclaration?.Identifier.Text ?? "default";
-        //            var namespaceName = GetNamespace(fieldDeclaration);
-        //            var generatedCode = GenerateFieldCode(namespaceName, className, fieldName);
-        //            spc.AddSource($"{className}_{fieldName}_field_generated.cs", SourceText.From(generatedCode, Encoding.UTF8));
-        //        }
-        //    }
-        //});
-
     }
 
     private static bool IsClassWithAttribute(SyntaxNode syntaxNode)
@@ -92,42 +49,6 @@ public partial class SszGenerator : IIncrementalGenerator
         return null;
     }
 
-    //private static MethodDeclarationSyntax? GetMethodWithAttribute(GeneratorSyntaxContext context)
-    //{
-    //    var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-    //    foreach (var attributeList in methodDeclaration.AttributeLists)
-    //    {
-    //        foreach (var attribute in attributeList.Attributes)
-    //        {
-    //            var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
-    //            if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-    //                methodSymbol.ContainingType.Name == "FunctionAttribute")
-    //            {
-    //                return methodDeclaration;
-    //            }
-    //        }
-    //    }
-    //    return null;
-    //}
-
-    //private static FieldDeclarationSyntax? GetFieldWithAttribute(GeneratorSyntaxContext context)
-    //{
-    //    var fieldDeclaration = (FieldDeclarationSyntax)context.Node;
-    //    foreach (var attributeList in fieldDeclaration.AttributeLists)
-    //    {
-    //        foreach (var attribute in attributeList.Attributes)
-    //        {
-    //            var symbolInfo = context.SemanticModel.GetSymbolInfo(attribute);
-    //            if (symbolInfo.Symbol is IMethodSymbol methodSymbol &&
-    //                methodSymbol.ContainingType.Name == "FieldAttribute")
-    //            {
-    //                return fieldDeclaration;
-    //            }
-    //        }
-    //    }
-    //    return null;
-    //}
-
     struct Dyn
     {
         public string OffsetDeclaration { get; init; }
@@ -140,21 +61,20 @@ public partial class SszGenerator : IIncrementalGenerator
     {
         try
         {
-            decl.IsProcessed = true;
-            int staticLength = decl.Members.Sum(prop => prop.Type.StaticLength);
+            int staticLength = decl.Members.Sum(prop => prop.StaticLength);
             List<Dyn> dynOffsets = new();
             SszProperty? prevM = null;
 
             foreach (SszProperty prop in decl.Members)
             {
-                if (prop.Type.IsVariable)
+                if (prop.IsVariable)
                 {
                     dynOffsets.Add(new Dyn
                     {
                         OffsetDeclaration = prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.DynamicLength}"),
                         DynamicEncode = prop.DynamicEncode ?? "",
                         DynamicLength = prop.DynamicLength!,
-                        DynamicDecode = prop.DynamicDecode ?? "", //prevM is null ? $"int dynOffset{dynOffsets.Count + 1} = {staticLength}" : ($"int dynOffset{dynOffsets.Count + 1} = dynOffset{dynOffsets.Count} + {prevM!.Type.DynamicLength}"),
+                        DynamicDecode = prop.DynamicDecode ?? "",
                     });
                     prevM = prop;
                 }
@@ -170,10 +90,11 @@ using Nethermind.Merkleization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using {decl.Namespace};
 
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 
-namespace {(decl.Namespace is not null ? decl.Namespace + "." : "")}Serialization;
+namespace Nethermind.Serialization;
 
 public partial class SszEncoding
 {{
@@ -204,9 +125,9 @@ public partial class SszEncoding
         {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select(m => m.OffsetDeclaration)) + ";\n        \n" : "")}
         {string.Join(";\n        ", decl.Members.Select(m =>
             {
-                if (m.Type.IsVariable) dynOffset++;
-                string result = !m.Type.IsVariable && !m.Type.IsBasic ? m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}").Replace("SszLib.Encode", "Encode") : m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
-                offset += m.Type.StaticLength;
+                if (m.IsVariable) dynOffset++;
+                string result = !m.IsVariable && !m.Type.IsBasic ? m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}").Replace("SszLib.Encode", "Encode") : m.StaticEncode.Replace("{offset}", $"{offset}").Replace("{dynOffset}", $"dynOffset{dynOffset}");
+                offset += m.StaticLength;
                 return result;
             }))};
 
@@ -239,13 +160,13 @@ public partial class SszEncoding
         {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.First().OffsetDeclaration) + ";\n" : "")}
         {string.Join(";\n        ", decl.Members.Select(m =>
             {
-                if (m.Type.IsVariable) dynOffsetDecode++;
+                if (m.IsVariable) dynOffsetDecode++;
                 string result = m.StaticDecode.Replace("{offset}", $"{offsetDecode}").Replace("{dynOffset}", $"dynOffset{dynOffsetDecode}");
-                offsetDecode += m.Type.StaticLength;
+                offsetDecode += m.StaticLength;
                 return result;
             }))};
         {(dynOffsets.Any() ? string.Join(";\n        ", dynOffsets.Select((m, i) =>
-                m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) + ";\n        \n" : "")}
+                m.DynamicDecode.Replace("{dynOffset}", $"dynOffset{i + 1}").Replace("{dynOffsetNext}", i + 1 == dynOffsets.Count ? "data.Length" : $"dynOffset{i + 2}"))) : "")}
     }}
 
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
@@ -287,7 +208,7 @@ public partial class SszEncoding
     {{
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members.Length}));
 
-        {string.Join(";\n        ", decl.Members.Select(m => m.Type.IsBasic ? $"merkleizer.Feed(container.{m.Name})" : $"Merkleize(container.{m.Name}, out UInt256 rootOf{m.Name});\n        merkleizer.Feed(rootOf{m.Name})"))};
+        {string.Join(";\n        ", decl.Members.Select(m => m.Type.IsBasic || (m.Type.IsCollection && m.Type.ElementType!.IsBasic) ? $"merkleizer.Feed(container.{m.Name})" : $"Merkleize(container.{m.Name}, out UInt256 rootOf{m.Name});\n        merkleizer.Feed(rootOf{m.Name})"))};
 
         merkleizer.CalculateRoot(out root);
     }}
@@ -303,7 +224,7 @@ public partial class SszEncoding
 
         foreach({decl.Name} item in container)
         {{
-            {(decl.IsBasic ? $"merkleizer.Feed(item)" : $"Merkleize(item, out UInt256 localRoot);\n        merkleizer.Feed(localRoot)")};
+            {(decl.IsBasic || (decl.IsCollection && decl.ElementType!.IsBasic) ? $"merkleizer.Feed(item)" : $"Merkleize(item, out UInt256 localRoot);\n        merkleizer.Feed(localRoot)")};
         }}
 
         merkleizer.CalculateRoot(out root);
