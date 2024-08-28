@@ -85,7 +85,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _logManager);
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
-        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);
+        BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter);
         ReadOnlyChainProcessingEnv chainProcessingEnv = new(
             txEnv,
             _blockValidator,
@@ -98,7 +98,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
-            chainProcessingEnv.StateProvider,
+            chainProcessingEnv.WorldStateManager,
             _receiptStorage,
             _blockTree,
             _specProvider,

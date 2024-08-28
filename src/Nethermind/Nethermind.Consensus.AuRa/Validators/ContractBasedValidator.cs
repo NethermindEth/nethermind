@@ -200,7 +200,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     _logger.Info($"Applying validator set change before block {block.ToString(BlockHeader.Format.Short)}.");
 
                 if (block.Number == InitBlockNumber)
-                    ValidatorContract.EnsureSystemAccount();
+                    ValidatorContract.EnsureSystemAccount(block);
 
                 ValidatorContract.FinalizeChange(block);
             }

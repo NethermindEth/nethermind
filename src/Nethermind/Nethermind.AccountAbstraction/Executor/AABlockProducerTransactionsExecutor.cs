@@ -19,24 +19,20 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public class AABlockProducerTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
     {
-        private readonly IWorldState _stateProvider;
         private readonly ISigner _signer;
         private readonly Address[] _entryPointAddresses;
 
         public AABlockProducerTransactionsExecutor(
             ITransactionProcessor transactionProcessor,
-            IWorldState stateProvider,
             ISpecProvider specProvider,
             ILogManager logManager,
             ISigner signer,
             Address[] entryPointAddresses)
             : base(
             transactionProcessor,
-            stateProvider,
             specProvider,
             logManager)
         {
-            _stateProvider = stateProvider;
             _signer = signer;
             _entryPointAddresses = entryPointAddresses;
         }
@@ -45,7 +41,8 @@ namespace Nethermind.AccountAbstraction.Executor
             Block block,
             ProcessingOptions processingOptions,
             BlockExecutionTracer executionTracer,
-            IReleaseSpec spec)
+            IReleaseSpec spec,
+            IWorldState worldState)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -56,17 +53,17 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 if (IsAccountAbstractionTransaction(transaction))
                 {
-                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock, worldState);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
                 else
                 {
-                    BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock, worldState);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
             }
 
-            _stateProvider.Commit(spec, executionTracer);
+            worldState.Commit(spec, executionTracer);
 
             SetTransactions(block, transactionsInBlock);
             return executionTracer.TxReceipts.ToArray();
@@ -86,11 +83,12 @@ namespace Nethermind.AccountAbstraction.Executor
             int index,
             BlockExecutionTracer executionTracer,
             ProcessingOptions processingOptions,
-            LinkedHashSet<Transaction> transactionsInBlock)
+            LinkedHashSet<Transaction> transactionsInBlock,
+            IWorldState worldState)
         {
             int snapshot = executionTracer.TakeSnapshot();
 
-            BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, false);
+            BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, worldState, false);
             if (action != BlockProcessor.TxAction.Add)
             {
                 return action;

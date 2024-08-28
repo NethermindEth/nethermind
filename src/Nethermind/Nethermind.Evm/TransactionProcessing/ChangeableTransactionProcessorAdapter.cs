@@ -23,12 +23,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionProcessor = transactionProcessor;
         }
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            CurrentAdapter.Execute(transaction, in blkCtx, txTracer);
-
-        public ITransactionProcessorAdapter WithNewStateProvider(IWorldState worldState)
-        {
-            return new BuildUpTransactionProcessorAdapter(TransactionProcessor.WithNewStateProvider(worldState));
-        }
+        public TransactionResult Execute(Transaction transaction, IWorldState worldState, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
+            CurrentAdapter.Execute(transaction, worldState, in blkCtx, txTracer);
     }
 }

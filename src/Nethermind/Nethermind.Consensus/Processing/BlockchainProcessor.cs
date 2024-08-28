@@ -38,7 +38,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private readonly IBlockProcessor _blockProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
-    private readonly IStateReader _stateReader;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
@@ -70,14 +70,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="blockTree"></param>
     /// <param name="blockProcessor"></param>
     /// <param name="recoveryStep"></param>
-    /// <param name="stateReader"></param>
+    /// <param name="worldStateManager"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
     public BlockchainProcessor(
         IBlockTree? blockTree,
         IBlockProcessor? blockProcessor,
         IBlockPreprocessorStep? recoveryStep,
-        IStateReader stateReader,
+        IWorldStateManager? worldStateManager,
         ILogManager? logManager,
         Options options)
     {
@@ -85,7 +85,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         _options = options;
 
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
@@ -584,7 +584,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     throw new InvalidOperationException("Attempted to process a disconnected blockchain");
                 }
 
-                if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
+                if (!_worldStateManager.GetGlobalStateReader(suggestedBlock).HasStateForBlock(parentOfFirstBlock))
                 {
                     bool canThisBlockBeProcessedStateless = _blockProcessor.CanProcessStatelessBlock &&
                                                             (blocksToProcess[0].ExecutionWitness is not null);
@@ -679,7 +679,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
 
                 // if we have parent state it means that we don't need to go deeper
-                if (toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header))
+                if (toBeProcessed?.StateRoot is null || _worldStateManager.GetGlobalStateReader(suggestedBlock).HasStateForBlock(toBeProcessed.Header))
                 {
                     if (_logger.IsInfo) _logger.Info($"Found state for parent: {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
                     break;

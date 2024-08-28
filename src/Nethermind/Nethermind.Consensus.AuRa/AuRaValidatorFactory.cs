@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaValidatorFactory : IAuRaValidatorFactory
     {
-        private readonly IWorldState _stateProvider;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly bool _forSealing;
 
         public AuRaValidatorFactory(IAbiEncoder abiEncoder,
-            IWorldState stateProvider,
+            IWorldStateManager worldStateManager,
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa
             ReportingContractBasedValidator.Cache reportingValidatorCache,
             long posdaoTransition, bool forSealing = false)
         {
-            _stateProvider = stateProvider;
+            _worldStateManager = worldStateManager;
             _abiEncoder = abiEncoder;
             _transactionProcessor = transactionProcessor;
             _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
-            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyTxProcessorSource, _signer);
+            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _worldStateManager, _readOnlyTxProcessorSource, _signer);
             IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
 
             var validSealerStrategy = new ValidSealerStrategy();
@@ -121,7 +121,7 @@ namespace Nethermind.Consensus.AuRa
                         _txSender,
                         _txPool,
                         _blocksConfig,
-                        _stateProvider,
+                        _worldStateManager,
                         _reportingValidatorCache,
                         _specProvider,
                         _gasPriceOracle,

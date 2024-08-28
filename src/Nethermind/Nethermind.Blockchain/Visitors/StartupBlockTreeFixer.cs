@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Visitors
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
-        private readonly IStateReader _stateReader;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly ILogger _logger;
         private readonly long _startNumber;
         private readonly long _blocksToLoad;
@@ -43,12 +43,12 @@ namespace Nethermind.Blockchain.Visitors
         public StartupBlockTreeFixer(
             ISyncConfig syncConfig,
             IBlockTree blockTree,
-            IStateReader stateReader,
+            IWorldStateManager worldStateManager,
             ILogger logger,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _stateReader = stateReader;
+            _worldStateManager = worldStateManager;
             _logger = logger;
 
             _batchSize = batchSize;
@@ -243,7 +243,7 @@ namespace Nethermind.Blockchain.Visitors
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader is null || parentHeader.StateRoot is null ||
-                    !_stateReader.HasStateForRoot(parentHeader.StateRoot))
+                    !_worldStateManager.GetGlobalStateReader(block).HasStateForRoot(parentHeader.StateRoot))
                     return false;
             }
             else

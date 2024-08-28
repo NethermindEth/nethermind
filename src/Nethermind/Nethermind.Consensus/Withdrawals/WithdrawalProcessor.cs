@@ -15,18 +15,19 @@ namespace Nethermind.Consensus.Withdrawals;
 public class WithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly ILogger _logger;
-    private readonly IWorldState _stateProvider;
+    protected readonly IWorldStateManager _worldStateManager;
 
-    public WithdrawalProcessor(IWorldState stateProvider, ILogManager logManager)
+    public WithdrawalProcessor(IWorldStateManager worldStateManager, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logger = logManager.GetClassLogger();
-        _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
     }
 
     public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec)
     {
+        IWorldState worldState = _worldStateManager.GetGlobalWorldState(block);
         if (!spec.WithdrawalsEnabled)
             return;
 
@@ -44,13 +45,13 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
                 witness.AccessCompleteAccount(withdrawal.Address);
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
-                if (_stateProvider.AccountExists(withdrawal.Address))
+                if (worldState.AccountExists(withdrawal.Address))
                 {
-                    _stateProvider.AddToBalance(withdrawal.Address, withdrawal.AmountInWei, spec);
+                    worldState.AddToBalance(withdrawal.Address, withdrawal.AmountInWei, spec);
                 }
                 else
                 {
-                    _stateProvider.CreateAccount(withdrawal.Address, withdrawal.AmountInWei);
+                    worldState.CreateAccount(withdrawal.Address, withdrawal.AmountInWei);
                 }
             }
         }

@@ -25,7 +25,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public TxPriorityTxSource(
             ITxPool transactionPool,
-            IStateReader stateReader,
             ILogManager logManager,
             ITxFilterPipeline txFilterPipeline,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based

@@ -13,14 +13,14 @@ public class BoostBlockImprovementContextFactory : IBlockImprovementContextFacto
     private readonly IManualBlockProductionTrigger _blockProductionTrigger;
     private readonly TimeSpan _timeout;
     private readonly IBoostRelay _boostRelay;
-    private readonly IStateReader _stateReader;
+    private readonly IWorldStateManager _worldStateManager;
 
-    public BoostBlockImprovementContextFactory(IManualBlockProductionTrigger blockProductionTrigger, TimeSpan timeout, IBoostRelay boostRelay, IStateReader stateReader)
+    public BoostBlockImprovementContextFactory(IManualBlockProductionTrigger blockProductionTrigger, TimeSpan timeout, IBoostRelay boostRelay, IWorldStateManager worldStateManager)
     {
         _blockProductionTrigger = blockProductionTrigger;
         _timeout = timeout;
         _boostRelay = boostRelay;
-        _stateReader = stateReader;
+        _worldStateManager = worldStateManager;
     }
 
     public IBlockImprovementContext StartBlockImprovementContext(
@@ -28,5 +28,5 @@ public class BoostBlockImprovementContextFactory : IBlockImprovementContextFacto
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime) =>
-        new BoostBlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime);
+        new BoostBlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes, _boostRelay, _worldStateManager, startDateTime);
 }

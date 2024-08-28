@@ -30,12 +30,12 @@ public class GethStyleTracer : IGethStyleTracer
     private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
     private readonly IBlockchainProcessor _processor;
-    private readonly IWorldState _worldState;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IFileSystem _fileSystem;
 
     public GethStyleTracer(IBlockchainProcessor processor,
-        IWorldState worldState,
+        IWorldStateManager worldStateManager,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
         ISpecProvider specProvider,
@@ -43,7 +43,7 @@ public class GethStyleTracer : IGethStyleTracer
         IFileSystem fileSystem)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-        _worldState = worldState;
+        _worldStateManager = worldStateManager;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _specProvider = specProvider;
@@ -173,7 +173,7 @@ public class GethStyleTracer : IGethStyleTracer
         options switch
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options),
-            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldStateManager.GetGlobalWorldState(block), _specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options),
         };
 

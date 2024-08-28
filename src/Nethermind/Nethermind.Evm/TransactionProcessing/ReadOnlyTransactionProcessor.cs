@@ -11,39 +11,44 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public class ReadOnlyTransactionProcessor : IReadOnlyTransactionProcessor
     {
+        public IWorldState WorldState { get; set; }
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IWorldState _stateProvider;
-        private readonly Hash256 _stateBefore;
+        private Hash256 _stateBefore;
 
-        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, Hash256 startState)
+        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState worldState, Hash256 startState)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _stateBefore = _stateProvider.StateRoot;
-            _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
+            WorldState = worldState;
+            _stateBefore = worldState.StateRoot;
+            WorldState.StateRoot = startState;
         }
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.Execute(transaction, in blCtx, txTracer);
+        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
+            _transactionProcessor.Execute(transaction, in blCtx, txTracer, worldState);
 
-        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.CallAndRestore(transaction, in blCtx, txTracer);
+        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx,
+            ITxTracer txTracer, IWorldState worldState) =>
+            _transactionProcessor.CallAndRestore(transaction, in blCtx, txTracer, worldState);
 
-        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.BuildUp(transaction, in blCtx, txTracer);
+        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
+            _transactionProcessor.BuildUp(transaction, in blCtx, txTracer, worldState);
 
-        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            _transactionProcessor.Trace(transaction, in blCtx, txTracer);
+        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
+            IWorldState worldState) =>
+            _transactionProcessor.Trace(transaction, in blCtx, txTracer, worldState);
 
-
-        public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
-
-        public ITransactionProcessor WithNewStateProvider(IWorldState worldState) => _transactionProcessor.WithNewStateProvider(worldState);
+        public bool IsContractDeployed(Address address)
+        {
+            return WorldState.IsContract(address);
+        }
 
         public void Dispose()
         {
-            _stateProvider.StateRoot = _stateBefore;
-            _stateProvider.Reset();
+            WorldState.StateRoot = _stateBefore;
+            WorldState.Reset();
         }
+
     }
 }

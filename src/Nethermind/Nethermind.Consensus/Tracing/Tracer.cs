@@ -13,17 +13,17 @@ namespace Nethermind.Consensus.Tracing
 {
     public class Tracer : ITracer
     {
-        private readonly IWorldState _stateProvider;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly IBlockchainProcessor _traceProcessor;
         private readonly IBlockchainProcessor _executeProcessor;
         private readonly ProcessingOptions _processingOptions;
 
-        public Tracer(IWorldState stateProvider, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
+        public Tracer(IWorldStateManager worldStateManager, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
             ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _traceProcessor = traceProcessor;
             _executeProcessor = executeProcessor;
-            _stateProvider = stateProvider;
+            _worldStateManager = worldStateManager;
             _processingOptions = processingOptions;
         }
 
@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Tracing
             }
             catch (Exception)
             {
-                _stateProvider.Reset();
+                _worldStateManager.GetGlobalWorldState(block).Reset();
                 throw;
             }
 
@@ -51,12 +51,12 @@ namespace Nethermind.Consensus.Tracing
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
 
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot)
+        public void Accept(Block block, ITreeVisitor visitor, Hash256 stateRoot)
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            _stateProvider.Accept(visitor, stateRoot);
+            _worldStateManager.GetGlobalWorldState(block).Accept(visitor, stateRoot);
         }
     }
 }

@@ -31,7 +31,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
+        IWorldStateManager? worldStateManager,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         IBlockTree? blockTree,
@@ -42,7 +42,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
             blockValidator,
             rewardCalculator,
             blockTransactionsExecutor,
-            stateProvider,
+            worldStateManager,
             receiptStorage,
             witnessCollector,
             blockTree,
@@ -56,14 +56,8 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         _statelessWorldState = new VerkleWorldState(tree, new MemDb(), logManager);
     }
 
-    protected override void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
-    {
-
-    }
-
     protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
     {
-        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor;
         IWorldState worldState;
         if (!block.IsGenesis)
         {
@@ -72,14 +66,12 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
             _statelessWorldState.Reset();
             _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
             worldState = _statelessWorldState;
-            blockTransactionsExecutor = _blockTransactionsExecutor.WithNewStateProvider(worldState);
         }
         else
         {
-            blockTransactionsExecutor = _blockTransactionsExecutor;
-            worldState = _stateProvider;
+            worldState = _worldStateManager.GetGlobalWorldState(block);
         }
 
-        return (blockTransactionsExecutor, worldState);
+        return (_blockTransactionsExecutor, worldState);
     }
 }
