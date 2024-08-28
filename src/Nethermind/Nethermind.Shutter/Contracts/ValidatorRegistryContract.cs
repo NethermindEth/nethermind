@@ -9,9 +9,9 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using static Nethermind.Shutter.Contracts.IValidatorRegistryContract;
 using System.Collections.Generic;
 using Nethermind.Core.Extensions;
+using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -30,15 +30,7 @@ public class ValidatorRegistryContract(
     public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, getNumUpdates, Address.Zero, [])[0];
 
     public Update GetUpdate(BlockHeader header, in UInt256 i)
-    {
-        var res = (ValueTuple<byte[], byte[]>)Call(header, getUpdate, Address.Zero, [i])[0];
-        Update update = new()
-        {
-            Message = res.Item1,
-            Signature = res.Item2
-        };
-        return update;
-    }
+        => (Update)Call(header, getUpdate, Address.Zero, [i])[0];
 
     public bool IsRegistered(BlockHeader header, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered)
     {

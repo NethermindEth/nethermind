@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -28,10 +29,4 @@ public interface IValidatorRegistryContract
     /// <param name="blockHeader"></param>
     /// <param name="i"></param>
     Update GetUpdate(BlockHeader header, in UInt256 i);
-
-    struct Update
-    {
-        public byte[] Message;
-        public byte[] Signature;
-    }
 }
