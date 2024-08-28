@@ -25,7 +25,6 @@ public class ShutterTxSource(
 {
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
     private readonly object _syncObject = new();
     private readonly ArrayPoolList<CancellationTokenRegistration> _ctr = new(5);

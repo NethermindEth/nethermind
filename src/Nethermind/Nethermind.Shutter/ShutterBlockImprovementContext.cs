@@ -6,7 +6,6 @@ using Nethermind.Shutter.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -116,13 +115,12 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
             _logger.Warn($"Could not calculate Shutter building slot: {e}");
-            await TryBuildShutterBlock(0);
+            await BuildBlock();
             return CurrentBestBlock;
         }
 
-        // set default block without waiting for Shutter keys
-        bool didBuildShutterBlock = await TryBuildShutterBlock(slot);
-        if (didBuildShutterBlock)
+        bool includedShutterTxs = await TryBuildShutterBlock(slot);
+        if (includedShutterTxs)
         {
             return CurrentBestBlock;
         }
@@ -137,8 +135,10 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
-        using var timeoutSource = new CancellationTokenSource((int)waitTime);
-        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource!.Token, timeoutSource.Token);
+        ObjectDisposedException.ThrowIf(_cancellationTokenSource is null, this);
+
+        using var txTimeout = new CancellationTokenSource((int)waitTime);
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource!.Token, txTimeout.Token);
 
         try
         {
@@ -146,10 +146,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         }
         catch (OperationCanceledException)
         {
-            if (timeoutSource.IsCancellationRequested && _logger.IsWarn)
-            {
-                _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
-            }
+            Metrics.KeysMissed++;
+            _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
 
             return CurrentBestBlock;
         }
@@ -164,11 +162,17 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     private async Task<bool> TryBuildShutterBlock(ulong slot)
     {
         bool hasShutterTxs = _txSignal.HaveTransactionsArrived(slot);
+        await BuildBlock();
+        return hasShutterTxs;
+    }
+
+    private async Task BuildBlock()
+    {
         Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource!.Token);
         if (result is not null)
         {
             CurrentBestBlock = result;
         }
-        return hasShutterTxs;
     }
+
 }

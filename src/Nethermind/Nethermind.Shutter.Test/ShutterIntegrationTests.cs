@@ -28,7 +28,7 @@ namespace Nethermind.Shutter.Test;
 [TestFixture]
 public class ShutterIntegrationTests : EngineModuleTests
 {
-    private readonly ulong _buildingSlot = ShutterTestsCommon.InitialSlot;
+    private readonly int _buildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private readonly ulong _buildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
 
     private class ShutterApiSimulatorNoBlockTimeout(IAbiEncoder abiEncoder, IReadOnlyBlockTree blockTree, IEthereumEcdsa ecdsa, ILogFinder logFinder, IReceiptStorage receiptStorage, ILogManager logManager, ISpecProvider specProvider, ITimestamper timestamper, IWorldStateManager worldStateManager, IShutterConfig cfg, Dictionary<ulong, byte[]> validatorsInfo, Random rnd) : ShutterApiSimulator(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage, logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, rnd)
@@ -39,7 +39,10 @@ public class ShutterIntegrationTests : EngineModuleTests
     private class ShutterTestBlockchainNoBlockTimeout(Random rnd, ITimestamper timestamper) : ShutterTestBlockchain(rnd, timestamper)
     {
         protected override ShutterApiSimulator CreateShutterApi(Random rnd, ITimestamper timestamper)
-            => InitApi(rnd, this, timestamper);
+            => new ShutterApiSimulatorNoBlockTimeout(
+                ShutterTestsCommon.AbiEncoder, BlockTree.AsReadOnly(), EthereumEcdsa, LogFinder, ReceiptStorage,
+                LogManager, SpecProvider, timestamper, WorldStateManager, ShutterTestsCommon.Cfg, [], rnd
+            );
     }
 
     [Test]
@@ -54,12 +57,10 @@ public class ShutterIntegrationTests : EngineModuleTests
 
         using var chain = (ShutterTestBlockchainNoBlockTimeout)await new ShutterTestBlockchainNoBlockTimeout(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ShutterApiSimulatorNoBlockTimeout api = InitApi(rnd, chain, timestamper);
 
         ExecutionPayload initialPayload = CreateParentBlockRequestOnHead(chain.BlockTree);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, (int)_buildingSlot - 2, initialPayload, true, null, 5);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, initialPayload, true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
-
 
         chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, chain.Api.TxLoader.GetAbi()));
 
@@ -91,7 +92,7 @@ public class ShutterIntegrationTests : EngineModuleTests
     }
 
     [Test]
-    public async Task Can_load_when_previous_missed()
+    public async Task Can_load_when_previous_block_missed()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_buildingSlotTimestamp - 5, 0);
@@ -102,7 +103,7 @@ public class ShutterIntegrationTests : EngineModuleTests
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 1, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, chain.Api.TxLoader.GetAbi()));
@@ -139,7 +140,7 @@ public class ShutterIntegrationTests : EngineModuleTests
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 19, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, chain.Api.TxLoader.GetAbi()));
@@ -166,10 +167,31 @@ public class ShutterIntegrationTests : EngineModuleTests
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 
-    private static ShutterApiSimulatorNoBlockTimeout InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper timestamper)
-        => new(
-            ShutterTestsCommon.AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, timestamper, chain.WorldStateManager, ShutterTestsCommon.Cfg, [], rnd
-        );
+    [Test]
+    public async Task Can_increment_metric_on_missed_keys()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        long time = 1;
+        Timestamper timestamper = new(time);
+
+        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        ExecutionPayload lastPayload = CreateParentBlockRequestOnHead(chain.BlockTree);
+        for (int i = 0; i < 5; i++)
+        {
+            // KeysMissed will be incremented when get_payload is called
+            lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
+
+            time += (long)ShutterApi.SlotLength.TotalSeconds;
+            timestamper.SetTimestamp(time);
+        }
+
+        // longer delay between fcu and get_payload, should timeout waiting for keys
+        var payloadImprovementDelay = TimeSpan.FromMilliseconds(ShutterTestsCommon.Cfg.MaxKeyDelay + 200);
+        lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5, payloadImprovementDelay))[0];
+
+        Assert.That(Metrics.KeysMissed, Is.EqualTo(6));
+    }
 
 }
