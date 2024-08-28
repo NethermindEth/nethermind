@@ -30,17 +30,18 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public static void NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
+        public static bool NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
                 where TKey : notnull
         {
             if (dictionary is null || dictionary.IsEmpty)
             {
-                return;
+                return false;
             }
 
             using var handle = dictionary.AcquireLock();
 
             ClearCache<TKey, TValue>.Clear(dictionary);
+            return true;
         }
 
         private static class ClearCache<TKey, TValue> where TKey : notnull

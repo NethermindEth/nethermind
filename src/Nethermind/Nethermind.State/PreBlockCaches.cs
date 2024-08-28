@@ -3,13 +3,15 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Logging;
 using Nethermind.Trie;
+
+using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.State;
 
@@ -18,88 +20,46 @@ public class PreBlockCaches
     private const int InitialCapacity = 4096 * 8;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
-    private readonly ILogger _logger;
-    private readonly Action _clearStorageCache;
-    private readonly Action _clearStateCache;
-    private readonly Action _clearRlpCache;
-    private readonly Action _clearPrecompileCache;
+    private readonly Func<bool>[] _clearCaches;
 
-    private ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
-    private ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
-    private ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
-    private ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> _precompileCache = new(LockPartitions, InitialCapacity);
+    private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
+    private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
+    private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
+    private readonly ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> _precompileCache = new(LockPartitions, InitialCapacity);
 
-    public PreBlockCaches(ILogManager logManager)
+    public PreBlockCaches()
     {
-        _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));
-        _clearStorageCache = () => _storageCache.NoResizeClear();
-        _clearStateCache = () => _stateCache.NoResizeClear();
-        _clearRlpCache = () => _rlpCache.NoResizeClear();
-        _clearPrecompileCache = () => _precompileCache.NoResizeClear();
+        _clearCaches =
+        [
+            _storageCache.NoResizeClear,
+            _stateCache.NoResizeClear,
+            _rlpCache.NoResizeClear,
+            _precompileCache.NoResizeClear
+        ];
     }
 
     public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
     public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
-    public ConcurrentDictionary<NodeKey, byte[]?> RlpCache { get; } = new(LockPartitions, InitialCapacity);
-    public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache { get; } = new(LockPartitions, InitialCapacity);
+    public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
+    public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache => _precompileCache;
 
     public async Task ClearCachesInBackground()
     {
-        Task t0 = Task.CompletedTask;
-        Task t1 = Task.CompletedTask;
-        Task t2 = Task.CompletedTask;
-        Task t3 = Task.CompletedTask;
-
-        bool isDirty = false;
-        if (!_storageCache.IsEmpty)
+        List<Task> tasks = [];
+        foreach (Func<bool> clearCache in _clearCaches)
         {
-            isDirty = true;
-            t0 = Task.Run(_clearStorageCache);
-        }
-        if (!_stateCache.IsEmpty)
-        {
-            isDirty = true;
-            t1 = Task.Run(_clearStateCache);
-        }
-        if (!_rlpCache.IsEmpty)
-        {
-            isDirty = true;
-            t2 = Task.Run(_clearRlpCache);
-        }
-        if (!_precompileCache.IsEmpty)
-        {
-            isDirty = true;
-            t3 = Task.Run(_clearPrecompileCache);
+            tasks.Add(Task.Run(clearCache));
         }
 
-        if (isDirty)
-        {
-            await Task.WhenAll(t0, t1, t2, t3);
-        }
+        await Task.WhenAll(tasks);
     }
 
     public bool ClearImmediate()
     {
         bool isDirty = false;
-        if (!_storageCache.IsEmpty)
+        foreach (Func<bool> clearCache in _clearCaches)
         {
-            isDirty = true;
-            _storageCache.NoResizeClear();
-        }
-        if (!_stateCache.IsEmpty)
-        {
-            isDirty = true;
-            _stateCache.NoResizeClear();
-        }
-        if (!_rlpCache.IsEmpty)
-        {
-            isDirty = true;
-            _rlpCache.NoResizeClear();
-        }
-        if (!_precompileCache.IsEmpty)
-        {
-            isDirty = true;
-            _precompileCache.NoResizeClear();
+            isDirty |= clearCache();
         }
 
         return isDirty;
