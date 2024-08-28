@@ -59,7 +59,7 @@ static class EmitExtensions
 
     public static void Print<T>(this Emit<T> il, Local local)
     {
-        if(local.LocalType.IsValueType)
+        if (local.LocalType.IsValueType)
         {
             il.LoadLocalAddress(local);
             il.Call(local.LocalType.GetMethod("ToString", []));

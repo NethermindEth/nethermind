@@ -30,14 +30,14 @@ public class VirtualMachineTestsBase
     protected const string HexZero = "00";
     protected const long DefaultBlockGasLimit = 8000000;
 
-    private IEthereumEcdsa _ethereumEcdsa;
+    protected IEthereumEcdsa _ethereumEcdsa;
     protected IBlockhashProvider _blockhashProvider;
     protected ITransactionProcessor _processor;
-    private IDb _stateDb;
+    protected IDb _stateDb;
 
-    protected VirtualMachine Machine { get; private set; }
-    protected CodeInfoRepository CodeInfoRepository { get; private set; }
-    protected IWorldState TestState { get; private set; }
+    protected VirtualMachine Machine { get; set; }
+    protected CodeInfoRepository CodeInfoRepository { get; set; }
+    protected IWorldState TestState { get; set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
     protected static Address Recipient { get; } = TestItem.AddressB;
@@ -67,7 +67,7 @@ public class VirtualMachineTestsBase
         _stateDb = new MemDb();
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
-        _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
+        _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         _blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new CodeInfoRepository();
         Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager);

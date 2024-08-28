@@ -132,7 +132,7 @@ internal static class IlAnalyzer
 
                     if (found)
                     {
-                        patternFound.Add((ushort)i, mapping);
+                        patternFound.Add((ushort)strippedBytecode[i].ProgramCounter, mapping);
                         i += pattern.Length - 1;
                     }
                 }
@@ -154,6 +154,6 @@ internal static class IlAnalyzer
     /// <summary>
     /// How many execution a <see cref="CodeInfo"/> should perform before trying to get its opcodes optimized.
     /// </summary>
-    public const int CompoundOpThreshold = 23;
-    public const int IlCompilerThreshold = 57;
+    public static int CompoundOpThreshold = 32;
+    public static int IlCompilerThreshold = 128;
 }

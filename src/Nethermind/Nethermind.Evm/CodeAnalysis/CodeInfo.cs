@@ -21,7 +21,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public async void NoticeExecution()
         {
             // IL-EVM info already created
-            if (_callCount > IlAnalyzer.IlCompilerThreshold)
+            if (_callCount > Math.Max(IlAnalyzer.IlCompilerThreshold, IlAnalyzer.CompoundOpThreshold))
                 return;
 
             // use Interlocked just in case of concurrent execution to run it only once

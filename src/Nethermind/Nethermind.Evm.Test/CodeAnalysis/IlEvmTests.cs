@@ -3,12 +3,16 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -30,25 +34,109 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static byte[] Pattern => [96, 96, 01];
         public byte CallCount { get; set; } = 0;
 
-        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
             UInt256 lhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
             UInt256 rhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
             stack.PushUInt256(lhs + rhs);
+
+            programCounter += 5;
         }
     }
 
+    public class IsContractCheck : InstructionChunk
+    {
+        public static byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
+        public byte CallCount { get; set; } = 0;
+
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+
+            Address address = stack.PopAddress();
+            int contractCodeSize = worldState.GetCode(address).Length;
+            stack.PushUInt32(contractCodeSize);
+            if (contractCodeSize == 0)
+            {
+                stack.PushOne();
+            }
+            else
+            {
+                stack.PushZero();
+            }
+
+            programCounter += 3;
+        }
+
+    }
+    public class EmulatedStaticJump : InstructionChunk
+    {
+        public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
+        public byte CallCount { get; set; } = 0;
+
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+            int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
+            if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
+            {
+                programCounter = jumpdestionation;
+            }
+            else
+            {
+                throw new InvalidJumpDestinationException();
+            }
+        }
+
+    }
+    public class EmulatedStaticCJump : InstructionChunk
+    {
+        public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
+        public byte CallCount { get; set; } = 0;
+
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+            stack.PopUInt256(out UInt256 condition);
+            int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
+            if (condition.u0 != 0 && jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
+            {
+                programCounter = jumpdestionation;
+            }
+            else
+            {
+                throw new InvalidJumpDestinationException();
+            }
+        }
+    }
     [TestFixture]
     public class IlEvmTests : VirtualMachineTestsBase
     {
         private const string AnalyzerField = "_analyzer";
+        private readonly IVMConfig _vmConfig = new VMConfig()
+        {
+            IsJitEnabled = true,
+            IsPatternMatchingEnabled = true,
+
+            PatternMatchingThreshold = 4,
+            JittingThreshold = 8,
+        };
 
         [SetUp]
         public override void Setup()
         {
             base.Setup();
+            ILogManager logManager = GetLogManager();
+
+            _blockhashProvider = new TestBlockhashProvider(SpecProvider);
+            Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _vmConfig);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
+
             IlAnalyzer.AddPattern(P01P01ADD.Pattern, new P01P01ADD());
+            IlAnalyzer.AddPattern(EmulatedStaticCJump.Pattern, new EmulatedStaticCJump());
+            IlAnalyzer.AddPattern(EmulatedStaticJump.Pattern, new EmulatedStaticJump());
+            IlAnalyzer.AddPattern(IsContractCheck.Pattern, new IsContractCheck());
         }
 
         [Test]
@@ -85,7 +173,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(42)
                     .PushSingle(5)
                     .ADD()
-                    .JUMP(0)
+                    .PUSHx([0, 0])
+                    .JUMP()
                     .Done;
 
             /*
@@ -109,7 +198,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     var address = receipts.TxReceipts[0].ContractAddress;
             */
 
-            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++)
+            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 32; i++)
             {
                 ExecuteBlock(new NullBlockTracer(), bytecode);
             }
@@ -161,7 +250,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ISZERO(0)
                     .ISZERO(7)
                     .Done);
-            yield return(Instruction.SUB, Prepare.EvmCode
+            yield return (Instruction.SUB, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .SUB()
@@ -180,57 +269,57 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ADDMOD()
                     .Done);
 
-            yield return(Instruction.MUL, Prepare.EvmCode
+            yield return (Instruction.MUL, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .MUL()
                     .Done);
 
-            yield return(Instruction.EXP, Prepare.EvmCode
+            yield return (Instruction.EXP, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .EXP()
                     .Done);
 
-            yield return(Instruction.MOD, Prepare.EvmCode
+            yield return (Instruction.MOD, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .MOD()
                     .Done);
 
-            yield return(Instruction.DIV, Prepare.EvmCode
+            yield return (Instruction.DIV, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .DIV()
                     .Done);
 
-            yield return(Instruction.MSTORE, Prepare.EvmCode
+            yield return (Instruction.MSTORE, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .Done);
 
-            yield return(Instruction.MLOAD, Prepare.EvmCode
+            yield return (Instruction.MLOAD, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .MLOAD(0)
                     .Done);
 
-            yield return(Instruction.MCOPY, Prepare.EvmCode
+            yield return (Instruction.MCOPY, Prepare.EvmCode
                     .MSTORE(0, ((UInt256)23).PaddedBytes(32))
                     .MCOPY(32, 0, 32)
                     .Done);
 
-            yield return(Instruction.EQ, Prepare.EvmCode
+            yield return (Instruction.EQ, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .EQ()
                     .Done);
 
-            yield return(Instruction.GT, Prepare.EvmCode
+            yield return (Instruction.GT, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .GT()
                     .Done);
 
-            yield return(Instruction.LT, Prepare.EvmCode
+            yield return (Instruction.LT, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .LT()
@@ -310,7 +399,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .CHAINID()
                     .Done);
 
-            yield return (Instruction.GAS,Prepare.EvmCode
+            yield return (Instruction.GAS, Prepare.EvmCode
                     .GAS()
                     .Done);
 
@@ -411,6 +500,55 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .JUMP(31)
                 .Done);
 
+            yield return (Instruction.LOG0, Prepare.EvmCode
+                .Log(0, 0)
+                .Done);
+
+            yield return (Instruction.LOG1, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Log(1, 0, [TestItem.KeccakA])
+                .Done);
+
+            yield return (Instruction.LOG2, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(64)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(96)
+                .Op(Instruction.MSTORE)
+                .Log(4, 0, [TestItem.KeccakA, TestItem.KeccakB])
+                .Done);
+
+            yield return (Instruction.LOG3, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .Log(2, 0, [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB])
+                .Done);
+
+            yield return (Instruction.LOG4, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(64)
+                .Op(Instruction.MSTORE)
+                .Log(3, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakB])
+                .Done);
+
             yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
                 .PushData(23)
                 .PushData(7)
@@ -480,7 +618,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.Method(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance , ctx.Data);
+            ctx.Method(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 

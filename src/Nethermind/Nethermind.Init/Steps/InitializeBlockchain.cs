@@ -29,6 +29,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Evm;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -189,7 +190,8 @@ namespace Nethermind.Init.Steps
                 blockhashProvider,
                 _api.SpecProvider,
                 codeInfoRepository,
-                _api.LogManager);
+                _api.LogManager,
+                _api.VMConfig!);
 
             return virtualMachine;
         }

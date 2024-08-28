@@ -105,11 +105,35 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithEthRpcModule(Func<TestRpcBlockchain, IEthRpcModule> builder)
+            {
+                _blockchain._ethRpcModuleBuilder = builder;
+                return this;
+            }
+
             public async Task<T> Build(
                 ISpecProvider? specProvider = null,
                 UInt256? initialValues = null) =>
                 (T)(await _blockchain.Build(specProvider, initialValues, true));
         }
+
+        private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = @this => new EthRpcModule(
+            @this.RpcConfig,
+            @this.Bridge,
+            @this.BlockFinder,
+            @this.ReceiptFinder,
+            @this.StateReader,
+            @this.TxPool,
+            @this.TxSender,
+            @this.TestWallet,
+            LimboLogs.Instance,
+            @this.SpecProvider,
+            @this.GasPriceOracle,
+            new EthSyncingInfo(@this.BlockTree, @this.ReceiptStorage, new SyncConfig(),
+                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+            @this.FeeHistoryOracle ??
+            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+            new BlocksConfig().SecondsPerSlot);
 
         protected override async Task<TestBlockchain> Build(
             ISpecProvider? specProvider = null,
@@ -142,26 +166,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
             TxSealer = new TxSealer(txSigner, Timestamper);
-            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId, LogManager));
+            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
-            ISyncConfig syncConfig = new SyncConfig();
-            EthRpcModule = new EthRpcModule(
-                RpcConfig,
-                Bridge,
-                BlockFinder,
-                ReceiptFinder,
-                StateReader,
-                TxPool,
-                TxSender,
-                TestWallet,
-                LimboLogs.Instance,
-                SpecProvider,
-                GasPriceOracle,
-                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
-                    new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager),
-                FeeHistoryOracle,
-                blocksConfig.SecondsPerSlot);
+            EthRpcModule = _ethRpcModuleBuilder(this);
 
             return this;
         }

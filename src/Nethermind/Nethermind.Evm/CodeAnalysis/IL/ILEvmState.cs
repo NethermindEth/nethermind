@@ -51,7 +51,7 @@ internal ref struct ILEvmState
     {
         ChainId = chainId;
         // locals for ease of access
-        EvmState = evmState; 
+        EvmState = evmState;
         MachineCode = evmState.Env.CodeInfo.MachineCode;
         Env = ref evmState.Env;
         TxCtx = ref evmState.Env.TxExecutionContext;
