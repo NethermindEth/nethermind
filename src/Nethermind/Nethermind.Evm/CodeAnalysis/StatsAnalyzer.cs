@@ -61,6 +61,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public CMSketch _sketch;
 
         private List<Task> _tasks = new List<Task>();
+        private Task _blockTask = Task.CompletedTask;
         private static readonly object _taskLock = new object();
 
         private string _dir;
@@ -172,12 +173,13 @@ namespace Nethermind.Evm.CodeAnalysis
                     ++_instance._block;
                     if (_instance._block % 2 == 0)
                     {
-                        Task.Run(() =>
+                        Task blockTask = Task.Run(() =>
                                 {
                                     _instance.WaitForCompletion();
                                     _instance.RefreshQueue();
                                     _instance._sketch.Reset();
                                 });
+                        _instance._blockTask = blockTask;
                     }
                 }
             }
@@ -237,6 +239,8 @@ namespace Nethermind.Evm.CodeAnalysis
         private void ProcessTransaction(byte[] transaction)
         {
             ulong ngram = 0;
+            _blockTask.Wait();
+
             foreach (byte instruction in transaction)
             {
                 ngram = (ngram << 8) | instruction;
@@ -466,6 +470,23 @@ namespace Nethermind.Evm.CodeAnalysis
             return AsString(AsNGram(ngram));
 
         }
+
+        public static byte[] AsBytes(ulong ngram)
+        {
+            byte[] instructions = new byte[7];
+            int i = 0;
+            for (i = 0; i < instructions.Length; i++)
+            {
+                instructions[instructions.Length - 1 - i] = (byte)((ngram & byteIndexes[i]) >> (i * 8));
+                if (instructions[instructions.Length - 1 - i] == (byte)Instruction.STOP)
+                {
+                    break;
+                }
+            }
+
+            return instructions[(instructions.Length - i)..instructions.Length];
+        }
+
         public static string AsString(ulong ngram)
         {
             Instruction[] instructions = new Instruction[7];
