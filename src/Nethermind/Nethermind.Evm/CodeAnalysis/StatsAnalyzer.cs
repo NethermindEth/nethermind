@@ -226,12 +226,32 @@ namespace Nethermind.Evm.CodeAnalysis
 
         private void SendTransactionForProcessing()
         {
+            // take a snapshot of _block and blockTask
+            int block = _block;
+            Task blockTask = _blockTask;
             if (_start < _end)
             {
                 byte[] transaction = new byte[_end - _start];
                 Buffer.BlockCopy(_buffer, _start, transaction, 0, _end - _start);
                 _end = _start;
-                Task task = Task.Run(() => ProcessTransaction(transaction, _block));
+                Task task = Task.Run(() =>
+                {
+
+                    ulong ngram = 0;
+                    blockTask.Wait();
+
+                    foreach (byte instruction in transaction)
+                    {
+                        ngram = (ngram << 8) | instruction;
+                        // Console.WriteLine($"Adding instruction: {(Instruction)instruction}, Ngram SoFar : {AsString(ngram)}");
+                        for (int i = 1; i < 7; i++)
+                        {
+                            if (byteIndexes[i - 1] < ngram) AddSequence2(ngram & ngramBitMaks[i], block);
+                        }
+                    }
+
+
+                });
                 lock (_taskLock)
                 {
                     _tasks.Add(task);
@@ -248,7 +268,7 @@ namespace Nethermind.Evm.CodeAnalysis
             foreach (byte instruction in transaction)
             {
                 ngram = (ngram << 8) | instruction;
-                Console.WriteLine($"Adding instruction: {(Instruction)instruction}, Ngram SoFar : {AsString(ngram)}");
+                // Console.WriteLine($"Adding instruction: {(Instruction)instruction}, Ngram SoFar : {AsString(ngram)}");
                 for (int i = 1; i < 7; i++)
                 {
                     if (byteIndexes[i - 1] < ngram) AddSequence2(ngram & ngramBitMaks[i], block);
@@ -353,7 +373,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             lock (_topNLock)
             {
-                Console.WriteLine("refreshing queue");
+                // Console.WriteLine("refreshing queue");
                 int count = _topNQueue.Count;
 
                 Span<(ulong opcodeSequence, uint freq)> stackAllocArray = stackalloc (ulong, uint)[count];
@@ -373,7 +393,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
                 for (int i = 0; i < count; i++)
                 {
-                    Console.WriteLine($"refreshed ngram: {AsString(stackAllocArray[i].Item1)} , freq: {stackAllocArray[i].Item2}");
+                    // Console.WriteLine($"refreshed ngram: {AsString(stackAllocArray[i].Item1)} , freq: {stackAllocArray[i].Item2}");
                     _topNQueue.Enqueue(stackAllocArray[i].Item1, stackAllocArray[i].Item2);
                 }
             }
@@ -385,7 +405,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
             lock (_topNLock)
             {
-                Console.WriteLine($"Adding sequence {AsString(opcodeSequence)}");
+                // Console.WriteLine($"Adding sequence {AsString(opcodeSequence)}");
                 NGramInfo info;
                 if (_topNStatMap.TryGetValue(opcodeSequence, out info))
                 {
@@ -409,7 +429,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 else
                 {
                     info = new NGramInfo(_sketch.UpdateAndQuery(opcodeSequence) >> ((int)(block / 2)), _sketch.Query(opcodeSequence));
-                    Console.WriteLine($"Not in queue {AsString(opcodeSequence)} , info: {info}");
+                    // Console.WriteLine($"Not in queue {AsString(opcodeSequence)} , info: {info}");
 
                     if (_topNQueue.TryPeek(out ulong seq, out uint minFreq))
                     {

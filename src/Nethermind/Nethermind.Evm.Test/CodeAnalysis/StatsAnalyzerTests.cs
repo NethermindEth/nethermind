@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
@@ -24,12 +25,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
         public DynamicInstructionChunk(byte[] pattern)
         {
-            this.Pattern = pattern;
+            Pattern = pattern;
         }
 
-        public void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+
+        void InstructionChunk.Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack)
         {
-            this.CallCount++;
+            CallCount++;
         }
     }
 
@@ -296,34 +298,32 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
 
             TransactionData t;
-            foreach ((string, int)[] trasaction in block)
+            for (int j = 1; j <= timesTwo; j++)
             {
-                t = LargeByteCodeBuilder.PrepareTransaction(trasaction);
-                foreach ((string pattern, int count) in trasaction)
+                foreach ((string, int)[] trasaction in block)
                 {
-
-                    DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePatternChunk(pattern);
-                    for (int i = 0; i < timesTwo; i++)
+                    t = LargeByteCodeBuilder.PrepareTransaction(trasaction);
+                    foreach ((string pattern, int count) in trasaction)
                     {
-                        PsuedoBlockExecution(new byte[][] { t.ByteCode });
-                        PsuedoBlockExecution(new byte[][] { t.ByteCode });
-                        Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Count == count * 2 * (i + 1), $" Total count expected {count * 2 * (i + 1)}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Count})");
+
+                        DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePatternChunk(pattern);
+                        int i = 0;
+                        for (; i < count; i++)
+                        {
+                            PsuedoTransactionExecution(t.ByteCode);
+                        }
+
+                        StatsAnalyzer.NoticeBlockCompletionBlocking();
+
+                        if (j % 2 == 0)
+                        {
+                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Count == count * 2 * i, $" Total count expected {count * 2 * i}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Count})");
+                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq == (count * 2 * i) / j, $" Freq expected {(count * 2 * i) / j}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq})");
+                        }
                     }
                 }
-                {
-
-                    //CodeInfo codeInfo = new CodeInfo(t.ByteCode);
-
-                    //DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePattern(LargeByteCodeBuilder.P01P01MUL);
-                    //IlAnalyzer.AddPattern(P01P01ADD.Pattern, new P01P01ADD());
-                    //Task.Run(async () => { await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching); }).Wait();
-                    //Task.Run(async () => { await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching); }).Wait();
-                    //  await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching);
-                    //P01P01ADD pattern = IlAnalyzer.GetPatternHandler<P01P01ADD>(P01P01ADD.Pattern);
-                    //Console.WriteLine($"callcount : {pattern.CallCount} codeinfo chuncks: {codeInfo.IlInfo.Chunks.Count}");
-                }
-
             }
+
             StatsAnalyzer.Reset();
         }
     }
