@@ -127,6 +127,8 @@ public class ShutterApi : IShutterApi
 
     protected virtual async void KeysValidatedHandler(object? sender, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
+        Metrics.TxPointer = keys.TxPointer;
+
         // wait for latest block before loading transactions
         Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, SlotLength, BlockWaitCutoff, new())) ?? _blockTree.Head;
         BlockHeader? header = head?.Header;

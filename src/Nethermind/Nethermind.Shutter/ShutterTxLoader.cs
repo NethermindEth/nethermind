@@ -45,13 +45,12 @@ public class ShutterTxLoader(
     private readonly UInt256 _encryptedGasLimit = shutterConfig.EncryptedGasLimit;
     private readonly ulong _genesisTimestampMs = shutterTime.GetGenesisTimestampMs();
 
-    // keys should not contain placeholder
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
-        List<SequencedTransaction>? sequencedTransactions = null;
-        sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
+        List<SequencedTransaction>? sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
 
         long offset = shutterTime.GetCurrentOffsetMs(keys.Slot, _genesisTimestampMs);
+        Metrics.KeysReceivedTimeOffset = offset;
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
@@ -66,6 +65,9 @@ public class ShutterTxLoader(
             Transactions = filtered,
             Slot = keys.Slot
         };
+
+        Metrics.Transactions = (uint)filtered.Length;
+        Metrics.BadTransactions = (uint)(sequencedTransactions.Count - filtered.Length);
 
         if (_logger.IsDebug && shutterTransactions.Transactions.Length > 0) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
         return shutterTransactions;
@@ -242,6 +244,7 @@ public class ShutterTxLoader(
 
                 if (totalGas + e.GasLimit > _encryptedGasLimit)
                 {
+                    Metrics.EncryptedGasUsed = (ulong)totalGas;
                     _logger.Debug("Shutter gas limit reached.");
                     yield break;
                 }
