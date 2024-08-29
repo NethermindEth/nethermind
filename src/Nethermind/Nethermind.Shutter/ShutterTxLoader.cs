@@ -47,7 +47,7 @@ public class ShutterTxLoader(
     {
         var sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
 
-        long offset = time.GetCurrentOffsetMs(keys.Slot, time.GenesisTimestampMs);
+        long offset = time.GetCurrentOffsetMs(keys.Slot);
         Metrics.KeysReceivedTimeOffset = offset;
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
