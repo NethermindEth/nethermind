@@ -10,13 +10,13 @@ namespace Nethermind.Serialization.Rlp.RlpWriter;
 // TODO: Naming could be better
 public interface IRlpWriter
 {
-    public void Push(int value);
-    public void Push(ulong value);
-    public void Push(ReadOnlySpan<byte> value);
-    public void Push(UInt256 value);
-    public void Push(long value);
-    public void Push(Address value);
-    public void Push(Memory<byte>? value);
-    public void Push(byte[] value);
-    public void Push(Rlp value);
+    public void Write(int value);
+    public void Write(ulong value);
+    public void Write(ReadOnlySpan<byte> value);
+    public void Write(UInt256 value);
+    public void Write(long value);
+    public void Write(Address value);
+    public void Write(Memory<byte>? value);
+    public void Write(byte[] value);
+    public void Write(Rlp value);
 }

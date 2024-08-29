@@ -149,36 +149,36 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
 
     public static void WriteTransaction(Transaction transaction, IRlpWriter writer, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        writer.Push(transaction.Nonce);
-        writer.Push(transaction.GasPrice);
-        writer.Push(transaction.GasLimit);
-        writer.Push(transaction.To);
-        writer.Push(transaction.Value);
-        writer.Push(transaction.Data);
+        writer.Write(transaction.Nonce);
+        writer.Write(transaction.GasPrice);
+        writer.Write(transaction.GasLimit);
+        writer.Write(transaction.To);
+        writer.Write(transaction.Value);
+        writer.Write(transaction.Data);
 
         if (forSigning)
         {
             bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
             if (includeSigChainIdHack)
             {
-                writer.Push(chainId);
-                writer.Push(Rlp.OfEmptyByteArray);
-                writer.Push(Rlp.OfEmptyByteArray);
+                writer.Write(chainId);
+                writer.Write(Rlp.OfEmptyByteArray);
+                writer.Write(Rlp.OfEmptyByteArray);
             }
         }
         else
         {
             if (transaction.Signature is null)
             {
-                writer.Push(0);
-                writer.Push(Bytes.Empty);
-                writer.Push(Bytes.Empty);
+                writer.Write(0);
+                writer.Write(Bytes.Empty);
+                writer.Write(Bytes.Empty);
             }
             else
             {
-                writer.Push(transaction.Signature.V);
-                writer.Push(transaction.Signature.RAsSpan.WithoutLeadingZeros());
-                writer.Push(transaction.Signature.SAsSpan.WithoutLeadingZeros());
+                writer.Write(transaction.Signature.V);
+                writer.Write(transaction.Signature.RAsSpan.WithoutLeadingZeros());
+                writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
             }
         }
     }

@@ -13,60 +13,60 @@ sealed class RlpSequenceStreamWriter : IRlpWriter
     private readonly RlpContentLengthWriter _lengthWriter = new();
     private readonly List<Action<RlpStream>> _actions = [];
 
-    public void Push(int value)
+    public void Write(int value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 
-    public void Push(ulong value)
+    public void Write(ulong value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 
-    public void Push(ReadOnlySpan<byte> value)
+    public void Write(ReadOnlySpan<byte> value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         // TODO: This results in an unnecesary copy of the data.
         // Don't know how to workaround the fact that we're using ref types.
         var arr = value.ToArray();
         _actions.Add((stream) => stream.Encode(arr));
     }
 
-    public void Push(UInt256 value)
+    public void Write(UInt256 value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 
-    public void Push(long value)
+    public void Write(long value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 
-    public void Push(Address value)
+    public void Write(Address value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 
-    public void Push(Memory<byte>? value)
+    public void Write(Memory<byte>? value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 
-    public void Push(byte[] value)
+    public void Write(byte[] value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 
-    public void Push(Rlp value)
+    public void Write(Rlp value)
     {
-        _lengthWriter.Push(value);
+        _lengthWriter.Write(value);
         _actions.Add((stream) => stream.Encode(value));
     }
 

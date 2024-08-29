@@ -13,47 +13,47 @@ sealed class RlpContentLengthWriter : IRlpWriter
 
     public int ContentLength => _contentLength;
 
-    public void Push(int value)
+    public void Write(int value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(ulong value)
+    public void Write(ulong value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(ReadOnlySpan<byte> value)
+    public void Write(ReadOnlySpan<byte> value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(UInt256 value)
+    public void Write(UInt256 value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(long value)
+    public void Write(long value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(Address value)
+    public void Write(Address value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(Memory<byte>? value)
+    public void Write(Memory<byte>? value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(byte[] value)
+    public void Write(byte[] value)
     {
         _contentLength += Rlp.LengthOf(value);
     }
 
-    public void Push(Rlp value)
+    public void Write(Rlp value)
     {
         _contentLength += value.Length;
     }
