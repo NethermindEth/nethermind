@@ -247,7 +247,7 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+        StoreBeaconRoot(block, spec);
         _blockhashStore.ApplyBlockhashStateChanges(block.Header);
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
@@ -280,6 +280,18 @@ public partial class BlockProcessor(
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
+    }
+
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    {
+        try
+        {
+            _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Storing beacon block root for block {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
+        }
     }
 
     // TODO: block processor pipeline

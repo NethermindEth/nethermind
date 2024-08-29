@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
@@ -23,26 +24,21 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
 
         if (canInsertBeaconRoot)
         {
+            Address beaconRootsAddress = spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress;
             Transaction transaction = new()
             {
                 Value = UInt256.Zero,
                 Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
-                To = spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
+                To = beaconRootsAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = GasLimit,
                 GasPrice = UInt256.Zero,
+                AccessList = new AccessList.Builder().AddAddress(beaconRootsAddress).Build()
             };
 
             transaction.Hash = transaction.CalculateHash();
 
-            try
-            {
-                processor.Execute(transaction, header, NullTxTracer.Instance);
-            }
-            catch (Exception e)
-            {
-                throw new BlockchainException("Error during calling BeaconBlockRoot contract", e);
-            }
+            processor.Execute(transaction, header, NullTxTracer.Instance);
         }
     }
 }
