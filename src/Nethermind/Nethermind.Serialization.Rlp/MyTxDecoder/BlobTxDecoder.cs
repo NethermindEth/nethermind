@@ -91,10 +91,15 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             stream.StartSequence(contentLength);
-            // we want internal content lenght here in normal form
+            // if the transaction is in mempool form, we started the mempool form sequence
+            // and now we want to encode the non-mempool form contents, so we need to adjust the content length for that encoding
             contentLength = GetContentLength(transaction, rlpBehaviors & ~RlpBehaviors.InMempoolForm, forSigning);
         }
+
+        // this always encodes in non-mempool form
         base.EncodeTypedWrapped(transaction, stream, rlpBehaviors, forSigning, contentLength);
+
+        // we encode additional mempool form contents if needed
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             EncodeShardBlobNetworkWrapper(transaction, stream);
