@@ -25,7 +25,7 @@ class ShutterTestsCommon
     public const int Seed = 100;
     public const ulong InitialSlot = 21;
     public const ulong InitialSlotTimestamp = 1 + 21 * 5;
-    public const ulong InitialTxPointer = 1000;
+    public const ulong Threshold = 10;
     public const int ChainId = BlockchainIds.Chiado;
     public const ulong GenesisTimestamp = 1;
     public static readonly TimeSpan SlotLength = TimeSpan.FromSeconds(5);
@@ -65,14 +65,12 @@ class ShutterTestsCommon
             chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager, Cfg, [], rnd
         );
 
-    public static ShutterEventSimulator InitEventSimulator(Random rnd, ulong eon, ulong threshhold, ulong initialTxPointer)
+    public static ShutterEventSimulator InitEventSimulator(Random rnd)
         => new(
             rnd,
             ChainId,
-            eon,
-            threshhold,
+            Threshold,
             InitialSlot,
-            initialTxPointer,
             AbiEncoder,
             new(Cfg.SequencerContractAddress!)
         );

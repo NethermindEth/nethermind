@@ -39,13 +39,13 @@ class ShutterTxLoaderTests : EngineModuleTests
         }
     }
 
-    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong eon, ulong threshold, ulong slot, ulong txIndex, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, eon, threshold, slot, txIndex, abiEncoder, sequencerContractAddress)
+    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
     {
         private readonly Transaction _validTx = Build.A.Transaction.WithChainId(chainId).Signed().TestObject;
         private readonly Transaction _invalidTx = Build.A.Transaction.TestObject;
         protected override IEnumerable<Event> EmitEvents()
         {
-            IEnumerable<Transaction> emitHalfInvalid()
+            IEnumerable<Transaction> EmitHalfInvalid()
             {
                 bool valid = false;
                 while (true)
@@ -55,7 +55,25 @@ class ShutterTxLoaderTests : EngineModuleTests
                 }
             }
 
-            return EmitEvents(EmitDefaultGasLimits(), emitHalfInvalid());
+            return EmitEvents(EmitDefaultEons(), EmitHalfInvalid());
+        }
+    }
+
+    private class ShutterEventSimulatorHalfNextEon(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
+    {
+        protected override IEnumerable<Event> EmitEvents()
+        {
+            IEnumerable<ulong> EmitHalfNextEon()
+            {
+                bool next = false;
+                while (true)
+                {
+                    next = !next;
+                    yield return next ? _eon + 1 : _eon;
+                }
+            }
+
+            return EmitEvents(EmitHalfNextEon(), EmitDefaultTransactions());
         }
     }
 
@@ -70,7 +88,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         for (int i = 0; i < 20; i++)
         {
@@ -97,10 +115,8 @@ class ShutterTxLoaderTests : EngineModuleTests
         api.SetEventSimulator(new ShutterEventSimulatorHalfInvalid(
             rnd,
             ShutterTestsCommon.ChainId,
-            0,
-            10,
+            ShutterTestsCommon.Threshold,
             ShutterTestsCommon.InitialSlot,
-            ShutterTestsCommon.InitialTxPointer,
             ShutterTestsCommon.AbiEncoder,
             new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         ));
@@ -122,7 +138,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         api.AdvanceSlot(40);
 
@@ -169,7 +185,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         api.AdvanceSlot(5);
 
@@ -183,7 +199,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
-        api.NewEon();
+        api.NextEon();
         api.AdvanceSlot(5);
 
         Assert.Multiple(() =>
@@ -191,7 +207,6 @@ class ShutterTxLoaderTests : EngineModuleTests
             Assert.That(api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
             Assert.That(api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(5));
         });
-
     }
 
     [Test]
@@ -205,12 +220,52 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         Assert.DoesNotThrow(() => api.AdvanceSlot(0));
     }
 
-    // todo: test transactions with overlapping eons
+    [Test]
+    public async Task Can_load_transactions_with_overlapping_eons()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null).Build(ShutterTestsCommon.SpecProvider);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
+
+        ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
+        api.SetEventSimulator(new ShutterEventSimulatorHalfNextEon(
+            rnd,
+            ShutterTestsCommon.ChainId,
+            ShutterTestsCommon.Threshold,
+            ShutterTestsCommon.InitialSlot,
+            ShutterTestsCommon.AbiEncoder,
+            new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
+        ));
+
+        api.AdvanceSlot(20);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
+            Assert.That(api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(10));
+        });
+
+
+        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        lastPayload = payloads[0];
+
+        api.NextEon();
+        api.AdvanceSlot(0);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
+            Assert.That(api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(10));
+        });
+    }
 
     private static ShutterApiSimulatorLoadedTxs InitApi(Random rnd, MergeTestBlockchain chain)
         => new(

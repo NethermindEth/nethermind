@@ -74,8 +74,8 @@ public class ShutterApiSimulator(
     }
 
 
-    public void NewEon()
-        => _eventSimulator!.NewEon();
+    public void NextEon()
+        => _eventSimulator!.NextEon();
 
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {

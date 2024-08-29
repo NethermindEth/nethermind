@@ -13,10 +13,9 @@ class ShutterKeyValidatorTests
     [Test]
     public void Accepts_valid_decryption_keys()
     {
-        const int threshhold = 10;
         Random rnd = new(ShutterTestsCommon.Seed);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
-        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd, 0, threshhold, ShutterTestsCommon.InitialTxPointer);
+        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd);
         api.SetEventSimulator(eventSimulator);
 
         bool eventFired = false;
@@ -30,10 +29,9 @@ class ShutterKeyValidatorTests
     [Test]
     public void Rejects_outdated_decryption_keys()
     {
-        const int threshhold = 10;
         Random rnd = new(ShutterTestsCommon.Seed);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
-        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd, 0, threshhold, ShutterTestsCommon.InitialTxPointer);
+        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd);
         api.SetEventSimulator(eventSimulator);
 
         (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) = api.AdvanceSlot(5);

@@ -35,39 +35,41 @@ public class ShutterEventSimulator
     private readonly Address _sequencerContractAddress;
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
     private ulong _slot;
-    private ulong _eon;
-    private ulong _txIndex; // for tracking events being emitted
+    protected ulong _eon;
+    // private ulong _txIndex; // for tracking events being emitted
     private ulong _txPointer; // for tracking which keys are released
-    private UInt256 _sk;
-    private G2 _eonKey;
-    private IEnumerable<Event> _eventSource;
+    // private UInt256 _sk;
+    // private G2 _eonKey;
+    private readonly IEnumerable<Event> _eventSource;
     private readonly Queue<(byte[] IdentityPreimage, byte[] Key)> _keys = [];
+    private readonly EonData[] _eonData = new EonData[10];
 
     public ShutterEventSimulator(
         Random rnd,
         ulong chainId,
-        ulong eon,
         ulong threshold,
         ulong slot,
-        ulong txIndex,
         IAbiEncoder abiEncoder,
         Address sequencerContractAddress
     )
     {
         _rnd = rnd;
         _chainId = chainId;
-        _eon = eon;
+        _eon = 0;
         _slot = slot;
-        _txIndex = txIndex;
-        _txPointer = txIndex;
+        _txPointer = 0;
         _threshold = threshold;
         _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
         _transactionSubmittedAbi = new SequencerContract(sequencerContractAddress).TransactionSubmittedAbi;
         _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / _defaultGasLimit);
 
-        NewEon(eon);
         _eventSource = EmitEvents();
+
+        for (ulong i = 0; i < 10; i++)
+        {
+            _eonData[i] = new EonData(_rnd, i);
+        }
     }
 
     public struct Event
@@ -99,7 +101,7 @@ public class ShutterEventSimulator
         {
             keys.Add(_keys.Dequeue());
         }
-        DecryptionKeys decryptionKeys = ToDecryptionKeys(keys, GetCurrentEonInfo(), _txPointer, (int)_threshold);
+        DecryptionKeys decryptionKeys = ToDecryptionKeys(keys, _txPointer, (int)_threshold);
 
         _slot++;
         _txPointer += (ulong)keyCount;
@@ -108,23 +110,24 @@ public class ShutterEventSimulator
 
     protected virtual IEnumerable<Event> EmitEvents()
     {
-        return EmitEvents(EmitDefaultGasLimits(), EmitDefaultTransactions());
+        return EmitEvents(EmitDefaultEons(), EmitDefaultTransactions());
     }
 
-    protected IEnumerable<Event> EmitEvents(IEnumerable<UInt256> gasLimits, IEnumerable<Transaction> transactions)
+    protected IEnumerable<Event> EmitEvents(IEnumerable<ulong> eons, IEnumerable<Transaction> transactions)
     {
-        foreach ((UInt256 gasLimit, Transaction tx) in gasLimits.Zip(transactions))
+        foreach ((ulong eon, Transaction tx) in eons.Zip(transactions))
         {
             byte[] identityPreimage = new byte[52];
             byte[] sigma = new byte[32];
             _rnd.NextBytes(identityPreimage);
             _rnd.NextBytes(sigma);
 
+            ulong txIndex = _eonData[eon].TxIndex++;
             G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
-            G1 key = identity.dup().mult(_sk.ToLittleEndian());
+            G1 key = identity.dup().mult(_eonData[eon].SecretKey.ToLittleEndian());
 
             byte[] encodedTx = Rlp.Encode<Transaction>(tx).Bytes;
-            EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(encodedTx, identity, _eonKey, new(sigma));
+            EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(encodedTx, identity, _eonData[eon].Key, new(sigma));
             byte[] encryptedTx = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage);
 
             yield return new()
@@ -132,17 +135,17 @@ public class ShutterEventSimulator
                 EncryptedTransaction = encryptedTx,
                 IdentityPreimage = identityPreimage,
                 Key = key.compress(),
-                LogEntry = EncodeShutterLog(encryptedTx, identityPreimage, _txIndex++, gasLimit),
+                LogEntry = EncodeShutterLog(encryptedTx, identityPreimage, eon, txIndex, _defaultGasLimit),
                 Transaction = encodedTx
             };
         }
     }
 
-    protected IEnumerable<UInt256> EmitDefaultGasLimits()
+    protected IEnumerable<ulong> EmitDefaultEons()
     {
         while (true)
         {
-            yield return new UInt256(_defaultGasLimit);
+            yield return _eon;
         }
     }
 
@@ -162,36 +165,33 @@ public class ShutterEventSimulator
         }
     }
 
+    public void NextEon()
+    {
+        _eon++;
+        _txPointer = 0;
+    }
+
     public IShutterEon.Info GetCurrentEonInfo()
-        => new()
+    {
+        EonData eonData = _eonData.ElementAt((int)_eon);
+        return new()
         {
             Eon = _eon,
-            Key = _eonKey,
+            Key = eonData.Key,
             Threshold = _threshold,
             Addresses = TestItem.Addresses
         };
-
-    public void NewEon()
-        => NewEon(_eon + 1);
-
-    private void NewEon(ulong eon)
-    {
-        byte[] sk = new byte[32];
-        _rnd.NextBytes(sk);
-
-        _eon = eon;
-        _sk = new(sk);
-        _eonKey = G2.generator().mult(_sk.ToLittleEndian());
     }
 
     private LogEntry EncodeShutterLog(
         ReadOnlySpan<byte> encryptedTransaction,
         ReadOnlySpan<byte> identityPreimage,
+        ulong eon,
         ulong txIndex,
         UInt256 gasLimit)
     {
         byte[] logData = _abiEncoder.Encode(_transactionSubmittedAbi, [
-            _eon,
+            eon,
             txIndex,
             identityPreimage[..32].ToArray(),
             new Address(identityPreimage[32..].ToArray()),
@@ -206,7 +206,7 @@ public class ShutterEventSimulator
             .TestObject;
     }
 
-    private DecryptionKeys ToDecryptionKeys(List<(byte[] IdentityPreimage, byte[] Key)> rawKeys, in IShutterEon.Info eon, ulong txIndex, int signatureCount)
+    private DecryptionKeys ToDecryptionKeys(List<(byte[] IdentityPreimage, byte[] Key)> rawKeys, ulong txPointer, int signatureCount)
     {
         rawKeys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
         rawKeys.Insert(0, ([], []));
@@ -227,7 +227,7 @@ public class ShutterEventSimulator
         {
             ulong index = (ulong)randomIndices[i];
             PrivateKey sk = TestItem.PrivateKeys[index];
-            Hash256 h = ShutterCrypto.GenerateHash(ShutterTestsCommon.Cfg.InstanceID, eon.Eon, _slot, txIndex, identityPreimages);
+            Hash256 h = ShutterCrypto.GenerateHash(ShutterTestsCommon.Cfg.InstanceID, _eon, _slot, txPointer, identityPreimages);
             byte[] sig = ShutterTestsCommon.Ecdsa.Sign(sk, h).BytesWithRecovery;
             signerIndices.Add(index);
             signatures.Add(ByteString.CopyFrom(sig));
@@ -236,7 +236,7 @@ public class ShutterEventSimulator
         GnosisDecryptionKeysExtra gnosis = new()
         {
             Slot = _slot,
-            TxPointer = txIndex,
+            TxPointer = txPointer,
             SignerIndices = { signerIndices },
             Signatures = { signatures }
         };
@@ -244,9 +244,28 @@ public class ShutterEventSimulator
         return new()
         {
             InstanceID = ShutterTestsCommon.Cfg.InstanceID,
-            Eon = eon.Eon,
+            Eon = _eon,
             Keys = { keys },
             Gnosis = gnosis
         };
+    }
+
+    private struct EonData
+    {
+        public ulong Eon { get; }
+        public G2 Key { get; }
+        public UInt256 SecretKey { get; }
+        public ulong TxIndex { get; set; }
+
+        public EonData(Random rnd, ulong eon)
+        {
+            byte[] sk = new byte[32];
+            rnd.NextBytes(sk);
+
+            Eon = eon;
+            SecretKey = new(sk);
+            Key = G2.generator().mult(SecretKey.ToLittleEndian());
+            TxIndex = 0;
+        }
     }
 }
