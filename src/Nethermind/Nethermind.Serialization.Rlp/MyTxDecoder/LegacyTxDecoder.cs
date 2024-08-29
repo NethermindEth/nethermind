@@ -132,58 +132,56 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         transaction.Signature = SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
+    // NOTE: These impls can be lifted to the top level `TxDecoder`
     public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        var writer = new RlpContentLengthWriter();
+        var writer = new RlpStreamWriter(stream);
         WriteTransaction(writer, transaction, forSigning, isEip155Enabled, chainId);
-        int contentLength = writer.ContentLength;
-
-        stream.StartSequence(contentLength);
-
-        var streamWriter = new RlpStreamWriter(stream);
-        WriteTransaction(streamWriter, transaction, forSigning, isEip155Enabled, chainId);
     }
 
     public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         var writer = new RlpContentLengthWriter();
         WriteTransaction(writer, transaction, forSigning, isEip155Enabled, chainId);
-        return Rlp.LengthOfSequence(writer.ContentLength);
+        return writer.ContentLength;
     }
 
     public static void WriteTransaction(IRlpWriter writer, Transaction transaction, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        writer.Write(transaction.Nonce);
-        writer.Write(transaction.GasPrice);
-        writer.Write(transaction.GasLimit);
-        writer.Write(transaction.To);
-        writer.Write(transaction.Value);
-        writer.Write(transaction.Data);
+        writer.WriteSequence(writer =>
+        {
+            writer.Write(transaction.Nonce);
+            writer.Write(transaction.GasPrice);
+            writer.Write(transaction.GasLimit);
+            writer.Write(transaction.To);
+            writer.Write(transaction.Value);
+            writer.Write(transaction.Data);
 
-        if (forSigning)
-        {
-            bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
-            if (includeSigChainIdHack)
+            if (forSigning)
             {
-                writer.Write(chainId);
-                writer.Write(Rlp.OfEmptyByteArray);
-                writer.Write(Rlp.OfEmptyByteArray);
-            }
-        }
-        else
-        {
-            if (transaction.Signature is null)
-            {
-                writer.Write(0);
-                writer.Write(Bytes.Empty);
-                writer.Write(Bytes.Empty);
+                bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
+                if (includeSigChainIdHack)
+                {
+                    writer.Write(chainId);
+                    writer.Write(Rlp.OfEmptyByteArray);
+                    writer.Write(Rlp.OfEmptyByteArray);
+                }
             }
             else
             {
-                writer.Write(transaction.Signature.V);
-                writer.Write(transaction.Signature.RAsSpan.WithoutLeadingZeros());
-                writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
+                if (transaction.Signature is null)
+                {
+                    writer.Write(0);
+                    writer.Write(Bytes.Empty);
+                    writer.Write(Bytes.Empty);
+                }
+                else
+                {
+                    writer.Write(transaction.Signature.V);
+                    writer.Write(transaction.Signature.RAsSpan.WithoutLeadingZeros());
+                    writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
+                }
             }
-        }
+        });
     }
 }
