@@ -34,9 +34,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static byte[] Pattern => [96, 96, 01];
         public byte CallCount { get; set; } = 0;
 
+        public long GasCost(EvmState vmState, IReleaseSpec spec)
+        {
+            long gasCost = GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Base;
+            return gasCost;
+        }
+
         public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
+
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) throw new Exception();
+
             UInt256 lhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
             UInt256 rhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
             stack.PushUInt256(lhs + rhs);
@@ -45,14 +54,50 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
     }
 
+    public class MethodSelector : InstructionChunk
+    {
+        public static byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.CALLVALUE, (byte)Instruction.DUP1];
+        public byte CallCount { get; set; } = 0;
+
+        public long GasCost(EvmState vmState, IReleaseSpec spec)
+        {
+            long gasCost = GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Base + GasCostOf.VeryLow;
+            return gasCost;
+        }
+
+        public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) throw new Exception();
+
+            byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
+            byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
+            VirtualMachine<T>.UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, 0, 32);
+            vmState.Memory.SaveByte(location, value);
+            stack.PushUInt256(vmState.Env.Value);
+            stack.PushUInt256(vmState.Env.Value);
+
+            programCounter += 2 + 2 + 1 + 1 + 1;
+        }
+    }
+
     public class IsContractCheck : InstructionChunk
     {
         public static byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
         public byte CallCount { get; set; } = 0;
 
+        public long GasCost(EvmState vmState, IReleaseSpec spec)
+        {
+            long gasCost = spec.GetExtCodeCost() + GasCostOf.VeryLow + GasCostOf.Base;
+            return gasCost;
+        }
+
         public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
+
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) throw new Exception();
 
             Address address = stack.PopAddress();
             int contractCodeSize = worldState.GetCode(address).Length;
@@ -75,9 +120,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
         public byte CallCount { get; set; } = 0;
 
+        public long GasCost(EvmState vmState, IReleaseSpec spec)
+        {
+            long gasCost = GasCostOf.VeryLow + GasCostOf.Mid;
+            return gasCost;
+        }
+
         public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
+
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) throw new Exception();
+
             int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
             if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
             {
@@ -95,9 +149,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
         public byte CallCount { get; set; } = 0;
 
+        public long GasCost(EvmState vmState, IReleaseSpec spec)
+        {
+            long gasCost = GasCostOf.VeryLow + GasCostOf.High;
+            return gasCost;
+        }
+
         public void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
+
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) throw new Exception();
+
             stack.PopUInt256(out UInt256 condition);
             int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
             if (condition.u0 != 0 && jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
@@ -119,8 +182,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IsJitEnabled = true,
             IsPatternMatchingEnabled = true,
 
-            PatternMatchingThreshold = 4,
-            JittingThreshold = 8,
+            PatternMatchingThreshold = 128,
+            JittingThreshold = 512,
         };
 
         [SetUp]
@@ -167,6 +230,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             byte[] bytecode =
                 Prepare.EvmCode
                     .JUMPDEST()
+                    .GAS()
+                    .PushSingle(1000)
+                    .EQ()
+                    .JUMPI(22)
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
@@ -175,6 +242,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ADD()
                     .PUSHx([0, 0])
                     .JUMP()
+                    .JUMPDEST()
+                    .STOP()
                     .Done;
 
             /*
@@ -198,7 +267,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     var address = receipts.TxReceipts[0].ContractAddress;
             */
 
-            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 32; i++)
+            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 1024; i++)
             {
                 ExecuteBlock(new NullBlockTracer(), bytecode);
             }

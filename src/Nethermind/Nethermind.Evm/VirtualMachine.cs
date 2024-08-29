@@ -470,7 +470,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
     }
 
-    private static bool UpdateGas(long gasCost, ref long gasAvailable)
+    public static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
         if (gasAvailable < gasCost)
         {
@@ -481,7 +481,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return true;
     }
 
-    private static void UpdateGasUp(long refund, ref long gasAvailable)
+    public static void UpdateGasUp(long refund, ref long gasAvailable)
     {
         gasAvailable += refund;
     }
