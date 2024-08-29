@@ -14,7 +14,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 
@@ -110,12 +109,6 @@ public class ShutterApiSimulator(
     // {
 
     // }
-
-    // fake out blocktree event
-    protected override void RegisterNewHeadBlock()
-    {
-        NewHeadBlock += NewHeadBlockHandler;
-    }
 
     protected override IShutterEon InitEon()
     {

@@ -4,6 +4,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Core;
 
 namespace Nethermind.Shutter;
 
@@ -12,5 +13,6 @@ public interface IShutterApi
     public ShutterTxSource TxSource { get; }
     void StartP2P(CancellationTokenSource? cancellationTokenSource = null);
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer);
+    public void NewHeadBlockHandler(object? sender, BlockEventArgs e);
     public ValueTask DisposeAsync();
 }

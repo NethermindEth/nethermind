@@ -92,13 +92,12 @@ public class ShutterApi : IShutterApi
 
         InitP2P(_cfg, logManager);
         RegisterOnKeysValidated();
-        RegisterNewHeadBlock();
     }
 
     public void StartP2P(CancellationTokenSource? cancellationTokenSource = null)
         => P2P!.Start(cancellationTokenSource);
 
-    protected virtual void NewHeadBlockHandler(object? sender, BlockEventArgs e)
+    public virtual void NewHeadBlockHandler(object? sender, BlockEventArgs e)
     {
         BlockHandler.OnNewHeadBlock(e.Block);
     }
@@ -139,11 +138,6 @@ public class ShutterApi : IShutterApi
             ? _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
             : _blockTree.FindLatestHeader()!;
         TxSource.LoadTransactions(head, parentHeader, keys);
-    }
-
-    protected virtual void RegisterNewHeadBlock()
-    {
-        _blockTree.NewHeadBlock += NewHeadBlockHandler;
     }
 
     protected virtual void InitP2P(IShutterConfig cfg, ILogManager logManager)

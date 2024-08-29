@@ -111,6 +111,8 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)
             );
 
+            _api.BlockTree!.NewHeadBlock += _shutterApi.NewHeadBlockHandler;
+
             _shutterApi.StartP2P(_cts);
         }
 
