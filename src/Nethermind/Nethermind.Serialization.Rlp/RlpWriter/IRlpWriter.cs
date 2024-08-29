@@ -7,9 +7,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.RlpWriter;
 
-// TODO: Naming could be better
 public interface IRlpWriter
 {
+    public void Write(byte value);
     public void Write(int value);
     public void Write(ulong value);
     public void Write(ReadOnlySpan<byte> value);
@@ -19,4 +19,5 @@ public interface IRlpWriter
     public void Write(Memory<byte>? value);
     public void Write(byte[] value);
     public void Write(Rlp value);
+    void Write(byte[]?[] value);
 }
