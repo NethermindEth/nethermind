@@ -132,12 +132,16 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         transaction.Signature = SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
-    // NOTE: These methods could be lifted to the top class `TxDecoder`
     public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        var writer = new RlpSequenceStreamWriter();
+        var writer = new RlpContentLengthWriter();
         WriteTransaction(writer, transaction, forSigning, isEip155Enabled, chainId);
-        writer.WriteToStream(stream);
+        int contentLength = writer.ContentLength;
+
+        stream.StartSequence(contentLength);
+
+        var streamWriter = new RlpStreamWriter(stream);
+        WriteTransaction(streamWriter, transaction, forSigning, isEip155Enabled, chainId);
     }
 
     public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
