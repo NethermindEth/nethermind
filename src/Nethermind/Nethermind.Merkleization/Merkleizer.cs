@@ -67,6 +67,30 @@ public ref struct Merkleizer
     {
         FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
     }
+    public void Feed(Span<short> bytes)
+    {
+        FeedAtLevel(MemoryMarshal.Cast<short, UInt256>(bytes)[0], 0);
+    }
+    public void Feed(Span<ushort> bytes)
+    {
+        FeedAtLevel(MemoryMarshal.Cast<ushort, UInt256>(bytes)[0], 0);
+    }
+    public void Feed(Span<int> bytes)
+    {
+        FeedAtLevel(MemoryMarshal.Cast<int, UInt256>(bytes)[0], 0);
+    }
+    public void Feed(Span<uint> bytes)
+    {
+        FeedAtLevel(MemoryMarshal.Cast<uint, UInt256>(bytes)[0], 0);
+    }
+    public void Feed(Span<long> bytes)
+    {
+        FeedAtLevel(MemoryMarshal.Cast<long, UInt256>(bytes)[0], 0);
+    }
+    public void Feed(Span<ulong> bytes)
+    {
+        FeedAtLevel(MemoryMarshal.Cast<ulong, UInt256>(bytes)[0], 0);
+    }
 
     public void Feed(bool value)
     {
@@ -579,6 +603,20 @@ public ref struct Merkleizer
     }
 
     public void Feed(IReadOnlyList<Bytes32> value, ulong maxLength)
+    {
+        // TODO: If UInt256 is the correct memory layout
+        UInt256[] subRoots = new UInt256[value.Count];
+        for (int i = 0; i < value.Count; i++)
+        {
+            Merkle.Ize(out subRoots[i], value[i]);
+        }
+
+        Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+        Merkle.MixIn(ref _chunks[^1], value.Count);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(IReadOnlyList<ulong> value, ulong maxLength)
     {
         // TODO: If UInt256 is the correct memory layout
         UInt256[] subRoots = new UInt256[value.Count];

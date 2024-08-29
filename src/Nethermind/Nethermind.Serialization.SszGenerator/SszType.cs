@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Nethermind.Serialization.Ssz;
+using System.Collections.ObjectModel;
 using System.Data.Common;
 using System.Runtime;
 
@@ -678,6 +679,9 @@ class SszProperty
             return Type.Kind;
         }
     }
+
+    public bool HandledByStd => ((Kind & (Kind.Basic | Kind.BitVector | Kind.BitList)) != Kind.None) || (((Kind & (Kind.Vector | Kind.List)) != Kind.None) && Type.Kind == Kind.Basic);
+    public bool IsCollection => (Kind & Kind.Collection) != Kind.None;
 
     public bool IsVariable => (Kind & (Kind.List | Kind.BitList)) != Kind.None || Type.IsVariable;
 

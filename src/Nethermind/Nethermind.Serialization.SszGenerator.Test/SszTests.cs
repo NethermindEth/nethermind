@@ -68,32 +68,38 @@ namespace Nethermind.Serialization.SszGenerator.Test
         //}
     }
 
-    //[SszSerializable]
-    //public struct SlotDecryptionIdentites
-    //{
-    //    public ulong InstanceID { get; set; }
-    //    //public ulong Eon { get; set; }
-    //    //public ulong Slot { get; set; }
-    //    //public ulong TxPointer { get; set; }
+    [SszSerializable]
+    public struct SlotDecryptionIdentites
+    {
+        public ulong Test1 { get; set; }
 
-    //    [SszList(1024)]
-    //    public List<IdentityPreimage> IdentityPreimages { get; set; }
+        [SszVector(10)]
+        public ulong[] Test2 { get; set; }
+
+        [SszList(10)]
+        public ulong[] Test3 { get; set; }
+        //public ulong Eon { get; set; }
+        //public ulong Slot { get; set; }
+        //public ulong TxPointer { get; set; }
+
+        //[SszList(1024)]
+        //public List<IdentityPreimage> IdentityPreimages { get; set; }
+    }
+
+    //[SszSerializable]
+    //public struct Test2
+    //{
+    //    public Test2Union Selector { get; set; }
+    //    public long Type1 { get; set; }
+    //    public int Type2 { get; set; }
     //}
 
-    [SszSerializable]
-    public struct Test2
-    {
-        public Test2Union Selector { get; set; }
-        public long Type1 { get; set; }
-        public int Type2 { get; set; }
-    }
-
-    public enum Test2Union: byte
-    {
-        None,
-        Type1,
-        Type2,
-    }
+    //public enum Test2Union: byte
+    //{
+    //    None,
+    //    Type1,
+    //    Type2,
+    //}
 
     //[SszSerializable]
     //public struct IdentityPreimage
