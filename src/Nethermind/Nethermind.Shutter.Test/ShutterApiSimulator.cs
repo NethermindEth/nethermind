@@ -96,7 +96,7 @@ public class ShutterApiSimulator(
         }
 
         _receiptStorage.Insert(block, receipts);
-        TxLoader.LoadFromReceipts(block, receipts);
+        TxLoader.LoadFromReceipts(block, receipts, _eventSimulator!.GetCurrentEonInfo().Eon);
     }
 
     // fake out P2P module

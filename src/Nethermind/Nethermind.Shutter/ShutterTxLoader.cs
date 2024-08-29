@@ -37,10 +37,8 @@ public class ShutterTxLoader(
                 logManager,
                 abiEncoder);
 
-    // todo: maintain multiple queues for each eon
-    private Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
+    private readonly ShutterEventQueue _events = new(cfg.EncryptedGasLimit, logManager);
     private ulong _txPointer = ulong.MaxValue;
-    private ulong _eon = ulong.MaxValue - 1;
     private bool _loadFromReceipts = false;
     private readonly ShutterTxFilter _txFilter = new(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
@@ -73,38 +71,14 @@ public class ShutterTxLoader(
         return shutterTransactions;
     }
 
-    public void LoadFromReceipts(Block head, TxReceipt[] receipts)
+    public void LoadFromReceipts(Block head, TxReceipt[] receipts, ulong eon)
     {
-        lock (_transactionSubmittedEvents)
+        lock (_events)
         {
             if (_loadFromReceipts && head is not null)
             {
                 var events = _logScanner.ScanReceipts(head.Number, receipts).ToList();
-                int count = 0;
-                foreach (ISequencerContract.TransactionSubmitted e in events)
-                {
-                    // todo: change to allow multiple concurrent eons
-                    if (e.Eon == _eon + 1)
-                    {
-                        // reset for new eon
-                        _txPointer = 0;
-                        _eon++;
-                    }
-
-                    if (e.TxIndex != _txPointer)
-                    {
-                        _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex}, expected {_txPointer}.");
-                    }
-
-                    if (e.Eon != _eon)
-                    {
-                        _logger.Warn($"Loading unexpected Shutter event with eon {e.Eon}, expected {_eon}.");
-                    }
-
-                    _txPointer = e.TxIndex + 1;
-                    _transactionSubmittedEvents.Enqueue(e);
-                    count++;
-                }
+                _events.EnqueueEvents(events, eon);
             }
         }
     }
@@ -206,11 +180,11 @@ public class ShutterTxLoader(
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        lock (_transactionSubmittedEvents)
+        lock (_events)
         {
             if (_loadFromReceipts)
             {
-                _logger.Debug($"Found {_transactionSubmittedEvents.Count} Shutter events in recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
+                _logger.Debug($"Found {_events.Count} Shutter events in recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             else
             {
@@ -218,27 +192,11 @@ public class ShutterTxLoader(
                 _loadFromReceipts = true;
             }
 
-            UInt256 totalGas = 0;
+            IEnumerable<ISequencerContract.TransactionSubmitted> events = _events.DequeueToGasLimit(eon, txPointer);
+
             int index = 0;
-
-            while (_transactionSubmittedEvents.TryPeek(out ISequencerContract.TransactionSubmitted e))
+            foreach (ISequencerContract.TransactionSubmitted e in events)
             {
-                if (e.TxIndex < txPointer)
-                {
-                    // skip and delete outdated events
-                    _transactionSubmittedEvents.Dequeue();
-                    continue;
-                }
-
-                if (totalGas + e.GasLimit > cfg.EncryptedGasLimit)
-                {
-                    Metrics.EncryptedGasUsed = (ulong)totalGas;
-                    _logger.Debug("Shutter gas limit reached.");
-                    yield break;
-                }
-
-                _transactionSubmittedEvents.Dequeue();
-                totalGas += e.GasLimit;
                 yield return EventToSequencedTransaction(e, index++, eon);
             }
         }
@@ -264,22 +222,13 @@ public class ShutterTxLoader(
     private void LoadFromScanningLogs(ulong eon, ulong txPointer, long headBlockNumber)
     {
         _txPointer = txPointer;
-        _eon = eon;
 
-        var events = _logScanner.ScanLogs(headBlockNumber, ShouldStopScanning).ToList();
-        // todo: fix this, broken by submitting transaction with lower eon after higher eon
-        events = events.Where(e => e.Eon == eon && e.TxIndex >= txPointer).ToList();
+        var events = _logScanner.ScanLogs(headBlockNumber, (ISequencerContract.TransactionSubmitted e) => e.Eon == eon && e.TxIndex <= _txPointer).ToList();
+        _events.EnqueueEvents(events, eon);
 
-        _transactionSubmittedEvents = new Queue<ISequencerContract.TransactionSubmitted>(events);
-        txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
-
-        _logger.Debug($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
+        _logger.Debug($"Found {_events.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }
 
-    private bool ShouldStopScanning(ISequencerContract.TransactionSubmitted e)
-    {
-        return e.Eon < _eon || e.TxIndex <= _txPointer;
-    }
 
     private struct SequencedTransaction
     {

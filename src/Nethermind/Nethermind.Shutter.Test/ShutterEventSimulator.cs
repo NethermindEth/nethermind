@@ -8,10 +8,8 @@ using Google.Protobuf;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Shutter.Test;
 using Nethermind.Core;
 using System.Collections.Generic;
-using Nethermind.Shutter;
 using Nethermind.Shutter.Dto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
@@ -36,12 +34,9 @@ public class ShutterEventSimulator
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
     private ulong _slot;
     protected ulong _eon;
-    // private ulong _txIndex; // for tracking events being emitted
     private ulong _txPointer; // for tracking which keys are released
-    // private UInt256 _sk;
-    // private G2 _eonKey;
     private readonly IEnumerable<Event> _eventSource;
-    private readonly Queue<(byte[] IdentityPreimage, byte[] Key)> _keys = [];
+    private readonly Queue<(byte[] IdentityPreimage, byte[] Key)>[] _keys = new Queue<(byte[] IdentityPreimage, byte[] Key)>[10];
     private readonly EonData[] _eonData = new EonData[10];
 
     public ShutterEventSimulator(
@@ -69,6 +64,7 @@ public class ShutterEventSimulator
         for (ulong i = 0; i < 10; i++)
         {
             _eonData[i] = new EonData(_rnd, i);
+            _keys[i] = [];
         }
     }
 
@@ -79,6 +75,7 @@ public class ShutterEventSimulator
         public byte[] Key;
         public LogEntry LogEntry;
         public byte[] Transaction;
+        public ulong Eon;
     }
 
     public List<Event> GetEvents(int c)
@@ -91,15 +88,15 @@ public class ShutterEventSimulator
         var events = _eventSource.Take(eventCount).ToList();
         foreach (Event e in events)
         {
-            _keys.Enqueue((e.IdentityPreimage, e.Key));
+            _keys[e.Eon].Enqueue((e.IdentityPreimage, e.Key));
         }
 
-        keyCount ??= Math.Min(_keys.Count, _defaultMaxKeyCount);
+        keyCount ??= Math.Min(_keys[_eon].Count, _defaultMaxKeyCount);
 
         List<(byte[] IdentityPreimage, byte[] Key)> keys = [];
         for (int i = 0; i < keyCount; i++)
         {
-            keys.Add(_keys.Dequeue());
+            keys.Add(_keys[_eon].Dequeue());
         }
         DecryptionKeys decryptionKeys = ToDecryptionKeys(keys, _txPointer, (int)_threshold);
 
@@ -136,7 +133,8 @@ public class ShutterEventSimulator
                 IdentityPreimage = identityPreimage,
                 Key = key.compress(),
                 LogEntry = EncodeShutterLog(encryptedTx, identityPreimage, eon, txIndex, _defaultGasLimit),
-                Transaction = encodedTx
+                Transaction = encodedTx,
+                Eon = eon
             };
         }
     }

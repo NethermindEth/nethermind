@@ -56,7 +56,7 @@ public class ShutterBlockHandler(
                 _haveCheckedRegistered = true;
             }
             eon.Update(head.Header);
-            txLoader.LoadFromReceipts(head, receiptFinder.Get(head));
+            txLoader.LoadFromReceipts(head, receiptFinder.Get(head), eon.GetCurrentEonInfo()!.Value.Eon);
 
             lock (_syncObject)
             {
