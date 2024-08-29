@@ -229,7 +229,7 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
         return new Hash256(hash.Hash);
     }
 
-    public void WriteTransaction(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false)
+    private static void WriteTransaction(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false)
     {
         writer.Wrap(when: !rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), bytes: 1, writer =>
         {
@@ -258,7 +258,7 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
         });
     }
 
-    void WritePayload(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors)
+    private static void WritePayload(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors)
     {
         writer.Write(transaction.ChainId ?? 0);
         writer.Write(transaction.Nonce);
@@ -273,7 +273,7 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
         writer.Write(transaction.BlobVersionedHashes);
     }
 
-    void WriteSignature(IRlpWriter writer, Transaction transaction, bool forSigning)
+    private static void WriteSignature(IRlpWriter writer, Transaction transaction, bool forSigning)
     {
         if (!forSigning)
         {
@@ -292,7 +292,7 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
         }
     }
 
-    void WriteShardBlobNetworkWrapper(IRlpWriter writer, Transaction transaction)
+    private static void WriteShardBlobNetworkWrapper(IRlpWriter writer, Transaction transaction)
     {
         ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
         writer.Write(networkWrapper.Blobs);
