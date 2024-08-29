@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -72,6 +73,15 @@ namespace Nethermind.Merge.AuRa
                 _manualTimestamper!,
                 _blocksConfig,
                 _api.LogManager);
+
+        protected override IBlockFinalizationManager InitializeMergeFinilizationManager()
+        {
+            return new AuRaMergeFinalizationManager(_blockFinalizationManager,
+                _auraApi!.FinalizationManager ??
+                throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
+                    "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
+                _poSSwitcher);
+        }
 
         public bool ShouldRunSteps(INethermindApi api)
         {

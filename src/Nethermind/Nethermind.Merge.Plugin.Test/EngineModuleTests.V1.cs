@@ -1573,7 +1573,8 @@ public partial class EngineModuleTests
 
             nameof(IEngineRpcModule.engine_getPayloadV3),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
-            nameof(IEngineRpcModule.engine_newPayloadV3)
+            nameof(IEngineRpcModule.engine_newPayloadV3),
+            nameof(IEngineRpcModule.engine_getBlobsV1)
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }

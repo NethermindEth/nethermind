@@ -135,7 +135,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
