@@ -65,7 +65,7 @@ class ShutterTestsCommon
             chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager, Cfg, [], rnd
         );
 
-    public static ShutterEventSimulator InitEventSimulator(Random rnd, ulong eon, ulong threshhold, ulong initialTxPointer, AbiEncodingInfo abi)
+    public static ShutterEventSimulator InitEventSimulator(Random rnd, ulong eon, ulong threshhold, ulong initialTxPointer)
         => new(
             rnd,
             ChainId,
@@ -74,8 +74,7 @@ class ShutterTestsCommon
             InitialSlot,
             initialTxPointer,
             AbiEncoder,
-            new(Cfg.SequencerContractAddress!),
-            abi
+            new(Cfg.SequencerContractAddress!)
         );
 
     public static Timestamper InitTimestamper(ulong slotTimestamp, ulong offsetMs)

@@ -68,7 +68,7 @@ public class ShutterApi : IShutterApi
         _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
 
         Time = InitTime(specProvider, timestamper);
-        TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, logManager);
+        TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
             specProvider.ChainId,

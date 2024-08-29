@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -10,9 +10,9 @@ namespace Nethermind.Shutter.Contracts;
 
 public interface ISequencerContract
 {
-    public IEnumerable<TransactionSubmitted> GetEvents();
+    public AbiEncodingInfo TransactionSubmittedAbi { get; }
 
-    struct TransactionSubmitted
+    public struct TransactionSubmitted
     {
         public ulong Eon;
         public ulong TxIndex;

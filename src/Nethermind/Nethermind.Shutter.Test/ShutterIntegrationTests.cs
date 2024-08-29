@@ -62,7 +62,7 @@ public class ShutterIntegrationTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, initialPayload, true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, chain.Api.TxLoader.GetAbi()));
+        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
 
         // keys arrive, waits for head block before loading
         chain.Api.AdvanceSlot(20);
@@ -106,7 +106,7 @@ public class ShutterIntegrationTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 1, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, chain.Api.TxLoader.GetAbi()));
+        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
 
         // waits to load transactions for head block
         chain.Api.AdvanceSlot(20);
@@ -143,7 +143,7 @@ public class ShutterIntegrationTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, chain.Api.TxLoader.GetAbi()));
+        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
 
         // no events loaded initially
         var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();

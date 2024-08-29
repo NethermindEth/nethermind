@@ -34,12 +34,12 @@ class ShutterTxLoaderTests : EngineModuleTests
         protected override void KeysValidatedHandler(object? sender, IShutterKeyValidator.ValidatedKeyArgs keys)
         {
             Block head = _blockTree.Head!;
-            BlockHeader parentHeader = _blockTree.FindParentHeader(head.Header, Blockchain.BlockTreeLookupOptions.None)!;
+            BlockHeader parentHeader = _blockTree.FindParentHeader(head.Header, BlockTreeLookupOptions.None)!;
             LoadedTransactions = TxLoader.LoadTransactions(head, parentHeader, keys);
         }
     }
 
-    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong eon, ulong threshold, ulong slot, ulong txIndex, IAbiEncoder abiEncoder, Address sequencerContractAddress, AbiEncodingInfo transactionSubmittedAbi) : ShutterEventSimulator(rnd, chainId, eon, threshold, slot, txIndex, abiEncoder, sequencerContractAddress, transactionSubmittedAbi)
+    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong eon, ulong threshold, ulong slot, ulong txIndex, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, eon, threshold, slot, txIndex, abiEncoder, sequencerContractAddress)
     {
         private readonly Transaction _validTx = Build.A.Transaction.WithChainId(chainId).Signed().TestObject;
         private readonly Transaction _invalidTx = Build.A.Transaction.TestObject;
@@ -70,7 +70,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi()));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
 
         for (int i = 0; i < 20; i++)
         {
@@ -102,8 +102,7 @@ class ShutterTxLoaderTests : EngineModuleTests
             ShutterTestsCommon.InitialSlot,
             ShutterTestsCommon.InitialTxPointer,
             ShutterTestsCommon.AbiEncoder,
-            new(ShutterTestsCommon.Cfg.SequencerContractAddress!),
-            api.TxLoader.GetAbi()
+            new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         ));
 
         api.AdvanceSlot(20);
@@ -123,7 +122,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi()));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
 
         api.AdvanceSlot(40);
 
@@ -170,7 +169,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi()));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
 
         api.AdvanceSlot(5);
 
@@ -206,7 +205,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer, api.TxLoader.GetAbi()));
+        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd, 0, 10, ShutterTestsCommon.InitialTxPointer));
 
         Assert.DoesNotThrow(() => api.AdvanceSlot(0));
     }

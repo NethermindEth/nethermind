@@ -16,7 +16,6 @@ using Nethermind.Shutter.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using System.IO;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Abi;
 
 namespace Nethermind.Shutter;
@@ -26,12 +25,18 @@ using G1 = Bls.P1;
 public class ShutterTxLoader(
     ILogFinder logFinder,
     IShutterConfig cfg,
-    ShutterTime shutterTime,
+    ShutterTime time,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
+    IAbiEncoder abiEncoder,
     ILogManager logManager)
 {
-    private readonly SequencerContract _sequencerContract = new(new Address(cfg.SequencerContractAddress!), logFinder, logManager);
+    private readonly ShutterLogScanner _logScanner = new(
+                new(new Address(cfg.SequencerContractAddress!)),
+                logFinder,
+                logManager,
+                abiEncoder);
+
     // todo: maintain multiple queues for each eon
     private Queue<ISequencerContract.TransactionSubmitted> _transactionSubmittedEvents = [];
     private ulong _txPointer = ulong.MaxValue;
@@ -42,9 +47,9 @@ public class ShutterTxLoader(
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
-        List<SequencedTransaction>? sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
+        var sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
 
-        long offset = shutterTime.GetCurrentOffsetMs(keys.Slot, shutterTime.GenesisTimestampMs);
+        long offset = time.GetCurrentOffsetMs(keys.Slot, time.GenesisTimestampMs);
         Metrics.KeysReceivedTimeOffset = offset;
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
@@ -74,47 +79,35 @@ public class ShutterTxLoader(
         {
             if (_loadFromReceipts && head is not null)
             {
+                var events = _logScanner.ScanReceipts(head.Number, receipts).ToList();
                 int count = 0;
-                LogFilter filter = _sequencerContract.CreateFilter(head.Number);
-                foreach (TxReceipt receipt in receipts)
+                foreach (ISequencerContract.TransactionSubmitted e in events)
                 {
-                    foreach (LogEntry log in receipt.Logs!)
+                    // todo: change to allow multiple concurrent eons
+                    if (e.Eon == _eon + 1)
                     {
-                        if (filter.Accepts(log))
-                        {
-                            ISequencerContract.TransactionSubmitted e = _sequencerContract.ParseTransactionSubmitted(log);
-
-                            // todo: change to allow multiple concurrent eons
-                            if (e.Eon == _eon + 1)
-                            {
-                                // reset for new eon
-                                _txPointer = 0;
-                                _eon++;
-                            }
-
-                            if (e.TxIndex != _txPointer)
-                            {
-                                _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex}, expected {_txPointer}.");
-                            }
-
-                            if (e.Eon != _eon)
-                            {
-                                _logger.Warn($"Loading unexpected Shutter event with eon {e.Eon}, expected {_eon}.");
-                            }
-
-                            _txPointer = e.TxIndex + 1;
-                            _transactionSubmittedEvents.Enqueue(e);
-                            count++;
-                        }
+                        // reset for new eon
+                        _txPointer = 0;
+                        _eon++;
                     }
+
+                    if (e.TxIndex != _txPointer)
+                    {
+                        _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex}, expected {_txPointer}.");
+                    }
+
+                    if (e.Eon != _eon)
+                    {
+                        _logger.Warn($"Loading unexpected Shutter event with eon {e.Eon}, expected {_eon}.");
+                    }
+
+                    _txPointer = e.TxIndex + 1;
+                    _transactionSubmittedEvents.Enqueue(e);
+                    count++;
                 }
-                _logger.Info($"Found {count} Shutter events in block {head.Number}, local tx pointer is {_txPointer}.");
             }
         }
     }
-
-    internal AbiEncodingInfo GetAbi()
-        => _sequencerContract.TransactionSubmittedAbi;
 
     private IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, BlockHeader parentHeader)
     {
@@ -270,10 +263,22 @@ public class ShutterTxLoader(
 
     private void LoadFromScanningLogs(ulong eon, ulong txPointer, long headBlockNumber)
     {
-        _transactionSubmittedEvents = new Queue<ISequencerContract.TransactionSubmitted>(_sequencerContract.GetEvents(eon, txPointer, headBlockNumber));
-        _txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
+        _txPointer = txPointer;
         _eon = eon;
+
+        var events = _logScanner.ScanLogs(headBlockNumber, ShouldStopScanning).ToList();
+        // todo: fix this, broken by submitting transaction with lower eon after higher eon
+        events = events.Where(e => e.Eon == eon && e.TxIndex >= txPointer).ToList();
+
+        _transactionSubmittedEvents = new Queue<ISequencerContract.TransactionSubmitted>(events);
+        txPointer = _transactionSubmittedEvents.Count == 0 ? txPointer : (_transactionSubmittedEvents.Last().TxIndex + 1);
+
         _logger.Debug($"Found {_transactionSubmittedEvents.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
+    }
+
+    private bool ShouldStopScanning(ISequencerContract.TransactionSubmitted e)
+    {
+        return e.Eon < _eon || e.TxIndex <= _txPointer;
     }
 
     private struct SequencedTransaction
