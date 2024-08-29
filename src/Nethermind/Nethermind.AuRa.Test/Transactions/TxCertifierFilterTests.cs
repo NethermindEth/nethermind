@@ -159,7 +159,6 @@ public class TxCertifierFilterTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                null,
                 preWarmer: CreateBlockCachePreWarmer());
         }
 

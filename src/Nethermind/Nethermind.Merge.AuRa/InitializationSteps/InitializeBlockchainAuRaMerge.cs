@@ -44,8 +44,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 new BeaconBlockRootHandler(transactionProcessor),
                 _api.LogManager,
                 _api.BlockTree!,
-                new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
+                new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
                 CreateAuRaValidator(),
                 txFilter,
                 GetGasLimitCalculator(),
