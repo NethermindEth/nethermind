@@ -10,6 +10,7 @@ namespace Nethermind.Serialization.Rlp.RlpWriter;
 
 public interface IRlpWriter
 {
+    public void WriteByte(byte value);
     public void Write(byte value);
     public void Write(int value);
     public void Write(ulong value);
@@ -21,5 +22,7 @@ public interface IRlpWriter
     public void Write(byte[] value);
     public void Write(Rlp value);
     public void Write(byte[]?[] value);
-    public void Write(AccessList? value, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public void Write<T>(IRlpStreamDecoder<T> decoder, T value, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public void WriteSequence(Action<IRlpWriter> action);
+    public void Wrap(bool when, int bytes, Action<IRlpWriter> action);
 }

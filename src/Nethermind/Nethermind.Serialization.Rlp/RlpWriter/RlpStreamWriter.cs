@@ -3,14 +3,17 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.RlpWriter;
 
 public sealed class RlpStreamWriter(RlpStream stream) : IRlpWriter
 {
+    public void WriteByte(byte value)
+    {
+        stream.WriteByte(value);
+    }
+
     public void Write(byte value)
     {
         stream.Encode(value);
@@ -66,8 +69,27 @@ public sealed class RlpStreamWriter(RlpStream stream) : IRlpWriter
         stream.Encode(value);
     }
 
-    public void Write(AccessList? value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Write<T>(IRlpStreamDecoder<T> decoder, T value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        AccessListDecoder.Instance.Encode(stream, value, rlpBehaviors);
+        decoder.Encode(stream, value, rlpBehaviors);
+    }
+
+    public void WriteSequence(Action<IRlpWriter> action)
+    {
+        var lengthWriter = new RlpContentLengthWriter();
+        action(lengthWriter);
+        stream.StartSequence(lengthWriter.ContentLength);
+        action(this);
+    }
+
+    public void Wrap(bool when, int bytes, Action<IRlpWriter> action)
+    {
+        if (when)
+        {
+            var writer = new RlpContentLengthWriter();
+            action(writer);
+            stream.StartByteArray(writer.ContentLength + bytes, false);
+        }
+        action(this);
     }
 }
