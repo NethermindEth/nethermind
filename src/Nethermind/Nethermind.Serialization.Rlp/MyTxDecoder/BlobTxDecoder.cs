@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp.Eip2930;
+using Nethermind.Serialization.Rlp.RlpWriter;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
@@ -175,6 +176,10 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
 
     public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
+        // var lengthWriter = new RlpContentLengthWriter();
+        // WriteTransaction(lengthWriter, transaction, rlpBehaviors, forSigning);
+        // int txContentLength = lengthWriter.ContentLength;
+
         int txContentLength = GetContentLength(transaction, forSigning, withNetworkWrapper: rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
@@ -352,5 +357,44 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
                + Rlp.LengthOf(networkWrapper.Blobs)
                + Rlp.LengthOf(networkWrapper.Commitments)
                + Rlp.LengthOf(networkWrapper.Proofs);
+    }
+
+    public static void WriteTransaction(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        writer.Write(transaction.ChainId ?? 0);
+        writer.Write(transaction.Nonce);
+        writer.Write(transaction.GasPrice); // gas premium
+        writer.Write(transaction.DecodedMaxFeePerGas);
+        writer.Write(transaction.GasLimit);
+        writer.Write(transaction.To);
+        writer.Write(transaction.Value);
+        writer.Write(transaction.Data);
+        writer.Write(transaction.AccessList, rlpBehaviors);
+        writer.Write(transaction.MaxFeePerBlobGas.Value);
+        writer.Write(transaction.BlobVersionedHashes);
+
+        if (!forSigning)
+        {
+            if (transaction.Signature is null)
+            {
+                writer.Write(0);
+                writer.Write(Bytes.Empty);
+                writer.Write(Bytes.Empty);
+            }
+            else
+            {
+                writer.Write(transaction.Signature.RecoveryId);
+                writer.Write(transaction.Signature.RAsSpan.WithoutLeadingZeros());
+                writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
+            }
+        }
+
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
+        {
+            ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
+            writer.Write(networkWrapper.Blobs);
+            writer.Write(networkWrapper.Commitments);
+            writer.Write(networkWrapper.Proofs);
+        }
     }
 }
