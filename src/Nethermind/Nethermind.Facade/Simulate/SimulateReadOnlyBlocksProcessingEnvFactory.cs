@@ -20,7 +20,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IReadOnlyBlockTree baseBlockTree,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
-    ILogManager? logManager = null)
+    ILogManager logManager)
 {
     public SimulateReadOnlyBlocksProcessingEnv Create(bool validate)
     {

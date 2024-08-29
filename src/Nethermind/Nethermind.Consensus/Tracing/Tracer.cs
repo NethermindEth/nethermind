@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Tracing
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
-            var worldStateToUse = _worldStateManager.CreateResettableWorldState(block.Header);
+            IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(block.Header);
             try
             {
                 processor.Process(block, _processingOptions, blockTracer);

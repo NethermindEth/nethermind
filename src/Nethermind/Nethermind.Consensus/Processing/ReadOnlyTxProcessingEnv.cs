@@ -62,7 +62,9 @@ namespace Nethermind.Consensus.Processing
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot, BlockHeader header)
         {
-            IWorldState? worldStateToUse = WorldStateManager.CreateResettableWorldState(header);
+            // TODO: really bad idea - find a better way?
+            IWorldState? worldStateToUse =
+                WorldStateManager.GetGlobalWorldState(header);
             Hash256 originalStateRoot = worldStateToUse.StateRoot;
             worldStateToUse.StateRoot = stateRoot;
             return new ReadOnlyTxProcessingScope(TransactionProcessor, worldStateToUse, originalStateRoot);

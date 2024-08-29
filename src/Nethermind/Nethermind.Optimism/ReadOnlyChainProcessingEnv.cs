@@ -39,7 +39,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     receiptStorage,
     specProvider,
     blockTree,
-    worldStateManager,
+    worldStateManager.GlobalStateReader,
     logManager,
     blockTransactionsExecutor)
 {
@@ -51,7 +51,7 @@ public class OptimismReadOnlyChainProcessingEnv(
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IWorldStateManager worldStateManager)
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
     {
         return new OptimismBlockProcessor(
             specProvider,

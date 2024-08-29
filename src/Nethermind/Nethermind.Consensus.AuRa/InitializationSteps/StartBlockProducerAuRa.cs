@@ -103,7 +103,7 @@ public class StartBlockProducerAuRa
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(ITransactionProcessor readOnlyTxnProcessor)
+    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txnProcessor)
     {
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.ValidatorStore is null) throw new StepDependencyException(nameof(_api.ValidatorStore));
@@ -120,7 +120,7 @@ public class StartBlockProducerAuRa
             new LocalTxFilter(_api.EngineSigner));
 
         _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                readOnlyTxnProcessor,
+                txnProcessor,
                 _api.BlockTree,
                 _api.CreateReadOnlyTransactionProcessorSource(),
                 _api.ReceiptStorage,
@@ -149,8 +149,8 @@ public class StartBlockProducerAuRa
         return new AuRaBlockProcessor(
             _api.SpecProvider,
             _api.BlockValidator,
-            _api.RewardCalculatorSource.Get(readOnlyTxnProcessor),
-            _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(readOnlyTxnProcessor),
+            _api.RewardCalculatorSource.Get(txnProcessor),
+            _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(txnProcessor),
             _api.WorldStateManager!,
             _api.ReceiptStorage,
             _api.LogManager,

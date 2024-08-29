@@ -26,7 +26,7 @@ public interface IWorldStateManager : IPreBlockCaches
     /// <param name="header"></param>
     /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState(BlockHeader header);
+    IScopedWorldStateManager CreateResettableWorldStateManager();
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 

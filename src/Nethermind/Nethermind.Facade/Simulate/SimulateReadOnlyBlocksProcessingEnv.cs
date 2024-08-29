@@ -61,7 +61,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     {
         ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;
-        WorldStateManager = worldStateManager;
         _logManager = logManager;
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);

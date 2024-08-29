@@ -210,7 +210,7 @@ public class GethStyleTracer : IGethStyleTracer
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options)
     {
         // TODO: have a good way to check which function to use - CreateResettableWorldState or GetGlobalWorldState
-        IWorldState? worldStateToUse = _worldStateManager.CreateResettableWorldState(block);
+        IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(block);
         return options switch
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(

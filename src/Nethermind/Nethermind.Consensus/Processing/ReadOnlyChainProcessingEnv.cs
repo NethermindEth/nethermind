@@ -31,19 +31,19 @@ namespace Nethermind.Consensus.Processing
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             IBlockTree blockTree,
-            IWorldStateManager worldStateManager,
+            IStateReader stateReader,
             ILogManager logManager,
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
                 blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor);
 
-            BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor, worldStateManager);
+            BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
 
-            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, worldStateManager.GlobalStateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(_blockProcessingQueue);
-            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, worldStateManager.GlobalStateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(_blockProcessingQueue);
         }
@@ -55,14 +55,14 @@ namespace Nethermind.Consensus.Processing
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IWorldStateManager worldStateManager)
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
         {
             return new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,
-                worldStateManager,
+                scope.WorldStateManager,
                 receiptStorage,
                 new BlockhashStore(specProvider),
                 logManager);

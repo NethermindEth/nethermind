@@ -128,7 +128,7 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
-            var worldStateToUse = WorldStateManager.CreateResettableWorldState(parent);
+            IWorldState? worldStateToUse = WorldStateManager.GetGlobalWorldState(parent);
             if (TrySetState(parent))
             {
                 Block block = PrepareBlock(parent, payloadAttributes);
@@ -191,7 +191,7 @@ namespace Nethermind.Consensus.Producers
         {
             if (parent is not null && WorldStateManager.HasStateRoot(parent.StateRoot!))
             {
-                var worldStateToUse = WorldStateManager.CreateResettableWorldState(parent);
+                var worldStateToUse = WorldStateManager.GetGlobalWorldState(parent);
                 worldStateToUse.StateRoot = parent.StateRoot;
                 return true;
             }

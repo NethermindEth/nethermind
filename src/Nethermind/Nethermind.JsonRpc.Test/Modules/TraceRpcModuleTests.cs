@@ -70,7 +70,7 @@ public class TraceRpcModuleTests
                 Blockchain.ReceiptStorage,
                 Blockchain.SpecProvider,
                 Blockchain.BlockTree,
-                Blockchain.WorldStateManager,
+                Blockchain.WorldStateManager.GlobalStateReader,
                 Blockchain.LogManager,
                 transactionsExecutor);
 

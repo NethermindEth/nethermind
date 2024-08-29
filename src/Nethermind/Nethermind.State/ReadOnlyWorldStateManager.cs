@@ -19,6 +19,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _codeDb;
+    private readonly IDbProvider _dbProvider;
 
     public PreBlockCaches? Caches { get; }
 
@@ -30,8 +31,8 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
         _readOnlyTrieStore = readOnlyTrieStore;
         _logManager = logManager;
 
-        IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
-        _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
+        _dbProvider = dbProvider.AsReadOnly(false);
+        _codeDb = _dbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
         Caches = preBlockCaches;
     }
@@ -43,9 +44,9 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
 
-    public IWorldState CreateResettableWorldState(BlockHeader header)
+    public IScopedWorldStateManager CreateResettableWorldStateManager()
     {
-        return Caches is not null
+        WorldState? worldState = Caches is not null
             ? new WorldState(
                 new PreCachedTrieStore(_readOnlyTrieStore, Caches.RlpCache),
                 _codeDb,
@@ -55,6 +56,8 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
                 _readOnlyTrieStore,
                 _codeDb,
                 _logManager);
+
+        return new ScopedReadOnlyWorldStateManager(worldState, _dbProvider, _readOnlyTrieStore, _logManager, Caches);
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

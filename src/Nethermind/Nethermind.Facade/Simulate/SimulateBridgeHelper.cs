@@ -76,7 +76,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         IBlockTree blockTree = env.BlockTree;
         parent = GetParent(parent, payload, blockTree);
         IReleaseSpec spec = env.SpecProvider.GetSpec(parent);
-        var worldStateToUse = env.WorldStateManager.CreateResettableWorldState(parent);
+        var worldStateToUse = env.WorldStateManager.GetGlobalWorldState(parent);
 
         if (payload.BlockStateCalls is not null)
         {

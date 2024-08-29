@@ -14,7 +14,7 @@ namespace Nethermind.State;
 public class OverlayWorldStateManager(
     IReadOnlyDbProvider dbProvider,
     OverlayTrieStore overlayTrieStore,
-    ILogManager? logManager,
+    ILogManager logManager,
     PreBlockCaches? caches = null)
     : IWorldStateManager
 {
@@ -32,9 +32,9 @@ public class OverlayWorldStateManager(
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
 
-    public IWorldState CreateResettableWorldState(BlockHeader header)
+    public IScopedWorldStateManager CreateResettableWorldStateManager()
     {
-        return Caches is not null
+        WorldState? worldState = Caches is not null
             ? new WorldState(
                 new PreCachedTrieStore(overlayTrieStore, Caches.RlpCache),
                 _codeDb,
@@ -44,6 +44,8 @@ public class OverlayWorldStateManager(
                 overlayTrieStore,
                 _codeDb,
                 logManager);
+
+        return new ScopedReadOnlyWorldStateManager(worldState, dbProvider, overlayTrieStore, logManager, Caches);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 new InMemoryReceiptStorage(),
                 _specProvider,
                 _blockTree,
-                _worldStateManager,
+                _worldStateManager.GlobalStateReader,
                 _logManager,
                 traceExecutor);
 

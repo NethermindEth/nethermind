@@ -51,7 +51,7 @@ public class TraceModuleFactory(
                 _receiptStorage,
                 _specProvider,
                 _blockTree,
-                _worldStateManager,
+                _worldStateManager.GlobalStateReader,
                 _logManager,
                 transactionsExecutor);
 

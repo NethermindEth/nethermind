@@ -486,7 +486,7 @@ public class CliqueBlockProducer : IBlockProducer
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
-        var worldStateToUse = _worldStateManager.CreateResettableWorldState(parentHeader);
+        var worldStateToUse = _worldStateManager.GetGlobalWorldState(parentHeader);
         worldStateToUse.StateRoot = parentHeader.StateRoot!;
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit);

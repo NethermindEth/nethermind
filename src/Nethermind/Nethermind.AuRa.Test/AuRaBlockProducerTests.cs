@@ -76,7 +76,7 @@ namespace Nethermind.AuRa.Test
                 });
                 StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
                 WorldStateManager.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
-                WorldStateManager.CreateResettableWorldState(Arg.Any<BlockHeader>()).Returns(StateProvider);
+                WorldStateManager.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(StateProvider);
                 InitProducer();
             }
 
