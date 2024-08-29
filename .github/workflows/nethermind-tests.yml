@@ -64,6 +64,7 @@ jobs:
           - Nethermind.Overseer.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Shutter.Test
           - Nethermind.Sockets.Test
           - Nethermind.Specs.Test
           - Nethermind.State.Test
