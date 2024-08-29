@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using CommandLine;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.EOF;
+using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.EOFParse.Runner
 {
@@ -44,13 +44,13 @@ namespace Nethermind.EOFParse.Runner
                     var bytecode = Bytes.FromHexString(input);
                     try
                     {
-                        var validationResult = EvmObjectFormat.IsValidEof(bytecode,
-                            EvmObjectFormat.ValidationStrategy.ValidateRuntimeMode, out EofHeader? header);
+                        var validationResult = EofValidator.IsValidEof(bytecode, ValidationStrategy.ValidateRuntimeMode,
+                            out EofContainer? header);
                         if (validationResult)
                         {
-                            var sectionCount = header.Value.CodeSections.Size;
-                            var subcontainerCount = header.Value.ContainerSections?.Size ?? 0;
-                            var dataCount = header.Value.DataSection.Size;
+                            var sectionCount = header.Value.CodeSections.Length;
+                            var subcontainerCount = header.Value.ContainerSections?.Length ?? 0;
+                            var dataCount = header.Value.DataSection.Length;
                             Console.WriteLine($"OK {sectionCount}/{subcontainerCount}/{dataCount}");
                         }
                         else
