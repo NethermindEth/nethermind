@@ -61,6 +61,6 @@ public sealed class RlpStreamWriter(RlpStream stream) : IRlpWriter
 
     public void Write(byte[]?[] value)
     {
-        throw new NotImplementedException();
+        stream.Encode(value);
     }
 }
