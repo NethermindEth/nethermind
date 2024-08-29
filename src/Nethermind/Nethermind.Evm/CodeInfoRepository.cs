@@ -109,6 +109,11 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
+        return GetCachedCodeInfo(worldState, codeSource, vmSpec, out _);
+    }
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
+        delegationAddress = null;
         if (codeSource.IsPrecompile(vmSpec))
         {
             return _localPrecompiles[codeSource];
@@ -118,7 +123,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         if (Eip7702Constants.IsDelegatedCode(cachedCodeInfo.MachineCode.Span))
         {
-            cachedCodeInfo = InternalGetCachedCode(worldState, ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span));
+            Address delegatedAddress = ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span);
+            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
+            delegationAddress = delegatedAddress;
         }
 
         return cachedCodeInfo;
@@ -190,12 +197,12 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// and return all authority addresses that was accessed and amount of autorization refunds.
     /// eip-7702
     /// </summary>
-    public CodeInsertResult InsertFromAuthorizations(
+    public int InsertFromAuthorizations(
         IWorldState worldState,
         AuthorizationTuple?[] authorizations,
+        ISet<Address> accessedAddresses,
         IReleaseSpec spec)
     {
-        HashSet<Address> accessedAddresses = new();
         int refunds = 0;
         //TODO optimize
         foreach (AuthorizationTuple? authTuple in authorizations)
@@ -216,7 +223,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             InsertDelegationCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
             worldState.IncrementNonce(authTuple.Authority);
         }
-        return new CodeInsertResult(accessedAddresses, refunds);
+        return refunds;
 
         void InsertDelegationCode(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
         {
@@ -257,7 +264,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         AuthorizationTuple authorizationTuple,
         IWorldState stateProvider,
         ulong chainId,
-        HashSet<Address> accessedAddresses,
+        ISet<Address> accessedAddresses,
         [NotNullWhen(false)] out string? error)
     {
         if (authorizationTuple.Authority is null)
@@ -344,19 +351,5 @@ public class CodeInfoRepository : ICodeInfoRepository
             return result;
         }
     }
-}
-public readonly struct CodeInsertResult
-{
-    public CodeInsertResult(IEnumerable<Address> accessedAddresses, int refunds)
-    {
-        AccessedAddresses = accessedAddresses;
-        Refunds = refunds;
-    }
-    public CodeInsertResult()
-    {
-        AccessedAddresses = Array.Empty<Address>();
-    }
-    public readonly IEnumerable<Address> AccessedAddresses;
-    public readonly int Refunds;
 }
 

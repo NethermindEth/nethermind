@@ -104,19 +104,20 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            CodeInsertResult codeInsertResult = new();
+            HashSet<Address> accessedAddresses = new();
+            int delegationRefunds = 0;
             if (spec.IsEip7702Enabled)
             {
                 if (tx.HasAuthorizationList)
                 {
-                    codeInsertResult = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, spec);
+                    delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, accessedAddresses, spec);
                 }
             }
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessedAddresses);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, codeInsertResult, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, accessedAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -393,16 +394,23 @@ namespace Nethermind.Evm.TransactionProcessing
             in BlockExecutionContext blCtx,
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
-            ICodeInfoRepository codeInfoRepository)
+            ICodeInfoRepository codeInfoRepository,
+            HashSet<Address> accessedAddresses)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
+            accessedAddresses.Add(recipient);
+            accessedAddresses.Add(tx.SenderAddress);
 
+            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
+            Address? delegationAddress = null;
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
+                : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out delegationAddress);
+
+            if (delegationAddress is not null)
+                accessedAddresses.Add(delegationAddress);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -428,7 +436,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ITxTracer tracer,
             ExecutionOptions opts,
-            CodeInsertResult codeInsertResult,
+            int delegationRefunds,
+            IEnumerable<Address> accessedAddresses,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
@@ -461,7 +470,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
-                    WarmUp(tx, header, spec, env, state, codeInsertResult.AccessedAddresses);
+                    WarmUp(tx, header, spec, state, accessedAddresses);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -522,7 +531,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, codeInsertResult.Refunds);
+                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, delegationRefunds);
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -534,30 +543,24 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += spentGas;
         }
 
-        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionEnvironment env, EvmState state, IEnumerable<Address> authorities)
+        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state, IEnumerable<Address> accessedAddresses)
         {
             if (spec.UseTxAccessLists)
             {
                 state.WarmUp(tx.AccessList); // eip-2930
             }
 
-            if (spec.UseHotAndColdStorage)
+            if (spec.UseHotAndColdStorage) // eip-2929
             {
-                state.WarmUp(tx.SenderAddress); // eip-2929
-                state.WarmUp(env.ExecutingAccount); // eip-2929
+                foreach (Address authorized in accessedAddresses)
+                {
+                    state.WarmUp(authorized);
+                }
             }
 
             if (spec.AddCoinbaseToTxAccessList)
             {
                 state.WarmUp(header.GasBeneficiary!);
-            }
-
-            if (spec.IsEip7702Enabled)
-            {
-                foreach (Address authorized in authorities)
-                {
-                    state.WarmUp(authorized);
-                }
             }
         }
 

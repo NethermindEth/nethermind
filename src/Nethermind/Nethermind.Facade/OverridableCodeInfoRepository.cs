@@ -21,6 +21,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result
             : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
+        delegationAddress = null;
+        return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
+            ? result
+            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+    }
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) => codeInfoRepository.GetOrAdd(codeHash, initCode);
 
@@ -47,9 +54,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverwrites.Clear();
     }
 
-    public CodeInsertResult InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, IReleaseSpec spec)
+    public int InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec)
     {
-        return codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, spec);
+        return codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, accessedAddresses, spec);
     }
 
     public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress)
