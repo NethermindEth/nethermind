@@ -7,8 +7,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs
 {
-    public class SystemTransactionReleaseSpec(IReleaseSpec spec, bool isAura) : ReleaseSpecDecorator(spec)
+    public class SystemTransactionReleaseSpec(IReleaseSpec spec, bool isAura, bool isGenesis) : ReleaseSpecDecorator(spec)
     {
-        public override bool IsEip158Enabled => !isAura;
+        public override bool IsEip158Enabled => !isAura && isGenesis;
     }
 }
