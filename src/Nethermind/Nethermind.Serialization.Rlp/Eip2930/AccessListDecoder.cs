@@ -11,6 +11,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 {
     public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
     {
+        public static readonly AccessListDecoder Instance = new();
         private const int IndexLength = 32;
 
         /// <summary>
