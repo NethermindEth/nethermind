@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.RlpWriter;
@@ -19,5 +20,6 @@ public interface IRlpWriter
     public void Write(Memory<byte>? value);
     public void Write(byte[] value);
     public void Write(Rlp value);
-    void Write(byte[]?[] value);
+    public void Write(byte[]?[] value);
+    public void Write(AccessList? value, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 }

@@ -3,7 +3,9 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.RlpWriter;
 
@@ -64,5 +66,10 @@ public sealed class RlpContentLengthWriter : IRlpWriter
     public void Write(byte[]?[] value)
     {
         ContentLength += Rlp.LengthOf(value);
+    }
+
+    public void Write(AccessList? value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        ContentLength += AccessListDecoder.Instance.GetLength(value, rlpBehaviors);
     }
 }
