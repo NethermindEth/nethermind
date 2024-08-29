@@ -23,6 +23,9 @@ namespace Nethermind.Test.Runner
             [Option('b', "blockTest", Required = false, HelpText = "Set test as blockTest. if not, it will be by default assumed a state test.")]
             public bool BlockTest { get; set; }
 
+            [Option('e', "eofTest", Required = false, HelpText = "Set test as eofTest. if not, it will be by default assumed a state test.")]
+            public bool EofTest { get; set; }
+
             [Option('t', "trace", Required = false, HelpText = "Set to always trace (by default traces are only generated for failing tests). [Only for State Test]")]
             public bool TraceAlways { get; set; }
 
@@ -64,8 +67,11 @@ namespace Nethermind.Test.Runner
 
             while (!string.IsNullOrWhiteSpace(input))
             {
+
                 if (options.BlockTest)
                     await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter));
+                else if (options.EofTest)
+                    RunEofTest(input, source => new EofTestsRunner(source, options.Filter));
                 else
                     RunStateTest(input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack, options.Filter));
                 if (!options.Stdin)
@@ -84,6 +90,14 @@ namespace Nethermind.Test.Runner
                 ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
                 : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
             await testRunnerBuilder(source).RunTestsAsync();
+        }
+
+        private static void RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
+        {
+            ITestSourceLoader source = Path.HasExtension(path)
+                ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
+                : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
+            testRunnerBuilder(source).RunTests();
         }
 
         private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
