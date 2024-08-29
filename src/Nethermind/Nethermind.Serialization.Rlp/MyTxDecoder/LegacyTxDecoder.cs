@@ -136,18 +136,18 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
     public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         var writer = new RlpSequenceStreamWriter();
-        WriteTransaction(transaction, writer, forSigning, isEip155Enabled, chainId);
+        WriteTransaction(writer, transaction, forSigning, isEip155Enabled, chainId);
         writer.WriteToStream(stream);
     }
 
     public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         var writer = new RlpContentLengthWriter();
-        WriteTransaction(transaction, writer, forSigning, isEip155Enabled, chainId);
+        WriteTransaction(writer, transaction, forSigning, isEip155Enabled, chainId);
         return Rlp.LengthOfSequence(writer.ContentLength);
     }
 
-    public static void WriteTransaction(Transaction transaction, IRlpWriter writer, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public static void WriteTransaction(IRlpWriter writer, Transaction transaction, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         writer.Write(transaction.Nonce);
         writer.Write(transaction.GasPrice);
