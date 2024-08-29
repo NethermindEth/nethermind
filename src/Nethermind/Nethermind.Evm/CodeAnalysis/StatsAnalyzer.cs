@@ -1,5 +1,6 @@
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
@@ -7,7 +8,8 @@ using System.Threading.Tasks;
 namespace Nethermind.Evm.CodeAnalysis
 {
 
-    public record struct NGramInfo(uint Freq, uint Count, bool Enqueued = false, bool Updated = true)
+    // this is a mess need to fix
+    public record struct NGramInfo(uint Freq, uint Count,  int UpdatedAtBlock, bool Enqueued = false, bool Updated = true)
     {
 
         public NGramInfo MarkFresh()
@@ -54,9 +56,9 @@ namespace Nethermind.Evm.CodeAnalysis
         private PriorityQueue<ulong, uint> _topNQueue;
         private SortedSet<(ulong, uint)> _topN;
         private Dictionary<ulong, uint> _topNMap;
-        private Dictionary<ulong, NGramInfo> _topNStatMap;
+        private ConcurrentDictionary<ulong, NGramInfo> _topNStatMap;
 
-        private int _block = 0;
+        private int _block = 1;
 
         public CMSketch _sketch;
 
@@ -121,7 +123,7 @@ namespace Nethermind.Evm.CodeAnalysis
             _topNMap = new Dictionary<ulong, uint>();
             _buffer = new byte[bufferSize];
             _topNQueue = new PriorityQueue<ulong, uint>(topN);
-            _topNStatMap = new Dictionary<ulong, NGramInfo>();
+            _topNStatMap = new ConcurrentDictionary<ulong, NGramInfo>();
             SetStatFileName(statFileName);
         }
 
@@ -171,16 +173,19 @@ namespace Nethermind.Evm.CodeAnalysis
                 if (_instance != null)
                 {
                     ++_instance._block;
-                    if (_instance._block % 2 == 0)
-                    {
+
+                    // Console.WriteLine($"Notice block Non-blocking called at {_instance._block}");
+                        int block = _instance._block;
+                        List<Task> previousTasks = new List<Task>(_instance._tasks);
                         Task blockTask = Task.Run(() =>
                                 {
-                                    _instance.WaitForCompletion();
-                                    _instance.RefreshQueue();
+
+                    // Console.WriteLine($"Non-blocking Task run at {block} and instance block at {_instance._block}");
+                                    _instance.WaitForCompletion(previousTasks);
+                                    _instance.RefreshQueue(block);
                                     _instance._sketch.Reset();
                                 });
                         _instance._blockTask = blockTask;
-                    }
                 }
             }
         }
@@ -192,12 +197,11 @@ namespace Nethermind.Evm.CodeAnalysis
                 if (_instance != null)
                 {
                     ++_instance._block;
-                    if (_instance._block % 2 == 0)
-                    {
-                        _instance.WaitForCompletion();
-                        _instance.RefreshQueue();
+                    // Console.WriteLine($"Notice block blocking called at {_instance._block}");
+                        int block = _instance._block;
+                        _instance.WaitForCompletion(_instance._tasks);
+                        _instance.RefreshQueue(block);
                         _instance._sketch.Reset();
-                    }
                 }
             }
         }
@@ -246,7 +250,7 @@ namespace Nethermind.Evm.CodeAnalysis
                         // Console.WriteLine($"Adding instruction: {(Instruction)instruction}, Ngram SoFar : {AsString(ngram)}");
                         for (int i = 1; i < 7; i++)
                         {
-                            if (byteIndexes[i - 1] < ngram) AddSequence2(ngram & ngramBitMaks[i], block);
+                            if (byteIndexes[i - 1] < ngram) AddSequence(ngram & ngramBitMaks[i], block);
                         }
                     }
 
@@ -271,21 +275,17 @@ namespace Nethermind.Evm.CodeAnalysis
                 // Console.WriteLine($"Adding instruction: {(Instruction)instruction}, Ngram SoFar : {AsString(ngram)}");
                 for (int i = 1; i < 7; i++)
                 {
-                    if (byteIndexes[i - 1] < ngram) AddSequence2(ngram & ngramBitMaks[i], block);
+                    if (byteIndexes[i - 1] < ngram) AddSequence(ngram & ngramBitMaks[i], block);
                 }
             }
 
         }
 
-        private void WaitForCompletion()
+        private void WaitForCompletion(List<Task> previousTasks)
         {
             Task[] tasksArray;
 
-            lock (_taskLock)
-            {
-                tasksArray = _tasks.ToArray();
-                _tasks.Clear();
-            }
+                tasksArray = previousTasks.ToArray();
 
             Task.WaitAll(tasksArray);
 
@@ -348,10 +348,11 @@ namespace Nethermind.Evm.CodeAnalysis
                     lock (_topNLock)
                     {
                         if (_instance._topNStatMap.TryGetValue(AsNGram(ngram), out NGramInfo info)) return info;
+                        return new NGramInfo(0, 0, _instance._block);
                     }
                 }
             }
-            return new NGramInfo(0, 0);
+            return new NGramInfo(0, 0, 0);
         }
 
         public static NGramInfo GetStatInfo(Instruction[] ngram)
@@ -363,99 +364,112 @@ namespace Nethermind.Evm.CodeAnalysis
                     lock (_topNLock)
                     {
                         if (_instance._topNStatMap.TryGetValue(AsNGram(ngram), out NGramInfo info)) return info;
+                        return new NGramInfo(0, 0, _instance._block);
                     }
                 }
             }
-            return new NGramInfo(0, 0);
+            return new NGramInfo(0, 0, 0);
         }
 
-        private void RefreshQueue()
+        private void RefreshQueue(int block)
         {
             lock (_topNLock)
             {
-                // Console.WriteLine("refreshing queue");
+                // Console.WriteLine($"refreshing queue at block {block}");
                 int count = _topNQueue.Count;
 
-                Span<(ulong opcodeSequence, uint freq)> stackAllocArray = stackalloc (ulong, uint)[count];
+                Span<(ulong opcodeSequence, NGramInfo info)> stackAllocArray = stackalloc (ulong, NGramInfo)[count];
                 for (int i = 0; i < count; i++)
                 {
                     _topNQueue.TryDequeue(out ulong opcodeSequence, out uint freq);
+                    _topNStatMap.TryGetValue(opcodeSequence, out NGramInfo info);
                     //  if (!_topNStatMap[opcodeSequence].Updated)
                     //  {
-                    _topNStatMap[opcodeSequence] = _topNStatMap[opcodeSequence].UpdateFreq(
-                 ((uint)_block - 2) * _topNStatMap[opcodeSequence].Freq + _sketch.Query(opcodeSequence) >> ((int)(_block / 2))
-                            );
-                    // }
+                    if (!((block - info.UpdatedAtBlock) > 1))
+                    {
+                     //info.Freq =  ((uint)info.UpdatedAtBlock) * info.Freq + _sketch.Query(opcodeSequence) >> ((int)(_block / 2));
+                     info.Freq = info.Count / ((uint)block - 1);
+                    info.UpdatedAtBlock = block - 1;
+                    _topNStatMap[opcodeSequence] =  info;
+                    }
 
-                    stackAllocArray[i] = (opcodeSequence, _topNStatMap[opcodeSequence].Freq);
+
+                    stackAllocArray[i] = (opcodeSequence, info);
                     _topNStatMap[opcodeSequence] = _topNStatMap[opcodeSequence].MarkStale();
                 }
 
                 for (int i = 0; i < count; i++)
                 {
                     // Console.WriteLine($"refreshed ngram: {AsString(stackAllocArray[i].Item1)} , freq: {stackAllocArray[i].Item2}");
-                    _topNQueue.Enqueue(stackAllocArray[i].Item1, stackAllocArray[i].Item2);
+                    _topNQueue.Enqueue(stackAllocArray[i].Item1, stackAllocArray[i].Item2.Freq);
                 }
             }
         }
 
-        private void AddSequence2(ulong opcodeSequence, int block)
+            //Need to simplify
+        private void AddSequence(ulong opcodeSequence, int block)
         {
-
-
+             _sketch.Update(opcodeSequence);
             lock (_topNLock)
             {
-                // Console.WriteLine($"Adding sequence {AsString(opcodeSequence)}");
                 NGramInfo info;
+                //uint currentFreq;
                 if (_topNStatMap.TryGetValue(opcodeSequence, out info))
                 {
-                    info.Freq = ((uint)block - 2) * info.Freq + _sketch.UpdateAndQuery(opcodeSequence) >> ((int)(block / 2));
+                    //currentFreq = ((uint)info.UpdatedAtBlock) * info.Freq + _sketch.Query(opcodeSequence) >> ((int)(block / 2));
+
                     ++info.Count;
-                    _topNStatMap[opcodeSequence] = info.MarkFresh();
+                    info.Freq =  info.Count / (uint) block;
+                    info.UpdatedAtBlock = block;
                     if (!info.Enqueued & _topNQueue.TryPeek(out ulong seq, out uint minFreq))
                     {
 
                         if (_topNQueue.Count < _n)
                         {
+                            info.Enqueued = true;
                             _topNQueue.Enqueue(opcodeSequence, info.Freq);
                         }
                         else if (minFreq < info.Freq)
                         {
+                            info.Enqueued = true;
                             _topNQueue.DequeueEnqueue(opcodeSequence, info.Freq);
                             _topNStatMap[seq] = (_topNStatMap[seq]).Dequeue();
                         }
                     }
+                    _topNStatMap[opcodeSequence] = info;
                 }
                 else
                 {
-                    info = new NGramInfo(_sketch.UpdateAndQuery(opcodeSequence) >> ((int)(block / 2)), _sketch.Query(opcodeSequence));
+                    info = new NGramInfo(_sketch.Query(opcodeSequence) / (uint) block, _sketch.Query(opcodeSequence), block);
                     // Console.WriteLine($"Not in queue {AsString(opcodeSequence)} , info: {info}");
 
                     if (_topNQueue.TryPeek(out ulong seq, out uint minFreq))
                     {
                         if (_topNQueue.Count < _n)
                         {
+                            info.Enqueued = true;
                             _topNQueue.Enqueue(opcodeSequence, info.Freq);
                         }
                         else if (minFreq < info.Freq)
                         {
+                            info.Enqueued = true;
                             _topNQueue.DequeueEnqueue(opcodeSequence, info.Freq);
                             _topNStatMap[seq] = (_topNStatMap[seq]).Dequeue();
                         }
 
-                        _topNStatMap.Add(opcodeSequence, info.Enqueue().MarkFresh());
+                        _topNStatMap.TryAdd(opcodeSequence, info);
                     }
                     else
                     {
                         // no values added yet so we add.
                         _topNQueue.Enqueue(opcodeSequence, info.Freq);
-                        _topNStatMap.Add(opcodeSequence, info.Enqueue().MarkFresh());
+                        _topNStatMap.TryAdd(opcodeSequence, info.Enqueue());
                     }
                 }
             }
         }
 
-        private void AddSequence(ulong opcodeSequence)
+        private void AddSequenceOld(ulong opcodeSequence)
         {
             uint count = _sketch.UpdateAndQuery(opcodeSequence);
             // If the sequence is already in _topN, remove it before updating
@@ -513,7 +527,10 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public static void Reset()
         {
-            _instance = null;
+            lock (_lock)
+            {
+               _instance = null;
+            }
         }
 
         public static string AsString(Instruction[] ngram)

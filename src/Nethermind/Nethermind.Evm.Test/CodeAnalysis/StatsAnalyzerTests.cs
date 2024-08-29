@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Intrinsics;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Specs;
@@ -100,9 +101,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             for (int i = 0; i < strippedCode.Length; i++)
             {
                 b[i] = (byte)strippedCode[i].Operation;
-                Console.Write($"{(Instruction)b[i]}");
+                //Console.Write($"{(Instruction)b[i]}");
             }
-            Console.WriteLine("");
+            //Console.WriteLine("");
             return new TransactionData(p.Done, b);
         }
     }
@@ -232,7 +233,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void validate_ngram_generation_exhaustive(Instruction[] transaction, (Instruction[] ngram, int count)[] ngrams)
         {
             StatsAnalyzer.Reset();
-            Console.WriteLine($"entering test length transaction : {transaction.Length} , ngrams: {ngrams.Count()}");
+            //Console.WriteLine($"entering test length transaction : {transaction.Length} , ngrams: {ngrams.Count()}");
             StatsAnalyzer.GetInstance(100, transaction.Length, "");
             foreach (Instruction instruction in transaction)
             {
@@ -240,12 +241,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
             StatsAnalyzer.NoticeTransactionCompletion();
             StatsAnalyzer.NoticeBlockCompletionBlocking();
-            StatsAnalyzer.NoticeBlockCompletionBlocking();
             Assert.That(StatsAnalyzer.Count == ngrams.Count(), $" Total ngrams expected {ngrams.Count()}, found {StatsAnalyzer.Count}");
             foreach ((Instruction[] ngram, int expectedCount) ngramAndCount in ngrams)
             {
                 Assert.That(StatsAnalyzer.GetStatInfo(ngramAndCount.ngram).Count == ngramAndCount.expectedCount, $"{StatsAnalyzer.AsNGram(ngramAndCount.ngram)} count: {StatsAnalyzer.GetStatInfo(ngramAndCount.ngram).Count}, expected Count: {ngramAndCount.expectedCount}");
-                Console.WriteLine($"stats {StatsAnalyzer.GetStatInfo(ngramAndCount.ngram)}, expected Count: {ngramAndCount.expectedCount}");
+                //Console.WriteLine($"stats {StatsAnalyzer.GetStatInfo(ngramAndCount.ngram)}, expected Count: {ngramAndCount.expectedCount}");
             }
 
             StatsAnalyzer.Reset();
@@ -264,11 +264,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void PsuedoTransactionExecution(byte[] code)
         {
 
-            OpcodeInfo[] strippedCode = IlAnalyzer.StripByteCode(new ReadOnlySpan<byte>(code)).Item1;
-            byte[] b = new byte[strippedCode.Length];
-            for (int i = 0; i < strippedCode.Length; i++)
+            // OpcodeInfo[] strippedCode = IlAnalyzer.StripByteCode(new ReadOnlySpan<byte>(code)).Item1;
+            // byte[] b = new byte[strippedCode.Length];
+            for (int i = 0; i < code.Length; i++)
             {
-                StatsAnalyzer.AddInstruction(strippedCode[i].Operation);
+                StatsAnalyzer.AddInstruction((Instruction)code[i]);
             }
             StatsAnalyzer.NoticeTransactionCompletion();
         }
@@ -280,45 +280,55 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 yield return new TestCaseData(
                         new (string, int)[][] {
                         new (string, int)[] { (LargeByteCodeBuilder.P01P01MUL, 10) }
-                        }, 2
+                        }, 2, true
                       )
-                    .SetName("SingleTransaction");
+                    .SetName("SingleTransactionBlocking");
+                yield return new TestCaseData(
+                        new (string, int)[][] {
+                        new (string, int)[] { (LargeByteCodeBuilder.P01P01MUL, 10) }
+                        }, 2, false
+                      )
+                    .SetName("SingleTransactionNonBlocking");
             }
         }
 
         [Test, TestCaseSource(nameof(BlockTestCase))]
-        public void validate_ngram_count_large_pattern((string, int)[][] block, int timesTwo)
+        public void validate_ngram_count_large_pattern((string, int)[][] block, int timesTwo, bool blocking )
         {
+            // Console.WriteLine("entering new test");
             StatsAnalyzer.Reset();
             StatsAnalyzer.GetInstance(100, 100000, "");
-            // Console.WriteLine($"Pattern Stats {StatsAnalyzer.GetStatInfo(chunk.Pattern)}");
-            // StatsAnalyzer.NoticeBlockCompletionBlocking();
-            // Console.WriteLine($"Pattern Stats {StatsAnalyzer.GetStatInfo(chunk.Pattern)}");
-
-
-
             TransactionData t;
-            for (int j = 1; j <= timesTwo; j++)
+            for (int j = 0; j < timesTwo * 2; j++)
             {
+                // Console.WriteLine($"J: {j}");
                 foreach ((string, int)[] trasaction in block)
                 {
+
                     t = LargeByteCodeBuilder.PrepareTransaction(trasaction);
-                    foreach ((string pattern, int count) in trasaction)
+                    PsuedoTransactionExecution(t.ExecutionCode);
+                }
+
+               if (blocking){
+                   // Console.WriteLine("calling notice block blocking");
+                   StatsAnalyzer.NoticeBlockCompletionBlocking();
+               } else {
+                   // Console.WriteLine($"calling notice block non blocking at j {j}");
+                   StatsAnalyzer.NoticeBlockCompletion();
+               }
+
+                if ((j != 0))
+                {
+                    // Console.WriteLine($"Asserting at j: {j}");
+
+                   if(!blocking) Thread.Sleep(1000);
+                    foreach ((string, int)[] trasaction in block)
                     {
-
-                        DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePatternChunk(pattern);
-                        int i = 0;
-                        for (; i < count; i++)
+                        foreach ((string pattern, int count) in trasaction)
                         {
-                            PsuedoTransactionExecution(t.ByteCode);
-                        }
-
-                        StatsAnalyzer.NoticeBlockCompletionBlocking();
-
-                        if (j % 2 == 0)
-                        {
-                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Count == count * 2 * i, $" Total count expected {count * 2 * i}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Count})");
-                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq == (count * 2 * i) / j, $" Freq expected {(count * 2 * i) / j}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq})");
+                            DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePatternChunk(pattern);
+                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Count == count * (j + 1), $" Total count expected {count * (j + 1)}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Count} Stat: {StatsAnalyzer.GetStatInfo(chunk.Pattern)} ");
+                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq == count, $" Freq expected {count}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq})");
                         }
                     }
                 }
