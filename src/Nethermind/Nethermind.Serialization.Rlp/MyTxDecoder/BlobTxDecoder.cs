@@ -147,47 +147,15 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
 
     public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int contentLength = GetContentLength(transaction, forSigning, rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
-        int sequenceLength = Rlp.LengthOfSequence(contentLength);
-
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
-        {
-            stream.StartByteArray(sequenceLength + 1, false);
-        }
-
-        stream.WriteByte((byte)TxType.Blob);
-
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
-        {
-            stream.StartSequence(contentLength);
-            contentLength = GetContentLength(transaction, forSigning, false);
-        }
-
-        stream.StartSequence(contentLength);
-
-        EncodePayload(transaction, stream, rlpBehaviors);
-        EncodeSignature(transaction, stream, forSigning);
-
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
-        {
-            EncodeShardBlobNetworkWrapper(transaction, stream);
-        }
+        var writer = new RlpStreamWriter(stream);
+        WriteTransaction(writer, transaction, rlpBehaviors, forSigning);
     }
 
     public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        // var lengthWriter = new RlpContentLengthWriter();
-        // WriteTransaction(lengthWriter, transaction, rlpBehaviors, forSigning);
-        // int txContentLength = lengthWriter.ContentLength;
-
-        int txContentLength = GetContentLength(transaction, forSigning, withNetworkWrapper: rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm));
-        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
-
-        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
-        int result = isForTxRoot
-                ? (1 + txPayloadLength)
-                : Rlp.LengthOfSequence(1 + txPayloadLength);
-        return result;
+        var writer = new RlpContentLengthWriter();
+        WriteTransaction(writer, transaction, rlpBehaviors, forSigning);
+        return writer.ContentLength;
     }
 
     private static void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
@@ -261,118 +229,52 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
         return new Hash256(hash.Hash);
     }
 
-    private static void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors)
+    public void WriteTransaction(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false)
     {
-        stream.Encode(transaction.ChainId ?? 0);
-        stream.Encode(transaction.Nonce);
-        stream.Encode(transaction.GasPrice); // gas premium
-        stream.Encode(transaction.DecodedMaxFeePerGas);
-        stream.Encode(transaction.GasLimit);
-        stream.Encode(transaction.To);
-        stream.Encode(transaction.Value);
-        stream.Encode(transaction.Data);
-        AccessListDecoder.Encode(stream, transaction.AccessList, rlpBehaviors);
-        stream.Encode(transaction.MaxFeePerBlobGas.Value);
-        stream.Encode(transaction.BlobVersionedHashes);
-    }
-
-    private static void EncodeSignature(Transaction transaction, RlpStream stream, bool forSigning)
-    {
-        if (!forSigning)
+        writer.Wrap(when: !rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), bytes: 1, writer =>
         {
-            if (transaction.Signature is null)
+            writer.WriteByte((byte)TxType.Blob);
+
+            if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
             {
-                stream.Encode(0);
-                stream.Encode(Bytes.Empty);
-                stream.Encode(Bytes.Empty);
+                writer.WriteSequence(writer =>
+                {
+                    writer.WriteSequence(writer =>
+                    {
+                        WritePayload(writer, transaction, rlpBehaviors);
+                        WriteSignature(writer, transaction, forSigning);
+                    });
+                    WriteShardBlobNetworkWrapper(writer, transaction);
+                });
             }
             else
             {
-                stream.Encode(transaction.Signature.RecoveryId);
-                stream.Encode(transaction.Signature.RAsSpan.WithoutLeadingZeros());
-                stream.Encode(transaction.Signature.SAsSpan.WithoutLeadingZeros());
+                writer.WriteSequence(writer =>
+                {
+                    WritePayload(writer, transaction, rlpBehaviors);
+                    WriteSignature(writer, transaction, forSigning);
+                });
             }
-        }
+        });
     }
 
-    private static void EncodeShardBlobNetworkWrapper(Transaction transaction, RlpStream rlpStream)
-    {
-        ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
-        rlpStream.Encode(networkWrapper.Blobs);
-        rlpStream.Encode(networkWrapper.Commitments);
-        rlpStream.Encode(networkWrapper.Proofs);
-    }
-
-    private static int GetContentLength(Transaction transaction, bool forSigning, bool withNetworkWrapper = false)
-    {
-        int contentLength = GetPayloadLength(transaction) + GetSignatureLength(transaction, forSigning);
-
-        return withNetworkWrapper
-            ? GetShardBlobNetworkWrapperLength(transaction, contentLength)
-            : contentLength;
-    }
-
-    private static int GetPayloadLength(Transaction transaction)
-    {
-        return Rlp.LengthOf(transaction.Nonce)
-               + Rlp.LengthOf(transaction.GasPrice) // gas premium
-               + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-               + Rlp.LengthOf(transaction.GasLimit)
-               + Rlp.LengthOf(transaction.To)
-               + Rlp.LengthOf(transaction.Value)
-               + Rlp.LengthOf(transaction.Data)
-               + Rlp.LengthOf(transaction.ChainId ?? 0)
-               + AccessListDecoder.GetLength(transaction.AccessList, RlpBehaviors.None)
-               + Rlp.LengthOf(transaction.MaxFeePerBlobGas)
-               + Rlp.LengthOf(transaction.BlobVersionedHashes);
-    }
-
-    private static int GetSignatureLength(Transaction transaction, bool forSigning)
-    {
-        int contentLength = 0;
-
-        if (!forSigning)
-        {
-            if (transaction.Signature is null)
-            {
-                contentLength += 1;
-                contentLength += 1;
-                contentLength += 1;
-            }
-            else
-            {
-                contentLength += Rlp.LengthOf(transaction.Signature.RecoveryId);
-                contentLength += Rlp.LengthOf(transaction.Signature.RAsSpan.WithoutLeadingZeros());
-                contentLength += Rlp.LengthOf(transaction.Signature.SAsSpan.WithoutLeadingZeros());
-            }
-        }
-
-        return contentLength;
-    }
-
-    private static int GetShardBlobNetworkWrapperLength(Transaction transaction, int txContentLength)
-    {
-        ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
-        return Rlp.LengthOfSequence(txContentLength)
-               + Rlp.LengthOf(networkWrapper.Blobs)
-               + Rlp.LengthOf(networkWrapper.Commitments)
-               + Rlp.LengthOf(networkWrapper.Proofs);
-    }
-
-    public static void WriteTransaction(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    void WritePayload(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors)
     {
         writer.Write(transaction.ChainId ?? 0);
         writer.Write(transaction.Nonce);
-        writer.Write(transaction.GasPrice); // gas premium
+        writer.Write(transaction.GasPrice);
         writer.Write(transaction.DecodedMaxFeePerGas);
         writer.Write(transaction.GasLimit);
         writer.Write(transaction.To);
         writer.Write(transaction.Value);
         writer.Write(transaction.Data);
-        writer.Write(transaction.AccessList, rlpBehaviors);
+        writer.Write(AccessListDecoder.Instance, transaction.AccessList, rlpBehaviors);
         writer.Write(transaction.MaxFeePerBlobGas.Value);
         writer.Write(transaction.BlobVersionedHashes);
+    }
 
+    void WriteSignature(IRlpWriter writer, Transaction transaction, bool forSigning)
+    {
         if (!forSigning)
         {
             if (transaction.Signature is null)
@@ -388,13 +290,13 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null) 
                 writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
             }
         }
+    }
 
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
-        {
-            ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
-            writer.Write(networkWrapper.Blobs);
-            writer.Write(networkWrapper.Commitments);
-            writer.Write(networkWrapper.Proofs);
-        }
+    void WriteShardBlobNetworkWrapper(IRlpWriter writer, Transaction transaction)
+    {
+        ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
+        writer.Write(networkWrapper.Blobs);
+        writer.Write(networkWrapper.Commitments);
+        writer.Write(networkWrapper.Proofs);
     }
 }
