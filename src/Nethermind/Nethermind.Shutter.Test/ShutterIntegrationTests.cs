@@ -168,11 +168,14 @@ public class ShutterIntegrationTests : EngineModuleTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Can_increment_metric_on_missed_keys()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         long time = 1;
         Timestamper timestamper = new(time);
+
+        Metrics.KeysMissed = 0;
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);

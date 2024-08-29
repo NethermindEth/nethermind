@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
