@@ -20,7 +20,6 @@ namespace Nethermind.Consensus.Processing
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
         private readonly ISpecProvider _specProvider;
-        private readonly AuthorizationTupleDecoder _authorizationTupleDecoder = new();
         private readonly ILogger _logger;
 
         /// <summary>

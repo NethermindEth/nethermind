@@ -36,9 +36,10 @@ public class CodeInfoRepositoryTests
         {
             CreateAuthorizationTuple(authority, 1, TestItem.AddressB, 0),
         };
-        CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
+        HashSet<Address> accessedAddresses = new ();
+        int result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
 
-        result.AccessedAddresses.Should().BeEquivalentTo([authority.Address]);
+        accessedAddresses.Should().BeEquivalentTo([authority.Address]);
     }
 
     public static IEnumerable<object[]> AuthorizationCases()
@@ -70,10 +71,10 @@ public class CodeInfoRepositoryTests
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         CodeInfoRepository sut = new(1);
+        HashSet<Address> accessedAddresses = new ();
+        sut.InsertFromAuthorizations(stateProvider, [tuple], accessedAddresses, Substitute.For<IReleaseSpec>());
 
-        CodeInsertResult result = sut.InsertFromAuthorizations(stateProvider, [tuple], Substitute.For<IReleaseSpec>());
-
-        Assert.That(stateProvider.HasCode(result.AccessedAddresses.First()), Is.EqualTo(shouldInsert));
+        Assert.That(stateProvider.HasCode(tuple.Authority), Is.EqualTo(shouldInsert));
     }
 
     [Test]
@@ -89,8 +90,9 @@ public class CodeInfoRepositoryTests
         {
             CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
+        HashSet<Address> accessedAddresses = new();
 
-        sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
+        sut.InsertFromAuthorizations(mockWorldState, tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
 
         mockWorldState.DidNotReceive().InsertCode(Arg.Any<Address>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IReleaseSpec>());
     }
@@ -100,20 +102,23 @@ public class CodeInfoRepositoryTests
     {
         PrivateKey authority = TestItem.PrivateKeyA;
         Address codeSource = TestItem.AddressB;
-        IWorldState mockWorldState = Substitute.For<IWorldState>();
-        mockWorldState.HasCode(authority.Address).Returns(true);
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         byte[] code = new byte[23];
         Eip7702Constants.DelegationHeader.CopyTo(code);
-        mockWorldState.GetCode(authority.Address).Returns(code);
+        stateProvider.CreateAccount(authority.Address, 0);
+        stateProvider.InsertCode(authority.Address,Keccak.Compute(code), code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
             CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
 
-        sut.InsertFromAuthorizations(mockWorldState, tuples, Substitute.For<IReleaseSpec>());
+        sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
 
-        mockWorldState.Received().InsertCode(authority.Address, Arg.Any<Hash256>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IReleaseSpec>(), Arg.Any<bool>());
+        Assert.That(stateProvider.GetCode(authority.Address).Slice(3), Is.EqualTo(codeSource.Bytes));
     }
 
     [Test]
@@ -132,13 +137,13 @@ public class CodeInfoRepositoryTests
             CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
 
-        sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<IReleaseSpec>());
+        sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
 
         Assert.That(stateProvider.GetNonce(authority.Address), Is.EqualTo((UInt256)1));
     }
 
     [Test]
-    public void InsertFromAuthorizations_FourAuthorizationInTotalButTwoAreInvalid_ResultContainsAllFour()
+    public void InsertFromAuthorizations_FourAuthorizationInTotalButOneHasInvalidNonce_ResultContainsThreeAddresses()
     {
         CodeInfoRepository sut = new(1);
         var tuples = new[]
@@ -148,9 +153,10 @@ public class CodeInfoRepositoryTests
             CreateAuthorizationTuple(TestItem.PrivateKeyC, 2, TestItem.AddressF, 0),
             CreateAuthorizationTuple(TestItem.PrivateKeyD, 1, TestItem.AddressF, 1),
         };
-        CodeInsertResult result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, Substitute.For<IReleaseSpec>());
+        HashSet<Address> addresses = new();
+        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, addresses, Substitute.For<IReleaseSpec>());
 
-        result.AccessedAddresses.Should().BeEquivalentTo([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD]);
+        addresses.Should().BeEquivalentTo([TestItem.AddressA, TestItem.AddressB, TestItem.AddressD]);
     }
 
     [Test]
@@ -168,9 +174,9 @@ public class CodeInfoRepositoryTests
         };
         stateProvider.CreateAccount(TestItem.AddressA, 0);
 
-        CodeInsertResult result = sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<IReleaseSpec>());
+        int refunds = sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
 
-        result.Refunds.Should().Be(1);
+        refunds.Should().Be(1);
     }
 
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
