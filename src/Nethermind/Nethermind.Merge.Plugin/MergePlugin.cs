@@ -279,7 +279,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
     }
 
-    protected Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory)
+    private Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory)
     {
         if (MergeEnabled)
         {
@@ -486,7 +486,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return Task.CompletedTask;
     }
 
-    public virtual ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
 }
