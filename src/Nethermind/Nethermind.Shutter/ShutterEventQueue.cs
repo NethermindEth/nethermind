@@ -112,7 +112,7 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
         if (eon == _eon + 1)
         {
             _txIndex = _nextEonTxIndex;
-            _events = _nextEonEvents; 
+            _events = _nextEonEvents;
             _nextEonTxIndex = 0;
             _nextEonEvents = [];
         }

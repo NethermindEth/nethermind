@@ -9,7 +9,7 @@ namespace Nethermind.Shutter.Contracts;
 
 public class SequencerContract : Contract, ISequencerContract
 {
-    public AbiEncodingInfo TransactionSubmittedAbi { get => _transactionSubmittedAbi;}
+    public AbiEncodingInfo TransactionSubmittedAbi { get => _transactionSubmittedAbi; }
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
 
     public SequencerContract(Address address)
