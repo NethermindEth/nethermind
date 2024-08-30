@@ -93,8 +93,12 @@ namespace Nethermind.Serialization;
 {Whitespace}
 public partial class SszEncoding
 {{
-    public static int GetLength({decl.Name} container)
+    public static int GetLength({decl.Name}? container)
     {{
+        if(container is null)
+        {{
+            return 0;
+        }}
         return {decl.StaticLength}{(variables.Any() ? "" : ";")}
 {               Shift(4, variables.Select(m => $"+ {DynamicLength(m)}"), ";")}
     }}
@@ -261,8 +265,12 @@ public partial class SszEncoding
         }};
     }}
 {Whitespace}
-    public static int GetLength(ICollection<{decl.Name}> container)
+    public static int GetLength(ICollection<{decl.Name}>? container)
     {{
+        if(container is null)
+        {{
+            return 0;
+        }}
         int length = container.Count * {SszType.PointerLength};
         foreach({decl.Name} item in container)
         {{
@@ -281,38 +289,97 @@ public partial class SszEncoding
     public static void Encode(Span<byte> data, {decl.Name} container)
     {{
         SszLib.Encode(data.Slice(0, 1), (byte)container.Selector);
+        if(data.Length is 1)
+        {{
+            return;
+        }}
         switch(container.Selector) {{
-{           Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), offset{encodeOffsetIndex})"
-                                    : m.Kind == Kind.Basic ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), container.{m.Name})"
-                                                        : m.Type.Kind == Kind.Container ? $"Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name})"
-                                                                                    : $"SszLib.Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name})")}; break;"))}
+{           Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(1), container.{m.Name});"
+                                                : m.HandledByStd ? $"SszLib.Encode(data.Slice(1), container.{m.Name});"
+                                                                 : $"Encode(data.Slice(1), container.{m.Name});")} break;"))}
         }};
     }}
 {Whitespace}
-    public static void Decode(Span<byte> data, {decl.Name} container)
+    public static void Encode(Span<byte> data, ICollection<{decl.Name}> container)
     {{
-        SszLib.Encode(data.Slice(0, 1), (byte)container.Selector);
+        int offset = container.Count * {(SszType.PointerLength)};
+        int itemOffset = 0;
+        foreach({decl.Name} item in container)
+        {{
+            SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
+            itemOffset += {(SszType.PointerLength)};
+            int length = GetLength(item);
+            Encode(data.Slice(offset, length), item);
+            offset += length;
+        }}
+    }}
+{Whitespace}
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
+    {{
+        if(data.Length is 0)
+        {{
+            container = [];
+            return;
+        }}
+
+        int firstOffset = SszLib.DecodeInt(data.Slice(0, 4));
+        int length = firstOffset / {SszType.PointerLength};
+
+        container = new {decl.Name}[length];
+
+        int index = 0;
+        int offset = firstOffset;
+        for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
+        {{
+            int nextOffset = SszLib.DecodeInt(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
+            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            offset = nextOffset;
+        }}
+        Decode(data.Slice(offset, length), out container[index]);
+    }}
+{Whitespace}
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
+    {{
+        container = new();
+        container.Selector = ({decl.Selector!.Type.Name})data[0];
         switch(container.Selector) {{
-{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), offset{encodeOffsetIndex})"
-                                    : m.Kind == Kind.Basic ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), container.{m.Name})"
-                                                        : m.Type.Kind == Kind.Container ? $"Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name})"
-                                                                                    : $"SszLib.Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name})")}; break;"))}
+{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Decode" : "Decode")}(data.Slice(1), out {(m.IsCollection ? (m.HandledByStd ? $"ReadOnlySpan<{m.Type.Name}>" : $"{m.Type.Name}[]") : m.Type.Name)} {LowerStart(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{LowerStart(m.Name)}]" : LowerStart(m.Name))};"
+                                    : m.HandledByStd ? $"SszLib.Decode(data.Slice(1), out {(m.IsCollection ? $"ReadOnlySpan<{m.Type.Name}>" : m.Type.Name)} {LowerStart(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{LowerStart(m.Name)}]" : LowerStart(m.Name))};"
+                                                     : $"Decode(data.Slice(1), out {(m.IsCollection ? $"{m.Type.Name}[]" : m.Type.Name)} {LowerStart(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{LowerStart(m.Name)}]" : LowerStart(m.Name))};")} break;"))}
         }};
     }}
 {Whitespace}
-    public static void Merkleize({decl.Name} container, out UInt256 root)
+    public static void Merkleize({decl.Name} container, out UInt256 root)   
     {{
-        SszLib.Encode(data.Slice(0, 1), (byte)container.Selector);
+        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
         switch(container.Selector) {{
-{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), offset{encodeOffsetIndex})"
-                                    : m.Kind == Kind.Basic ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), container.{m.Name})"
-                                                        : m.Type.Kind == Kind.Container ? $"Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name})"
-                                                                                    : $"SszLib.Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name})")}; break;"))}
+{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.HandledByStd ? $"merkleizer.Feed(container.{m.Name}{(m.Kind == Kind.List ? $", {m.Limit}" : "")});"
+                                    : m.Kind == Kind.List ? $"MerkleizeList(container.{m.Name}, {m.Limit}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);"
+                                                          : m.Kind == Kind.Vector ? $"MerkleizeVector(container.{m.Name}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);"
+                                                                                  : $"Merkleize(container.{m.Name}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);")}; break;"))}
         }};
+        merkleizer.CalculateRoot(out root);
+        Merkle.MixIn(ref root, (byte)container.Selector);
+    }}
+{Whitespace}
+    public static void MerkleizeVector(IList<{decl.Name}> container, out UInt256 root)
+    {{
+        UInt256[] subRoots = new UInt256[container.Count];
+        for(int i = 0; i < container.Count; i++)
+        {{
+            Merkleize(container[i], out subRoots[i]);
+        }}
+        Merkle.Ize(out root, subRoots);
+    }}
+{Whitespace}
+    public static void MerkleizeList(IList<{decl.Name}> container, ulong limit, out UInt256 root)
+    {{
+        MerkleizeVector(container, out root);
+        Merkle.MixIn(ref root, container.Count);
     }}
 }}
 ");
-            Console.WriteLine(WithLineNumbers(result));
+            Console.WriteLine(WithLineNumbers(result, true));
             return result;
         }
         catch
@@ -321,8 +388,9 @@ public partial class SszEncoding
         }
     }
 
-    static string WithLineNumbers(string input)
+    static string WithLineNumbers(string input, bool bypass = false)
     {
+        if (bypass) return input;
 
         string[] lines = input.Split('\n');
         int lineNumberWidth = lines.Length.ToString().Length;

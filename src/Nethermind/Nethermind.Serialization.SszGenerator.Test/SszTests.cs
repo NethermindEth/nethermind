@@ -68,68 +68,68 @@ namespace Nethermind.Serialization.SszGenerator.Test
         //}
     }
 
-    [SszSerializable]
-    public struct SlotDecryptionIdentites
-    {
-        public ulong Test1 { get; set; }
+    //[SszSerializable]
+    //public struct SlotDecryptionIdentites
+    //{
+    //    public ulong Test1 { get; set; }
 
-        [SszVector(10)]
-        public ulong[] Test2 { get; set; }
+    //    [SszVector(10)]
+    //    public ulong[] Test2 { get; set; }
 
-        [SszList(10)]
-        public ulong[] Test3 { get; set; }
-        public FixedC FixedC { get; set; }
-        public VariableC VariableC { get; set; }
-
-
-        [SszVector(10)]
-        public FixedC[] FixedCVec { get; set; }
-
-        [SszList(10)]
-        public FixedC[] FixedCList { get; set; }
+    //    [SszList(10)]
+    //    public ulong[] Test3 { get; set; }
+    //    public FixedC FixedC { get; set; }
+    //    public VariableC VariableC { get; set; }
 
 
-        [SszVector(10)]
-        public VariableC[] VariableCVec { get; set; }
+    //    [SszVector(10)]
+    //    public FixedC[] FixedCVec { get; set; }
 
-        [SszList(10)]
-        public VariableC[] VariableCList { get; set; }
-    }
-
-    [SszSerializable]
-    public struct FixedC
-    {
-        public ulong Fixed1 { get; set; }
-        public ulong Fixed2 { get; set; }
+    //    [SszList(10)]
+    //    public FixedC[] FixedCList { get; set; }
 
 
-    }
+    //    [SszVector(10)]
+    //    public VariableC[] VariableCVec { get; set; }
 
-    [SszSerializable]
-    public class VariableC
-    {
-        public ulong Fixed1 { get; set; }
-
-        [SszList(10)]
-        public ulong[]? Fixed2 { get; set; }
-
-
-    }
+    //    [SszList(10)]
+    //    public VariableC[] VariableCList { get; set; }
+    //}
 
     //[SszSerializable]
-    //public struct Test2
+    //public struct FixedC
     //{
-    //    public Test2Union Selector { get; set; }
-    //    public long Type1 { get; set; }
-    //    public int Type2 { get; set; }
+    //    public ulong Fixed1 { get; set; }
+    //    public ulong Fixed2 { get; set; }
+
+
     //}
 
-    //public enum Test2Union: byte
+    //[SszSerializable]
+    //public class VariableC
     //{
-    //    None,
-    //    Type1,
-    //    Type2,
+    //    public ulong Fixed1 { get; set; }
+
+    //    [SszList(10)]
+    //    public ulong[]? Fixed2 { get; set; }
+
+
     //}
+
+    [SszSerializable]
+    public struct Test2
+    {
+        public Test2Union Selector { get; set; }
+        public long Type1 { get; set; }
+        public int Type2 { get; set; }
+    }
+
+    public enum Test2Union : byte
+    {
+        None,
+        Type1,
+        Type2,
+    }
 
     //[SszSerializable]
     //public struct IdentityPreimage
