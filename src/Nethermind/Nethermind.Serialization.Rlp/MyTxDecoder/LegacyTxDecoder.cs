@@ -150,38 +150,47 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
     {
         writer.WriteSequence(writer =>
         {
-            writer.Write(transaction.Nonce);
-            writer.Write(transaction.GasPrice);
-            writer.Write(transaction.GasLimit);
-            writer.Write(transaction.To);
-            writer.Write(transaction.Value);
-            writer.Write(transaction.Data);
+            WritePayload(writer, transaction);
+            WriteSignature(writer, transaction, forSigning, isEip155Enabled, chainId);
+        });
+    }
 
-            if (forSigning)
+    private static void WritePayload(IRlpWriter writer, Transaction transaction)
+    {
+        writer.Write(transaction.Nonce);
+        writer.Write(transaction.GasPrice);
+        writer.Write(transaction.GasLimit);
+        writer.Write(transaction.To);
+        writer.Write(transaction.Value);
+        writer.Write(transaction.Data);
+    }
+
+    private static void WriteSignature(IRlpWriter writer, Transaction transaction, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        if (forSigning)
+        {
+            bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
+            if (includeSigChainIdHack)
             {
-                bool includeSigChainIdHack = isEip155Enabled && chainId != 0;
-                if (includeSigChainIdHack)
-                {
-                    writer.Write(chainId);
-                    writer.Write(Rlp.OfEmptyByteArray);
-                    writer.Write(Rlp.OfEmptyByteArray);
-                }
+                writer.Write(chainId);
+                writer.Write(Rlp.OfEmptyByteArray);
+                writer.Write(Rlp.OfEmptyByteArray);
+            }
+        }
+        else
+        {
+            if (transaction.Signature is null)
+            {
+                writer.Write(0);
+                writer.Write(Bytes.Empty);
+                writer.Write(Bytes.Empty);
             }
             else
             {
-                if (transaction.Signature is null)
-                {
-                    writer.Write(0);
-                    writer.Write(Bytes.Empty);
-                    writer.Write(Bytes.Empty);
-                }
-                else
-                {
-                    writer.Write(transaction.Signature.V);
-                    writer.Write(transaction.Signature.RAsSpan.WithoutLeadingZeros());
-                    writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
-                }
+                writer.Write(transaction.Signature.V);
+                writer.Write(transaction.Signature.RAsSpan.WithoutLeadingZeros());
+                writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
             }
-        });
+        }
     }
 }
