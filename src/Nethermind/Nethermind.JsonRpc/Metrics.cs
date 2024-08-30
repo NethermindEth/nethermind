@@ -59,5 +59,9 @@ namespace Nethermind.JsonRpc
         [CounterMetric]
         [Description("Number of JSON RPC bytes received through IPC.")]
         public static long JsonRpcBytesReceivedIpc;
+
+        [CounterMetric]
+        [Description("NewPayload End to end request time including Json parsing and generation")]
+        public static long JsonRpcNewPayloadTime;
     }
 }

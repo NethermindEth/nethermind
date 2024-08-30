@@ -118,8 +118,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
-        reader = await RecordRequest(reader);
         Stopwatch stopwatch = Stopwatch.StartNew();
+        reader = await RecordRequest(reader);
         CancellationTokenSource timeoutSource = new(_jsonRpcConfig.Timeout);
 
         // Handles general exceptions during parsing and validation.
@@ -134,6 +134,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
         }
 
+        bool isNewPayload = false;
         // Initializes a buffer to store the data read from the reader.
         ReadOnlySequence<byte> buffer = default;
         try
@@ -198,6 +199,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
                     result.Response.AddDisposable(() => jsonDocument.Dispose());
 
+                    isNewPayload = model.Method.StartsWith("engine_newPayload");
                     // Returns the result of the processed request.
                     yield return JsonRpcResult.Single(RecordResponse(result));
                 }
@@ -267,10 +269,16 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             {
                 reader.AdvanceTo(buffer.End);
             }
-        }
 
-        // Completes the PipeReader's asynchronous reading operation.
-        await reader.CompleteAsync();
+            // Completes the PipeReader's asynchronous reading operation.
+            await reader.CompleteAsync();
+
+            if (isNewPayload)
+            {
+                Metrics.JsonRpcNewPayloadTime = stopwatch.ElapsedMilliseconds;
+                if (_logger.IsDebug) _logger.Debug($"New payload Json processing took {Metrics.JsonRpcNewPayloadTime}ms");
+            }
+        }
     }
 
     private static bool HasNonWhitespace(ReadOnlySequence<byte> buffer)
