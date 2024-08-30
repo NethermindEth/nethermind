@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
@@ -22,6 +23,8 @@ public interface IRlpWriter
     public void Write(byte[] value);
     public void Write(Rlp value);
     public void Write(byte[]?[] value);
+    public void Write(Hash256? value);
+    public void Write(bool value);
     public void Write<T>(IRlpStreamDecoder<T> decoder, T value, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     public void WriteSequence(Action<IRlpWriter> action);
     public void Wrap(bool when, int bytes, Action<IRlpWriter> action);

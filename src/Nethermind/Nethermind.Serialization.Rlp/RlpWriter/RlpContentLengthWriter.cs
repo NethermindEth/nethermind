@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.RlpWriter;
@@ -64,6 +65,16 @@ public sealed class RlpContentLengthWriter : IRlpWriter
     }
 
     public void Write(byte[]?[] value)
+    {
+        ContentLength += Rlp.LengthOf(value);
+    }
+
+    public void Write(Hash256? value)
+    {
+        ContentLength += Rlp.LengthOf(value);
+    }
+
+    public void Write(bool value)
     {
         ContentLength += Rlp.LengthOf(value);
     }

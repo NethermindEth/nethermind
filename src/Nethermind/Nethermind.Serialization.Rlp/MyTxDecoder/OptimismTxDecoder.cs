@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp.RlpWriter;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
@@ -96,30 +97,15 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
 
     public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int contentLength = GetPayloadLength(transaction);
-        int sequenceLength = Rlp.LengthOfSequence(contentLength);
-
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
-        {
-            stream.StartByteArray(sequenceLength + 1, false);
-        }
-
-        stream.WriteByte((byte)TxType.DepositTx);
-        stream.StartSequence(contentLength);
-
-        EncodePayload(transaction, stream);
+        var writer = new RlpStreamWriter(stream);
+        WriteTransaction(writer, transaction, rlpBehaviors, forSigning);
     }
 
     public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int txContentLength = GetPayloadLength(transaction);
-        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
-
-        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
-        int result = isForTxRoot
-                ? (1 + txPayloadLength)
-                : Rlp.LengthOfSequence(1 + txPayloadLength);
-        return result;
+        var writer = new RlpContentLengthWriter();
+        WriteTransaction(writer, transaction, rlpBehaviors, forSigning);
+        return writer.ContentLength;
     }
 
     private static void DecodePayload(Transaction transaction, RlpStream rlpStream)
@@ -164,27 +150,28 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
-    private static int GetPayloadLength(Transaction transaction)
+    private static void WriteTransaction(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false)
     {
-        return Rlp.LengthOf(transaction.SourceHash)
-               + Rlp.LengthOf(transaction.SenderAddress)
-               + Rlp.LengthOf(transaction.To)
-               + Rlp.LengthOf(transaction.Mint)
-               + Rlp.LengthOf(transaction.Value)
-               + Rlp.LengthOf(transaction.GasLimit)
-               + Rlp.LengthOf(transaction.IsOPSystemTransaction)
-               + Rlp.LengthOf(transaction.Data);
+        writer.Wrap(when: !rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), bytes: 1, writer =>
+        {
+            writer.WriteByte((byte)TxType.DepositTx);
+
+            writer.WriteSequence(writer =>
+            {
+                WritePayload(writer, transaction, rlpBehaviors);
+            });
+        });
     }
 
-    private static void EncodePayload(Transaction transaction, RlpStream stream)
+    private static void WritePayload(IRlpWriter writer, Transaction transaction, RlpBehaviors rlpBehaviors)
     {
-        stream.Encode(transaction.SourceHash);
-        stream.Encode(transaction.SenderAddress);
-        stream.Encode(transaction.To);
-        stream.Encode(transaction.Mint);
-        stream.Encode(transaction.Value);
-        stream.Encode(transaction.GasLimit);
-        stream.Encode(transaction.IsOPSystemTransaction);
-        stream.Encode(transaction.Data);
+        writer.Write(transaction.SourceHash);
+        writer.Write(transaction.SenderAddress);
+        writer.Write(transaction.To);
+        writer.Write(transaction.Mint);
+        writer.Write(transaction.Value);
+        writer.Write(transaction.GasLimit);
+        writer.Write(transaction.IsOPSystemTransaction);
+        writer.Write(transaction.Data);
     }
 }

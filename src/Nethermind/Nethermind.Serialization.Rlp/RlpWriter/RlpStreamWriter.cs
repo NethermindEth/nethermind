@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.RlpWriter;
@@ -65,6 +66,16 @@ public sealed class RlpStreamWriter(RlpStream stream) : IRlpWriter
     }
 
     public void Write(byte[]?[] value)
+    {
+        stream.Encode(value);
+    }
+
+    public void Write(Hash256? value)
+    {
+        stream.Encode(value);
+    }
+
+    public void Write(bool value)
     {
         stream.Encode(value);
     }
