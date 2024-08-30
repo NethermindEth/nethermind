@@ -17,9 +17,6 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "Whether to publish various metrics to Prometheus Pushgateway at a given interval.", DefaultValue = "false")]
     bool Enabled { get; }
 
-    [ConfigItem(Description = "Whether to publish various metrics to Prometheus Pushgateway right after block is processed.", DefaultValue = "false")]
-    bool PushAfterBlock { get; }
-
     [ConfigItem(Description = "Whether to publish metrics using .NET diagnostics that can be collected with dotnet-counters.", DefaultValue = "false")]
     bool CountersEnabled { get; }
 
@@ -28,6 +25,9 @@ public interface IMetricsConfig : IConfig
 
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
     int IntervalSeconds { get; }
+
+    [ConfigItem(DefaultValue = "2", Description = "The minimal frequency of pushing metrics to Prometheus, in seconds. Push should not occur more often than this")]
+    int MinimalIntervalSeconds { get; }
 
     [ConfigItem(Description = "The name to display on the Grafana dashboard.", DefaultValue = "\"Nethermind\"")]
     string NodeName { get; }

@@ -25,6 +25,7 @@ namespace Nethermind.Monitoring.Metrics
     public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
+        private readonly int _minIntervalSeconds;
         private CancellationTokenSource _cts;
         private readonly SemaphoreSlim _wait = new(0);
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
@@ -192,6 +193,8 @@ namespace Nethermind.Monitoring.Metrics
         public MetricsController(IMetricsConfig metricsConfig)
         {
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
+            _minIntervalSeconds = metricsConfig.MinimalIntervalSeconds == 0 ? 2 : metricsConfig.MinimalIntervalSeconds;
+
             _useCounters = metricsConfig.CountersEnabled;
         }
 
@@ -203,13 +206,16 @@ namespace Nethermind.Monitoring.Metrics
             return;
             async Task RunLoop(CancellationToken ct)
             {
+                var constantDelay = TimeSpan.FromSeconds(Math.Max(_intervalSeconds - _minIntervalSeconds, 1));
+                var waitTime = TimeSpan.FromSeconds(_intervalSeconds) - constantDelay;
+
                 while (ct.IsCancellationRequested == false)
                 {
                     bool forced = false;
 
                     try
                     {
-                        forced = await _wait.WaitAsync(TimeSpan.FromSeconds(_intervalSeconds), ct);
+                        forced = await _wait.WaitAsync(waitTime, ct);
                     }
                     catch (OperationCanceledException)
                     {
@@ -221,6 +227,18 @@ namespace Nethermind.Monitoring.Metrics
                     {
                         // The update was forced and there's a onForced delegate. Execute it.
                         onForced();
+                    }
+
+                    if (ct.IsCancellationRequested == false)
+                    {
+                        // Always wait a minimal amount of time so that the metrics are not flooded
+                        try
+                        {
+                            await Task.Delay(constantDelay, ct).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                        }
                     }
                 }
             }
