@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "Generate for MainApp": {
+    "Generate SSZ for tests": {
       "commandName": "DebugRoslynComponent",
       "targetProject": "..\\Nethermind.Serialization.SszGenerator.Test\\Nethermind.Serialization.SszGenerator.Test.csproj"
     }

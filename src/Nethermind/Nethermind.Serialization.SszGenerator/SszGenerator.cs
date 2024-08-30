@@ -2,9 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using System.ComponentModel;
 using System.Text;
-using System.Xml.Schema;
 
 [Generator]
 public partial class SszGenerator : IIncrementalGenerator
@@ -61,15 +59,15 @@ public partial class SszGenerator : IIncrementalGenerator
     }
 
     const string Whitespace = "/**/";
-    public static string FixWhitespace(string data) => string.Join("\n", data.Split('\n').Where(x=>!string.IsNullOrWhiteSpace(x)).Select(x=> x.Contains(Whitespace) ? "" : x));
+    public static string FixWhitespace(string data) => string.Join("\n", data.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Contains(Whitespace) ? "" : x));
     public static string Shift(int tabCount, string data) => string.Empty.PadLeft(4 * tabCount) + data;
-    public static string Shift(int tabCount, IEnumerable<string> data, string? end = null) => string.Join("\n", data.Select(d=>Shift(tabCount, d))) + (end is null || !data.Any() ? "" : end);
+    public static string Shift(int tabCount, IEnumerable<string> data, string? end = null) => string.Join("\n", data.Select(d => Shift(tabCount, d))) + (end is null || !data.Any() ? "" : end);
 
     private static string LowerStart(string name) => string.IsNullOrEmpty(name) ? name : (name.Substring(0, 1).ToLower() + name.Substring(1));
 
     private static string DynamicLength(SszType container, SszProperty m)
     {
-        if((m.Kind & (Kind.Collection | Kind.BitList)) != Kind.None && m.Type.Kind == Kind.Basic)
+        if ((m.Kind & (Kind.Collection | Kind.BitList)) != Kind.None && m.Type.Kind == Kind.Basic)
         {
             return $"(container.{m.Name} is not null ? {(m.Kind == Kind.BitList ? $"container.{m.Name}.Length / 8 + 1" : $"{m.Type.StaticLength} * container.{m.Name}.Count()")} : 0)";
         }
@@ -102,12 +100,12 @@ public partial class SszEncoding
 {{
     public static int GetLength({decl.Name} container)
     {{
-        {(decl.IsStruct ? "": @"if(container is null)
+        {(decl.IsStruct ? "" : @"if(container is null)
         {{
             return 0;
         }}")}
         return {decl.StaticLength}{(variables.Any() ? "" : ";")}
-{               Shift(4, variables.Select(m => $"+ {DynamicLength(decl, m)}"), ";")}
+{Shift(4, variables.Select(m => $"+ {DynamicLength(decl, m)}"), ";")}
     }}
 {Whitespace}
     public static int GetLength(ICollection<{decl.Name}> container)
@@ -133,7 +131,7 @@ public partial class SszEncoding
 {Whitespace}
     public static void Encode(Span<byte> data, {decl.Name} container)
     {{
-        {(decl.IsStruct ? "": "if(container is null) return;")}
+        {(decl.IsStruct ? "" : "if(container is null) return;")}
 
 {Shift(2, variables.Select((m, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, m)}")};"))}
 {Shift(2, decl.Members.Select(m =>
@@ -173,7 +171,7 @@ public partial class SszEncoding
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
     {{
         container = new();
-{       Shift(2, decl.Members.Select(m =>
+{Shift(2, decl.Members.Select(m =>
 {
     if (m.IsVariable) offsetIndex++;
     string result = m.IsVariable ? $"SszLib.Decode(data.Slice({offset}, 4), out int offset{offsetIndex});"
@@ -182,7 +180,7 @@ public partial class SszEncoding
     offset += m.StaticLength;
     return result;
 }))}
-{       Shift(2, variables.Select((m, i) => string.Format($"if ({(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1} > 0) {{{{ {{0}} }}}}", 
+{Shift(2, variables.Select((m, i) => string.Format($"if ({(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1} > 0) {{{{ {{0}} }}}}",
             $"{(m.HandledByStd ? "SszLib.Decode" : "Decode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), out {(m.IsCollection ? (m.HandledByStd ? $"ReadOnlySpan<{m.Type.Name}>" : $"{m.Type.Name}[]") : m.Type.Name)} {LowerStart(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{LowerStart(m.Name)}]" : LowerStart(m.Name))};")))}
     }}
 {Whitespace}
@@ -262,7 +260,7 @@ public partial class SszEncoding
     public static int GetLength({decl.Name} container)
     {{
         return 1 + container.Selector switch {{
-{           Shift(3, decl.UnionMembers.Select(m=> $"{decl.Selector!.Type.Name}.{m.Name} => {(m.IsVariable ? DynamicLength(decl, m) : m.StaticLength.ToString())},"))}
+{Shift(3, decl.UnionMembers.Select(m => $"{decl.Selector!.Type.Name}.{m.Name} => {(m.IsVariable ? DynamicLength(decl, m) : m.StaticLength.ToString())},"))}
             _ => 0,
         }};
     }}
@@ -296,7 +294,7 @@ public partial class SszEncoding
             return;
         }}
         switch(container.Selector) {{
-{           Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(1), container.{m.Name});"
+{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(1), container.{m.Name});"
                                                 : m.HandledByStd ? $"SszLib.Encode(data.Slice(1), container.{m.Name});"
                                                                  : $"Encode(data.Slice(1), container.{m.Name});")} break;"))}
         }};

@@ -101,7 +101,7 @@ class SszType
 
     internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type)
     {
-       
+
         string? @namespace = GetNamespace(type);
         string name = GetTypeName(type);
 
@@ -133,7 +133,7 @@ class SszType
             Kind.Container or Kind.Union => type.GetMembers().OfType<IPropertySymbol>()
                 .Where(p => p.GetMethod is not null && p.SetMethod is not null && p.GetMethod.DeclaredAccessibility == Accessibility.Public && p.SetMethod.DeclaredAccessibility == Accessibility.Public)
                 .Select(prop => SszProperty.From(semanticModel, types, prop)).ToArray() ?? [],
-            _ => null,  
+            _ => null,
         };
 
         if (result.Kind == Kind.Union)
@@ -141,7 +141,7 @@ class SszType
             result.HasNone = result.Members.Any(x => x.Name == "Selector" && x.Type.HasNone);
         }
 
-        if((result.Kind & (Kind.Container | Kind.Union)) != Kind.None && type.TypeKind == TypeKind.Struct)
+        if ((result.Kind & (Kind.Container | Kind.Union)) != Kind.None && type.TypeKind == TypeKind.Struct)
         {
             result.IsStruct = true;
         }

@@ -54,7 +54,7 @@ public static partial class Ssz
         return new Root(span);
     }
 
-   
+
 
     public static Root[] DecodeRoots(ReadOnlySpan<byte> span)
     {

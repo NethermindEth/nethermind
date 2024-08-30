@@ -4,7 +4,7 @@ class SszProperty
 {
     public override string ToString()
     {
-        return $"prop({Kind},{Type},{Name},{(IsVariable?"v":"f")})";
+        return $"prop({Kind},{Type},{Name},{(IsVariable ? "v" : "f")})";
     }
 
     public static SszProperty From(SemanticModel semanticModel, List<SszType> types, IPropertySymbol prop)
@@ -15,7 +15,7 @@ class SszProperty
 
         SszProperty result = new SszProperty { Name = prop.Name, Type = type };
 
-        if(itemType is not null || prop.Type.Name == "BitArray")
+        if (itemType is not null || prop.Type.Name == "BitArray")
         {
             var vectorAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszVectorAttribute");
             if (vectorAttr is not null)
@@ -34,13 +34,11 @@ class SszProperty
 
     private static ITypeSymbol? GetCollectionType(ITypeSymbol typeSymbol, Compilation compilation)
     {
-        // Check if the type is an array
         if (typeSymbol is IArrayTypeSymbol array)
         {
             return array.ElementType!;
         }
 
-        // Check if the type implements IEnumerable<T>
         INamedTypeSymbol? ienumerableOfT = compilation.GetTypeByMetadataName("System.Collections.Generic.IList`1");
         INamedTypeSymbol? enumerable = typeSymbol.AllInterfaces.FirstOrDefault(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, ienumerableOfT));
         if (ienumerableOfT != null && enumerable is not null)
@@ -48,7 +46,6 @@ class SszProperty
             return enumerable.TypeArguments.First();
         }
 
-        // Not a collection type
         return null;
     }
 

@@ -204,7 +204,7 @@ public static partial class Ssz
 
         result = MemoryMarshal.Cast<byte, long>(span);
     }
-       
+
     public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<UInt128> result)
     {
         const int typeSize = 16;
@@ -218,7 +218,7 @@ public static partial class Ssz
 
         for (int i = 0; i < span.Length / typeSize; i++)
         {
-           Decode(span.Slice(i * typeSize, typeSize), out array[i]);
+            Decode(span.Slice(i * typeSize, typeSize), out array[i]);
         }
 
         result = array;

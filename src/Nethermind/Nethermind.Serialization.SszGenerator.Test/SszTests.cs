@@ -3,7 +3,6 @@
 
 using Nethermind.Serialization.Ssz;
 using System.Collections;
-using System.Collections.Generic;
 
 namespace Nethermind.Serialization.SszGenerator.Test
 {
@@ -13,7 +12,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong Test1 { get; set; }
 
         [SszVector(10)]
-        public ulong[] Test2 { get; set; }     
+        public ulong[] Test2 { get; set; }
 
         [SszList(10)]
         public ulong[] Test3 { get; set; }

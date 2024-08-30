@@ -67,7 +67,7 @@ public ref struct Merkleizer
     public void Feed(Span<byte> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
-        if(limit is not null)
+        if (limit is not null)
         {
             Merkle.MixIn(ref _chunks[^1], limit.Value);
         }
