@@ -199,7 +199,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
                     result.Response.AddDisposable(() => jsonDocument.Dispose());
 
-                    isNewPayload = model.Method.StartsWith("engine_newPayload");
+                    isNewPayload = model.Method?.StartsWith("engine_newPayload") ?? false;
                     // Returns the result of the processed request.
                     yield return JsonRpcResult.Single(RecordResponse(result));
                 }
