@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -174,27 +175,30 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void FeedBitvector(BitArray bitArray)
+    public void Feed(BitArray? vector)
     {
+        if (vector is null) return;
         // bitfield_bytes
-        byte[] bytes = new byte[(bitArray.Length + 7) / 8];
-        bitArray.CopyTo(bytes, 0);
+        byte[] bytes = new byte[(vector.Length + 7) / 8];
+        vector.CopyTo(bytes, 0);
 
         Merkle.Ize(out _chunks[^1], bytes);
         Feed(_chunks[^1]);
     }
 
-    public void FeedBitlist(BitArray bitArray, ulong maximumBitlistLength)
+    public void Feed(BitArray? list, ulong maximumBitlistLength)
     {
+        if (list is null) return;
+
         // chunk count
         ulong chunkCount = (maximumBitlistLength + 255) / 256;
 
         // bitfield_bytes
-        byte[] bytes = new byte[(bitArray.Length + 7) / 8];
-        bitArray.CopyTo(bytes, 0);
+        byte[] bytes = new byte[(list.Length + 7) / 8];
+        list.CopyTo(bytes, 0);
 
         Merkle.Ize(out _chunks[^1], bytes, chunkCount);
-        Merkle.MixIn(ref _chunks[^1], bitArray.Length);
+        Merkle.MixIn(ref _chunks[^1], list.Length);
         Feed(_chunks[^1]);
     }
 

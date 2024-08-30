@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -239,5 +241,27 @@ public static partial class Ssz
         }
 
         result = array;
+    }
+
+    public static void Decode(ReadOnlySpan<byte> span, int vectorLength, out BitArray vector)
+    {
+        BitArray value = new BitArray(span.ToArray());
+        value.Length = vectorLength;
+        vector = value;
+    }
+
+    public static void Decode(ReadOnlySpan<byte> span, out BitArray list)
+    {
+        BitArray value = new BitArray(span.ToArray());
+        int length = value.Length - 1;
+        int lastByte = span[^1];
+        int mask = 0x80;
+        while ((lastByte & mask) == 0 && mask > 0)
+        {
+            length--;
+            mask >>= 1;
+        }
+        value.Length = length;
+        list = value;
     }
 }
