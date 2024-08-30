@@ -13,7 +13,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 ///
 interface InstructionChunk
 {
-    static byte[] Pattern { get; }
+    byte[] Pattern { get; }
     void Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter,
         ref long gasAvailable,
         ref EvmStack<T> stack) where T : struct, IIsTracing;

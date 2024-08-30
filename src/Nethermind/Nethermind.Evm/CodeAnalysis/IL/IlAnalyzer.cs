@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using System;
 using System.Collections.Frozen;
@@ -18,36 +20,27 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 internal static class IlAnalyzer
 {
-    public class ByteArrayComparer : IEqualityComparer<byte[]>
+    private static Dictionary<Type, InstructionChunk> Patterns = new Dictionary<Type, InstructionChunk>();
+    public static void AddPattern(InstructionChunk handler)
     {
-        public bool Equals(byte[] left, byte[] right)
-        {
-            if (left == null || right == null)
-            {
-                return left == right;
-            }
-            return left.SequenceEqual(right);
-        }
-        public int GetHashCode(byte[] key)
-        {
-            if (key == null)
-                throw new ArgumentNullException("key");
-            return key.Sum(b => b);
+        lock (Patterns) {
+            Patterns[handler.GetType()] = handler;
         }
     }
-
-    private static Dictionary<byte[], InstructionChunk> Patterns = new Dictionary<byte[], InstructionChunk>(new ByteArrayComparer());
-    public static Dictionary<byte[], InstructionChunk> AddPattern(byte[] pattern, InstructionChunk chunk)
+    public static void AddPattern<T>() where T : InstructionChunk
+    {
+        var handler = Activator.CreateInstance<T>();
+        lock (Patterns)
+        {
+            Patterns[typeof(T)] = handler;
+        }
+    }
+    public static T GetPatternHandler<T>() where T : InstructionChunk
     {
         lock (Patterns)
         {
-            Patterns[pattern] = chunk;
+            return (T)Patterns[typeof(T)];
         }
-        return Patterns;
-    }
-    public static T GetPatternHandler<T>(byte[] pattern) where T : InstructionChunk
-    {
-        return (T)Patterns[pattern];
     }
 
 
@@ -120,20 +113,20 @@ internal static class IlAnalyzer
         {
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
             var patternFound = new Dictionary<ushort, InstructionChunk>();
-            foreach (var (pattern, mapping) in Patterns)
+            foreach (var (_, chunkHandler) in Patterns)
             {
-                for (int i = 0; i < strippedBytecode.Length - pattern.Length + 1; i++)
+                for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
                 {
                     bool found = true;
-                    for (int j = 0; j < pattern.Length && found; j++)
+                    for (int j = 0; j < chunkHandler.Pattern.Length && found; j++)
                     {
-                        found = ((byte)strippedBytecode[i + j].Operation == pattern[j]);
+                        found = ((byte)strippedBytecode[i + j].Operation == chunkHandler.Pattern[j]);
                     }
 
                     if (found)
                     {
-                        patternFound.Add((ushort)strippedBytecode[i].ProgramCounter, mapping);
-                        i += pattern.Length - 1;
+                        patternFound.Add((ushort)strippedBytecode[i].ProgramCounter, chunkHandler);
+                        i += chunkHandler.Pattern.Length - 1;
                     }
                 }
             }

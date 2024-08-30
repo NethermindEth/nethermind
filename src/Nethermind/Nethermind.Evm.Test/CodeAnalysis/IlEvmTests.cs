@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 {
     public class P01P01ADD : InstructionChunk
     {
-        public static byte[] Pattern => [96, 96, 01];
+        public byte[] Pattern => [96, 96, 01];
         public byte CallCount { get; set; } = 0;
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
     public class MethodSelector : InstructionChunk
     {
-        public static byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.CALLVALUE, (byte)Instruction.DUP1];
+        public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.CALLVALUE, (byte)Instruction.DUP1];
         public byte CallCount { get; set; } = 0;
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
     public class IsContractCheck : InstructionChunk
     {
-        public static byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
+        public byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
         public byte CallCount { get; set; } = 0;
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     }
     public class EmulatedStaticJump : InstructionChunk
     {
-        public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
+        public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
         public byte CallCount { get; set; } = 0;
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     }
     public class EmulatedStaticCJump : InstructionChunk
     {
-        public static byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
+        public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
         public byte CallCount { get; set; } = 0;
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
@@ -173,6 +173,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
     }
+
+
+
     [TestFixture]
     public class IlEvmTests : VirtualMachineTestsBase
     {
@@ -196,10 +199,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _vmConfig);
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
 
-            IlAnalyzer.AddPattern(P01P01ADD.Pattern, new P01P01ADD());
-            IlAnalyzer.AddPattern(EmulatedStaticCJump.Pattern, new EmulatedStaticCJump());
-            IlAnalyzer.AddPattern(EmulatedStaticJump.Pattern, new EmulatedStaticJump());
-            IlAnalyzer.AddPattern(IsContractCheck.Pattern, new IsContractCheck());
+            var code = Prepare.EvmCode.STOP().Done;
+            TestState.CreateAccount(Address.FromNumber(23), 1000000);
+            TestState.InsertCode(Address.FromNumber(23), code, SpecProvider.GenesisSpec);
+
+            IlAnalyzer.AddPattern<P01P01ADD>();
+            IlAnalyzer.AddPattern<EmulatedStaticCJump>();
+            IlAnalyzer.AddPattern<EmulatedStaticJump>();
+            IlAnalyzer.AddPattern<IsContractCheck>();
         }
 
         [Test]
@@ -222,10 +229,39 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }
 
+
+        [Test]
+        public async Task JIT_Analyzer_Compiles_stateless_bytecode_chunk()
+        {
+            byte[] bytecode =
+                Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .PushSingle(42)
+                    .PushSingle(5)
+                    .ADD()
+                    .Call(Address.FromNumber(23), 10000)
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .PushSingle(42)
+                    .PushSingle(5)
+                    .ADD()
+                    .STOP()
+                    .Done;
+
+            CodeInfo codeInfo = new CodeInfo(bytecode);
+
+            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.SubsegmentsCompiling);
+
+            codeInfo.IlInfo.Segments.Count.Should().Be(2);
+        }
+
         [Test]
         public void Execution_Swap_Happens_When_Pattern_Occurs()
         {
-            P01P01ADD pattern = IlAnalyzer.GetPatternHandler<P01P01ADD>(P01P01ADD.Pattern);
+            P01P01ADD pattern = IlAnalyzer.GetPatternHandler<P01P01ADD>();
 
             byte[] bytecode =
                 Prepare.EvmCode
@@ -245,27 +281,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .JUMPDEST()
                     .STOP()
                     .Done;
-
-            /*
-            byte[] initcode =
-                Prepare.EvmCode
-                    .StoreDataInMemory(0, bytecode)
-                    .Return(bytecode.Length, 0)
-                    .Done;
-
-            byte[] code =
-                Prepare.EvmCode
-                    .PushData(0)
-                    .PushData(0)
-                    .PushData(0)
-                    .PushData(0)
-                    .PushData(0)
-                    .Create(initcode, 1)
-                    .PushData(1000)
-                    .CALL()
-                    .Done;
-                    var address = receipts.TxReceipts[0].ContractAddress;
-            */
 
             for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 1024; i++)
             {
