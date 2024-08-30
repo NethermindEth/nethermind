@@ -190,17 +190,17 @@ public partial class VerkleTree
             switch (compare)
             {
                 case 0:
-                {
-                    // It match exactly? Then its an update, we update the current stem and add it to the new section
-                    InternalNode clonedNode = node.Clone();
-                    clonedNode.UpdateCommitment(leafDeltas[i].Value.Item1!.Value);
+                    {
+                        // It match exactly? Then its an update, we update the current stem and add it to the new section
+                        InternalNode clonedNode = node.Clone();
+                        clonedNode.UpdateCommitment(leafDeltas[i].Value.Item1!.Value);
 
-                    checkStem = false;
-                    newSection.Add(
-                        new KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>(leafDeltas[i].Key,
-                            (null, clonedNode)));
-                    break;
-                }
+                        checkStem = false;
+                        newSection.Add(
+                            new KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>(leafDeltas[i].Key,
+                                (null, clonedNode)));
+                        break;
+                    }
                 case < 0:
                     // The current stem is less than the leaf update delta, so add the current stem first.
                     newSection.Add(

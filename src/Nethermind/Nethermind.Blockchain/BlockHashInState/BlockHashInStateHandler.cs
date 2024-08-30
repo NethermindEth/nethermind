@@ -40,9 +40,8 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
 
 
-        var blockHashWitness = new VerkleExecWitness(NullLogManager.Instance);
-        blockHashWitness.AccessCompleteAccount(eip2935Account);
-        blockHashWitness.AccessForStorage(eip2935Account, blockIndex, true);
+        var blockHashWitness = new VerkleExecWitness(NullLogManager.Instance, stateProvider as VerkleWorldState);
+        blockHashWitness.AccessForBlockhashInsertionWitness(eip2935Account, blockIndex);
         blockTracer.ReportAccessWitness(blockHashWitness);
     }
 }

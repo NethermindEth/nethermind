@@ -22,7 +22,7 @@ using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
-public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDisposable
+public class VerkleProgressTracker : IRangeProgressTracker<VerkleSyncBatch>, IDisposable
 {
     private const string NO_REQUEST = "NO REQUEST";
     private readonly byte[] SYNC_PROGRESS_KEY = "VerkleSyncProgressKey"u8.ToArray();
@@ -144,7 +144,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
             }
 
             nextBatch = new VerkleSyncBatch()
-                { LeafToRefreshRequest = new LeafToRefreshRequest() { RootHash = rootHash, Paths = paths } };
+            { LeafToRefreshRequest = new LeafToRefreshRequest() { RootHash = rootHash, Paths = paths } };
             return false;
         }
 
