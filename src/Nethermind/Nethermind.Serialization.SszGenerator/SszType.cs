@@ -594,7 +594,10 @@ class SszType
     {
         return string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "");
     }
-    
+    public override string ToString()
+    {
+        return $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
+    }
 }
 
 
@@ -616,6 +619,11 @@ public enum Kind
 
 class SszProperty
 {
+    public override string ToString()
+    {
+        return $"prop({Kind},{Type},{Name},{(IsVariable?"v":"f")})";
+    }
+
     public static SszProperty From(SemanticModel semanticModel, List<SszType> types, IPropertySymbol prop)
     {
         ITypeSymbol? itemType = GetCollectionType(prop.Type, semanticModel.Compilation);

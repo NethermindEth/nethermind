@@ -78,12 +78,42 @@ namespace Nethermind.Serialization.SszGenerator.Test
 
         [SszList(10)]
         public ulong[] Test3 { get; set; }
-        //public ulong Eon { get; set; }
-        //public ulong Slot { get; set; }
-        //public ulong TxPointer { get; set; }
+        public FixedC FixedC { get; set; }
+        public VariableC VariableC { get; set; }
 
-        //[SszList(1024)]
-        //public List<IdentityPreimage> IdentityPreimages { get; set; }
+
+        [SszVector(10)]
+        public FixedC[] FixedCVec { get; set; }
+
+        [SszList(10)]
+        public FixedC[] FixedCList { get; set; }
+
+
+        [SszVector(10)]
+        public VariableC[] VariableCVec { get; set; }
+
+        [SszList(10)]
+        public VariableC[] VariableCList { get; set; }
+    }
+
+    [SszSerializable]
+    public struct FixedC
+    {
+        public ulong Fixed1 { get; set; }
+        public ulong Fixed2 { get; set; }
+
+
+    }
+
+    [SszSerializable]
+    public class VariableC
+    {
+        public ulong Fixed1 { get; set; }
+
+        [SszList(10)]
+        public ulong[]? Fixed2 { get; set; }
+
+
     }
 
     //[SszSerializable]

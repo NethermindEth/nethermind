@@ -63,33 +63,61 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<byte> bytes)
+    public void Feed(Span<byte> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
+        if(limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
-    public void Feed(Span<short> bytes)
+    public void Feed(Span<short> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<short, UInt256>(bytes)[0], 0);
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
-    public void Feed(Span<ushort> bytes)
+    public void Feed(Span<ushort> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<ushort, UInt256>(bytes)[0], 0);
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
-    public void Feed(Span<int> bytes)
+    public void Feed(Span<int> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<int, UInt256>(bytes)[0], 0);
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
-    public void Feed(Span<uint> bytes)
+    public void Feed(Span<uint> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<uint, UInt256>(bytes)[0], 0);
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
-    public void Feed(Span<long> bytes)
+    public void Feed(Span<long> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<long, UInt256>(bytes)[0], 0);
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
-    public void Feed(Span<ulong> bytes)
+    public void Feed(Span<ulong> bytes, int? limit = null)
     {
         FeedAtLevel(MemoryMarshal.Cast<ulong, UInt256>(bytes)[0], 0);
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
 
     public void Feed(bool value)
