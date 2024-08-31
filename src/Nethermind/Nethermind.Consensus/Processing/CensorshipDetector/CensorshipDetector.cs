@@ -58,66 +58,88 @@ public class CensorshipDetector : IDisposable
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
-        UInt256 baseFee = e.Block.BaseFeePerGas;
-
-        IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
-        foreach (Transaction tx in poolBestTransactions)
+        if (_poolAddressCensorshipBestTx.Count != 0)
         {
-            if (tx.To is not null && tx.GasBottleneck > baseFee && _poolAddressCensorshipBestTx.TryGetValue(tx.To!, out Transaction? bestTx))
+            UInt256 baseFee = e.Block.BaseFeePerGas;
+            IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
+            foreach (Transaction tx in poolBestTransactions)
             {
-                if (bestTx is null)
+                // checking tx.GasBottleneck > baseFee ensures only ready transactions are considered
+                if (tx.To is not null && tx.GasBottleneck > baseFee && _poolAddressCensorshipBestTx.TryGetValue(tx.To!, out Transaction? bestTx))
                 {
-                    _poolAddressCensorshipBestTx[tx.To!] = tx;
-                }
-                else if (_comparer.Compare(bestTx, tx) > 0)
-                {
-                    _poolAddressCensorshipBestTx[tx.To!] = tx;
+                    if (bestTx is null)
+                    {
+                        _poolAddressCensorshipBestTx[tx.To!] = tx;
+                    }
+                    else if (_comparer.Compare(bestTx, tx) > 0)
+                    {
+                        _poolAddressCensorshipBestTx[tx.To!] = tx;
+                    }
                 }
             }
+            Task.Run(() => Cache(e.Block, true));
         }
-
-        Task.Run(() => Cache(e.Block));
+        else
+        {
+            Task.Run(() => Cache(e.Block, false));
+        }
     }
 
-    private void Cache(Block block)
+    private void Cache(Block block, bool detectingAddressCensorship)
     {
+        // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block
+        long blockCensorshipDetectionUniqueAddressCount = 0;
+        /* 
+         * Number of unique addresses specified by the user for censorship detection, to which includable txs are sent in the pool.
+         * Includable txs comprise of pool transactions better than the worst tx in block.
+         */
+        long poolCensorshipDetectionUniqueAddressCount = 0;
         Transaction bestTxInBlock = block.Transactions[0];
         Transaction worstTxInBlock = block.Transactions[0];
         HashSet<AddressAsKey> blockAddressCensorshipDetectorHelper = [];
-        // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block
-        long blockCensorshipDetectionUniqueAddressCount = 0;
 
+        /* 
+         * Iterates through the block's transactions to get the best tx in block, used in detecting default high-paying tx censorship.
+         * If detectingAddressCensorship is marked true, we get the worst tx in block to determine includable txs as well as
+           getting the blockCensorshipDetectionUniqueAddressCount to detect the optional address censorship.
+         */
         foreach (Transaction tx in block.Transactions)
         {
             if (!tx.SupportsBlobs)
             {
-                if (_poolAddressCensorshipBestTx.ContainsKey(tx.To!)
-                && !blockAddressCensorshipDetectorHelper.Contains(tx.To!))
-                {
-                    blockAddressCensorshipDetectorHelper.Add(tx.To!);
-                    blockCensorshipDetectionUniqueAddressCount++;
-                }
-
                 if (_comparer.Compare(bestTxInBlock, tx) > 0)
                 {
                     bestTxInBlock = tx;
                 }
-                else
+                if (detectingAddressCensorship)
                 {
-                    worstTxInBlock = tx;
+                    if (_comparer.Compare(worstTxInBlock, tx) < 0)
+                    {
+                        worstTxInBlock = tx;
+                    }
+                    if (_poolAddressCensorshipBestTx.ContainsKey(tx.To!) && !blockAddressCensorshipDetectorHelper.Contains(tx.To!))
+                    {
+                        blockAddressCensorshipDetectorHelper.Add(tx.To!);
+                        blockCensorshipDetectionUniqueAddressCount++;
+                    }
                 }
             }
         }
 
-        long poolCensorshipDetectionUniqueAddressCount = 0;
         foreach (Transaction? bestTx in _poolAddressCensorshipBestTx.Values)
         {
-            if (bestTx is not null && _comparer.Compare(bestTx, worstTxInBlock) <= 0)
+            if (bestTx is not null && _comparer.Compare(bestTx, worstTxInBlock) < 0)
             {
                 poolCensorshipDetectionUniqueAddressCount++;
             }
         }
 
+        /* 
+         * Checking to see if the block exhibits high-paying tx censorship or address censorship or both.
+         * High-paying tx censorship is flagged if the best tx in the pool is not included in the block.
+         * Address censorship is flagged if txs sent to less than half of the user-specified addresses 
+           for censorship detection with includable txs in the pool are included in the block.
+         */
         bool isCensored = _comparer.Compare(bestTxInBlock, _txPool.GetBestTx()) > 0
         || blockCensorshipDetectionUniqueAddressCount * 2 < poolCensorshipDetectionUniqueAddressCount;
 
@@ -131,6 +153,7 @@ public class CensorshipDetector : IDisposable
 
     public void CensorshipDetection(Block block, bool isCensored)
     {
+        // Censorship is detected if potential censorship is flagged for the last 4 blocks including the latest.
         if (isCensored && block.Number > 2)
         {
             BlockCensorshipInfo b1 = _potentiallyCensoredBlocks.Get(new BlockNumberHash(block.Number - 1, (ValueHash256)block.ParentHash!));
