@@ -47,41 +47,41 @@ namespace Nethermind.Core.Test
             KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
         }
 
-        [Test]
-        [Explicit("Used to create collisions")]
-        public void Print_collisions()
+        private string[] GetBucketCollisions()
         {
             var random = new Random(13);
             Span<byte> span = stackalloc byte[32];
+            string[] collisions = new string[4];
 
             random.NextBytes(span);
             var bucket = KeccakCache.GetBucket(span);
 
             Console.WriteLine(span.ToHexString());
 
+            collisions[0] = span.ToHexString();
             var found = 1;
 
+            ulong iterations = 0;
             while (found < 4)
             {
                 random.NextBytes(span);
                 if (KeccakCache.GetBucket(span) == bucket)
                 {
+                    collisions[found] = span.ToHexString();
                     Console.WriteLine(span.ToHexString());
                     found++;
                 }
+                iterations++;
             }
+
+            Console.WriteLine($"{iterations} iterations to find");
+            return collisions;
         }
 
         [Test]
         public void Collision()
         {
-            var colliding = new[]
-            {
-                "50f78269ea2ddd2d6ab4338fd5c7909c229561e565f6b04b9447b0bd73585687",
-                "de75b3e495a58811469fb21345c7c1f84db0a3e1a3bf628c5689b53520af94de",
-                "82be999650f45409208eacb42f357695bca746f58fb35c0a4a4d09d5a2ac066a",
-                "f71034d862639845003bdc2d0d30ed1f8bd24c77573026fe9b838f33e72dcc6d",
-            };
+            var colliding = GetBucketCollisions();
 
             var collisions = colliding.Length;
             var array = colliding.Select(c => Bytes.FromHexString(c)).ToArray();

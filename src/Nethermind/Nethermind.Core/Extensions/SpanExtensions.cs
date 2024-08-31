@@ -176,48 +176,49 @@ namespace Nethermind.Core.Extensions
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
         {
+            // Very fast hardware accelerated non-cryptographic hash function
             var length = input.Length;
             if (length == 0) return 0;
 
             ref var b = ref MemoryMarshal.GetReference(input);
-
-            // Start with instance random, length and first as seed
-            uint hash = (s_instanceRandom + (uint)length) ^ b;
-
-            // This is done below, without branches
-            // if ((length & 1) == 1)
-            // {
-            //     hash = b;
-            //     b = ref Unsafe.Add(ref b, 1);
-            //     length -= 1;
-            // }
-
-            uint bit = (uint)length & sizeof(byte);
-            b = ref Unsafe.Add(ref b, bit);
-            length -= (int)bit;
-
-            if ((length & sizeof(ushort)) != 0)
+            uint hash = s_instanceRandom + (uint)length;
+            if (length < sizeof(long))
             {
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ushort>(ref b));
-                b = ref Unsafe.Add(ref b, sizeof(ushort));
-                length -= sizeof(ushort);
+                goto Short;
             }
-            if ((length & sizeof(uint)) != 0)
+
+            // Start with instance random, length and first ulong as seed
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
+            if ((length & sizeof(ulong)) != 0)
             {
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref b));
-                b = ref Unsafe.Add(ref b, sizeof(uint));
-                length -= sizeof(uint);
+                if (length == sizeof(ulong))
+                {
+                    // Exactly ulong length return the hash
+                    return (int)hash;
+                }
+                // Already Crc'd first ulong so skip it
+                b = ref Unsafe.Add(ref b, sizeof(ulong));
+                length -= sizeof(ulong);
+            }
+            else
+            {
+                // Skip the bytes that don't align to ulong
+                uint bits = (uint)length & 7;
+                b = ref Unsafe.Add(ref b, bits);
+                length -= (int)bits;
             }
 
             while (length >= sizeof(ulong) * 3)
             {
-                // Crc32C is 3 cycle latency, 1 cycle throughput. However is complex to fully
-                // break the dependency chain when most of our hashes are on <= 32 byte data.
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
+                // Crc32C is 3 cycle latency, 1 cycle throughput
+                // So we us same initial 3 times to not create a dependency chain
+                uint hash0 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
+                uint hash1 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
+                uint hash2 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
                 b = ref Unsafe.Add(ref b, sizeof(ulong) * 3);
                 length -= sizeof(ulong) * 3;
+                // Combine the 3 hashes; performing the shift on first crc to calculate
+                hash = BitOperations.Crc32C(hash1, ((ulong)hash0 << (sizeof(uint) * 8)) | hash2);
             }
 
             while (length > 0)
@@ -228,6 +229,24 @@ namespace Nethermind.Core.Extensions
             }
 
             return (int)hash;
+        Short:
+            ulong data = 0;
+            if ((length & sizeof(byte)) != 0)
+            {
+                data = b;
+                b = ref Unsafe.Add(ref b, sizeof(byte));
+            }
+            if ((length & sizeof(ushort)) != 0)
+            {
+                data = (data << (sizeof(ushort) * 8)) | Unsafe.ReadUnaligned<ushort>(ref b);
+                b = ref Unsafe.Add(ref b, sizeof(ushort));
+            }
+            if ((length & sizeof(uint)) != 0)
+            {
+                data = (data << (sizeof(uint) * 8)) | Unsafe.ReadUnaligned<uint>(ref b);
+            }
+
+            return (int)BitOperations.Crc32C(hash, data);
         }
     }
 }
