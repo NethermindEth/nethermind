@@ -64,7 +64,7 @@ public class CensorshipDetector : IDisposable
             IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
             foreach (Transaction tx in poolBestTransactions)
             {
-                // checking tx.GasBottleneck > baseFee ensures only ready transactions are considered
+                // checking tx.GasBottleneck > baseFee ensures only ready transactions are considered.
                 if (tx.To is not null && tx.GasBottleneck > baseFee && _poolAddressCensorshipBestTx.TryGetValue(tx.To!, out Transaction? bestTx))
                 {
                     if (bestTx is null)
@@ -87,7 +87,7 @@ public class CensorshipDetector : IDisposable
 
     private void Cache(Block block, bool detectingAddressCensorship)
     {
-        // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block
+        // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block.
         long blockCensorshipDetectionUniqueAddressCount = 0;
         /* 
          * Number of unique addresses specified by the user for censorship detection, to which includable txs are sent in the pool.
@@ -101,7 +101,7 @@ public class CensorshipDetector : IDisposable
         /* 
          * Iterates through the block's transactions to get the best tx in block, used in detecting default high-paying tx censorship.
          * If detectingAddressCensorship is marked true, we get the worst tx in block to determine includable txs as well as
-           getting the blockCensorshipDetectionUniqueAddressCount to detect the optional address censorship.
+           getting the blockCensorshipDetectionUniqueAddressCount, used in detecting the optional address censorship.
          */
         foreach (Transaction tx in block.Transactions)
         {
