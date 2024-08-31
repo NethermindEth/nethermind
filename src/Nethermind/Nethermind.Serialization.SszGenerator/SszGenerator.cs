@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
+using System.Text.RegularExpressions;
 
 [Generator]
 public partial class SszGenerator : IIncrementalGenerator
@@ -50,16 +51,9 @@ public partial class SszGenerator : IIncrementalGenerator
         return null;
     }
 
-    struct Dyn
-    {
-        public string OffsetDeclaration { get; init; }
-        public string DynamicEncode { get; init; }
-        public string DynamicLength { get; init; }
-        public string DynamicDecode { get; init; }
-    }
-
     const string Whitespace = "/**/";
-    public static string FixWhitespace(string data) => string.Join("\n", data.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Contains(Whitespace) ? "" : x));
+    static Regex ClosingWhiteSpaceRegex = new ("/(\\s+\\n)+    }/");
+    public static string FixWhitespace(string data) => ClosingWhiteSpaceRegex.Replace(string.Join("\n", data.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Contains(Whitespace) ? "" : x)), "    }");
     public static string Shift(int tabCount, string data) => string.Empty.PadLeft(4 * tabCount) + data;
     public static string Shift(int tabCount, IEnumerable<string> data, string? end = null) => string.Join("\n", data.Select(d => Shift(tabCount, d))) + (end is null || !data.Any() ? "" : end);
 
@@ -104,6 +98,7 @@ public partial class SszEncoding
         {{
             return 0;
         }}")}
+{Whitespace}
         return {decl.StaticLength}{(variables.Any() ? "" : ";")}
 {Shift(4, variables.Select(m => $"+ {DynamicLength(decl, m)}"), ";")}
     }}
@@ -114,11 +109,13 @@ public partial class SszEncoding
         {{
             return 0;
         }}
+{Whitespace}
         {(decl.IsVariable ? @$"int length = container.Count * {SszType.PointerLength};
         foreach({decl.Name} item in container)
         {{
             length += GetLength(item);
         }}
+{Whitespace}
         return length;" : $"return container.Count * {(decl.StaticLength)};")}
     }}
 {Whitespace}
@@ -132,8 +129,9 @@ public partial class SszEncoding
     public static void Encode(Span<byte> data, {decl.Name} container)
     {{
         {(decl.IsStruct ? "" : "if(container is null) return;")}
-
+{Whitespace}
 {Shift(2, variables.Select((m, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, m)}")};"))}
+{Whitespace}
 {Shift(2, decl.Members.Select(m =>
             {
                 if (m.IsVariable) encodeOffsetIndex++;
@@ -143,15 +141,17 @@ public partial class SszEncoding
                 encodeStaticOffset += m.StaticLength;
                 return result;
             }))}
-
+{Whitespace}
 {Shift(2, variables.Select((m, i) => (m.Type.IsStruct ? "" : $"if (container.{m.Name} is not null) ") + $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), container.{m.Name});"))}
     }}
 {Whitespace}
     public static void Encode(Span<byte> data, ICollection<{decl.Name}>? container)
     {{
         if(container is null) return;
+{Whitespace}
         {(decl.IsVariable ? @$"int offset = container.Count * {(SszType.PointerLength)};
         int itemOffset = 0;
+{Whitespace}
         foreach({decl.Name} item in container)
         {{
             SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
@@ -171,6 +171,7 @@ public partial class SszEncoding
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
     {{
         container = new();
+{Whitespace}
 {Shift(2, decl.Members.Select(m =>
 {
     if (m.IsVariable) offsetIndex++;
@@ -180,6 +181,7 @@ public partial class SszEncoding
     offset += m.StaticLength;
     return result;
 }))}
+{Whitespace}
 {Shift(2, variables.Select((m, i) => string.Format($"if ({(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1} > 0) {{{{ {{0}} }}}}",
             $"{(m.HandledByStd ? "SszLib.Decode" : "Decode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), out {(m.IsCollection ? (m.HandledByStd ? $"ReadOnlySpan<{m.Type.Name}>" : $"{m.Type.Name}[]") : m.Type.Name)} {LowerStart(m.Name)}); container.{m.Name} = {(m.IsCollection ? $"[ ..{LowerStart(m.Name)}]" : LowerStart(m.Name))};")))}
     }}
@@ -191,12 +193,11 @@ public partial class SszEncoding
             container = [];
             return;
         }}
-
+{Whitespace}
         {(decl.IsVariable ? $@"int firstOffset = SszLib.DecodeInt(data.Slice(0, 4));
         int length = firstOffset / {SszType.PointerLength}" : $"int length = data.Length / {decl.StaticLength}")};
-
         container = new {decl.Name}[length];
-
+{Whitespace}
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
         for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
@@ -205,6 +206,7 @@ public partial class SszEncoding
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}
+{Whitespace}
         Decode(data.Slice(offset, length), out container[index]);" : @$"int offset = 0;
         for(int index = 0; index < length; index++)
         {{
@@ -236,6 +238,7 @@ public partial class SszEncoding
         {{
             Merkleize(container[i], out subRoots[i]);
         }}
+{Whitespace}
         Merkle.Ize(out root, subRoots);
     }}
 {Whitespace}
@@ -271,11 +274,13 @@ public partial class SszEncoding
         {{
             return 0;
         }}
+{Whitespace}
         int length = container.Count * {SszType.PointerLength};
         foreach({decl.Name} item in container)
         {{
             length += GetLength(item);
         }}
+{Whitespace}
         return length;
     }}
 {Whitespace}
@@ -293,6 +298,7 @@ public partial class SszEncoding
         {{
             return;
         }}
+{Whitespace}
         switch(container.Selector) {{
 {Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(1), container.{m.Name});"
                                                 : m.HandledByStd ? $"SszLib.Encode(data.Slice(1), container.{m.Name});"
@@ -322,12 +328,11 @@ public partial class SszEncoding
             container = [];
             return;
         }}
-
+{Whitespace}
         int firstOffset = SszLib.DecodeInt(data.Slice(0, 4));
         int length = firstOffset / {SszType.PointerLength};
-
         container = new {decl.Name}[length];
-
+{Whitespace}
         int index = 0;
         int offset = firstOffset;
         for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
@@ -336,6 +341,7 @@ public partial class SszEncoding
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}
+{Whitespace}
         Decode(data.Slice(offset, length), out container[index]);
     }}
 {Whitespace}
@@ -359,6 +365,7 @@ public partial class SszEncoding
                                                           : m.Kind == Kind.Vector ? $"MerkleizeVector(container.{m.Name}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);"
                                                                                   : $"Merkleize(container.{m.Name}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);")}; break;"))}
         }};
+{Whitespace}
         merkleizer.CalculateRoot(out root);
         Merkle.MixIn(ref root, (byte)container.Selector);
     }}
@@ -371,18 +378,26 @@ public partial class SszEncoding
         {{
             Merkleize(container[i], out subRoots[i]);
         }}
+{Whitespace}
         Merkle.Ize(out root, subRoots);
     }}
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
     {{
-        if(container is null){{ root = 0; return; }}
+        if(container is null)
+        {{
+            root = 0;
+            return;
+        }}
+{Whitespace}
         MerkleizeVector(container, out root);
         Merkle.MixIn(ref root, container.Count);
     }}
 }}
 ");
+#if DEBUG
             Console.WriteLine(WithLineNumbers(result, false));
+#endif
             return result;
         }
         catch
@@ -391,6 +406,7 @@ public partial class SszEncoding
         }
     }
 
+#if DEBUG
     static string WithLineNumbers(string input, bool bypass = false)
     {
         if (bypass) return input;
@@ -407,4 +423,5 @@ public partial class SszEncoding
 
         return sb.ToString();
     }
+#endif
 }
