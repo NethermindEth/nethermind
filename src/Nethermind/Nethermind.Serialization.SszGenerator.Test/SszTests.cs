@@ -68,6 +68,12 @@ namespace Nethermind.Serialization.SszGenerator.Test
 
     }
 
+    //[SszSerializable]
+    //public struct NoProps
+    //{
+   
+    //}
+
     [SszSerializable]
     public struct UnionTest3
     {

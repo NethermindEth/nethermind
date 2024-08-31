@@ -363,7 +363,7 @@ public partial class SszEncoding
 {Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.HandledByStd ? $"merkleizer.Feed(container.{m.Name}{(m.Kind == Kind.List || m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
                                     : m.Kind == Kind.List ? $"MerkleizeList(container.{m.Name}, {m.Limit}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);"
                                                           : m.Kind == Kind.Vector ? $"MerkleizeVector(container.{m.Name}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);"
-                                                                                  : $"Merkleize(container.{m.Name}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);")}; break;"))}
+                                                                                  : $"Merkleize(container.{m.Name}, out UInt256 {LowerStart(m.Name)}Root); merkleizer.Feed({LowerStart(m.Name)}Root);")} break;"))}
         }};
 {Whitespace}
         merkleizer.CalculateRoot(out root);
