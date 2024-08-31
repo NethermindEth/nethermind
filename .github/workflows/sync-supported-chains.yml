@@ -232,6 +232,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
           
       - name: Trigger notification action on test repo
         if: github.event.workflow_run.head_branch == 'master' || startsWith(github.event.workflow_run.head_branch, 'release/')
