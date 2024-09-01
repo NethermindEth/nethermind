@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Ssz;
@@ -44,7 +45,6 @@ public static partial class Ssz
         bytes[byteLength - 1] |= (byte)(1 << (value.Length % 8));
         Encode(span, bytes);
     }
-
     public static BitArray DecodeBitvector(ReadOnlySpan<byte> span, int vectorLength)
     {
         BitArray value = new BitArray(span.ToArray());

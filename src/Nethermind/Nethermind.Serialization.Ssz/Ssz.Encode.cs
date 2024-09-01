@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections;
-using System.IO;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz;
 
@@ -16,15 +11,28 @@ namespace Nethermind.Serialization.Ssz;
 /// </summary>
 public static partial class Ssz
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, BitArray? vector)
     {
-        // TODO
+        if (vector is null)
+        {
+            return;
+        }
+        int byteLength = (vector.Length + 7) / 8;
+        byte[] bytes = new byte[byteLength];
+        vector.CopyTo(bytes, 0);
+        Encode(span, bytes);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, BitArray? list, int limit)
     {
-        // TODO
+        if (list is null)
+        {
+            return;
+        }
+        int byteLength = (list.Length + 8) / 8;
+        byte[] bytes = new byte[byteLength];
+        list.CopyTo(bytes, 0);
+        bytes[byteLength - 1] |= (byte)(1 << (list.Length % 8));
+        Encode(span, bytes);
     }
 }

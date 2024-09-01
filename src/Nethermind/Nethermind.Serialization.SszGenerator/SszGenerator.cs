@@ -130,7 +130,7 @@ public partial class SszEncoding
     {{
         {(decl.IsStruct ? "" : "if(container is null) return;")}
 {Whitespace}
-{Shift(2, variables.Select((m, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, m)}")};"))}
+{Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, variables[i - 1])}")};"))}
 {Whitespace}
 {Shift(2, decl.Members.Select(m =>
             {
@@ -207,7 +207,7 @@ public partial class SszEncoding
             offset = nextOffset;
         }}
 {Whitespace}
-        Decode(data.Slice(offset, length), out container[index]);" : @$"int offset = 0;
+        Decode(data.Slice(offset), out container[index]);" : @$"int offset = 0;
         for(int index = 0; index < length; index++)
         {{
             Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);
@@ -342,7 +342,7 @@ public partial class SszEncoding
             offset = nextOffset;
         }}
 {Whitespace}
-        Decode(data.Slice(offset, length), out container[index]);
+        Decode(data.Slice(offset), out container[index]);
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
@@ -400,9 +400,9 @@ public partial class SszEncoding
 #endif
             return result;
         }
-        catch
+        catch(Exception e)
         {
-            throw;
+            return $"/* Failed due to error: {e.Message}*/";
         }
     }
 
