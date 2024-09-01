@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
 
@@ -37,10 +34,14 @@ public class EncodingTest
                 };
 
                 var encoded = SszEncoding.Encode(test);
+                SszEncoding.Merkleize(test, out UInt256 root);
                 SszEncoding.Decode(encoded, out ComplexStruct decodedTest);
 
                 Assert.That(decodedTest.VariableC.Fixed1, Is.EqualTo(test.VariableC.Fixed1));
                 Assert.That(decodedTest.VariableC.Fixed2, Is.EqualTo(test.VariableC.Fixed2));
+                SszEncoding.Merkleize(test, out UInt256 decodedRoot);
+                Assert.That(root, Is.EqualTo(decodedRoot));
+
             }
             catch
             {

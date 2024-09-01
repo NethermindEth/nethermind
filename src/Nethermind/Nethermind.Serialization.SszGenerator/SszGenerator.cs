@@ -52,7 +52,7 @@ public partial class SszGenerator : IIncrementalGenerator
     }
 
     const string Whitespace = "/**/";
-    static Regex ClosingWhiteSpaceRegex = new ("/(\\s+\\n)+    }/");
+    static Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
     public static string FixWhitespace(string data) => ClosingWhiteSpaceRegex.Replace(string.Join("\n", data.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Contains(Whitespace) ? "" : x)), "    }");
     public static string Shift(int tabCount, string data) => string.Empty.PadLeft(4 * tabCount) + data;
     public static string Shift(int tabCount, IEnumerable<string> data, string? end = null) => string.Join("\n", data.Select(d => Shift(tabCount, d))) + (end is null || !data.Any() ? "" : end);
@@ -244,6 +244,13 @@ public partial class SszEncoding
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}> container, ulong limit, out UInt256 root)
     {{
+        if(container is null || container.Count is 0)
+        {{
+            root = 0;
+            Merkle.MixIn(ref root, (int)limit);
+            return;
+        }}
+{Whitespace}
         MerkleizeVector(container, out root);
         Merkle.MixIn(ref root, container.Count);
     }}
@@ -356,7 +363,7 @@ public partial class SszEncoding
         }};
     }}
 {Whitespace}
-    public static void Merkleize({decl.Name} container, out UInt256 root)   
+    public static void Merkleize({decl.Name} container, out UInt256 root)
     {{
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
         switch(container.Selector) {{
@@ -384,14 +391,15 @@ public partial class SszEncoding
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
     {{
-        if(container is null)
+        if(container is null || container.Count is 0)
         {{
             root = 0;
+            Merkle.MixIn(ref root, (int)limit);
             return;
         }}
 {Whitespace}
         MerkleizeVector(container, out root);
-        Merkle.MixIn(ref root, container.Count);
+        Merkle.MixIn(ref root, (int)limit);
     }}
 }}
 ");
@@ -400,7 +408,7 @@ public partial class SszEncoding
 #endif
             return result;
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             return $"/* Failed due to error: {e.Message}*/";
         }
