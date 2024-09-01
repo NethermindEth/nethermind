@@ -36,8 +36,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie;
-
 using NSubstitute;
 using NUnit.Framework;
 
@@ -1091,7 +1089,8 @@ public partial class EngineModuleTests
 
     protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
-        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null)
+        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
+        ulong slotLength = 12, TimeSpan? payloadImprovementDelay = null)
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
@@ -1104,8 +1103,8 @@ public partial class EngineModuleTests
         for (int i = 0; i < count; i++)
         {
             ExecutionPayload? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,
-                parentBlock.Timestamp + 12,
-                random ?? TestItem.KeccakA, Address.Zero);
+                parentBlock.Timestamp + slotLength,
+                random ?? TestItem.KeccakA, Address.Zero, payloadImprovementDelay);
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
             if (setHead)
@@ -1237,13 +1236,18 @@ public partial class EngineModuleTests
 
     private async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
         IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
-        ulong timestamp, Hash256 random, Address feeRecipient)
+        ulong timestamp, Hash256 random, Address feeRecipient, TimeSpan? payloadImprovementDelay = null)
     {
         PayloadAttributes payloadAttributes =
             new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
 
         // we're using payloadService directly, because we can't use fcU for branch
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
+
+        if (payloadImprovementDelay is not null)
+        {
+            await Task.Delay((int)payloadImprovementDelay.Value.TotalMilliseconds);
+        }
 
         ResultWrapper<ExecutionPayload?> getPayloadResult =
             await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
@@ -1569,7 +1573,8 @@ public partial class EngineModuleTests
 
             nameof(IEngineRpcModule.engine_getPayloadV3),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
-            nameof(IEngineRpcModule.engine_newPayloadV3)
+            nameof(IEngineRpcModule.engine_newPayloadV3),
+            nameof(IEngineRpcModule.engine_getBlobsV1)
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }

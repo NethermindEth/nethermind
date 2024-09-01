@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -34,8 +33,6 @@ namespace Nethermind.Core.Specs
         /// Gets the first time the fork is activated by timestamp
         /// </summary>
         ulong TimestampFork { get; }
-
-        virtual TimeSpan? SlotLength { get => null; }
 
         UInt256? TerminalTotalDifficulty { get; }
 

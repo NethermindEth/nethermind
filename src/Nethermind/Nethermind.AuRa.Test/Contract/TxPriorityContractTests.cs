@@ -296,7 +296,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             protected override async Task AddBlocksOnStart()
             {
-                EthereumEcdsa ecdsa = new(ChainSpec.ChainId, LimboLogs.Instance);
+                EthereumEcdsa ecdsa = new(ChainSpec.ChainId);
 
                 await AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA, 0,

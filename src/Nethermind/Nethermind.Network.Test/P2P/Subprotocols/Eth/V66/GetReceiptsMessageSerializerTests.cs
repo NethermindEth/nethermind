@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Hash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
 
             Hash256[] hashes = { a, b };
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage(hashes.ToPooledList());
+            using var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage(hashes.ToPooledList());
 
             GetReceiptsMessage message = new(1111, ethMessage);
 

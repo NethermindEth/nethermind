@@ -1,0 +1,248 @@
+name: Sync Supported Chains
+
+on:
+  workflow_run:
+    workflows: ["Publish Docker image"]
+    branches: [master, release/*]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      nethermind_image:
+        description: "Docker image to be used by action"
+        default: ""
+        required: false
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: nethermind
+      - name: Set Matrix
+        id: set-matrix
+        run: echo "matrix=$(jq -c . nethermind/scripts/workflow_config/sync_testnets_matrix.json)" >> $GITHUB_OUTPUT
+
+  create_a_runner:
+    needs: [setup-matrix]
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    runs-on: ubuntu-latest
+    outputs:
+      runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
+      machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+        
+      - name: Create a Runner
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "create"
+          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          machine_type: "${{ matrix.config.agent }}"
+          image: "linode/ubuntu24.04"
+          tags: "core, self-hosted, dynamic"
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+  
+  sync-chain:
+    needs: [setup-matrix, create_a_runner]
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        
+    name: "Run sync of ${{ matrix.config.network }} chain"
+    runs-on: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+    timeout-minutes: ${{ matrix.config.timeout }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Installing requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make build-essential jq screen lshw dmidecode fio
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.0'
+          check-latest: true
+          cache: true
+
+      - name: Install Sedge environment
+        run: |
+          echo "Downloading sedge sources..."
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          echo "Sources downloaded."
+          cd sedge
+          echo "Building sedge..."
+          make compile
+
+      - name: Run Sedge
+        working-directory: sedge
+        run: |
+          docker_image=""
+          
+          if [ -z "${{ inputs.nethermind_image }}" ]; then
+            REF_NAME="${GITHUB_REF##*/}"
+            if [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
+              CLEAN_REF=$(echo "${REF_NAME}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+              docker_image="nethermindeth/nethermind:${CLEAN_REF}"
+            else
+              docker_image="nethermindeth/nethermind:master"
+            fi
+          else
+            docker_image="${{ inputs.nethermind_image }}"
+          fi
+          
+          echo 'Generating sedge docker...'
+          ./build/sedge deps install
+          ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
+          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.config.network }} \
+          -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} -e nethermind:$docker_image \
+          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+          --el-extra-flag Sync.SnapSync=true \
+          --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+          echo 'Running sedge...'
+          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
+
+      - name: Wait for ${{ matrix.config.network }} to sync
+        id: wait
+        timeout-minutes: 180
+        run: |
+          declare -A bad_logs
+          bad_logs["Corrupt"]=1
+          bad_logs["Exception"]=1
+      
+          declare -A good_logs
+          good_logs["Synced Chain Head"]=0
+          good_logs["Processed"]=0
+      
+          declare -A required_count
+          required_count["Synced Chain Head"]=20
+          required_count["Processed"]=20      
+            
+          counter=0
+          found_bad_log=false
+      
+          docker logs -f sedge-execution-client | while read -r line; do
+            echo "$line"
+          
+            if [[ "$line" == *"All done"* ]]; then
+              echo "Unexpected termination detected: $line"
+              exit 1
+            fi
+      
+            if [ "$found_bad_log" = true ]; then
+              counter=$((counter + 1))
+              if [ $counter -ge 100 ]; then
+                echo "Exiting after capturing extra logs due to error."
+                exit 1
+              else
+                continue
+              fi
+            fi
+      
+            for bad_log in "${!bad_logs[@]}"; do
+              if [[ "$line" == *"$bad_log"* ]]; then
+                echo "Error: $bad_log found in Docker logs."
+                found_bad_log=true
+                break
+              fi
+            done
+      
+            for good_log in "${!good_logs[@]}"; do
+              if [[ "$line" == *"$good_log"* ]]; then
+                good_logs["$good_log"]=$((good_logs["$good_log"]+1))
+              fi
+            done
+      
+            # Check if all good logs have reached the required count
+            all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+      
+            if $all_reached_required_count; then
+              echo "All required logs found."
+              exit 0
+            fi
+          done
+          
+      - name: Get Consensus Logs
+        if: always()
+        run: |
+          docker logs sedge-consensus-client      
+
+  destroy_runner:
+    needs: [setup-matrix, create_a_runner, sync-chain]
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    runs-on: ubuntu-latest
+    steps:    
+      - name: Destroy a Runner
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy"
+          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          search_phrase: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+          
+  trigger_tests:
+    needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+          
+      - name: Trigger notification action on test repo
+        if: github.event.workflow_run.head_branch == 'master' || startsWith(github.event.workflow_run.head_branch, 'release/')
+        continue-on-error: true
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: receive-push-notification.yml
+          repo: NethermindEth/post-merge-smoke-tests
+          ref: "main"
+          token: "${{ steps.gh-app.outputs.token }}"
+          inputs: '{
+            "nethermind_branch": "${{ github.ref}}"
+          }'

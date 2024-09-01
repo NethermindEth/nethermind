@@ -122,8 +122,8 @@ public partial class BlockProcessor : IBlockProcessor
                     ? null
                     : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                // Block is processed, we can cancel the prewarm task
                 cancellationTokenSource.Cancel();
-                preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
@@ -147,6 +147,8 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 preBlockStateRoot = processedBlock.StateRoot;
+                // Make sure the prewarm task is finished before we reset the state
+                preWarmTask?.GetAwaiter().GetResult();
                 _stateProvider.Reset(resizeCollections: true);
             }
 
@@ -233,7 +235,7 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
-            if (_logger.IsWarn) _logger.Warn($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} - {error}");
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
             throw new InvalidBlockException(suggestedBlock, error);
         }

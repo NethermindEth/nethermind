@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Consensus.Producers;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;

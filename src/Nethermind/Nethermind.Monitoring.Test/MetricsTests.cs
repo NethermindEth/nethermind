@@ -106,7 +106,6 @@ public class MetricsTests
         };
         List<Type> knownMetricsTypes = new()
         {
-            typeof(Mev.Metrics),
             typeof(TxPool.Metrics),
             typeof(Blockchain.Metrics),
             typeof(Consensus.AuRa.Metrics),
@@ -118,6 +117,9 @@ public class MetricsTests
             typeof(Synchronization.Metrics),
             typeof(Trie.Metrics),
             typeof(Trie.Pruning.Metrics),
+#pragma warning disable CA2252 // This API requires opting into preview features
+            typeof(Shutter.Metrics),
+#pragma warning restore CA2252 // This API requires opting into preview features
         };
         MetricsController metricsController = new(metricsConfig);
         MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);

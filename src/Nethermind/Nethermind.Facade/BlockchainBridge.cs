@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -94,43 +95,51 @@ namespace Nethermind.Facade
 
         public bool IsMining { get; }
 
-        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
+        private bool TryGetCanonicalTransaction(
+            Hash256 txHash,
+            [NotNullWhen(true)] out Transaction? transaction,
+            [NotNullWhen(true)] out TxReceipt? receipt,
+            [NotNullWhen(true)] out Block? block,
+            [NotNullWhen(true)] out TxReceipt[]? receipts)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is not null)
             {
-                Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (block is not null)
                 {
-                    TxReceipt[] txReceipts = _receiptFinder.Get(block);
-                    TxReceipt txReceipt = txReceipts.ForTransaction(txHash);
-                    int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
-                    Transaction tx = block.Transactions[txReceipt.Index];
-                    bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
-                    return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
+                    receipts = _receiptFinder.Get(block);
+                    receipt = receipts.ForTransaction(txHash);
+                    transaction = block.Transactions[receipt.Index];
+                    return true;
                 }
+            }
+
+            transaction = null;
+            receipt = null;
+            receipts = null;
+            block = null;
+            return false;
+        }
+
+        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
+        {
+            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
+            {
+                int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
+                bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
+                return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
             }
 
             return (null, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true)
-        {
-            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash is not null)
-            {
-                Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-                return (txReceipt, block?.Transactions[txReceipt.Index], block?.BaseFeePerGas);
-            }
-
-            if (checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
-            {
-                return (null, transaction, null);
-            }
-
-            return (null, null, null);
-        }
+        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
+            TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _)
+                ? (txReceipt, tx, block.BaseFeePerGas)
+                : checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
+                    ? (null, transaction, null)
+                    : (null, null, null);
 
         public TxReceipt? GetReceipt(Hash256 txHash)
         {
@@ -160,7 +169,7 @@ namespace Nethermind.Facade
             SimulateOutput result = new();
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
                 {
                     result.Error = error;
                 }

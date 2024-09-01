@@ -17,8 +17,6 @@ namespace Nethermind.Facade.Simulate;
 
 internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
 {
-    public const int ExecutionError = -32015;
-
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
 
@@ -67,7 +65,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
             Status = StatusCode.Success,
             Logs = logs.Select((entry, i) => new Log
             {
-                Address = entry.LoggersAddress,
+                Address = entry.Address,
                 Topics = entry.Topics,
                 Data = entry.Data,
                 LogIndex = (ulong)i,
@@ -87,10 +85,9 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
             GasUsed = (ulong)gasSpent,
             Error = new Error
             {
-                Code = ExecutionError, // revert error code stub
                 Message = error
             },
-            ReturnData = null,
+            ReturnData = output,
             Status = StatusCode.Failure
         };
     }

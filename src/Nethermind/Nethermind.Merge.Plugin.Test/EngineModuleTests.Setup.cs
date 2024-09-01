@@ -128,6 +128,7 @@ public partial class EngineModuleTests
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
+            new GetBlobsHandler(chain.TxPool),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
@@ -236,7 +237,8 @@ public partial class EngineModuleTests
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

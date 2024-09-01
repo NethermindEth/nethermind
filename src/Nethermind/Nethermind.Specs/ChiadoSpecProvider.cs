@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -38,8 +37,6 @@ public class ChiadoSpecProvider : ISpecProvider
 
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
-    public ulong? TimestampBeaconGenesis => BeaconChainGenesisTimestamp;
-    public TimeSpan? SlotLength => TimeSpan.FromSeconds(5);
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");
     public IReleaseSpec GenesisSpec => London.Instance;
     public long? DaoBlockNumber => null;

@@ -1,0 +1,55 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Nethermind.Shutter</RootNamespace>
+    <Nullable>enable</Nullable>
+     <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Shutter.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Contracts\ValidatorRegistryContract.json" />
+    <None Remove="Contracts\KeyBroadcastContract.json" />
+    <None Remove="Contracts\KeyperSetManagerContract.json" />
+    <None Remove="Contracts\SequencerContract.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Contracts\ValidatorRegistryContract.json" />
+    <EmbeddedResource Include="Contracts\KeyBroadcastContract.json" />
+    <EmbeddedResource Include="Contracts\KeyperSetManagerContract.json" />
+    <EmbeddedResource Include="Contracts\KeyperSetContract.json" />
+    <EmbeddedResource Include="Contracts\SequencerContract.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+		<AdditionalFiles Include="Dto\gossip.proto" CopyToOutputDirectory="Never" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Libp2p" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="System.Linq.Dynamic.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
+    <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+    <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj" />
+  </ItemGroup>
+
+</Project>

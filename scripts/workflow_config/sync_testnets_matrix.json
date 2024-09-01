@@ -1,0 +1,42 @@
+[
+  {
+    "network": "holesky",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://holesky.beaconstate.ethstaker.cc/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "chiado",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "http://139.144.26.89:4000/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "sepolia",
+    "cl": "prysm",
+    "cl_image": "prysmaticlabs/prysm-beacon-chain:stable",
+    "checkpoint-sync-url": "https://beaconstate-sepolia.chainsafe.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "gnosis",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "mainnet",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://mainnet.checkpoint.sigp.io",
+    "timeout": 180,
+    "agent": "g6-standard-16"
+  }
+]
