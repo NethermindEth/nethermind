@@ -123,9 +123,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         if (Eip7702Constants.IsDelegatedCode(cachedCodeInfo.MachineCode.Span))
         {
-            Address delegatedAddress = ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span);
-            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
-            delegationAddress = delegatedAddress;
+            Address parsedDelegated = ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span);
+            cachedCodeInfo = InternalGetCachedCode(worldState, parsedDelegated);
+            delegationAddress = parsedDelegated;
         }
 
         return cachedCodeInfo;
