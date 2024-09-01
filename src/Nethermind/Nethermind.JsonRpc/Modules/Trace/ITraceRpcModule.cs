@@ -20,8 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null);
 
         [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls,
-            BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(Description = "Traces a call to eth_sendRawTransaction without making the call, returning the traces",
             IsImplemented = true,

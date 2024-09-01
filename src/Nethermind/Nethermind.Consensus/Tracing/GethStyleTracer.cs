@@ -72,8 +72,7 @@ public class GethStyleTracer : IGethStyleTracer
         return TraceBlock(GetBlockToTrace(block), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
     }
 
-    public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options,
-        Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
+    public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockParameter);
         if (block is null) throw new InvalidOperationException($"Cannot find block {blockParameter}");
@@ -84,7 +83,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            return Trace(block, tx.Hash, cancellationToken, options, stateOverride);
+            return Trace(block, tx.Hash, cancellationToken, options);
         }
         finally
         {
@@ -191,8 +190,7 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.FileNames;
     }
 
-    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
-        Dictionary<Address, AccountOverride>? stateOverride = null)
+    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -200,7 +198,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), stateOverride);
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), options.StateOverrides);
             return tracer.BuildResult().SingleOrDefault();
         }
         catch

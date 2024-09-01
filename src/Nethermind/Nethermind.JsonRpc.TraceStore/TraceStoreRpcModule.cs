@@ -57,9 +57,8 @@ public class TraceStoreRpcModule : ITraceRpcModule
         Dictionary<Address, AccountOverride>? stateOverride = null) =>
         _traceModule.trace_call(call, traceTypes, blockParameter, stateOverride);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null,
-        Dictionary<Address, AccountOverride>? stateOverride = null) =>
-        _traceModule.trace_callMany(calls, blockParameter, stateOverride);
+    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
+        _traceModule.trace_callMany(calls, blockParameter);
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
         _traceModule.trace_rawTransaction(data, traceTypes);
