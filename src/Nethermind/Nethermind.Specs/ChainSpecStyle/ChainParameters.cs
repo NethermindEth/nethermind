@@ -107,6 +107,7 @@ public class ChainParameters
     public long? TerminalPoWBlockNumber { get; set; }
 
     public UInt256? TerminalTotalDifficulty { get; set; }
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
     public ulong? Eip3855TransitionTimestamp { get; set; }
     public ulong? Eip3860TransitionTimestamp { get; set; }

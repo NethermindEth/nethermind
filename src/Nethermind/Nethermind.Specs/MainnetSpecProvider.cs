@@ -23,7 +23,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const long GrayGlacierBlockNumber = 15_050_000;
     public const long ParisBlockNumber = 15_537_393;
     public const ulong GenesisBlockTimestamp = 0x55ba4215;
-    public const ulong BeaconChainGenesisTimestamp = 0x5fc63057;
+    public const ulong BeaconChainGenesisTimestampConst = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
     public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
@@ -63,6 +63,7 @@ public class MainnetSpecProvider : ISpecProvider
     public ulong NetworkId { get; } = Core.BlockchainIds.Mainnet;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => DaoBlockNumberConst;
+    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
     public ulong TimestampFork { get; } = ShanghaiBlockTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("58750000000000000000000");

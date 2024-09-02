@@ -216,7 +216,7 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics();
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
 
     public static IEnumerable<TestCaseData> GnosisActivations
@@ -263,7 +263,7 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics();
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
 
     private static void VerifyGnosisCancunSpecifics()
@@ -375,7 +375,7 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
     }
 
     [Flags]

@@ -155,7 +155,6 @@ public class ShutterApi : IShutterApi
 
     protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
     {
-        ulong genesisTimestamp = specProvider.ChainId == BlockchainIds.Chiado ? ChiadoSpecProvider.BeaconChainGenesisTimestamp : GnosisSpecProvider.BeaconChainGenesisTimestamp;
-        return new(genesisTimestamp * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
+        return new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }
 }

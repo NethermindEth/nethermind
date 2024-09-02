@@ -129,6 +129,7 @@ internal class ChainSpecParamsJson
     public UInt256? TerminalTotalDifficulty { get; set; }
 
     public long? TerminalPoWBlockNumber { get; set; }
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
 
     public ulong? Eip1153TransitionTimestamp { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }

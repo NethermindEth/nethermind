@@ -37,6 +37,7 @@ public class HoleskySpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Holesky;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => null;
+    public ulong? BeaconChainGenesisTimestamp => GenesisTimestamp;
     public ForkActivation? MergeBlockNumber { get; private set; } = (0, GenesisTimestamp);
     public ulong TimestampFork => ShanghaiTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = 0;

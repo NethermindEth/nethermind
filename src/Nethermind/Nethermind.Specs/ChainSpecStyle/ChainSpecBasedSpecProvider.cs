@@ -276,6 +276,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public UInt256? TerminalTotalDifficulty { get; private set; }
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
+        public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;

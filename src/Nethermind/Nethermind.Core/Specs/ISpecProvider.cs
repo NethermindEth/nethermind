@@ -51,6 +51,8 @@ namespace Nethermind.Core.Specs
         /// </summary>
         long? DaoBlockNumber { get; }
 
+        ulong? BeaconChainGenesisTimestamp { get => null; }
+
         /// <summary>
         /// Unique identifier of the chain that allows to sign messages for the specified chain only.
         /// It is also used when verifying if sync peers are on the same chain.
