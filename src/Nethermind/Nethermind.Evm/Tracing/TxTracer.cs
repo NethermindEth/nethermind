@@ -43,6 +43,15 @@ public class TxTracer : ITxTracer
     public virtual bool IsTracingFees { get; protected set; }
     public virtual bool IsTracingStorage { get; protected set; }
     public virtual bool IsTracingLogs { get; protected set; }
+
+    public bool IsTracingEvmChunks => throw new NotImplementedException();
+
+    public bool IsTracingEvmSegments => throw new NotImplementedException();
+
+    public bool IsTracingPatternsAnalysis => throw new NotImplementedException();
+
+    public bool IsTracingPrecompilationAnalysis => throw new NotImplementedException();
+
     public virtual void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
     public virtual void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
@@ -76,5 +85,11 @@ public class TxTracer : ITxTracer
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
     public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
+    public virtual void ReportChunkExecution(long gas, int pc, string segmentID) { }
+    public virtual void ReportCompiledSegmentExecution(long gas, int pc, string segmentId) { }
+    public virtual void ReportChunkAnalysisStart() { }
+    public virtual void ReportChunkAnalysisEnd() { }
+    public virtual void ReportSegmentAnalysisStart() { }
+    public virtual void ReportSegmentAnalysisEnd() { }
     public virtual void Dispose() { }
 }

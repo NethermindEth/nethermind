@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 
@@ -14,6 +15,17 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 internal class IlInfo
 {
+    internal struct ILChunkExecutionResult
+    {
+        public bool ShouldAbort;
+        public bool ShouldJump;
+        public bool ShouldStop;
+        public bool ShouldRevert;
+        public bool ShouldReturn;
+        public object ReturnData;
+        public EvmExceptionType ExceptionType;
+    }
+
     public enum ILMode
     {
         NoIlvm = 0,
@@ -62,52 +74,43 @@ internal class IlInfo
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
     public FrozenDictionary<ushort, SegmentExecutionCtx> Segments { get; set; }
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldJump, out bool shouldStop, out bool shouldRevert, out bool shouldReturn, out object returnData)
+    public bool TryExecute<TTracingInstructions>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
-        shouldReturn = false;
-        shouldRevert = false;
-        shouldStop = false;
-        shouldJump = false;
-        returnData = null;
+        result = null;
         if (programCounter > ushort.MaxValue)
             return false;
 
-        switch (Mode)
+        var executionResult = new ILChunkExecutionResult();
+        if (Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
-            case ILMode.PatternMatching:
-                {
-                    if (Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk) == false)
-                    {
-                        return false;
-                    }
-                    var blkCtx = vmState.Env.TxExecutionContext.BlockExecutionContext;
-                    chunk.Invoke(vmState, worldState, spec, ref programCounter, ref gasAvailable, ref stack);
-                    break;
-                }
-            case ILMode.SubsegmentsCompiling:
-                {
-                    if (Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx) == false)
-                    {
-                        return false;
-                    }
+            tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, ctx.Method.Method.Name);
+            var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
-                    var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
+            ctx.Method.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
 
-                    ctx.Method.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
+            gasAvailable = ilvmState.GasAvailable;
+            programCounter = ilvmState.ProgramCounter;
 
-                    gasAvailable = ilvmState.GasAvailable;
-                    programCounter = ilvmState.ProgramCounter;
-                    shouldStop = ilvmState.ShouldStop;
-                    shouldReturn = ilvmState.ShouldReturn;
-                    shouldRevert = ilvmState.ShouldRevert;
-
-                    returnData = ilvmState.ReturnBuffer;
-                    shouldJump = ilvmState.ShouldJump;
-
-                    break;
-                }
+            executionResult.ShouldReturn = ilvmState.ShouldReturn;
+            executionResult.ShouldRevert = ilvmState.ShouldRevert;
+            executionResult.ShouldStop = ilvmState.ShouldStop;
+            executionResult.ShouldAbort = ilvmState.EvmException != EvmExceptionType.None;
+            executionResult.ShouldJump = ilvmState.ShouldJump;
+            executionResult.ExceptionType = ilvmState.EvmException;
+            executionResult.ReturnData = ilvmState.ReturnBuffer;
+        } else if(Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+        {
+            tracer.ReportChunkExecution(gasAvailable, programCounter, chunk.GetType().Name);
+            var evmException = chunk.Invoke(vmState, worldState, spec, ref programCounter, ref gasAvailable, ref stack);
+            executionResult.ShouldAbort = evmException != EvmExceptionType.None;
+            executionResult.ExceptionType = evmException;
+        } else
+        {
+            return false;
         }
+
+        result = executionResult;
         return true;
     }
 }

@@ -61,6 +61,14 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
+    public bool IsTracingEvmChunks => InnerTracer.IsTracingEvmChunks;
+
+    public bool IsTracingEvmSegments => InnerTracer.IsTracingEvmSegments;
+
+    public bool IsTracingPatternsAnalysis => InnerTracer.IsTracingPatternsAnalysis;
+
+    public bool IsTracingPrecompilationAnalysis => InnerTracer.IsTracingPrecompilationAnalysis;
+
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
     public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
@@ -287,8 +295,24 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         => InnerTracer.ReportStorageRead(storageCell);
 
     public void Dispose()
-    {
-        _autoResetEvent.Dispose();
-    }
+        => _autoResetEvent.Dispose();
+
+    public void ReportChunkAnalysisStart()
+        => InnerTracer.ReportChunkAnalysisStart();
+
+    public void ReportChunkAnalysisEnd()
+        => InnerTracer.ReportChunkAnalysisEnd();
+
+    public void ReportSegmentAnalysisStart()
+        => InnerTracer.ReportSegmentAnalysisStart();
+
+    public void ReportSegmentAnalysisEnd()
+        => InnerTracer.ReportSegmentAnalysisEnd();
+
+    public void ReportChunkExecution(long gas, int pc, string segmentID)
+        => InnerTracer.ReportChunkExecution(gas, pc, segmentID);
+
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+        => InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
 }
 #endif

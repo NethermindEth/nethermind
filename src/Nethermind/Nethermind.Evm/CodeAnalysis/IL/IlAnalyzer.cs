@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using System;
 using System.Collections.Frozen;
@@ -48,9 +49,9 @@ internal static class IlAnalyzer
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode)
+    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode, ITxTracer tracer)
     {
-        return Task.Run(() => Analysis(codeInfo, mode));
+        return Task.Run(() => Analysis(codeInfo, mode, tracer));
     }
 
     public static (OpcodeInfo[], byte[][]) StripByteCode(ReadOnlySpan<byte> machineCode)
@@ -78,12 +79,13 @@ internal static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode)
+    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode, ITxTracer tracer)
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode((OpcodeInfo[], byte[][]) codeData)
+        static FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode((OpcodeInfo[], byte[][]) codeData, ITxTracer tracer)
         {
+            tracer.ReportChunkAnalysisStart();
             Dictionary<ushort, SegmentExecutionCtx> opcodeInfos = [];
 
             List<OpcodeInfo> segment = [];
@@ -106,11 +108,13 @@ internal static class IlAnalyzer
             {
                 opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
             }
+            tracer.ReportChunkAnalysisEnd();
             return opcodeInfos.ToFrozenDictionary();
         }
 
-        FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode)
+        static FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode, ITxTracer tracer)
         {
+            tracer.ReportChunkAnalysisStart();
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
             var patternFound = new Dictionary<ushort, InstructionChunk>();
             foreach (var (_, chunkHandler) in Patterns)
@@ -130,16 +134,17 @@ internal static class IlAnalyzer
                     }
                 }
             }
+            tracer.ReportChunkAnalysisEnd();
             return patternFound.ToFrozenDictionary();
         }
 
         switch (mode)
         {
             case IlInfo.ILMode.PatternMatching:
-                codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode));
+                codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode, tracer));
                 break;
             case IlInfo.ILMode.SubsegmentsCompiling:
-                codeInfo.IlInfo.WithSegments(SegmentCode(StripByteCode(machineCode.Span)));
+                codeInfo.IlInfo.WithSegments(SegmentCode(StripByteCode(machineCode.Span), tracer));
                 break;
         }
     }

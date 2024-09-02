@@ -53,7 +53,6 @@ internal class ILCompiler
 
     private static void EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code)
     {
-
         using Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
 
@@ -139,8 +138,8 @@ internal class ILCompiler
             }
 
             // check if opcode is activated in current spec
-            method.LoadConstant((byte)op.Operation);
             method.LoadArgument(4);
+            method.LoadConstant((byte)op.Operation);
             method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
             method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.InvalidCode]);
 
@@ -206,7 +205,6 @@ internal class ILCompiler
                     Label noJump = method.DefineLabel();
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetIsZero);
-
                     // if the jump condition is false, we do not jump
                     method.BranchIfTrue(noJump);
 
@@ -222,8 +220,6 @@ internal class ILCompiler
                     break;
                 case Instruction.PUSH0:
                     method.CleanWord(stack, head);
-                    method.Load(stack, head);
-                    method.Call(Word.SetToZero);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.PUSH1:
@@ -266,16 +262,7 @@ internal class ILCompiler
                     method.LoadArgument(5);
                     method.LoadConstant(op.Arguments.Value);
                     method.LoadElement<byte[]>();
-                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
-                    method.StoreLocal(localReadonOnlySpan);
-
-                    // we call UInt256 constructor taking a span of bytes and a bool
-                    method.LoadLocalAddress(localReadonOnlySpan);
-                    method.LoadConstant(BitConverter.IsLittleEndian);
-                    method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
-
-                    // we store the UInt256 in the stack
-                    method.Call(Word.SetUInt256);
+                    method.Call(Word.SetArray);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.ADD:
@@ -1653,6 +1640,10 @@ internal class ILCompiler
         method.StoreLocal(jmpDestination);
         method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow]);
 
+        method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], consumeJumpCondition);
+        method.LoadConstant(0);
+        method.StoreLocal(consumeJumpCondition);
+
         //check if jump crosses segment boundaies
         Label jumpIsLocal = method.DefineLabel();
         method.LoadLocal(jmpDestination);
@@ -1671,41 +1662,35 @@ internal class ILCompiler
         method.Branch(ret);
 
         method.MarkLabel(jumpIsLocal);
-        method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], consumeJumpCondition);
-        method.LoadConstant(0);
-        method.StoreLocal(consumeJumpCondition);
 
         // if (jumpDest > uint.MaxValue)
-
-
-
         method.LoadConstant(uint.MaxValue);
         method.LoadLocal(jmpDestination);
         // goto invalid address
         method.BranchIfGreater(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
         // else
 
-        const int bitMask = (1 << 4) - 1; // 128
-        Label[] jumps = new Label[bitMask];
-        for (int i = 0; i < bitMask; i++)
+        const int length = 1 << 8;
+        const int bitMask = length - 1; // 128
+        Label[] jumps = new Label[length];
+        for (int i = 0; i < length; i++)
         {
             jumps[i] = method.DefineLabel();
         }
 
         // we get first Word.Size bits of the jump destination since it is less than int.MaxValue
 
-
         method.LoadLocal(jmpDestination);
         method.LoadConstant(bitMask);
         method.And();
 
+
         // switch on the first 7 bits
         method.Switch(jumps);
 
-        for (int i = 0; i < bitMask; i++)
+        for (int i = 0; i < length; i++)
         {
             method.MarkLabel(jumps[i]);
-            method.Print(jmpDestination);
             // for each destination matching the bit mask emit check for the equality
             foreach (int dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
             {
@@ -1713,10 +1698,8 @@ internal class ILCompiler
                 method.LoadConstant(dest);
                 method.Duplicate();
                 method.StoreLocal(uint32A);
-                method.Print(uint32A);
                 method.BranchIfEqual(jumpDestinations[dest]);
             }
-            method.Print(jmpDestination);
             // each bucket ends with a jump to invalid access to do not fall through to another one
             method.Branch(evmExceptionLabels[EvmExceptionType.InvalidCode]);
         }
@@ -1857,6 +1840,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
     }
 
     private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1885,6 +1869,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
     }
 
     private static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1931,6 +1916,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
     }
 
     private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1963,7 +1949,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
     }
 
     private static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1999,7 +1985,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
     }
 
     private static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -2036,7 +2022,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
+        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
     }
 
 

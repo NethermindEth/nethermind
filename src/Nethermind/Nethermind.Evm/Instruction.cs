@@ -379,7 +379,7 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static bool IsEnabled(this Instruction instruction, IReleaseSpec? spec = null) => instruction switch
+        public static bool IsEnabled(this IReleaseSpec? spec, Instruction instruction) => instruction switch
         {
             Instruction.STOP => true,
             Instruction.ADD => true,

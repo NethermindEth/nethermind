@@ -54,6 +54,10 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
     public bool IsTracingLogs { get; }
+    public bool IsTracingEvmChunks { get; }
+    public bool IsTracingEvmSegments { get; }
+    public bool IsTracingPatternsAnalysis { get; }
+    public bool IsTracingPrecompilationAnalysis { get; }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -516,6 +520,78 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < _txTracers.Count; index++)
         {
             _txTracers[index].Dispose();
+        }
+    }
+
+    public void ReportChunkAnalysisStart()
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingFees)
+            {
+                innerTracer.ReportChunkAnalysisStart();
+            }
+        }
+    }
+
+    public void ReportChunkAnalysisEnd()
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingFees)
+            {
+                innerTracer.ReportChunkAnalysisEnd();
+            }
+        }
+    }
+
+    public void ReportSegmentAnalysisStart()
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingFees)
+            {
+                innerTracer.ReportSegmentAnalysisStart();
+            }
+        }
+    }
+
+    public void ReportSegmentAnalysisEnd()
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingFees)
+            {
+                innerTracer.ReportSegmentAnalysisEnd();
+            }
+        }
+    }
+
+    public void ReportChunkExecution(long gas, int pc, string segmentID)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingEvmChunks)
+            {
+                innerTracer.ReportChunkExecution(gas, pc, segmentID);
+            }
+        }
+    }
+
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingEvmSegments)
+            {
+                innerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
+            }
         }
     }
 }

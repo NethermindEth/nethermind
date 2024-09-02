@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Evm.CodeAnalysis.IL;
 using System.Runtime.CompilerServices;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -18,7 +19,7 @@ namespace Nethermind.Evm.CodeAnalysis
         // IL-EVM
         private int _callCount;
 
-        public async void NoticeExecution()
+        public async void NoticeExecution(ITxTracer tracer)
         {
             // IL-EVM info already created
             if (_callCount > Math.Max(IlAnalyzer.IlCompilerThreshold, IlAnalyzer.CompoundOpThreshold))
@@ -28,7 +29,7 @@ namespace Nethermind.Evm.CodeAnalysis
             IlInfo.ILMode mode = Interlocked.Increment(ref _callCount) == IlAnalyzer.CompoundOpThreshold
                 ? IlInfo.ILMode.PatternMatching
                 : _callCount == IlAnalyzer.IlCompilerThreshold ? IlInfo.ILMode.SubsegmentsCompiling : IlInfo.ILMode.NoIlvm;
-            await IlAnalyzer.StartAnalysis(this, mode);
+            await IlAnalyzer.StartAnalysis(this, mode, tracer);
         }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
