@@ -22,12 +22,18 @@ using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
 {
+    /// <summary>
+    /// The metrics controller handles gathering metrics every <see cref="IMetricsConfig.IntervalSeconds"/>.
+    /// Additionally, it allows forcing an update by calling <see cref="ForceUpdate"/> that makes the wait interrupted and reporting executed immediately.
+    /// To do not flood the endpoint, <see cref="IMetricsConfig.MinimalIntervalSeconds"/> is configured so that report happens with a gap that is at least that big.
+    /// </summary>
     public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
         private readonly int _minIntervalSeconds;
         private CancellationTokenSource _cts;
-        private readonly SemaphoreSlim _wait = new(0);
+        private TaskCompletionSource _wait = new();
+        private readonly object _waitLock = new();
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
         private readonly Dictionary<Type, DictionaryMetricInfo[]> _dictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
@@ -194,7 +200,6 @@ namespace Nethermind.Monitoring.Metrics
         {
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
             _minIntervalSeconds = metricsConfig.MinimalIntervalSeconds == 0 ? 2 : metricsConfig.MinimalIntervalSeconds;
-
             _useCounters = metricsConfig.CountersEnabled;
         }
 
@@ -213,13 +218,19 @@ namespace Nethermind.Monitoring.Metrics
                 {
                     bool forced = false;
 
+                    Task wait = GetForceUpdateWait();
+
                     try
                     {
-                        forced = await _wait.WaitAsync(waitTime, ct);
+
+                        Task finished = await Task.WhenAny(wait, Task.Delay(waitTime, ct));
+                        forced = finished == wait;
                     }
                     catch (OperationCanceledException)
                     {
                     }
+
+                    ResetForceUpdate();
 
                     UpdateMetrics();
 
@@ -244,7 +255,32 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void ForceUpdate() => _wait.Release();
+        public void ForceUpdate()
+        {
+            lock (_waitLock)
+            {
+                _wait.TrySetResult();
+            }
+        }
+
+        private Task GetForceUpdateWait()
+        {
+            lock (_waitLock)
+            {
+                return _wait.Task;
+            }
+        }
+
+        private void ResetForceUpdate()
+        {
+            lock (_waitLock)
+            {
+                if (_wait.Task.IsCompleted)
+                {
+                    _wait = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+            }
+        }
 
         public void StopUpdating() => _cts.Cancel();
 
