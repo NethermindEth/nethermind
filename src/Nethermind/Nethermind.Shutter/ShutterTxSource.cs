@@ -33,13 +33,14 @@ public class ShutterTxSource(
     {
         if (!shutterConfig.Validator)
         {
-            _logger.Debug($"Not building Shutterized block since running in non-validator mode.");
+            if (_logger.IsDebug) _logger.Debug($"Not building Shutterized block since running in non-validator mode.");
             return [];
         }
 
         if (payloadAttributes is null)
         {
-            _logger.Error($"Not building Shutterized block since payload attributes was null.");
+            if (_logger.IsError) _logger.Error($"Not building Shutterized block since payload attributes was null.");
+            return [];
         }
 
         ulong buildingSlot;
@@ -56,12 +57,12 @@ public class ShutterTxSource(
         ShutterTransactions? shutterTransactions = _txCache.Get(buildingSlot);
         if (shutterTransactions is null)
         {
-            _logger.Debug($"No Shutter transactions currently loaded for slot {buildingSlot}.");
+            if (_logger.IsDebug) _logger.Debug($"No Shutter transactions currently loaded for slot {buildingSlot}.");
             return [];
         }
 
         int txCount = shutterTransactions.Value.Transactions.Length;
-        _logger.Info($"Preparing Shutterized block {parent.Number + 1} for slot {buildingSlot} with {txCount} decrypted transactions.");
+        if (_logger.IsInfo) _logger.Info($"Preparing Shutterized block {parent.Number + 1} for slot {buildingSlot} with {txCount} decrypted transactions.");
         return shutterTransactions.Value.Transactions;
     }
 

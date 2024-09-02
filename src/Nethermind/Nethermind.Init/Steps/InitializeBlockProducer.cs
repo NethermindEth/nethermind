@@ -64,7 +64,6 @@ namespace Nethermind.Init.Steps
             {
                 IBlockProducerFactory blockProducerFactory = consensusPlugin;
 
-                ILogger logger = _api.LogManager!.GetClassLogger();
                 foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
                 {
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);

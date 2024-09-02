@@ -32,7 +32,7 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
         {
             if (e.Eon == _eon)
             {
-                if (_txIndex is not null && e.TxIndex != _txIndex)
+                if (_logger.IsDebug && _txIndex is not null && e.TxIndex != _txIndex)
                 {
                     _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon}, expected {_txIndex}.");
                 }
@@ -45,13 +45,13 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
                 }
                 else
                 {
-                    _logger.Warn($"Shutter queue for eon {_eon} is full, cannot load events.");
+                    if (_logger.IsError) _logger.Error($"Shutter queue for eon {_eon} is full, cannot load events.");
                     break;
                 }
             }
             else if (e.Eon == _eon + 1)
             {
-                if (e.TxIndex != _nextEonTxIndex)
+                if (_logger.IsDebug && e.TxIndex != _nextEonTxIndex)
                 {
                     _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon + 1}, expected {_nextEonTxIndex}.");
                 }
@@ -64,7 +64,7 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
                 }
                 else
                 {
-                    _logger.Warn($"Shutter queue for eon {_eon + 1} is full, cannot load events.");
+                    if (_logger.IsError) _logger.Error($"Shutter queue for eon {_eon + 1} is full, cannot load events.");
                     break;
                 }
             }
@@ -81,7 +81,7 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
 
         if (eon != _eon)
         {
-            _logger.Error($"Cannot load Shutter transactions for eon {eon}, expected {_eon}.");
+            if (_logger.IsError) _logger.Error($"Cannot load Shutter transactions for eon {eon}, expected {_eon}.");
             yield break;
         }
 
@@ -97,7 +97,7 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
             if (totalGas + e.GasLimit > _encryptedGasLimit)
             {
                 Metrics.EncryptedGasUsed = (ulong)totalGas;
-                _logger.Debug("Shutter gas limit reached.");
+                if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
                 yield break;
             }
 

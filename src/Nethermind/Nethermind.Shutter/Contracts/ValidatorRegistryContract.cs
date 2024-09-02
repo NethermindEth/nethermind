@@ -19,13 +19,14 @@ public class ValidatorRegistryContract(
     ITransactionProcessor transactionProcessor,
     IAbiEncoder abiEncoder,
     Address contractAddress,
-    ILogger logger,
+    ILogManager logManager,
     ulong chainId,
     ulong messageVersion)
     : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
 {
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, getNumUpdates, Address.Zero, [])[0];
 
@@ -56,31 +57,31 @@ public class ValidatorRegistryContract(
 
             if (msg.Version != messageVersion)
             {
-                logger.Debug($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
+                if (_logger.IsDebug) _logger.Debug($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
                 continue;
             }
 
             if (msg.ChainId != chainId)
             {
-                logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
+                if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
                 continue;
             }
 
             if (!msg.ContractAddress.SequenceEqual(ContractAddress!.Bytes))
             {
-                logger.Debug($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
+                if (_logger.IsDebug) _logger.Debug($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
                 continue;
             }
 
             if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
             {
-                logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
+                if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
                 continue;
             }
 
             if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo[msg.ValidatorIndex], update.Signature, update.Message))
             {
-                logger.Debug("Registration message has invalid signature.");
+                if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
                 continue;
             }
 

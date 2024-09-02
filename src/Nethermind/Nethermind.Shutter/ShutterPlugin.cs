@@ -45,7 +45,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
         _mergeConfig = _api.Config<IMergeConfig>();
         _shutterConfig = _api.Config<IShutterConfig>();
         _logger = _api.LogManager.GetClassLogger();
-        _logger.Info($"Initializing Shutter plugin.");
+        if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
     }
 
@@ -55,7 +55,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
         {
             if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
 
-            _logger.Info("Initializing Shutter block improvement.");
+            if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
             _api.BlockImprovementContextFactory = _shutterApi!.GetBlockImprovementContextFactory(_api.BlockProducer);
         }
         return Task.CompletedTask;
@@ -72,7 +72,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             if (_api.ReceiptFinder is null) throw new ArgumentNullException(nameof(_api.ReceiptFinder));
             if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
 
-            _logger.Info("Initializing Shutter block producer.");
+            if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
 
             try
             {

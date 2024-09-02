@@ -48,7 +48,7 @@ public class ShutterBlockHandler(
     {
         if (shutterTime.IsBlockUpToDate(head))
         {
-            _logger.Debug($"Shutter block handler {head.Number}");
+            if (_logger.IsDebug) _logger.Debug($"Shutter block handler {head.Number}");
 
             if (!_haveCheckedRegistered)
             {
@@ -85,13 +85,13 @@ public class ShutterBlockHandler(
                 return blockTree.FindBlock(blockHash!);
             }
 
-            _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
+            if (_logger.IsDebug) _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
             long offset = shutterTime.GetCurrentOffsetMs(slot);
             long waitTime = (long)blockWaitCutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {
-                _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)blockWaitCutoff.TotalMilliseconds}ms.");
+                if (_logger.IsDebug) _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)blockWaitCutoff.TotalMilliseconds}ms.");
                 return null;
             }
             waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
@@ -124,12 +124,12 @@ public class ShutterBlockHandler(
         IReadOnlyTxProcessingScope scope = envFactory.Create().Build(parent.StateRoot!);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
-        ValidatorRegistryContract validatorRegistryContract = new(processor, abiEncoder, new(validatorRegistryContractAddress), _logger, chainId, validatorRegistryMessageVersion);
+        ValidatorRegistryContract validatorRegistryContract = new(processor, abiEncoder, new(validatorRegistryContractAddress), logManager, chainId, validatorRegistryMessageVersion);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
-            _logger.Info($"All Shutter validator keys are registered.");
+            if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");
         }
-        else
+        else if (_logger.IsError)
         {
             _logger.Error($"Validators not registered to Shutter with the following indices: [{string.Join(", ", unregistered)}]");
         }

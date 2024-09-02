@@ -32,22 +32,22 @@ public class ShutterKeyValidator(
         {
             if (_highestValidatedSlot is not null && decryptionKeys.Gnosis.Slot <= _highestValidatedSlot)
             {
-                _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {_highestValidatedSlot}.");
+                if (_logger.IsDebug) _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {_highestValidatedSlot}.");
                 return;
             }
 
             IShutterEon.Info? eonInfo = eon.GetCurrentEonInfo();
             if (eonInfo is null)
             {
-                _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");
+                if (_logger.IsDebug) _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");
                 return;
             }
 
-            _logger.Debug($"Checking Shutter decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
+            if (_logger.IsDebug) _logger.Debug($"Checking Shutter decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
 
             if (CheckDecryptionKeys(decryptionKeys, eonInfo.Value))
             {
-                _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
+                if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
                 _highestValidatedSlot = decryptionKeys.Gnosis.Slot;
                 KeysValidated?.Invoke(this, new()
                 {
@@ -64,13 +64,13 @@ public class ShutterKeyValidator(
     {
         if (decryptionKeys.InstanceID != _instanceId)
         {
-            _logger.Debug($"Invalid Shutter decryption keys received: instanceID {decryptionKeys.InstanceID} did not match expected value {_instanceId}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: instanceID {decryptionKeys.InstanceID} did not match expected value {_instanceId}.");
             return false;
         }
 
         if (decryptionKeys.Eon != eonInfo.Eon)
         {
-            _logger.Debug($"Invalid Shutter decryption keys received: eon {decryptionKeys.Eon} did not match expected value {eonInfo.Eon}.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: eon {decryptionKeys.Eon} did not match expected value {eonInfo.Eon}.");
             return false;
         }
 
@@ -97,7 +97,7 @@ public class ShutterKeyValidator(
 
             if (!ShutterCrypto.CheckDecryptionKey(dk, eonInfo.Key, identity))
             {
-                _logger.Debug("Invalid Shutter decryption keys received: decryption key did not match eon key.");
+                if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: decryption key did not match eon key.");
                 return false;
             }
         }
@@ -106,19 +106,19 @@ public class ShutterKeyValidator(
 
         if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
         {
-            _logger.Debug("Invalid Shutter decryption keys received: incorrect number of signer indices.");
+            if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: incorrect number of signer indices.");
             return false;
         }
 
         if (decryptionKeys.Gnosis.Signatures.Count != signerIndicesCount)
         {
-            _logger.Debug("Invalid Shutter decryption keys received: incorrect number of signatures.");
+            if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: incorrect number of signatures.");
             return false;
         }
 
         if (signerIndicesCount != (int)eonInfo.Threshold)
         {
-            _logger.Debug($"Invalid Shutter decryption keys received: signer indices did not match threshold.");
+            if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signer indices did not match threshold.");
             return false;
         }
 
@@ -130,7 +130,7 @@ public class ShutterKeyValidator(
 
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(_instanceId, eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
             {
-                _logger.Debug($"Invalid Shutter decryption keys received: bad signature.");
+                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: bad signature.");
                 return false;
             }
         }

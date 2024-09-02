@@ -104,7 +104,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     private async Task<Block?> ImproveBlock()
     {
-        _logger.Debug("Running Shutter block improvement.");
+        if (_logger.IsDebug) _logger.Debug("Running Shutter block improvement.");
 
         ulong slot;
         long offset;
@@ -114,7 +114,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         }
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
-            _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             await BuildBlock();
             return CurrentBestBlock;
         }
@@ -128,12 +128,12 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         long waitTime = _shutterConfig.MaxKeyDelay - offset;
         if (waitTime <= 0)
         {
-            _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
             return CurrentBestBlock;
         }
         waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
 
-        _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
+        if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
         ObjectDisposedException.ThrowIf(_cancellationTokenSource is null, this);
 
@@ -147,7 +147,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         catch (OperationCanceledException)
         {
             Metrics.KeysMissed++;
-            _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
+            if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
 
             return CurrentBestBlock;
         }

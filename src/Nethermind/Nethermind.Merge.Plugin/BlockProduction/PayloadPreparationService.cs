@@ -82,10 +82,7 @@ public class PayloadPreparationService : IPayloadPreparationService
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow);
         }
-        else if (_logger.IsInfo)
-        {
-            _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
-        }
+        else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
         return payloadId;
     }
