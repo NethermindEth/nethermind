@@ -37,7 +37,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Try to pre-warm the state when processing blocks. Can lead to 2x speedup in main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
-    [ConfigItem(Description = "Block Production timeout, in miliseconds.", DefaultValue = "4000")]
+    [ConfigItem(Description = "Block Production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeout { get; set; }
 
     byte[] GetExtraDataBytes();
