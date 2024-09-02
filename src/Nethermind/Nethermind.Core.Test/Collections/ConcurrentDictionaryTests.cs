@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Collections;
 
-public class LockableConcurrentDictionaryTests
+public class ConcurrentDictionaryTests
 {
     [Test]
     public void Locks()
@@ -27,5 +27,15 @@ public class LockableConcurrentDictionaryTests
 
         updateTask.Wait();
         dictionary.ContainsKey(3).Should().BeTrue();
+    }
+
+    [Test]
+    public void NoResizeClear()
+    {
+        // Tests that the reflection works
+        ConcurrentDictionary<int, int> dictionary = new(new Dictionary<int, int> { { 0, 0 }, { 1, 1 }, { 2, 2 } });
+        dictionary.NoResizeClear();
+
+        dictionary.Count.Should().Be(0);
     }
 }
