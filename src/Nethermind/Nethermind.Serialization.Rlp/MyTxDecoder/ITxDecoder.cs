@@ -8,8 +8,6 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 interface ITxDecoder
 {
-    public const int MaxDelayedHashTxnSize = 32768;
-
     public TxType Type { get; }
 
     public Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors);
