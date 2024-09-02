@@ -129,7 +129,7 @@ public class ShutterTxLoader(
             .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedKeyIndexes[i]]))
             .OfType<Transaction>()
             .ToPooledList(sequencedTransactions.Count);
-        
+
         return decryptedTransactions.AsEnumerable();
     }
 

@@ -38,7 +38,6 @@ public class ShutterApiSimulator(
     public event EventHandler? EonUpdate;
     private event EventHandler<IShutterKeyValidator.ValidatedKeyArgs>? KeysValidated;
     private event EventHandler<Dto.DecryptionKeys>? KeysReceived;
-    private event EventHandler<BlockEventArgs>? NewHeadBlock;
     private readonly Random _rnd = rnd;
     private readonly IReceiptStorage _receiptStorage = receiptStorage;
     private ShutterEventSimulator? _eventSimulator;
@@ -66,12 +65,6 @@ public class ShutterApiSimulator(
     {
         KeysReceived?.Invoke(this, keys);
     }
-
-    public void TriggerNewHeadBlock(BlockEventArgs e)
-    {
-        NewHeadBlock?.Invoke(this, e);
-    }
-
 
     public void NextEon()
         => _eventSimulator!.NextEon();

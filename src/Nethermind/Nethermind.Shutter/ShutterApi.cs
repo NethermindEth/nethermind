@@ -37,7 +37,8 @@ public class ShutterApi : IShutterApi
 
     protected readonly TimeSpan _slotLength;
     protected readonly TimeSpan _blockUpToDateCutoff;
-    protected readonly IReadOnlyBlockTree _blockTree;
+    protected readonly IBlockTree _blockTree;
+    protected readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
@@ -47,7 +48,7 @@ public class ShutterApi : IShutterApi
 
     public ShutterApi(
         IAbiEncoder abiEncoder,
-        IReadOnlyBlockTree blockTree,
+        IBlockTree blockTree,
         IEthereumEcdsa ecdsa,
         ILogFinder logFinder,
         IReceiptFinder receiptFinder,
@@ -62,6 +63,7 @@ public class ShutterApi : IShutterApi
     {
         _cfg = cfg;
         _blockTree = blockTree;
+        _readOnlyBlockTree = blockTree.AsReadOnly();
         _abiEncoder = abiEncoder;
         _logManager = logManager;
         _slotLength = slotLength;
@@ -78,7 +80,7 @@ public class ShutterApi : IShutterApi
             _cfg.ValidatorRegistryContractAddress!,
             _cfg.ValidatorRegistryMessageVersion,
             _txProcessingEnvFactory,
-            blockTree,
+            _readOnlyBlockTree,
             abiEncoder,
             receiptFinder,
             validatorsInfo,
@@ -95,6 +97,7 @@ public class ShutterApi : IShutterApi
 
         InitP2P(_cfg, logManager);
         RegisterOnKeysValidated();
+        _blockTree.NewHeadBlock += NewHeadBlockHandler;
     }
 
     public void StartP2P(CancellationTokenSource? cancellationTokenSource = null)
@@ -120,6 +123,7 @@ public class ShutterApi : IShutterApi
 
     public async ValueTask DisposeAsync()
     {
+        _blockTree.NewHeadBlock -= NewHeadBlockHandler;
         TxSource.Dispose();
         BlockHandler.Dispose();
         await (P2P?.DisposeAsync() ?? default);
@@ -155,7 +159,7 @@ public class ShutterApi : IShutterApi
     }
 
     protected virtual IShutterEon InitEon()
-        => new ShutterEon(_blockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
+        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
 
     protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
     {

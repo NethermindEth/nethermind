@@ -73,8 +73,6 @@ public class ShutterIntegrationTests : EngineModuleTests
             await Task.Delay(1000);
             IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
             lastPayload = payloads[0];
-
-            chain.Api.TriggerNewHeadBlock(new(chain.BlockTree!.Head!));
         });
 
         // no events loaded initially
@@ -149,7 +147,6 @@ public class ShutterIntegrationTests : EngineModuleTests
         var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(0));
 
-        chain.Api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(_buildingSlotTimestamp - 5).TestObject));
         timestamper.SetTimestamp((long)_buildingSlotTimestamp);
         chain.Api.AdvanceSlot(20);
 

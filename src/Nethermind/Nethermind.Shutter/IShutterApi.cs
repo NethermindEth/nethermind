@@ -13,6 +13,5 @@ public interface IShutterApi
     public ShutterTxSource TxSource { get; }
     void StartP2P(CancellationTokenSource? cancellationTokenSource = null);
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer);
-    public void NewHeadBlockHandler(object? sender, BlockEventArgs e);
     public ValueTask DisposeAsync();
 }
