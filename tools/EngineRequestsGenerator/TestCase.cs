@@ -239,6 +239,27 @@ public enum TestCase
     [TestCaseMetadata("Modexp \"guido-4-even\"", "Modexp precompile test case \"guido-4-even\" reported as potential vulnerability")]
     ModexpVulnerabilityGuido4Even,
 
+    [TestCaseMetadata("Modexp common 1360 1", "Modexp precompile test case collected from Mainnet, consuming 1360 gas (base and modulo byte size 32 and exponent bit length 256)")]
+    ModexpCommon1360n1,
+
+    [TestCaseMetadata("Modexp common 1360 2", "Modexp precompile test case collected from Mainnet, consuming 1360 gas (base and modulo byte size 32 and exponent bit length 256)")]
+    ModexpCommon1360n2,
+
+    [TestCaseMetadata("Modexp common 1349 1", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 254)")]
+    ModexpCommon1349n1,
+
+    [TestCaseMetadata("Modexp common 1152 1", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 217)")]
+    ModexpCommon1152n1,
+
+    [TestCaseMetadata("Modexp common 200 1", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 25)")]
+    ModexpCommon200n1,
+
+    [TestCaseMetadata("Modexp common 200 2", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 25)")]
+    ModexpCommon200n2,
+
+    [TestCaseMetadata("Modexp common 200 3", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 25)")]
+    ModexpCommon200n3,
+
     [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
     EcAddInfinities,
 
