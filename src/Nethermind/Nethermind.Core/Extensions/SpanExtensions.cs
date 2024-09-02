@@ -189,25 +189,24 @@ namespace Nethermind.Core.Extensions
 
             // Start with instance random, length and first ulong as seed
             hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
-            if ((length & sizeof(ulong)) != 0)
+
+            // Calculate misalignment and move by it if needed.
+            // If no misalignment, advance by the size of ulong
+            uint misaligned = (uint)length & 7;
+            if (misaligned != 0)
             {
-                if (length == sizeof(ulong))
-                {
-                    // Exactly ulong length return the hash
-                    return (int)hash;
-                }
+                // Align by moving by the misaligned count
+                b = ref Unsafe.Add(ref b, misaligned);
+                length -= (int)misaligned;
+            }
+            else
+            {
                 // Already Crc'd first ulong so skip it
                 b = ref Unsafe.Add(ref b, sizeof(ulong));
                 length -= sizeof(ulong);
             }
-            else
-            {
-                // Skip the bytes that don't align to ulong
-                uint bits = (uint)length & 7;
-                b = ref Unsafe.Add(ref b, bits);
-                length -= (int)bits;
-            }
 
+            // Length is fully aligned here and b is set in place
             while (length >= sizeof(ulong) * 3)
             {
                 // Crc32C is 3 cycle latency, 1 cycle throughput
