@@ -51,6 +51,7 @@ public partial class BlockProcessor : IBlockProcessor
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; }
+    private readonly Func<Task, Task> _clearCaches;
 
     public BlockProcessor(
         ISpecProvider? specProvider,
@@ -78,6 +79,7 @@ public partial class BlockProcessor : IBlockProcessor
         _preWarmer = preWarmer;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
         ReceiptsTracer = new BlockReceiptsTracer();
+        _clearCaches = _ => _preWarmer.ClearCachesInBackground();
     }
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
@@ -123,6 +125,10 @@ public partial class BlockProcessor : IBlockProcessor
                     : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 // Block is processed, we can cancel the prewarm task
+                if (preWarmTask is not null)
+                {
+                    preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
+                }
                 cancellationTokenSource.Cancel();
                 processedBlocks[i] = processedBlock;
 
