@@ -16,4 +16,8 @@ public class TrieNodeException : TrieException
     {
         NodeHash = keccak;
     }
+    public TrieNodeException(string message, in ValueHash256 keccak, Exception? inner = null) : base(message, inner)
+    {
+        NodeHash = keccak;
+    }
 }

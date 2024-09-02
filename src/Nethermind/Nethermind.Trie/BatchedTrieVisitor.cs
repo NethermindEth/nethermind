@@ -199,7 +199,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-                    finalBatch.Add((_resolver.FindCachedOrUnknown(TreePath.Empty, item.Key.ToCommitment()), item.NodeContext,
+                    finalBatch.Add((_resolver.FindCachedOrUnknown(TreePath.Empty, item.Key), item.NodeContext,
                         item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
@@ -233,7 +233,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Job job = preSort[i];
 
-                TrieNode node = _resolver.FindCachedOrUnknown(TreePath.Empty, job.Key.ToCommitment());
+                TrieNode node = _resolver.FindCachedOrUnknown(TreePath.Empty, job.Key);
                 finalBatch.Add((node, job.NodeContext, job.Context));
             }
 

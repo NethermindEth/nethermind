@@ -16,7 +16,7 @@ namespace Nethermind.State.Snap
             Account = account;
         }
 
-        public ValueHash256 Path { get; set; }
+        public ValueHash256 Path;
         public Account Account { get; set; }
     }
 }

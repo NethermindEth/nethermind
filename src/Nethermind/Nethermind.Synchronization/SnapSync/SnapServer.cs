@@ -179,7 +179,7 @@ public class SnapServer : ISnapServer
         (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
             rootHash,
             startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue,
+            limitHash ?? Keccak.MaxValue,
             byteLimit,
             null,
             null,
@@ -226,7 +226,7 @@ public class SnapServer : ISnapServer
                 break;
             }
 
-            Hash256? storagePath = accounts[i].Path.ToCommitment();
+            ref ValueHash256 storagePath = ref accounts[i].Path;
 
             PathWithStorageCollector pathWithStorageCollector = new PathWithStorageCollector();
             (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(

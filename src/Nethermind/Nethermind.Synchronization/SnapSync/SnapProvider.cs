@@ -193,7 +193,7 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
         {
             ITrieStore store = _trieStorePool.Get();
-            StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
+            StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path), _logManager);
             try
             {
                 (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
