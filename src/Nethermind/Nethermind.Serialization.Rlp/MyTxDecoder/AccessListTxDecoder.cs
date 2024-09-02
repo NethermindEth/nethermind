@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp.Eip2930;
 using Nethermind.Serialization.Rlp.RlpWriter;
+using Nethermind.Serialization.Rlp.RlpReader;
 
 namespace Nethermind.Serialization.Rlp.MyTxDecoder;
 
@@ -194,5 +195,86 @@ public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = 
                 writer.Write(transaction.Signature.SAsSpan.WithoutLeadingZeros());
             }
         }
+    }
+
+    // NOTE: This should replace the top `TxDecoder.Decode` method.
+    // An open question is how to deal with invalid TxType (chain of responsability, catch and continue, etc...)
+    public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (rlpStream.IsNextItemNull())
+        {
+            rlpStream.ReadByte();
+            return null;
+        }
+
+        Transaction transaction = _createTransaction();
+        transaction.Type = TxType.AccessList;
+
+        var reader = new RlpStreamReader(rlpStream);
+        var sequence = ReadTypedTransaction(reader, rlpBehaviors, reader => {
+            ReadTransaction(reader, transaction, rlpBehaviors);
+        });
+
+        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+        {
+            if (sequence.Length <= ITxDecoder.MaxDelayedHashTxnSize)
+            {
+                transaction.SetPreHashNoLock(sequence);
+            }
+            else
+            {
+                transaction.Hash = Keccak.Compute(sequence);
+            }
+        }
+
+        return transaction;
+    }
+
+    private static void ReadTransaction(RlpStreamReader reader, Transaction transaction, RlpBehaviors rlpBehaviors)
+    {
+        var txType = reader.ReadByte();
+        if (txType != (byte)TxType.AccessList)
+        {
+            throw new RlpException("Invalid transaction type");
+        }
+
+        reader.ReadSequence(reader =>
+        {
+            ReadPayload(reader, transaction, rlpBehaviors);
+            if (reader.HasRemainder)
+            {
+                ReadSignature(reader, transaction, rlpBehaviors);
+            }
+        });
+    }
+
+    private static void ReadPayload(RlpStreamReader reader, Transaction transaction, RlpBehaviors rlpBehaviors)
+    {
+        transaction.ChainId = reader.ReadULong();
+        transaction.Nonce = reader.ReadUInt256();
+        transaction.GasPrice = reader.ReadUInt256();
+        transaction.GasLimit = reader.ReadLong();
+        transaction.To = reader.ReadAddress();
+        transaction.Value = reader.ReadUInt256();
+        transaction.Data = reader.ReadByteArray();
+        transaction.AccessList = reader.Read(AccessListDecoder.Instance, rlpBehaviors);
+    }
+
+    private static void ReadSignature(RlpStreamReader reader, Transaction transaction, RlpBehaviors rlpBehaviors)
+    {
+        ulong v = reader.ReadULong();
+        ReadOnlySpan<byte> rBytes = reader.ReadByteArraySpan();
+        ReadOnlySpan<byte> sBytes = reader.ReadByteArraySpan();
+        transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
+    }
+
+    // NOTE: This can be lifted to a common utility class/extension methid
+    private static ReadOnlySpan<byte> ReadTypedTransaction(RlpStreamReader reader, RlpBehaviors rlpBehaviors, Action<RlpStreamReader> block)
+    {
+        var strict = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0;
+        ReadOnlySpan<byte> sequence = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
+            ? reader.ReadUntilEnd(strict, block)
+            : reader.ReadSequence(strict, block);
+        return sequence;
     }
 }
