@@ -234,7 +234,6 @@ public class ShutterTxLoader(
             _events.EnqueueEvent(e, eon);
             count++;
         }
-        // _events.EnqueueEvents(events, eon);
 
         if (_logger.IsDebug) _logger.Debug($"Found {count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }

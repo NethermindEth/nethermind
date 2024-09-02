@@ -32,7 +32,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly ILogManager _logManager;
     private readonly IAbiEncoder _abiEncoder;
     private readonly IBlockTree _blockTree;
-    private readonly IReadOnlyBlockTree _readOnlyBlockTree;
+    private readonly ReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ulong _chainId;
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _slotLength;
@@ -117,7 +117,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         {
             if (_slotToBlockHash.TryGet(slot, out Hash256? blockHash))
             {
-                return _readOnlyBlockTree.FindBlock(blockHash!);
+                return _readOnlyBlockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
             }
 
             if (_logger.IsDebug) _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
