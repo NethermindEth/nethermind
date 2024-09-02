@@ -1894,7 +1894,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
 
-                        if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
+                        if (!_state.AccountExists(address) || _state.IsDeadAccount(address) ||
+                            env.TxExecutionContext.CodeInfoRepository.IsDelegation(_state, address, out Address delegatedAddress)
+                            && !_state.AccountExists(delegatedAddress))
                         {
                             stack.PushZero();
                         }
