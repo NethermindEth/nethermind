@@ -277,6 +277,14 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
+        public static byte[] Concat(byte[] part1, byte[] part2)
+        {
+            byte[] result = new byte[part1.Length + part2.Length];
+            part1.CopyTo(result, 0);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            return result;
+        }
+
         public static byte[] Concat(params byte[][] parts)
         {
             int totalLength = 0;
