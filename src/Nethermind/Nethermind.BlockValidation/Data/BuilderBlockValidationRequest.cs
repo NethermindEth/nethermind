@@ -13,7 +13,7 @@ public class BuilderBlockValidationRequest
     /// </summary>
     public Hash256 ParentBeaconBlockRoot { get; set; } = Keccak.Zero;
 
-    public ulong RegisterGasLimit { get; set; }
+    public long RegisterGasLimit { get; set; }
 
     public SubmitBlockRequest BlockRequest { get; set; }
 }

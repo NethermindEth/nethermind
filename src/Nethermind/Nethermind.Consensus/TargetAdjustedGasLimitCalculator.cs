@@ -19,12 +19,12 @@ namespace Nethermind.Consensus
             _blocksConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
         }
 
-        public long GetGasLimit(BlockHeader parentHeader)
+        public long GetGasLimit(BlockHeader parentHeader, long? desiredGasLimit = null)
         {
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 
-            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
+            long? targetGasLimit = desiredGasLimit ?? _blocksConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temporary solution
             if (targetGasLimit is not null)

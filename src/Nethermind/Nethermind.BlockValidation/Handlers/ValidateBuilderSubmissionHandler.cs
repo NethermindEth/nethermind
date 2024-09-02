@@ -3,23 +3,43 @@
 
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.BlockValidation.Data;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State;
 
 namespace Nethermind.BlockValidation.Handlers;
 
 public class ValidateSubmissionHandler
 {
+    private readonly ReadOnlyTxProcessingEnv _txProcessingEnv;
+    private readonly IBlockTree _blockTree;
+    private readonly IBlockValidator _blockValidator;
+    private readonly IGasLimitCalculator _gasLimitCalculator;
     private readonly ILogger _logger;
 
-    public ValidateSubmissionHandler(ILogManager logManager)
+    public ValidateSubmissionHandler(
+        IBlockValidator blockValidator,
+        ReadOnlyTxProcessingEnv txProcessingEnv,
+        IGasLimitCalculator gasLimitCalculator)
     {
-        _logger = logManager.GetClassLogger();
+        _blockValidator = blockValidator;
+        _txProcessingEnv = txProcessingEnv;
+        _blockTree = _txProcessingEnv.BlockTree;
+        _gasLimitCalculator = gasLimitCalculator;
+        _logger = txProcessingEnv.LogManager!.GetClassLogger();
     }
 
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
@@ -58,14 +78,63 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, ulong registerGasLimit, out string? error)
+    private BlockProcessor CreateBlockProcessor(IWorldState stateProvider)
     {
-        // TODO: Implement this method
+        return new BlockProcessor(
+            _txProcessingEnv.SpecProvider,
+            _blockValidator,
+            new Consensus.Rewards.RewardCalculator(_txProcessingEnv.SpecProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(_txProcessingEnv.TransactionProcessor, stateProvider),
+            stateProvider,
+            new InMemoryReceiptStorage(),
+            new BlockhashStore(_txProcessingEnv.SpecProvider, stateProvider),
+            _txProcessingEnv.LogManager,
+            new WithdrawalProcessor(stateProvider, _txProcessingEnv.LogManager!),
+            new ReceiptsRootCalculator()
+        );
+    }
+
+    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, out string? error)
+    {
+        if(!HeaderValidator.ValidateHash(block.Header)){
+            error = $"Invalid block header hash {block.Header.Hash}";
+            return false;
+        }
+
+        if(!_blockTree.IsBetterThanHead(block.Header)){
+            error = $"Block {block.Header.Hash} is not better than head";
+            return false;
+        }
+
+        BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+
+        if (parentHeader is null){
+            error = $"Parent header {block.ParentHash} not found";
+            return false;
+        }
+
+        long calculatedGasLimit = _gasLimitCalculator.GetGasLimit(parentHeader, registerGasLimit);
+
+        if (calculatedGasLimit != block.Header.GasLimit){
+            error = $"Gas limit mismatch. Expected {calculatedGasLimit} but got {block.Header.GasLimit}";
+            return false;
+        }
+
+        IReadOnlyTxProcessingScope processingScope = _txProcessingEnv.Build(parentHeader.StateRoot!);
+        IWorldState currentState = processingScope.WorldState;
+
+        UInt256 feeRecipientBalanceBefore = currentState.GetBalance(feeRecipient);
+
+        BlockProcessor blockProcessor = CreateBlockProcessor(currentState);
+
+
+        UInt256 feeRecipientBalanceAfter = currentState.GetBalance(feeRecipient);
+
         error = null;
         return true;
     }
 
-    private bool ValidateBlock(Block block, BidTrace message, ulong registerGasLimit, out string? error)
+    private bool ValidateBlock(Block block, BidTrace message, long registerGasLimit, out string? error)
     {
         error = null;
 
