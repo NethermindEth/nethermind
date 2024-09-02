@@ -9,7 +9,7 @@
     },
     "Chiado (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c chiado_archive -dd .data --Mining.MinGasPrice 1",
+      "commandLineArgs": "-c chiado_archive -dd .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
