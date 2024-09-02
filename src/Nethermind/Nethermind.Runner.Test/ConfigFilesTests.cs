@@ -361,16 +361,18 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
         }
 
-        [TestCase("chiado", 17_000_000L, 5UL)]
-        [TestCase("gnosis", 17_000_000L, 5UL)]
+        [TestCase("chiado", 17_000_000L, 5UL, 3000)]
+        [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
         [TestCase("mainnet", 30_000_000L)]
         [TestCase("sepolia", 30_000_000L)]
         [TestCase("holesky", 30_000_000L)]
         [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]
-        public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12)
+        public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
         {
             Test<IBlocksConfig, long?>(configWildcard, c => c.TargetBlockGasLimit, targetBlockGasLimit);
             Test<IBlocksConfig, ulong>(configWildcard, c => c.SecondsPerSlot, secondsPerSlot);
+            Test<IBlocksConfig, int>(configWildcard, c => c.BlockProductionTimeout, blockProductionTimeout);
+
         }
 
         [Test]
