@@ -211,8 +211,8 @@ namespace Nethermind.Monitoring.Metrics
             return;
             async Task RunLoop(CancellationToken ct)
             {
-                var constantDelay = TimeSpan.FromSeconds(Math.Max(_intervalSeconds - _minIntervalSeconds, 1));
-                var waitTime = TimeSpan.FromSeconds(_intervalSeconds) - constantDelay;
+                var minDelay = TimeSpan.FromSeconds(_minIntervalSeconds);
+                TimeSpan waitTime = TimeSpan.FromSeconds(_intervalSeconds) - minDelay;
 
                 while (ct.IsCancellationRequested == false)
                 {
@@ -245,7 +245,7 @@ namespace Nethermind.Monitoring.Metrics
                         // Always wait a minimal amount of time so that the metrics are not flooded
                         try
                         {
-                            await Task.Delay(constantDelay, ct).ConfigureAwait(false);
+                            await Task.Delay(minDelay, ct).ConfigureAwait(false);
                         }
                         catch (OperationCanceledException)
                         {
