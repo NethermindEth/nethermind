@@ -269,17 +269,17 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return Task.CompletedTask;
     }
 
-    public virtual Task InitRpcModules()
-    {
-        return InitRpcModulesInternal(_api.BlockImprovementContextFactory);
-    }
+    // public virtual Task InitRpcModules()
+    // {
+    //     return InitRpcModulesInternal(_api.BlockImprovementContextFactory);
+    // }
 
     protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
     {
         return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
     }
 
-    private Task InitRpcModulesInternal(IBlockImprovementContextFactory? improvementContextFactory)
+    public virtual Task InitRpcModules()
     {
         if (MergeEnabled)
         {
@@ -305,6 +305,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             }
             Thread.Sleep(5000);
 
+            IBlockImprovementContextFactory? improvementContextFactory = _api.BlockImprovementContextFactory;
             if (improvementContextFactory is null)
             {
                 if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))

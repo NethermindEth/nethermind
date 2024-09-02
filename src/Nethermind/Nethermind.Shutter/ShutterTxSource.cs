@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core.Collections;
+using Org.BouncyCastle.Math.EC.Rfc7748;
 
 namespace Nethermind.Shutter;
 
@@ -25,9 +26,8 @@ public class ShutterTxSource(
 {
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly ConcurrentDictionary<ulong, TaskCompletionSource> _keyWaitTasks = new();
+    private readonly ConcurrentDictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> _keyWaitTasks = new();
     private readonly object _syncObject = new();
-    private readonly ArrayPoolList<CancellationTokenRegistration> _ctr = new(5);
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
@@ -76,8 +76,9 @@ public class ShutterTxSource(
                 return;
             }
 
-            _ctr.Add(cancellationToken.Register(() => CancelWaitForTransactions(slot)));
-            tcs = _keyWaitTasks.GetOrAdd(slot, _ => new());
+            tcs = new();
+            CancellationTokenRegistration ctr = cancellationToken.Register(() => CancelWaitForTransactions(slot));
+            _keyWaitTasks.GetOrAdd(slot, _ => (tcs, ctr));
         }
         await tcs.Task;
     }
@@ -93,24 +94,21 @@ public class ShutterTxSource(
 
         lock (_syncObject)
         {
-            if (_keyWaitTasks.Remove(keys.Slot, out TaskCompletionSource? tcs))
+            if (_keyWaitTasks.Remove(keys.Slot, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
             {
-                tcs?.TrySetResult();
+                waitTask.Tcs.TrySetResult();
+                waitTask.Ctr.Dispose();
             }
         }
     }
 
     private void CancelWaitForTransactions(ulong slot)
     {
-        _keyWaitTasks.Remove(slot, out TaskCompletionSource? waitTask);
-        waitTask?.TrySetException(new OperationCanceledException());
+        _keyWaitTasks.Remove(slot, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask);
+        waitTask.Tcs.TrySetException(new OperationCanceledException());
+        waitTask.Ctr.Dispose();
     }
 
     public void Dispose()
-    {
-        foreach (CancellationTokenRegistration ctr in _ctr)
-        {
-            ctr.Dispose();
-        }
-    }
+        => _keyWaitTasks.ForEach(waitTask => waitTask.Value.Item2.Dispose());
 }

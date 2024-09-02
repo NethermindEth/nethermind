@@ -40,21 +40,22 @@ public class ShutterTxLoader(
     private readonly ShutterEventQueue _events = new(cfg.EncryptedGasLimit, logManager);
     private ulong _txPointer = ulong.MaxValue;
     private bool _loadFromReceipts = false;
+    private readonly int _maxTransactions = cfg.EncryptedGasLimit / 21000;
     private readonly ShutterTxFilter _txFilter = new(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
     {
-        var sequencedTransactions = GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0).ToList();
+        using ArrayPoolList<SequencedTransaction> sequencedTransactions = new(_maxTransactions, GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0));
 
         long offset = time.GetCurrentOffsetMs(keys.Slot);
         Metrics.KeysReceivedTimeOffset = offset;
-        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
+        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms fter";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
-        Transaction[] transactions = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
+        IEnumerable<Transaction> transactions = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
 
-        if (_logger.IsDebug && transactions.Length > 0) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
+        if (_logger.IsDebug && transactions.Any()) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
         Transaction[] filtered = FilterTransactions(transactions, parentHeader).ToArray();
 
@@ -77,7 +78,7 @@ public class ShutterTxLoader(
         {
             if (_loadFromReceipts && head is not null)
             {
-                var events = _logScanner.ScanReceipts(head.Number, receipts).ToList();
+                IEnumerable<ISequencerContract.TransactionSubmitted> events = _logScanner.ScanReceipts(head.Number, receipts);
                 _events.EnqueueEvents(events, eon);
             }
         }
@@ -94,7 +95,7 @@ public class ShutterTxLoader(
         }
     }
 
-    private Transaction[] DecryptSequencedTransactions(List<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
+    private IEnumerable<Transaction> DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
     {
         int txCount = sequencedTransactions.Count;
         int keyCount = decryptionKeys.Count;
@@ -108,7 +109,7 @@ public class ShutterTxLoader(
         if (txCount > keyCount)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not decrypt all Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
-            sequencedTransactions = sequencedTransactions[..keyCount];
+            sequencedTransactions.ReduceCount(txCount - keyCount);
             txCount = keyCount;
         }
 
@@ -122,12 +123,14 @@ public class ShutterTxLoader(
             sortedKeyIndexes[index.Index] = keyIndex++;
         }
 
-        return sequencedTransactions
+        ArrayPoolList<Transaction> decryptedTransactions = sequencedTransactions
             .AsParallel()
             .AsOrdered()
             .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedKeyIndexes[i]]))
             .OfType<Transaction>()
-            .ToArray();
+            .ToPooledList(sequencedTransactions.Count);
+        
+        return decryptedTransactions.AsEnumerable();
     }
 
     private Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, (byte[] IdentityPreimage, byte[] Key) decryptionKey)
@@ -223,10 +226,17 @@ public class ShutterTxLoader(
     {
         _txPointer = txPointer;
 
-        var events = _logScanner.ScanLogs(headBlockNumber, (ISequencerContract.TransactionSubmitted e) => e.Eon == eon && e.TxIndex <= _txPointer).ToList();
-        _events.EnqueueEvents(events, eon);
+        IEnumerable<ISequencerContract.TransactionSubmitted> events = _logScanner.ScanLogs(headBlockNumber, (ISequencerContract.TransactionSubmitted e) => e.Eon == eon && e.TxIndex <= _txPointer);
 
-        if (_logger.IsDebug) _logger.Debug($"Found {_events.Count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
+        int count = 0;
+        foreach (ISequencerContract.TransactionSubmitted e in events)
+        {
+            _events.EnqueueEvent(e, eon);
+            count++;
+        }
+        // _events.EnqueueEvents(events, eon);
+
+        if (_logger.IsDebug) _logger.Debug($"Found {count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }
 
 

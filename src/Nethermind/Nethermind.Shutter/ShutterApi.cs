@@ -24,7 +24,7 @@ namespace Nethermind.Shutter;
 
 public class ShutterApi : IShutterApi
 {
-    public virtual TimeSpan BlockWaitCutoff { get => TimeSpan.FromMilliseconds(1333); }
+    public virtual TimeSpan BlockWaitCutoff { get => _blockWaitCutoff; }
 
     public readonly IShutterBlockHandler BlockHandler;
     public readonly IShutterKeyValidator KeyValidator;
@@ -42,6 +42,8 @@ public class ShutterApi : IShutterApi
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
     private readonly IShutterConfig _cfg;
+
+    private readonly TimeSpan _blockWaitCutoff;
 
     public ShutterApi(
         IAbiEncoder abiEncoder,
@@ -64,6 +66,7 @@ public class ShutterApi : IShutterApi
         _logManager = logManager;
         _slotLength = slotLength;
         _blockUpToDateCutoff = slotLength;
+        _blockWaitCutoff = _slotLength / 3;
 
         _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
 

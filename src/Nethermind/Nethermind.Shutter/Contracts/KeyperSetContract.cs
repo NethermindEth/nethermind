@@ -10,22 +10,18 @@ namespace Nethermind.Shutter.Contracts;
 
 public class KeyperSetContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyperSetContract
 {
-    private const string isFinalized = "isFinalized";
-    private const string getThreshold = "getThreshold";
-    private const string getMembers = "getMembers";
-
     public bool IsFinalized(BlockHeader blockHeader)
     {
-        return (bool)Call(blockHeader, isFinalized, Address.Zero, [])[0];
+        return (bool)Call(blockHeader, nameof(IsFinalized), Address.Zero, [])[0];
     }
 
     public ulong GetThreshold(BlockHeader blockHeader)
     {
-        return (ulong)Call(blockHeader, getThreshold, Address.Zero, [])[0];
+        return (ulong)Call(blockHeader, nameof(GetThreshold), Address.Zero, [])[0];
     }
 
     public Address[] GetMembers(BlockHeader blockHeader)
     {
-        return (Address[])Call(blockHeader, getMembers, Address.Zero, [])[0];
+        return (Address[])Call(blockHeader, nameof(GetMembers), Address.Zero, [])[0];
     }
 }

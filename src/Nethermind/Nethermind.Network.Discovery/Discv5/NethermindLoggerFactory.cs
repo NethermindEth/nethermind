@@ -7,7 +7,7 @@ using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
 
-public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false) : ILoggerFactory
+internal class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false) : ILoggerFactory
 {
     public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName)
     {

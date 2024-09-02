@@ -38,7 +38,7 @@ public interface IShutterConfig : IConfig
     string[]? KeyperP2PAddresses { get; set; }
 
     [ConfigItem(Description = "The port to connect to Shutter P2P network with.",
-        DefaultValue = "23001")]
+        DefaultValue = "23102")]
     int P2PPort { get; set; }
 
     [ConfigItem(Description = "The filepath of the validator info json file.",
@@ -63,7 +63,7 @@ public interface IShutterConfig : IConfig
 
     [ConfigItem(Description = "The maximum amount of gas to use on Shutter transactions.",
         DefaultValue = "10000000")]
-    ulong EncryptedGasLimit { get; set; }
+    int EncryptedGasLimit { get; set; }
 
     [ConfigItem(Description = "Maximum amount of milliseconds into the slot to wait for Shutter keys before building block.",
         DefaultValue = "1666")]

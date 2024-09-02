@@ -24,14 +24,12 @@ public class ValidatorRegistryContract(
     ulong messageVersion)
     : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
 {
-    private const string getNumUpdates = "getNumUpdates";
-    private const string getUpdate = "getUpdate";
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, getNumUpdates, Address.Zero, [])[0];
+    public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, nameof(GetNumUpdates), Address.Zero, [])[0];
 
     public Update GetUpdate(BlockHeader header, in UInt256 i)
-        => (Update)Call(header, getUpdate, Address.Zero, [i])[0];
+        => (Update)Call(header, nameof(GetUpdate), Address.Zero, [i])[0];
 
     public bool IsRegistered(BlockHeader header, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered)
     {
