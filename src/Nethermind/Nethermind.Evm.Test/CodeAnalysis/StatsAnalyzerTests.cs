@@ -17,97 +17,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
-    public class DynamicInstructionChunk : InstructionChunk
-    {
-        public byte[] Pattern { get; private set; }
-
-        public byte[] InstancePattern { get; private set; }
-        public byte CallCount { get; private set; } = 0;
-
-        public DynamicInstructionChunk(byte[] pattern)
-        {
-            Pattern = pattern;
-        }
-
-
-        void InstructionChunk.Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack)
-        {
-            CallCount++;
-        }
-    }
-
-    public record struct TransactionData(byte[] ByteCode, byte[] ExecutionCode);
-
-    public static class LargeByteCodeBuilder
-    {
-        public const string P01P01ADD = "P01P01ADD";
-        public const string P01P01MUL = "P01P01MUL";
-        public const string P01P01SUB = "P01P01SUB";
-        public const string P01P01DIV = "P01P01DIV";
-        public const string FILLER = "FILLER";
-
-        private static Prepare p01p01Mul(Prepare p)
-        {
-            return p.PushSingle(2)
-                    .PushSingle(3)
-                    .ADD();
-        }
-        private static Prepare p01p01Add(Prepare p)
-        {
-            return p.PushSingle(2)
-                    .PushSingle(3)
-                    .ADD();
-        }
-        private static Prepare filler(Prepare p)
-        {
-            return p.NOT();
-        }
-
-
-
-
-        public static Prepare PreparePattern(string pattern, Prepare p)
-        {
-            switch (pattern)
-            {
-                case P01P01ADD: return p01p01Add(p);
-                case P01P01MUL: return p01p01Mul(p);
-                default:
-                    throw new NotSupportedException($"error: a requested {pattern} is not implemented!");
-            }
-        }
-        public static DynamicInstructionChunk PreparePatternChunk(string pattern)
-        {
-
-            return new DynamicInstructionChunk(PrepareTransaction(new (string, int)[] { (pattern, 1) }).ExecutionCode);
-        }
-
-
-        public static TransactionData PrepareTransaction((string, int)[] patternAndCount)
-        {
-
-            Prepare p = Prepare.EvmCode;
-            foreach ((string pattern, int count) in patternAndCount)
-            {
-                for (int i = 0; i < count; i++)
-                {
-                    PreparePattern(pattern, p);
-
-                }
-            }
-            byte[] code = p.Done;
-            OpcodeInfo[] strippedCode = IlAnalyzer.StripByteCode(new ReadOnlySpan<byte>(code)).Item1;
-            byte[] b = new byte[strippedCode.Length];
-            for (int i = 0; i < strippedCode.Length; i++)
-            {
-                b[i] = (byte)strippedCode[i].Operation;
-                //Console.Write($"{(Instruction)b[i]}");
-            }
-            //Console.WriteLine("");
-            return new TransactionData(p.Done, b);
-        }
-    }
-
     [TestFixture]
     public class StatsAnalyzerTests
     {
@@ -229,113 +138,37 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
+        public static ulong AsNGram(Instruction[] instructions)
+        {
+            ulong ngram = 0;
+
+            for (int i = 0; i < instructions.Length; i++)
+            {
+                ngram = (ngram << 8) | (byte)instructions[i];
+            }
+
+            return ngram;
+        }
+
         [Test, TestCaseSource(nameof(NgramTestCases))]
         public void validate_ngram_generation_exhaustive(Instruction[] transaction, (Instruction[] ngram, int count)[] ngrams)
         {
-            StatsAnalyzer.Reset();
-            //Console.WriteLine($"entering test length transaction : {transaction.Length} , ngrams: {ngrams.Count()}");
-            StatsAnalyzer.GetInstance(100, transaction.Length, "");
+            Dictionary<ulong, uint> counts = new Dictionary<ulong, uint>();
+            StatsAnalyzer statsAnalyzer = new StatsAnalyzer(100, 600000, 2, 100000, 1);
             foreach (Instruction instruction in transaction)
             {
-                StatsAnalyzer.AddInstruction(instruction);
+                statsAnalyzer.Add(instruction);
             }
-            StatsAnalyzer.NoticeTransactionCompletion();
-            StatsAnalyzer.NoticeBlockCompletionBlocking();
-            Assert.That(StatsAnalyzer.Count == ngrams.Count(), $" Total ngrams expected {ngrams.Count()}, found {StatsAnalyzer.Count}");
+            Assert.That(statsAnalyzer.topNQueue.Count == ngrams.Count(), $" Total ngrams expected {ngrams.Count()}, found {statsAnalyzer.topNQueue.Count}");
             foreach ((Instruction[] ngram, int expectedCount) ngramAndCount in ngrams)
             {
-                Assert.That(StatsAnalyzer.GetStatInfo(ngramAndCount.ngram).Count == ngramAndCount.expectedCount, $"{StatsAnalyzer.AsNGram(ngramAndCount.ngram)} count: {StatsAnalyzer.GetStatInfo(ngramAndCount.ngram).Count}, expected Count: {ngramAndCount.expectedCount}");
-                //Console.WriteLine($"stats {StatsAnalyzer.GetStatInfo(ngramAndCount.ngram)}, expected Count: {ngramAndCount.expectedCount}");
+                ulong currentNGram = AsNGram(ngramAndCount.ngram);
+                Assert.That(statsAnalyzer.topNMap[currentNGram] == ngramAndCount.expectedCount, $"{ngramAndCount.ngram} found count: {statsAnalyzer.topNMap[currentNGram]}, expected Count: {ngramAndCount.expectedCount}");
             }
-
-            StatsAnalyzer.Reset();
 
         }
 
-        public void PsuedoBlockExecution(byte[][] transactions)
-        {
-            foreach (byte[] transaction in transactions)
-            {
-                PsuedoTransactionExecution(transaction);
-            }
-            StatsAnalyzer.NoticeBlockCompletionBlocking();
-        }
 
-        public void PsuedoTransactionExecution(byte[] code)
-        {
-
-            // OpcodeInfo[] strippedCode = IlAnalyzer.StripByteCode(new ReadOnlySpan<byte>(code)).Item1;
-            // byte[] b = new byte[strippedCode.Length];
-            for (int i = 0; i < code.Length; i++)
-            {
-                StatsAnalyzer.AddInstruction((Instruction)code[i]);
-            }
-            StatsAnalyzer.NoticeTransactionCompletion();
-        }
-
-        public static IEnumerable<TestCaseData> BlockTestCase
-        {
-            get
-            {
-                yield return new TestCaseData(
-                        new (string, int)[][] {
-                        new (string, int)[] { (LargeByteCodeBuilder.P01P01MUL, 10) }
-                        }, 2, true
-                      )
-                    .SetName("SingleTransactionBlocking");
-                yield return new TestCaseData(
-                        new (string, int)[][] {
-                        new (string, int)[] { (LargeByteCodeBuilder.P01P01MUL, 10) }
-                        }, 2, false
-                      )
-                    .SetName("SingleTransactionNonBlocking");
-            }
-        }
-
-        [Test, TestCaseSource(nameof(BlockTestCase))]
-        public void validate_ngram_count_large_pattern((string, int)[][] block, int timesTwo, bool blocking )
-        {
-            // Console.WriteLine("entering new test");
-            StatsAnalyzer.Reset();
-            StatsAnalyzer.GetInstance(100, 100000, "");
-            TransactionData t;
-            for (int j = 0; j < timesTwo * 2; j++)
-            {
-                // Console.WriteLine($"J: {j}");
-                foreach ((string, int)[] trasaction in block)
-                {
-
-                    t = LargeByteCodeBuilder.PrepareTransaction(trasaction);
-                    PsuedoTransactionExecution(t.ExecutionCode);
-                }
-
-               if (blocking){
-                   // Console.WriteLine("calling notice block blocking");
-                   StatsAnalyzer.NoticeBlockCompletionBlocking();
-               } else {
-                   // Console.WriteLine($"calling notice block non blocking at j {j}");
-                   StatsAnalyzer.NoticeBlockCompletion();
-               }
-
-                if ((j != 0))
-                {
-                    // Console.WriteLine($"Asserting at j: {j}");
-
-                   if(!blocking) Thread.Sleep(1000);
-                    foreach ((string, int)[] trasaction in block)
-                    {
-                        foreach ((string pattern, int count) in trasaction)
-                        {
-                            DynamicInstructionChunk chunk = LargeByteCodeBuilder.PreparePatternChunk(pattern);
-                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Count == count * (j + 1), $" Total count expected {count * (j + 1)}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Count} Stat: {StatsAnalyzer.GetStatInfo(chunk.Pattern)} ");
-                            Assert.That(StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq == count, $" Freq expected {count}, found {StatsAnalyzer.GetStatInfo(chunk.Pattern).Freq})");
-                        }
-                    }
-                }
-            }
-
-            StatsAnalyzer.Reset();
-        }
     }
 }
 
