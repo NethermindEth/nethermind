@@ -63,7 +63,8 @@ public partial class SszGenerator : IIncrementalGenerator
     public static string Shift(int tabCount, string data) => string.Empty.PadLeft(4 * tabCount) + data;
     public static string Shift(int tabCount, IEnumerable<string> data, string? end = null) => string.Join("\n", data.Select(d => Shift(tabCount, d))) + (end is null || !data.Any() ? "" : end);
 
-    private static string VarName(string name) {
+    private static string VarName(string name)
+    {
         if (string.IsNullOrEmpty(name)) return name;
 
         string lowerCased = name.Substring(0, 1).ToLower() + name.Substring(1);
