@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -18,173 +19,195 @@ namespace Nethermind.Consensus.Processing.CensorshipDetector;
 public class CensorshipDetector : IDisposable
 {
     private readonly ITxPool _txPool;
-    private readonly IComparer<Transaction> _comparer;
+    private readonly IComparer<Transaction> _betterTxComparer;
     private readonly IBlockProcessor _blockProcessor;
     private readonly ILogger _logger;
-    private readonly ICensorshipDetectorConfig _censorshipDetectorConfig;
-    private readonly Dictionary<AddressAsKey, Transaction?> _poolAddressCensorshipBestTx = [];
+    private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
-    private const int _cacheSize = 64;
+    private const int CacheSize = 64;
+    private const int BlockCensorshipThreshold = 4;
 
     public CensorshipDetector(
         ITxPool txPool,
-        IComparer<Transaction> comparer,
+        IComparer<Transaction> betterTxComparer,
         IBlockProcessor blockProcessor,
         ILogManager logManager,
         ICensorshipDetectorConfig censorshipDetectorConfig)
     {
         _txPool = txPool;
-        _comparer = comparer;
+        _betterTxComparer = betterTxComparer;
         _blockProcessor = blockProcessor;
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _censorshipDetectorConfig = censorshipDetectorConfig;
 
-        if (_censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
+        if (censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
         {
-            foreach (string hexString in _censorshipDetectorConfig.AddressesForCensorshipDetection)
+            foreach (string hexString in censorshipDetectorConfig.AddressesForCensorshipDetection)
             {
                 if (Address.TryParse(hexString, out Address address))
                 {
-                    _poolAddressCensorshipBestTx[address!] = null;
+                    _bestTxPerObservedAddresses ??= new Dictionary<AddressAsKey, Transaction>();
+                    _bestTxPerObservedAddresses[address!] = null;
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid address {hexString} provided for censorship detection.");
                 }
             }
         }
 
-        _potentiallyCensoredBlocks = new(_cacheSize, _cacheSize, "potentiallyCensoredBlocks");
-        _censoredBlocks = new(_cacheSize);
+        _potentiallyCensoredBlocks = new(CacheSize, CacheSize, "potentiallyCensoredBlocks");
+        _censoredBlocks = new(CacheSize);
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
-        if (_poolAddressCensorshipBestTx.Count != 0)
+        bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
+        if (tracksPerAddressCensorship)
         {
             UInt256 baseFee = e.Block.BaseFeePerGas;
             IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
             foreach (Transaction tx in poolBestTransactions)
             {
                 // checking tx.GasBottleneck > baseFee ensures only ready transactions are considered.
-                if (tx.To is not null && tx.GasBottleneck > baseFee && _poolAddressCensorshipBestTx.TryGetValue(tx.To!, out Transaction? bestTx))
+                if (tx.To is not null
+                    && tx.GasBottleneck > baseFee
+                    && _bestTxPerObservedAddresses.TryGetValue(tx.To, out Transaction? bestTx)
+                    && (bestTx is null || _betterTxComparer.Compare(bestTx, tx) > 0))
                 {
-                    if (bestTx is null)
-                    {
-                        _poolAddressCensorshipBestTx[tx.To!] = tx;
-                    }
-                    else if (_comparer.Compare(bestTx, tx) > 0)
-                    {
-                        _poolAddressCensorshipBestTx[tx.To!] = tx;
-                    }
+                    _bestTxPerObservedAddresses[tx.To] = tx;
                 }
             }
-            Task.Run(() => Cache(e.Block, true));
         }
-        else
-        {
-            Task.Run(() => Cache(e.Block, false));
-        }
+
+        Task.Run(() => Cache(e.Block));
     }
 
-    private void Cache(Block block, bool detectingAddressCensorship)
+    private void Cache(Block block)
     {
-        // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block.
-        long blockCensorshipDetectionUniqueAddressCount = 0;
-        /* 
-         * Number of unique addresses specified by the user for censorship detection, to which includable txs are sent in the pool.
-         * Includable txs comprise of pool transactions better than the worst tx in block.
-         */
-        long poolCensorshipDetectionUniqueAddressCount = 0;
-        Transaction bestTxInBlock = block.Transactions[0];
-        Transaction worstTxInBlock = block.Transactions[0];
-        HashSet<AddressAsKey> blockAddressCensorshipDetectorHelper = [];
+        bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
 
-        /* 
-         * Iterates through the block's transactions to get the best tx in block, used in detecting default high-paying tx censorship.
-         * If detectingAddressCensorship is marked true, we get the worst tx in block to determine includable txs as well as
-           getting the blockCensorshipDetectionUniqueAddressCount, used in detecting the optional address censorship.
-         */
-        foreach (Transaction tx in block.Transactions)
+        try
         {
-            if (!tx.SupportsBlobs)
+            // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block.
+            long blockTxsOfTrackedAddresses = 0;
+
+            // Number of unique addresses specified by the user for censorship detection, to which includable txs are sent in the pool.
+            // Includable txs consist of pool transactions better than the worst tx in block.
+            long poolTxsThatAreBetterThanWorstInBlock = 0;
+
+            Transaction bestTxInBlock = block.Transactions.Length == 0 ? null : block.Transactions[0];
+            Transaction worstTxInBlock = block.Transactions.Length == 0 ? null : block.Transactions[0];
+            HashSet<AddressAsKey> trackedAddressesInBlock = [];
+
+            foreach (Transaction tx in block.Transactions)
             {
-                if (_comparer.Compare(bestTxInBlock, tx) > 0)
+                if (!tx.SupportsBlobs)
                 {
-                    bestTxInBlock = tx;
-                }
-                if (detectingAddressCensorship)
-                {
-                    if (_comparer.Compare(worstTxInBlock, tx) < 0)
+                    // Finds best tx in block
+                    if (_betterTxComparer.Compare(bestTxInBlock, tx) > 0)
                     {
-                        worstTxInBlock = tx;
+                        bestTxInBlock = tx;
                     }
-                    if (_poolAddressCensorshipBestTx.ContainsKey(tx.To!) && !blockAddressCensorshipDetectorHelper.Contains(tx.To!))
+
+                    if (tracksPerAddressCensorship)
                     {
-                        blockAddressCensorshipDetectorHelper.Add(tx.To!);
-                        blockCensorshipDetectionUniqueAddressCount++;
+                        // Finds worst tx in pool to compare with pool transactions of tracked addresses
+                        if (_betterTxComparer.Compare(worstTxInBlock, tx) < 0)
+                        {
+                            worstTxInBlock = tx;
+                        }
+
+                        bool trackAddress = _bestTxPerObservedAddresses.ContainsKey(tx.To!);
+                        if (trackAddress && trackedAddressesInBlock.Add(tx.To!))
+                        {
+                            blockTxsOfTrackedAddresses++;
+                        }
                     }
                 }
             }
-        }
 
-        foreach (Transaction? bestTx in _poolAddressCensorshipBestTx.Values)
-        {
-            if (bestTx is not null && _comparer.Compare(bestTx, worstTxInBlock) < 0)
+            if (tracksPerAddressCensorship)
             {
-                poolCensorshipDetectionUniqueAddressCount++;
+                foreach (Transaction? bestTx in _bestTxPerObservedAddresses.Values)
+                {
+                    // if there is no transaction in block or the best tx in the pool is better than the worst tx in the block
+                    if (bestTx is null || _betterTxComparer.Compare(bestTx, worstTxInBlock) < 0)
+                    {
+                        poolTxsThatAreBetterThanWorstInBlock++;
+                    }
+                }
+            }
+
+            // Checking to see if the block exhibits high-paying tx censorship or address censorship or both.
+            // High-paying tx censorship is flagged if the best tx in the pool is not included in the block.
+            // Address censorship is flagged if txs sent to less than half of the user-specified addresses
+            // for censorship detection with includable txs in the pool are included in the block.
+            bool isCensored = _betterTxComparer.Compare(bestTxInBlock, _txPool.GetBestTx()) > 0
+                              || blockTxsOfTrackedAddresses * 2 < poolTxsThatAreBetterThanWorstInBlock;
+
+            BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
+            BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+            _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
+
+            if (isCensored)
+            {
+                DetectMultiBlockCensorship(blockNumberHash, blockCensorshipInfo);
             }
         }
-
-        /* 
-         * Checking to see if the block exhibits high-paying tx censorship or address censorship or both.
-         * High-paying tx censorship is flagged if the best tx in the pool is not included in the block.
-         * Address censorship is flagged if txs sent to less than half of the user-specified addresses 
-           for censorship detection with includable txs in the pool are included in the block.
-         */
-        bool isCensored = _comparer.Compare(bestTxInBlock, _txPool.GetBestTx()) > 0
-        || blockCensorshipDetectionUniqueAddressCount * 2 < poolCensorshipDetectionUniqueAddressCount;
-
-        BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
-        _potentiallyCensoredBlocks.Set(new BlockNumberHash(block), blockCensorshipInfo);
-
-        CensorshipDetection(block, isCensored);
-
-        ClearAddressCensorshipDetectionDictionary();
+        finally
+        {
+            if (tracksPerAddressCensorship)
+            {
+                foreach (AddressAsKey key in _bestTxPerObservedAddresses.Keys)
+                {
+                    _bestTxPerObservedAddresses[key] = null;
+                }
+            }
+        }
     }
 
-    public void CensorshipDetection(Block block, bool isCensored)
+    private void DetectMultiBlockCensorship(BlockNumberHash block, BlockCensorshipInfo blockCensorshipInfo)
     {
-        // Censorship is detected if potential censorship is flagged for the last 4 blocks including the latest.
-        if (isCensored && block.Number > 2)
+        if (DetectPastBlockCensorship() && !_censoredBlocks.Contains(block))
         {
-            BlockCensorshipInfo b1 = _potentiallyCensoredBlocks.Get(new BlockNumberHash(block.Number - 1, (ValueHash256)block.ParentHash!));
-            BlockCensorshipInfo b2 = _potentiallyCensoredBlocks.Get(new BlockNumberHash(block.Number - 2, (ValueHash256)b1.ParentHash!));
-            BlockCensorshipInfo b3 = _potentiallyCensoredBlocks.Get(new BlockNumberHash(block.Number - 3, (ValueHash256)b2.ParentHash!));
+            _censoredBlocks.Add(block);
+            Metrics.NumberOfCensoredBlocks++;
+            Metrics.LastCensoredBlockNumber = block.Number;
+            if (_logger.IsInfo) _logger.Info($"Censorship detected for block {block.Number} with hash {block.Hash!}");
+        }
 
-            BlockNumberHash blockNumberHash = new(block);
-            if (!_censoredBlocks.Contains(blockNumberHash) && b1.IsCensored && b2.IsCensored && b3.IsCensored)
+        bool DetectPastBlockCensorship(int n = BlockCensorshipThreshold)
+        {
+            // Censorship is detected if potential censorship is flagged for the last 4 blocks including the latest.
+            if (block.Number >= BlockCensorshipThreshold)
             {
-                _censoredBlocks.Add(blockNumberHash);
-                Metrics.NumberOfCensoredBlocks++;
-                Metrics.LastCensoredBlockNumber = block.Number;
-                if (_logger.IsInfo)
+                long blockNumber = block.Number - 1;
+                ValueHash256 parentHash = blockCensorshipInfo.ParentHash!.Value;
+                for (int i = 1; i < BlockCensorshipThreshold; i++)
                 {
-                    _logger.Info($"Censorship detected for block no. {block.Number} with hash {block.Hash!}");
+                    BlockCensorshipInfo info = _potentiallyCensoredBlocks.Get(new BlockNumberHash(blockNumber, parentHash));
+
+                    if (!info.IsCensored)
+                    {
+                        return false;
+                    }
+
+                    parentHash = info.ParentHash!.Value;
+                    blockNumber--;
                 }
+
+                return true;
             }
+
+            return false;
         }
     }
 
-    public IEnumerable<BlockNumberHash> GetCensoredBlocks() => _censoredBlocks.Items;
+    public IEnumerable<BlockNumberHash> GetCensoredBlocks() => _censoredBlocks;
 
     public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
-
-    public void ClearAddressCensorshipDetectionDictionary()
-    {
-        foreach (AddressAsKey key in _poolAddressCensorshipBestTx.Keys)
-        {
-            _poolAddressCensorshipBestTx[key] = null;
-        }
-    }
 
     public void Dispose()
     {
@@ -192,60 +215,27 @@ public class CensorshipDetector : IDisposable
     }
 }
 
-public readonly struct BlockCensorshipInfo
-{
-    public bool IsCensored { get; }
-    public ValueHash256? ParentHash { get; }
+public readonly record struct BlockCensorshipInfo(bool IsCensored, ValueHash256? ParentHash);
 
-    public BlockCensorshipInfo(bool isCensored, ValueHash256? parentHash)
-    {
-        IsCensored = isCensored;
-        ParentHash = parentHash;
-    }
+public readonly record struct BlockNumberHash(long Number, ValueHash256 Hash) : IEquatable<BlockNumberHash>
+{
+    public BlockNumberHash(Block block) : this(block.Number, block.Hash ?? block.CalculateHash()) { }
 }
 
-public readonly struct BlockNumberHash : IEquatable<BlockNumberHash>
+public class WrapAroundArray<T>(long maxSize = 1) : IEnumerable<T>
 {
-    public long Number { get; }
-    public ValueHash256 Hash { get; }
-
-    public BlockNumberHash(long number, ValueHash256 hash)
-    {
-        Number = number;
-        Hash = hash;
-    }
-
-    public BlockNumberHash(Block block)
-    {
-        Number = block.Number;
-        Hash = block.Hash ?? block.CalculateHash();
-    }
-
-    public bool Equals(BlockNumberHash other) => Number == other.Number && Hash == other.Hash;
-}
-
-public class WrapAroundArray<T>
-{
-    private readonly T[] _items = new T[1];
-    private readonly long _maxSize = 1;
-    private long _counter = 0;
-
-    public WrapAroundArray(long maxSize)
-    {
-        if (maxSize > 1)
-        {
-            _maxSize = maxSize;
-            _items = new T[maxSize];
-        }
-    }
+    private readonly T[] _items = new T[maxSize];
+    private long _counter;
 
     public void Add(T item)
     {
-        _items[(int)(_counter % _maxSize)] = item;
+        _items[(int)(_counter % maxSize)] = item;
         _counter++;
     }
 
     public bool Contains(T item) => _items.Contains(item);
 
-    public IEnumerable<T> Items => _items;
+    public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)_items).GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
