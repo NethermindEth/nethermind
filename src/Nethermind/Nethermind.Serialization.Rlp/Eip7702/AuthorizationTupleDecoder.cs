@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using System;
 using System.Diagnostics;
@@ -75,8 +76,8 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         stream.Encode(item.CodeAddress);
         stream.Encode(item.Nonce);
         stream.Encode(item.AuthoritySignature.RecoveryId);
-        stream.Encode(item.AuthoritySignature.R);
-        stream.Encode(item.AuthoritySignature.S);
+        stream.Encode(new UInt256(item.AuthoritySignature.R, true));
+        stream.Encode(new UInt256(item.AuthoritySignature.S, true));
     }
 
     public RlpStream EncodeWithoutSignature(ulong chainId, Address codeAddress, ulong nonce)
@@ -102,8 +103,8 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     private static int GetContentLength(AuthorizationTuple tuple) =>
         GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
         + Rlp.LengthOf(tuple.AuthoritySignature.RecoveryId)
-        + Rlp.LengthOf(tuple.AuthoritySignature.R.AsSpan())
-        + Rlp.LengthOf(tuple.AuthoritySignature.S.AsSpan());
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.AsSpan(), true))
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.AsSpan(), true));
 
     private static int GetContentLengthWithoutSig(ulong chainId, Address codeAddress, ulong nonce) =>
         Rlp.LengthOf(chainId)
