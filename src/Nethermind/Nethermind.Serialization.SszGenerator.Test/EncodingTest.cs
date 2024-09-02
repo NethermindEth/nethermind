@@ -12,41 +12,30 @@ public class EncodingTest
     [Test]
     public void Test1()
     {
-        while (true)
+        ComplexStruct test = new()
         {
-            try
+            VariableC = new VariableC { Fixed1 = 2, Fixed2 = [1, 2, 3, 4] },
+            Test2 = Enumerable.Range(0, 10).Select(i => (ulong)i).ToArray(),
+            FixedCVec = Enumerable.Range(0, 10).Select(i => new FixedC()).ToArray(),
+            VariableCVec = Enumerable.Range(0, 10).Select(i => new VariableC()).ToArray(),
+            Test2UnionVec = Enumerable.Range(0, 10).Select(i => new UnionTest3()
             {
-                ComplexStruct test = new()
-                {
-                    VariableC = new VariableC { Fixed1 = 2, Fixed2 = [1, 2, 3, 4] },
-                    Test2 = Enumerable.Range(0, 10).Select(i => (ulong)i).ToArray(),
-                    FixedCVec = Enumerable.Range(0, 10).Select(i => new FixedC()).ToArray(),
-                    VariableCVec = Enumerable.Range(0, 10).Select(i => new VariableC()).ToArray(),
-                    Test2UnionVec = Enumerable.Range(0, 10).Select(i => new UnionTest3()
-                    {
-                        VariableC = new VariableC { Fixed1 = 2, Fixed2 = [1, 2, 3, 4] },
-                        Test2 = Enumerable.Range(0, 10).Select(i => (ulong)i).ToArray(),
-                        FixedCVec = Enumerable.Range(0, 10).Select(i => new FixedC()).ToArray(),
-                        VariableCVec = Enumerable.Range(0, 10).Select(i => new VariableC()).ToArray(),
-                        BitVec = new System.Collections.BitArray(10),
-                    }).ToArray(),
-                    BitVec = new System.Collections.BitArray(10),
-                };
+                VariableC = new VariableC { Fixed1 = 2, Fixed2 = [1, 2, 3, 4] },
+                Test2 = Enumerable.Range(0, 10).Select(i => (ulong)i).ToArray(),
+                FixedCVec = Enumerable.Range(0, 10).Select(i => new FixedC()).ToArray(),
+                VariableCVec = Enumerable.Range(0, 10).Select(i => new VariableC()).ToArray(),
+                BitVec = new System.Collections.BitArray(10),
+            }).ToArray(),
+            BitVec = new System.Collections.BitArray(10),
+        };
 
-                var encoded = SszEncoding.Encode(test);
-                SszEncoding.Merkleize(test, out UInt256 root);
-                SszEncoding.Decode(encoded, out ComplexStruct decodedTest);
+        var encoded = SszEncoding.Encode(test);
+        SszEncoding.Merkleize(test, out UInt256 root);
+        SszEncoding.Decode(encoded, out ComplexStruct decodedTest);
 
-                Assert.That(decodedTest.VariableC.Fixed1, Is.EqualTo(test.VariableC.Fixed1));
-                Assert.That(decodedTest.VariableC.Fixed2, Is.EqualTo(test.VariableC.Fixed2));
-                SszEncoding.Merkleize(test, out UInt256 decodedRoot);
-                Assert.That(root, Is.EqualTo(decodedRoot));
-
-            }
-            catch
-            {
-
-            }
-        }
+        Assert.That(decodedTest.VariableC.Fixed1, Is.EqualTo(test.VariableC.Fixed1));
+        Assert.That(decodedTest.VariableC.Fixed2, Is.EqualTo(test.VariableC.Fixed2));
+        SszEncoding.Merkleize(test, out UInt256 decodedRoot);
+        Assert.That(root, Is.EqualTo(decodedRoot));
     }
 }

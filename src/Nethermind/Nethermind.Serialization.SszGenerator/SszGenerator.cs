@@ -194,7 +194,7 @@ public partial class SszEncoding
             return;
         }}
 {Whitespace}
-        {(decl.IsVariable ? $@"int firstOffset = SszLib.DecodeInt(data.Slice(0, 4));
+        {(decl.IsVariable ? $@"SszLib.Decode(data.Slice(0, 4), out int firstOffset);
         int length = firstOffset / {SszType.PointerLength}" : $"int length = data.Length / {decl.StaticLength}")};
         container = new {decl.Name}[length];
 {Whitespace}
@@ -202,7 +202,7 @@ public partial class SszEncoding
         int offset = firstOffset;
         for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
         {{
-            int nextOffset = SszLib.DecodeInt(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
+            SszLib.Decode(data.Slice(nextOffsetIndex, {SszType.PointerLength}), out int nextOffset);
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}
@@ -336,7 +336,7 @@ public partial class SszEncoding
             return;
         }}
 {Whitespace}
-        int firstOffset = SszLib.DecodeInt(data.Slice(0, 4));
+        SszLib.Decode(data.Slice(0, 4), out int firstOffset);
         int length = firstOffset / {SszType.PointerLength};
         container = new {decl.Name}[length];
 {Whitespace}
@@ -344,7 +344,7 @@ public partial class SszEncoding
         int offset = firstOffset;
         for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
         {{
-            int nextOffset = SszLib.DecodeInt(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
+            SszLib.Decode(data.Slice(nextOffsetIndex, {SszType.PointerLength}), out int nextOffset);
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}
