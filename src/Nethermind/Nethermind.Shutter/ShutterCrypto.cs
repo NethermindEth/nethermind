@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Merkleization;
+using Nethermind.Serialization;
 
 namespace Nethermind.Shutter;
 
@@ -177,7 +178,7 @@ public static class ShutterCrypto
         ulong eon,
         ulong slot,
         ulong txPointer,
-        List<byte[]> identityPreimages,
+        List<IdentityPreimage> identityPreimages,
         ReadOnlySpan<byte> signatureBytes,
         Address keyperAddress)
     {
@@ -317,9 +318,9 @@ public static class ShutterCrypto
         Hash3(preimage, out res);
     }
 
-    internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages)
+    internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<IdentityPreimage> identityPreimages)
     {
-        Ssz.SlotDecryptionIdentites container = new()
+        SlotDecryptionIdentites container = new()
         {
             InstanceID = instanceId,
             Eon = eon,
@@ -328,7 +329,7 @@ public static class ShutterCrypto
             IdentityPreimages = identityPreimages
         };
 
-        Merkle.Ize(out UInt256 root, container);
+        SszEncoding.Merkleize(container, out UInt256 root);
         return new(root.ToLittleEndian());
     }
 

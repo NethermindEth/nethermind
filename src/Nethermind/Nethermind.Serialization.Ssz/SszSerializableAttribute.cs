@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime;
 
 namespace Nethermind.Serialization.Ssz;
 
@@ -10,7 +9,7 @@ namespace Nethermind.Serialization.Ssz;
 public class SszSerializableAttribute : Attribute;
 
 [AttributeUsage(AttributeTargets.Property)]
-public class SszListAttribute(int limit = 0) : Attribute
+public class SszListAttribute(int limit) : Attribute
 {
     public int Limit { get; } = limit;
 }
