@@ -5,124 +5,18 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Serialization.Rlp.MyTxDecoder;
+namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = null) : ITxDecoder
+public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
+    : BaseEIP1559TxDecoder<T>(TxType.DepositTx, transactionFactory) where T : Transaction, new()
 {
-    private readonly Func<Transaction> _createTransaction = transactionFactory ?? (() => new Transaction());
+    protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
 
-    public Transaction? Decode(Span<byte> transactionSequence, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    protected override void EncodeSignature(Signature? signature, RlpStream stream, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        Transaction transaction = _createTransaction();
-        transaction.Type = TxType.DepositTx;
-
-        int transactionLength = rlpStream.ReadSequenceLength();
-        int lastCheck = rlpStream.Position + transactionLength;
-
-        DecodePayload(transaction, rlpStream);
-
-        if (rlpStream.Position < lastCheck)
-        {
-            DecodeSignature(transaction, rlpStream, rlpBehaviors);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            rlpStream.Check(lastCheck);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            if (transactionSequence.Length <= ITxDecoder.MaxDelayedHashTxnSize)
-            {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                transaction.SetPreHashNoLock(transactionSequence);
-            }
-            else
-            {
-                // Just calculate the Hash as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
-            }
-        }
-
-        return transaction;
     }
 
-    public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        transaction ??= new();
-        transaction.Type = TxType.DepositTx;
-
-        int transactionLength = decoderContext.ReadSequenceLength();
-        int lastCheck = decoderContext.Position + transactionLength;
-
-        DecodePayload(transaction, ref decoderContext);
-
-        if (decoderContext.Position < lastCheck)
-        {
-            DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            decoderContext.Check(lastCheck);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            if (transactionSequence.Length <= ITxDecoder.MaxDelayedHashTxnSize)
-            {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                if (decoderContext.ShouldSliceMemory)
-                {
-                    // Do not copy the memory in this case.
-                    int currentPosition = decoderContext.Position;
-                    decoderContext.Position = txSequenceStart;
-                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
-                    decoderContext.Position = currentPosition;
-                }
-                else
-                {
-                    transaction.SetPreHashNoLock(transactionSequence);
-                }
-            }
-            else
-            {
-                // Just calculate the Hash immediately as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
-            }
-        }
-    }
-
-    public void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        int contentLength = GetPayloadLength(transaction);
-        int sequenceLength = Rlp.LengthOfSequence(contentLength);
-
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
-        {
-            stream.StartByteArray(sequenceLength + 1, false);
-        }
-
-        stream.WriteByte((byte)TxType.DepositTx);
-        stream.StartSequence(contentLength);
-
-        EncodePayload(transaction, stream);
-    }
-
-    public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        int txContentLength = GetPayloadLength(transaction);
-        int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
-
-        bool isForTxRoot = rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping);
-        int result = isForTxRoot
-                ? (1 + txPayloadLength)
-                : Rlp.LengthOfSequence(1 + txPayloadLength);
-        return result;
-    }
-
-    private static void DecodePayload(Transaction transaction, RlpStream rlpStream)
+    protected override void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction.SourceHash = rlpStream.DecodeKeccak();
         transaction.SenderAddress = rlpStream.DecodeAddress();
@@ -134,7 +28,8 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         transaction.Data = rlpStream.DecodeByteArray();
     }
 
-    private static void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
+    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
         transaction.SenderAddress = decoderContext.DecodeAddress();
@@ -146,37 +41,22 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         transaction.Data = decoderContext.DecodeByteArray();
     }
 
-    private static void DecodeSignature(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        ulong v = rlpStream.DecodeULong();
-        ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
-        ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
-        if (v == 0 && rBytes.IsEmpty && sBytes.IsEmpty) return;
-        transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
-    }
+    protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        v == 0 && rBytes.IsEmpty && sBytes.IsEmpty
+            ? fallbackSignature
+            : base.DecodeSignature(v, rBytes, sBytes, fallbackSignature, rlpBehaviors);
 
-    private static void DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
-    {
-        ulong v = decoderContext.DecodeULong();
-        ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
-        ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
-        if (v == 0 && rBytes.IsEmpty && sBytes.IsEmpty) return;
-        transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
-    }
+    protected override int GetPayloadLength(Transaction transaction) =>
+        Rlp.LengthOf(transaction.SourceHash)
+        + Rlp.LengthOf(transaction.SenderAddress)
+        + Rlp.LengthOf(transaction.To)
+        + Rlp.LengthOf(transaction.Mint)
+        + Rlp.LengthOf(transaction.Value)
+        + Rlp.LengthOf(transaction.GasLimit)
+        + Rlp.LengthOf(transaction.IsOPSystemTransaction)
+        + Rlp.LengthOf(transaction.Data);
 
-    private static int GetPayloadLength(Transaction transaction)
-    {
-        return Rlp.LengthOf(transaction.SourceHash)
-               + Rlp.LengthOf(transaction.SenderAddress)
-               + Rlp.LengthOf(transaction.To)
-               + Rlp.LengthOf(transaction.Mint)
-               + Rlp.LengthOf(transaction.Value)
-               + Rlp.LengthOf(transaction.GasLimit)
-               + Rlp.LengthOf(transaction.IsOPSystemTransaction)
-               + Rlp.LengthOf(transaction.Data);
-    }
-
-    private static void EncodePayload(Transaction transaction, RlpStream stream)
+    protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.Encode(transaction.SourceHash);
         stream.Encode(transaction.SenderAddress);

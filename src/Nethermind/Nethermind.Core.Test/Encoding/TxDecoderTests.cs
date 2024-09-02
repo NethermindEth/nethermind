@@ -72,11 +72,11 @@ namespace Nethermind.Core.Test.Encoding
         {
             Transaction tx = testCase.Tx;
 
-            Rlp rlp = TxDecoder.Instance.Encode(tx);
+            Rlp rlp = _txDecoder.Encode(tx);
 
             Hash256 expectedHash = Keccak.Compute(rlp.Bytes);
 
-            Transaction decodedTx = TxDecoder.Instance.Decode(new RlpStream(rlp.Bytes))!;
+            Transaction decodedTx = _txDecoder.Decode(new RlpStream(rlp.Bytes))!;
 
             decodedTx.SetPreHash(rlp.Bytes);
 

@@ -183,7 +183,7 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
             .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
-            .WithAccessList(txType == TxType.AccessList || txType == TxType.EIP1559
+            .WithAccessList(txType is TxType.AccessList or TxType.EIP1559
                 ? AccessList.Empty
                 : null)
             .WithSignature(signature).TestObject;
