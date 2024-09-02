@@ -17,48 +17,84 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain;
 using Nethermind.Core.Collections;
+using Nethermind.Shutter.Config;
 
 namespace Nethermind.Shutter;
 
-public class ShutterBlockHandler(
-    ulong chainId,
-    string validatorRegistryContractAddress,
-    ulong validatorRegistryMessageVersion,
-    ReadOnlyTxProcessingEnvFactory envFactory,
-    IReadOnlyBlockTree blockTree,
-    IAbiEncoder abiEncoder,
-    IReceiptFinder receiptFinder,
-    Dictionary<ulong, byte[]> validatorsInfo,
-    IShutterEon eon,
-    ShutterTxLoader txLoader,
-    ShutterTime shutterTime,
-    ILogManager logManager,
-    TimeSpan slotLength,
-    TimeSpan blockWaitCutoff) : IShutterBlockHandler
+public class ShutterBlockHandler : IShutterBlockHandler
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger;
+    private readonly ShutterTime _time;
+    private readonly IShutterEon _eon;
+    private readonly IReceiptFinder _receiptFinder;
+    private readonly ShutterTxLoader _txLoader;
+    private readonly Dictionary<ulong, byte[]> _validatorsInfo;
+    private readonly ILogManager _logManager;
+    private readonly IAbiEncoder _abiEncoder;
+    private readonly IBlockTree _blockTree;
+    private readonly IReadOnlyBlockTree _readOnlyBlockTree;
+    private readonly ulong _chainId;
+    private readonly IShutterConfig _cfg;
+    private readonly TimeSpan _slotLength;
+    private readonly TimeSpan _blockWaitCutoff;
+    private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
     private bool _haveCheckedRegistered = false;
     private readonly ConcurrentDictionary<ulong, BlockWaitTask> _blockWaitTasks = new();
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
     private readonly object _syncObject = new();
 
-    public void OnNewHeadBlock(Block head)
+    public ShutterBlockHandler(
+        ulong chainId,
+        IShutterConfig cfg,
+        ReadOnlyTxProcessingEnvFactory envFactory,
+        IBlockTree blockTree,
+        IAbiEncoder abiEncoder,
+        IReceiptFinder receiptFinder,
+        Dictionary<ulong, byte[]> validatorsInfo,
+        IShutterEon eon,
+        ShutterTxLoader txLoader,
+        ShutterTime time,
+        ILogManager logManager,
+        TimeSpan slotLength,
+        TimeSpan blockWaitCutoff)
     {
-        if (shutterTime.IsBlockUpToDate(head))
+        _chainId = chainId;
+        _cfg = cfg;
+        _logger = logManager.GetClassLogger();
+        _time = time;
+        _validatorsInfo = validatorsInfo;
+        _eon = eon;
+        _receiptFinder = receiptFinder;
+        _txLoader = txLoader;
+        _blockTree = blockTree;
+        _readOnlyBlockTree = blockTree.AsReadOnly();
+        _abiEncoder = abiEncoder;
+        _logManager = logManager;
+        _envFactory = envFactory;
+        _slotLength = slotLength;
+        _blockWaitCutoff = blockWaitCutoff;
+
+        _blockTree.NewHeadBlock += OnNewHeadBlock;
+    }
+
+    private void OnNewHeadBlock(object? _, BlockEventArgs e)
+    {
+        Block head = e.Block;
+        if (_time.IsBlockUpToDate(head))
         {
             if (_logger.IsDebug) _logger.Debug($"Shutter block handler {head.Number}");
 
             if (!_haveCheckedRegistered)
             {
-                CheckAllValidatorsRegistered(head.Header, validatorsInfo);
+                CheckAllValidatorsRegistered(head.Header, _validatorsInfo);
                 _haveCheckedRegistered = true;
             }
-            eon.Update(head.Header);
-            txLoader.LoadFromReceipts(head, receiptFinder.Get(head), eon.GetCurrentEonInfo()!.Value.Eon);
+            _eon.Update(head.Header);
+            _txLoader.LoadFromReceipts(head, _receiptFinder.Get(head), _eon.GetCurrentEonInfo()!.Value.Eon);
 
             lock (_syncObject)
             {
-                ulong slot = shutterTime.GetSlot(head.Timestamp * 1000);
+                ulong slot = _time.GetSlot(head.Timestamp * 1000);
                 _slotToBlockHash.Set(slot, head.Hash);
 
                 if (_blockWaitTasks.Remove(slot, out BlockWaitTask waitTask))
@@ -81,19 +117,19 @@ public class ShutterBlockHandler(
         {
             if (_slotToBlockHash.TryGet(slot, out Hash256? blockHash))
             {
-                return blockTree.FindBlock(blockHash!);
+                return _readOnlyBlockTree.FindBlock(blockHash!);
             }
 
             if (_logger.IsDebug) _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
-            long offset = shutterTime.GetCurrentOffsetMs(slot);
-            long waitTime = (long)blockWaitCutoff.TotalMilliseconds - offset;
+            long offset = _time.GetCurrentOffsetMs(slot);
+            long waitTime = (long)_blockWaitCutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)blockWaitCutoff.TotalMilliseconds}ms.");
+                if (_logger.IsDebug) _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)_blockWaitCutoff.TotalMilliseconds}ms.");
                 return null;
             }
-            waitTime = Math.Min(waitTime, 2 * (long)slotLength.TotalMilliseconds);
+            waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
 
             var timeoutSource = new CancellationTokenSource((int)waitTime);
             var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
@@ -124,10 +160,10 @@ public class ShutterBlockHandler(
             return;
         }
 
-        IReadOnlyTxProcessingScope scope = envFactory.Create().Build(parent.StateRoot!);
+        IReadOnlyTxProcessingScope scope = _envFactory.Create().Build(parent.StateRoot!);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
-        ValidatorRegistryContract validatorRegistryContract = new(processor, abiEncoder, new(validatorRegistryContractAddress), logManager, chainId, validatorRegistryMessageVersion);
+        ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
             if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");
@@ -139,7 +175,10 @@ public class ShutterBlockHandler(
     }
 
     public void Dispose()
-        => _blockWaitTasks.ForEach(x => x.Value.Dispose());
+    {
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        _blockWaitTasks.ForEach(x => x.Value.Dispose());
+    }
 
     private readonly struct BlockWaitTask : IDisposable
     {

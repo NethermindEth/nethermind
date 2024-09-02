@@ -20,8 +20,9 @@ using NSubstitute;
 namespace Nethermind.Shutter.Test;
 
 public class ShutterApiSimulator(
+    ShutterEventSimulator eventSimulator,
     IAbiEncoder abiEncoder,
-    IReadOnlyBlockTree blockTree,
+    IBlockTree blockTree,
     IEthereumEcdsa ecdsa,
     ILogFinder logFinder,
     IReceiptStorage receiptStorage,
@@ -40,21 +41,19 @@ public class ShutterApiSimulator(
     private event EventHandler<Dto.DecryptionKeys>? KeysReceived;
     private readonly Random _rnd = rnd;
     private readonly IReceiptStorage _receiptStorage = receiptStorage;
-    private ShutterEventSimulator? _eventSimulator;
 
-    public void SetEventSimulator(ShutterEventSimulator eventSimulator)
-    {
-        _eventSimulator = eventSimulator;
-    }
 
     public (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount = null)
     {
-        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) x = _eventSimulator!.AdvanceSlot(eventCount, keyCount);
+        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) x = eventSimulator.AdvanceSlot(eventCount, keyCount);
         LogEntry[] logs = x.events.Select(e => e.LogEntry).ToArray();
-        InsertShutterReceipts(_blockTree.Head ?? Build.A.Block.TestObject, logs);
+        InsertShutterReceipts(_readOnlyBlockTree.Head ?? Build.A.Block.TestObject, logs);
         TriggerKeysReceived(x.keys);
         return x;
     }
+
+    public void TriggerNewHeadBlock(BlockEventArgs e)
+        => _blockTree.NewHeadBlock += Raise.EventWith(this, e);
 
     public void TriggerKeysValidated(IShutterKeyValidator.ValidatedKeyArgs keys)
     {
@@ -67,7 +66,7 @@ public class ShutterApiSimulator(
     }
 
     public void NextEon()
-        => _eventSimulator!.NextEon();
+        => eventSimulator.NextEon();
 
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {
@@ -88,7 +87,7 @@ public class ShutterApiSimulator(
         }
 
         _receiptStorage.Insert(block, receipts);
-        TxLoader.LoadFromReceipts(block, receipts, _eventSimulator!.GetCurrentEonInfo().Eon);
+        TxLoader.LoadFromReceipts(block, receipts, eventSimulator.GetCurrentEonInfo().Eon);
     }
 
     // fake out P2P module
@@ -106,7 +105,7 @@ public class ShutterApiSimulator(
     protected override IShutterEon InitEon()
     {
         IShutterEon eon = Substitute.For<IShutterEon>();
-        eon.GetCurrentEonInfo().Returns(_ => _eventSimulator!.GetCurrentEonInfo());
+        eon.GetCurrentEonInfo().Returns(_ => eventSimulator.GetCurrentEonInfo());
         eon.When(x => x.Update(Arg.Any<BlockHeader>())).Do((_) => EonUpdate?.Invoke(this, new()));
         return eon;
     }

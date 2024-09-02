@@ -269,11 +269,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return Task.CompletedTask;
     }
 
-    // public virtual Task InitRpcModules()
-    // {
-    //     return InitRpcModulesInternal(_api.BlockImprovementContextFactory);
-    // }
-
     protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
     {
         return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);

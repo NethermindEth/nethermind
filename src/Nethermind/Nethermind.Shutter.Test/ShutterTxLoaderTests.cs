@@ -27,7 +27,15 @@ using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 [TestFixture]
 class ShutterTxLoaderTests : EngineModuleTests
 {
-    private class ShutterApiSimulatorLoadedTxs(IAbiEncoder abiEncoder, IReadOnlyBlockTree blockTree, IEthereumEcdsa ecdsa, ILogFinder logFinder, IReceiptStorage receiptStorage, ILogManager logManager, ISpecProvider specProvider, ITimestamper timestamper, IWorldStateManager worldStateManager, IShutterConfig cfg, Dictionary<ulong, byte[]> validatorsInfo, Random rnd) : ShutterApiSimulator(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage, logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, rnd)
+    private class ShutterApiSimulatorLoadedTxs(
+        ShutterEventSimulator eventSimulator, IAbiEncoder abiEncoder, IReadOnlyBlockTree blockTree,
+        IEthereumEcdsa ecdsa, ILogFinder logFinder, IReceiptStorage receiptStorage,
+        ILogManager logManager, ISpecProvider specProvider, ITimestamper timestamper,
+        IWorldStateManager worldStateManager, IShutterConfig cfg, Dictionary<ulong, byte[]> validatorsInfo,
+        Random rnd)
+            : ShutterApiSimulator(
+                eventSimulator, abiEncoder, blockTree, ecdsa, logFinder, receiptStorage, logManager, specProvider,
+                timestamper, worldStateManager, cfg, validatorsInfo, rnd)
     {
         public ShutterTransactions? LoadedTransactions;
         // instead of loading to TxSouce store to check result
@@ -88,7 +96,6 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         for (int i = 0; i < 20; i++)
         {
@@ -111,8 +118,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(new ShutterEventSimulatorHalfInvalid(
+        ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain, new ShutterEventSimulatorHalfInvalid(
             rnd,
             ShutterTestsCommon.ChainId,
             ShutterTestsCommon.Threshold,
@@ -138,7 +144,6 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         api.AdvanceSlot(40);
 
@@ -185,7 +190,6 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         api.AdvanceSlot(5);
 
@@ -220,7 +224,6 @@ class ShutterTxLoaderTests : EngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
 
         Assert.DoesNotThrow(() => api.AdvanceSlot(0));
     }
@@ -235,8 +238,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain);
-        api.SetEventSimulator(new ShutterEventSimulatorHalfNextEon(
+        ShutterApiSimulatorLoadedTxs api = InitApi(rnd, chain, new ShutterEventSimulatorHalfNextEon(
             rnd,
             ShutterTestsCommon.ChainId,
             ShutterTestsCommon.Threshold,
@@ -267,8 +269,9 @@ class ShutterTxLoaderTests : EngineModuleTests
         });
     }
 
-    private static ShutterApiSimulatorLoadedTxs InitApi(Random rnd, MergeTestBlockchain chain)
+    private static ShutterApiSimulatorLoadedTxs InitApi(Random rnd, MergeTestBlockchain chain, ShutterEventSimulator? eventSimulator = null)
         => new(
+            eventSimulator ?? ShutterTestsCommon.InitEventSimulator(rnd),
             ShutterTestsCommon.AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
             chain.LogManager, chain.SpecProvider, chain.Timestamper, chain.WorldStateManager, ShutterTestsCommon.Cfg, [], rnd
         );

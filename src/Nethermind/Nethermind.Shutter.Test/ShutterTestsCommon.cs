@@ -46,21 +46,23 @@ class ShutterTestsCommon
         Validator = true
     };
 
-    public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null)
+    public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
     {
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
-        IReadOnlyBlockTree readOnlyBlockTree = Substitute.For<IReadOnlyBlockTree>();
         ILogFinder logFinder = Substitute.For<ILogFinder>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         return new(
-            AbiEncoder, readOnlyBlockTree, Ecdsa, logFinder, receiptStorage,
+            eventSimulator ?? InitEventSimulator(rnd),
+            AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
             worldStateManager, Cfg, [], rnd
         );
     }
 
-    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null)
+    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
         => new(
+            eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
             chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager, Cfg, [], rnd
         );

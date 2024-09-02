@@ -37,8 +37,8 @@ public class ShutterApi : IShutterApi
 
     protected readonly TimeSpan _slotLength;
     protected readonly TimeSpan _blockUpToDateCutoff;
-    protected readonly IBlockTree _blockTree;
     protected readonly IReadOnlyBlockTree _readOnlyBlockTree;
+    protected readonly IBlockTree _blockTree;
     private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
@@ -77,10 +77,9 @@ public class ShutterApi : IShutterApi
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
             specProvider.ChainId,
-            _cfg.ValidatorRegistryContractAddress!,
-            _cfg.ValidatorRegistryMessageVersion,
+            _cfg,
             _txProcessingEnvFactory,
-            _readOnlyBlockTree,
+            blockTree,
             abiEncoder,
             receiptFinder,
             validatorsInfo,
@@ -97,16 +96,10 @@ public class ShutterApi : IShutterApi
 
         InitP2P(_cfg, logManager);
         RegisterOnKeysValidated();
-        _blockTree.NewHeadBlock += NewHeadBlockHandler;
     }
 
     public void StartP2P(CancellationTokenSource? cancellationTokenSource = null)
         => P2P!.Start(cancellationTokenSource);
-
-    public virtual void NewHeadBlockHandler(object? sender, BlockEventArgs e)
-    {
-        BlockHandler.OnNewHeadBlock(e.Block);
-    }
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)
     {
@@ -123,7 +116,6 @@ public class ShutterApi : IShutterApi
 
     public async ValueTask DisposeAsync()
     {
-        _blockTree.NewHeadBlock -= NewHeadBlockHandler;
         TxSource.Dispose();
         BlockHandler.Dispose();
         await (P2P?.DisposeAsync() ?? default);
@@ -139,11 +131,11 @@ public class ShutterApi : IShutterApi
         Metrics.TxPointer = keys.TxPointer;
 
         // wait for latest block before loading transactions
-        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, new())) ?? _blockTree.Head;
+        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, new())) ?? _readOnlyBlockTree.Head;
         BlockHeader? header = head?.Header;
         BlockHeader parentHeader = header is not null
-            ? _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
-            : _blockTree.FindLatestHeader()!;
+            ? _readOnlyBlockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
+            : _readOnlyBlockTree.FindLatestHeader()!;
         TxSource.LoadTransactions(head, parentHeader, keys);
     }
 

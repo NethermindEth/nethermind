@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
@@ -31,7 +30,13 @@ public class ShutterIntegrationTests : EngineModuleTests
     private readonly int _buildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private readonly ulong _buildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
 
-    private class ShutterApiSimulatorNoBlockTimeout(IAbiEncoder abiEncoder, IReadOnlyBlockTree blockTree, IEthereumEcdsa ecdsa, ILogFinder logFinder, IReceiptStorage receiptStorage, ILogManager logManager, ISpecProvider specProvider, ITimestamper timestamper, IWorldStateManager worldStateManager, IShutterConfig cfg, Dictionary<ulong, byte[]> validatorsInfo, Random rnd) : ShutterApiSimulator(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage, logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, rnd)
+    private class ShutterApiSimulatorNoBlockTimeout(
+        ShutterEventSimulator eventSimulator, IAbiEncoder abiEncoder, IReadOnlyBlockTree blockTree,
+        IEthereumEcdsa ecdsa, ILogFinder logFinder, IReceiptStorage receiptStorage, ILogManager logManager,
+        ISpecProvider specProvider, ITimestamper timestamper, IWorldStateManager worldStateManager,
+        IShutterConfig cfg, Dictionary<ulong, byte[]> validatorsInfo, Random rnd)
+            : ShutterApiSimulator(eventSimulator, abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
+            logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, rnd)
     {
         public override TimeSpan BlockWaitCutoff { get => TimeSpan.MaxValue; }
     }
@@ -40,8 +45,9 @@ public class ShutterIntegrationTests : EngineModuleTests
     {
         protected override ShutterApiSimulator CreateShutterApi(Random rnd, ITimestamper timestamper)
             => new ShutterApiSimulatorNoBlockTimeout(
-                ShutterTestsCommon.AbiEncoder, BlockTree.AsReadOnly(), EthereumEcdsa, LogFinder, ReceiptStorage,
-                LogManager, SpecProvider, timestamper, WorldStateManager, ShutterTestsCommon.Cfg, [], rnd
+                ShutterTestsCommon.InitEventSimulator(rnd), ShutterTestsCommon.AbiEncoder, BlockTree.AsReadOnly(),
+                EthereumEcdsa, LogFinder, ReceiptStorage, LogManager, SpecProvider, timestamper, WorldStateManager,
+                ShutterTestsCommon.Cfg, [], rnd
             );
     }
 
@@ -62,10 +68,8 @@ public class ShutterIntegrationTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, initialPayload, true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
-
         // keys arrive, waits for head block before loading
-        chain.Api.AdvanceSlot(20);
+        chain.Api!.AdvanceSlot(20);
 
         _ = Task.Run(async () =>
         {
@@ -104,10 +108,8 @@ public class ShutterIntegrationTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 1, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
-
         // waits to load transactions for head block
-        chain.Api.AdvanceSlot(20);
+        chain.Api!.AdvanceSlot(20);
 
         // no events loaded initially
         var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
@@ -141,10 +143,8 @@ public class ShutterIntegrationTests : EngineModuleTests
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
-        chain.Api!.SetEventSimulator(ShutterTestsCommon.InitEventSimulator(rnd));
-
         // no events loaded initially
-        var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        var txs = chain.Api!.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(0));
 
         timestamper.SetTimestamp((long)_buildingSlotTimestamp);

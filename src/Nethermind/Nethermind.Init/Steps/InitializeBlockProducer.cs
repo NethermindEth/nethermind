@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Logging;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;

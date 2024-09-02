@@ -16,7 +16,6 @@ class ShutterKeyValidatorTests
         Random rnd = new(ShutterTestsCommon.Seed);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
         ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd);
-        api.SetEventSimulator(eventSimulator);
 
         bool eventFired = false;
         api.KeyValidator.KeysValidated += (_, _) => eventFired = true;
@@ -32,7 +31,6 @@ class ShutterKeyValidatorTests
         Random rnd = new(ShutterTestsCommon.Seed);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
         ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd);
-        api.SetEventSimulator(eventSimulator);
 
         (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) = api.AdvanceSlot(5);
 
