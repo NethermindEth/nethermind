@@ -72,7 +72,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     public bool HasLeaf(Hash256 key, Hash256? stateRoot = null)
     {
-        return _treeCache.HasLeaf(key.Bytes) || _verkleStateStore.HasLeaf(key.Bytes);
+        return TreeCache.HasLeaf(key.Bytes) || VerkleStateStore.HasLeaf(key.Bytes);
     }
 
     public void Insert(Hash256 key, in ReadOnlySpan<byte> value)
