@@ -53,11 +53,11 @@ public class ShutterTxLoader(
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms fter";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
-        IEnumerable<Transaction> transactions = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
+        ParallelQuery<Transaction>? transactions = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
 
-        if (_logger.IsDebug && transactions.Any()) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
+        if (_logger.IsDebug && transactions is not null) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, transactions.Select(tx => tx.ToShortString()))}");
 
-        Transaction[] filtered = FilterTransactions(transactions, parentHeader).ToArray();
+        Transaction[] filtered = transactions is null ? [] : FilterTransactions(transactions, parentHeader).ToArray();
 
         ShutterTransactions shutterTransactions = new()
         {
@@ -84,18 +84,10 @@ public class ShutterTxLoader(
         }
     }
 
-    private IEnumerable<Transaction> FilterTransactions(IEnumerable<Transaction> transactions, BlockHeader parentHeader)
-    {
-        foreach (Transaction tx in transactions)
-        {
-            if (_txFilter.IsAllowed(tx, parentHeader) == TxPool.AcceptTxResult.Accepted)
-            {
-                yield return tx;
-            }
-        }
-    }
+    private ParallelQuery<Transaction> FilterTransactions(ParallelQuery<Transaction> transactions, BlockHeader parentHeader)
+        => transactions.Where(tx => _txFilter.IsAllowed(tx, parentHeader) == TxPool.AcceptTxResult.Accepted);
 
-    private IEnumerable<Transaction> DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
+    private ParallelQuery<Transaction>? DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
     {
         int txCount = sequencedTransactions.Count;
         int keyCount = decryptionKeys.Count;
@@ -103,7 +95,7 @@ public class ShutterTxLoader(
         if (txCount < keyCount)
         {
             if (_logger.IsError) _logger.Error($"Could not decrypt Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
-            return [];
+            return null;
         }
 
         if (txCount > keyCount)
@@ -123,14 +115,11 @@ public class ShutterTxLoader(
             sortedKeyIndexes[index.Index] = keyIndex++;
         }
 
-        ArrayPoolList<Transaction> decryptedTransactions = sequencedTransactions
+        return sequencedTransactions
             .AsParallel()
             .AsOrdered()
             .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedKeyIndexes[i]]))
-            .OfType<Transaction>()
-            .ToPooledList(sequencedTransactions.Count);
-
-        return decryptedTransactions.AsEnumerable();
+            .OfType<Transaction>();
     }
 
     private Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, (byte[] IdentityPreimage, byte[] Key) decryptionKey)
