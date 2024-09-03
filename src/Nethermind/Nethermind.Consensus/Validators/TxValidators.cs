@@ -255,11 +255,13 @@ public sealed class MempoolBlobTxValidator : ITxValidator
                 error = TxErrorMessages.ExceededBlobSize;
                 return false;
             }
+
             if (wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment)
             {
                 error = TxErrorMessages.ExceededBlobCommitmentSize;
                 return false;
             }
+
             if (wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
             {
                 error = TxErrorMessages.InvalidBlobProofSize;
@@ -288,8 +290,10 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     }
 }
 
-public sealed class LegacySignatureTxValidator(ulong chainId) : ITxValidator
+public abstract class BaseSignatureTxValidator : ITxValidator
 {
+    protected virtual bool AdditionalCheck(Transaction transaction, IReleaseSpec releaseSpec) => false;
+
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
         error = null;
@@ -321,7 +325,7 @@ public sealed class LegacySignatureTxValidator(ulong chainId) : ITxValidator
             return true;
         }
 
-        if (releaseSpec.IsEip155Enabled && (signature.V == chainId * 2 + 35ul || signature.V == chainId * 2 + 36ul))
+        if (AdditionalCheck(transaction, releaseSpec))
         {
             return true;
         }
@@ -336,45 +340,13 @@ public sealed class LegacySignatureTxValidator(ulong chainId) : ITxValidator
     }
 }
 
-public sealed class SignatureTxValidator : ITxValidator
+public sealed class LegacySignatureTxValidator(ulong chainId) : BaseSignatureTxValidator
 {
-    public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
+    protected override bool AdditionalCheck(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        error = null;
-
-        Signature? signature = transaction.Signature;
-        if (signature is null)
-        {
-            error = TxErrorMessages.InvalidTxSignature;
-            return false;
-        }
-
-        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
-        UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
-
-        if (sValue.IsZero || sValue >= (releaseSpec.IsEip2Enabled ? Secp256K1Curve.HalfNPlusOne : Secp256K1Curve.N))
-        {
-            error = TxErrorMessages.InvalidTxSignature;
-            return false;
-        }
-
-        if (rValue.IsZero || rValue >= Secp256K1Curve.NMinusOne)
-        {
-            error = TxErrorMessages.InvalidTxSignature;
-            return false;
-        }
-
-        if (signature.V is 27 or 28)
-        {
-            return true;
-        }
-
-        if (releaseSpec.ValidateChainId)
-        {
-            error = TxErrorMessages.InvalidTxSignature;
-            return false;
-        }
-
-        return true;
+        Signature signature = transaction.Signature;
+        return releaseSpec.IsEip155Enabled && (signature.V == chainId * 2 + 35ul || signature.V == chainId * 2 + 36ul);
     }
 }
+
+public sealed class SignatureTxValidator : BaseSignatureTxValidator;
