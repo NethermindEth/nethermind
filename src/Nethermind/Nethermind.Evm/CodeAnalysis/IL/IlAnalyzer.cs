@@ -24,7 +24,8 @@ internal static class IlAnalyzer
     private static Dictionary<Type, InstructionChunk> Patterns = new Dictionary<Type, InstructionChunk>();
     public static void AddPattern(InstructionChunk handler)
     {
-        lock (Patterns) {
+        lock (Patterns)
+        {
             Patterns[handler.GetType()] = handler;
         }
     }
@@ -85,7 +86,6 @@ internal static class IlAnalyzer
 
         static FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode((OpcodeInfo[], byte[][]) codeData, ITxTracer tracer)
         {
-            tracer.ReportChunkAnalysisStart();
             Dictionary<ushort, SegmentExecutionCtx> opcodeInfos = [];
 
             List<OpcodeInfo> segment = [];
@@ -108,13 +108,11 @@ internal static class IlAnalyzer
             {
                 opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
             }
-            tracer.ReportChunkAnalysisEnd();
             return opcodeInfos.ToFrozenDictionary();
         }
 
         static FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode, ITxTracer tracer)
         {
-            tracer.ReportChunkAnalysisStart();
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
             var patternFound = new Dictionary<ushort, InstructionChunk>();
             foreach (var (_, chunkHandler) in Patterns)
@@ -134,7 +132,6 @@ internal static class IlAnalyzer
                     }
                 }
             }
-            tracer.ReportChunkAnalysisEnd();
             return patternFound.ToFrozenDictionary();
         }
 

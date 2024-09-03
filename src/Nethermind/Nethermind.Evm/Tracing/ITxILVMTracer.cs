@@ -31,34 +31,7 @@ public interface IILVMTracer
     /// </remarks>
     bool IsTracingEvmSegments { get; }
 
-    /// <summary>
-    /// Traces Bytecode compound patterns analysis
-    /// </summary>
-    /// <remarks>
-    /// Controls
-    ///  - <see cref="ReportChunkAnalysisStart"/>
-    ///  - <see cref="ReportChunkAnalysisEnd"/>
-    /// </remarks>
-    bool IsTracingPatternsAnalysis { get; }
-
-    /// <summary>
-    /// Traces Bytecode Precompilation analysis
-    /// </summary>
-    /// <remarks>
-    /// Controls
-    ///  - <see cref="ReportSegmentAnalysisStart"/>
-    ///  - <see cref="ReportSegmentAnalysisEnd"/>
-    /// </remarks>
-    /// 
-    bool IsTracingPrecompilationAnalysis { get; }
-
     void ReportChunkExecution(long gas, int pc, string segmentID);
     void ReportCompiledSegmentExecution(long gas, int pc, string segmentId);
-
-    void ReportChunkAnalysisStart();
-    void ReportChunkAnalysisEnd();
-
-    void ReportSegmentAnalysisStart();
-    void ReportSegmentAnalysisEnd();
 
 }

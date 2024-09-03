@@ -58,17 +58,6 @@ internal class IlvmBlockTracer : BlockTracerBase<IlvmTxTrace, ILVMTxTracer>
 internal class ILVMTxTracer : TxTracer
 {
     public List<IlvmTrace> IlvmTraceEntries { get; set; } = new List<IlvmTrace>();
-
-    public override void ReportChunkAnalysisEnd()
-    {
-        IlvmTraceEntries.Add(new AnalysisTrace { Mode = IlInfo.ILMode.PatternMatching, IsStart = false });
-    }
-
-    public override void ReportChunkAnalysisStart()
-    {
-        IlvmTraceEntries.Add(new AnalysisTrace { Mode = IlInfo.ILMode.PatternMatching, IsStart = true });
-    }
-
     public override void ReportChunkExecution(long gas, int pc, string segmentID)
     {
         IlvmTraceEntries.Add(new ChunkTrace { Gas = (int)gas, PC = pc, SegmentID = segmentID });
@@ -77,15 +66,5 @@ internal class ILVMTxTracer : TxTracer
     public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
     {
         IlvmTraceEntries.Add(new SegmentTrace { Gas = (int)gas, PC = pc, SegmentID = segmentId });
-    }
-
-    public override void ReportSegmentAnalysisEnd()
-    {
-        IlvmTraceEntries.Add(new AnalysisTrace { Mode = IlInfo.ILMode.SubsegmentsCompiling, IsStart = false });
-    }
-
-    public override void ReportSegmentAnalysisStart()
-    {
-        IlvmTraceEntries.Add(new AnalysisTrace { Mode = IlInfo.ILMode.SubsegmentsCompiling, IsStart = true });
     }
 }

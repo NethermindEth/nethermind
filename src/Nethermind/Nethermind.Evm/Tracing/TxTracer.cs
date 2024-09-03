@@ -26,7 +26,9 @@ public class TxTracer : ITxTracer
                     || IsTracingBlockHash
                     || IsTracingAccess
                     || IsTracingFees
-                    || IsTracingLogs;
+                    || IsTracingLogs
+                    || IsTracingEvmChunks
+                    || IsTracingEvmSegments;
     }
     public bool IsTracing { get; protected set; }
     public virtual bool IsTracingState { get; protected set; }
@@ -43,14 +45,8 @@ public class TxTracer : ITxTracer
     public virtual bool IsTracingFees { get; protected set; }
     public virtual bool IsTracingStorage { get; protected set; }
     public virtual bool IsTracingLogs { get; protected set; }
-
-    public bool IsTracingEvmChunks => throw new NotImplementedException();
-
-    public bool IsTracingEvmSegments => throw new NotImplementedException();
-
-    public bool IsTracingPatternsAnalysis => throw new NotImplementedException();
-
-    public bool IsTracingPrecompilationAnalysis => throw new NotImplementedException();
+    public virtual bool IsTracingEvmChunks { get; protected set; }
+    public virtual bool IsTracingEvmSegments { get; protected set; }
 
     public virtual void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
@@ -87,9 +83,5 @@ public class TxTracer : ITxTracer
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
     public virtual void ReportChunkExecution(long gas, int pc, string segmentID) { }
     public virtual void ReportCompiledSegmentExecution(long gas, int pc, string segmentId) { }
-    public virtual void ReportChunkAnalysisStart() { }
-    public virtual void ReportChunkAnalysisEnd() { }
-    public virtual void ReportSegmentAnalysisStart() { }
-    public virtual void ReportSegmentAnalysisEnd() { }
     public virtual void Dispose() { }
 }

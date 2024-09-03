@@ -35,9 +35,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingLogs => false;
     public bool IsTracingEvmChunks => false;
     public bool IsTracingEvmSegments => false;
-    public bool IsTracingPatternsAnalysis => false;
-    public bool IsTracingPrecompilationAnalysis => false;
-    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs || IsTracingEvmChunks || IsTracingEvmSegments || IsTracingPatternsAnalysis || IsTracingPrecompilationAnalysis;
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs || IsTracingEvmChunks || IsTracingEvmSegments;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
@@ -282,26 +280,6 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     }
 
     public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportChunkAnalysisStart()
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportChunkAnalysisEnd()
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportSegmentAnalysisStart()
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportSegmentAnalysisEnd()
     {
         throw new NotSupportedException();
     }

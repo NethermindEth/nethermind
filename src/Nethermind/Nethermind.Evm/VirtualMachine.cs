@@ -739,7 +739,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, _txTracer,  ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
+            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
                    .GetValueOrDefault(false))
             {
                 if (chunkExecutionResult.Value.ShouldReturn)
@@ -747,25 +747,25 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     returnData = chunkExecutionResult.Value.ReturnData;
                     goto DataReturn;
                 }
-                if(chunkExecutionResult.Value.ShouldRevert)
+                if (chunkExecutionResult.Value.ShouldRevert)
                 {
                     isRevert = true;
                     returnData = chunkExecutionResult.Value.ReturnData;
                     goto DataReturn;
                 }
-                if(chunkExecutionResult.Value.ShouldStop)
+                if (chunkExecutionResult.Value.ShouldStop)
                 {
                     goto EmptyReturn;
                 }
-                if(chunkExecutionResult.Value.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
+                if (chunkExecutionResult.Value.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
                 {
                     exceptionType = EvmExceptionType.InvalidJumpDestination;
                     goto InvalidJumpDestination;
                 }
-                if(chunkExecutionResult.Value.ShouldAbort)
+                if (chunkExecutionResult.Value.ShouldAbort)
                 {
                     exceptionType = chunkExecutionResult.Value.ExceptionType;
-                    switch(exceptionType)
+                    switch (exceptionType)
                     {
                         case EvmExceptionType.StackUnderflow:
                             goto StackUnderflow;

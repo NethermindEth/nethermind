@@ -99,13 +99,15 @@ internal class IlInfo
             executionResult.ShouldJump = ilvmState.ShouldJump;
             executionResult.ExceptionType = ilvmState.EvmException;
             executionResult.ReturnData = ilvmState.ReturnBuffer;
-        } else if(Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+        }
+        else if (Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
             tracer.ReportChunkExecution(gasAvailable, programCounter, chunk.GetType().Name);
             var evmException = chunk.Invoke(vmState, worldState, spec, ref programCounter, ref gasAvailable, ref stack);
             executionResult.ShouldAbort = evmException != EvmExceptionType.None;
             executionResult.ExceptionType = evmException;
-        } else
+        }
+        else
         {
             return false;
         }

@@ -169,7 +169,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
             if (!condition.IsZero)
             {
-                if(jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
+                if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
                 {
                     programCounter = jumpdestionation;
                 }
@@ -177,7 +177,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 {
                     return EvmExceptionType.InvalidJumpDestination;
                 }
-            } else
+            }
+            else
             {
                 programCounter += 4;
             }
@@ -301,7 +302,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
 
             var accumulatedTraces = new List<ChunkTrace>();
-            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2 ; i++)
+            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++)
             {
                 var tracer = new IlvmBlockTracer();
                 ExecuteBlock(tracer, bytecode);

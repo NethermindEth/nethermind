@@ -29,8 +29,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingOpLevelLogs;
     private readonly bool _isTracingEvmChunks;
     private readonly bool _isTracingEvmSegments;
-    private readonly bool _isTracingPatternsAnalysis;
-    private readonly bool _isTracingPrecompilationAnalysis;
 
     public ITxTracer InnerTracer => innerTracer;
 
@@ -131,18 +129,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     {
         get => _isTracingEvmSegments || innerTracer.IsTracingEvmSegments;
         init => _isTracingEvmSegments = value;
-    }
-
-    public bool IsTracingPatternsAnalysis
-    {
-        get => _isTracingPatternsAnalysis || innerTracer.IsTracingPatternsAnalysis;
-        init => _isTracingPatternsAnalysis = value;
-    }
-
-    public bool IsTracingPrecompilationAnalysis
-    {
-        get => _isTracingPrecompilationAnalysis || innerTracer.IsTracingPrecompilationAnalysis;
-        init => _isTracingPrecompilationAnalysis = value;
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -481,42 +467,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     public void Dispose()
     {
         innerTracer.Dispose();
-    }
-
-    public void ReportChunkAnalysisStart()
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingFees)
-        {
-            InnerTracer.ReportChunkAnalysisStart();
-        }
-    }
-
-    public void ReportChunkAnalysisEnd()
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingFees)
-        {
-            InnerTracer.ReportChunkAnalysisEnd();
-        }
-    }
-
-    public void ReportSegmentAnalysisStart()
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingFees)
-        {
-            InnerTracer.ReportSegmentAnalysisStart();
-        }
-    }
-
-    public void ReportSegmentAnalysisEnd()
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingFees)
-        {
-            InnerTracer.ReportSegmentAnalysisEnd();
-        }
     }
 
     public void ReportChunkExecution(long gas, int pc, string segmentID)
