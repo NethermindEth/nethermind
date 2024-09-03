@@ -35,6 +35,9 @@ public sealed class AllTxValidator(List<ITxValidator> validators) : ITxValidator
 
 public sealed class IntrinsicGasTxValidator : ITxValidator
 {
+    public static readonly IntrinsicGasTxValidator Instance = new();
+    private IntrinsicGasTxValidator() { }
+
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
         error = null;

@@ -15,7 +15,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
     {
         {
             TxType.Legacy, new AllTxValidator([
-                new IntrinsicGasTxValidator(),
+                IntrinsicGasTxValidator.Instance,
                 new LegacySignatureTxValidator(chainId),
                 new ContractSizeTxValidator(),
                 new NonBlobFieldsTxValidator(),
@@ -24,7 +24,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
         {
             TxType.AccessList, new AllTxValidator([
                 new ReleaseSpecTxValidator(spec => spec.IsEip2930Enabled),
-                new IntrinsicGasTxValidator(),
+                IntrinsicGasTxValidator.Instance,
                 new SignatureTxValidator(),
                 new ExpectedChainIdTxValidator(chainId),
                 new ContractSizeTxValidator(),
@@ -34,7 +34,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
         {
             TxType.EIP1559, new AllTxValidator([
                 new ReleaseSpecTxValidator(spec => spec.IsEip1559Enabled),
-                new IntrinsicGasTxValidator(),
+                IntrinsicGasTxValidator.Instance,
                 new SignatureTxValidator(),
                 new ExpectedChainIdTxValidator(chainId),
                 new GasFieldsTxValidator(),
@@ -45,7 +45,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
         {
             TxType.Blob, new AllTxValidator([
                 new ReleaseSpecTxValidator(spec => spec.IsEip4844Enabled),
-                new IntrinsicGasTxValidator(),
+                IntrinsicGasTxValidator.Instance,
                 new SignatureTxValidator(),
                 new ExpectedChainIdTxValidator(chainId),
                 new GasFieldsTxValidator(),
