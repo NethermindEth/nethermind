@@ -108,6 +108,9 @@ public sealed class GasFieldsTxValidator : ITxValidator
 
 public sealed class ContractSizeTxValidator : ITxValidator
 {
+    public static readonly ContractSizeTxValidator Instance = new();
+    private ContractSizeTxValidator() { }
+
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
         error = null;
