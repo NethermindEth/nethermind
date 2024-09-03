@@ -176,7 +176,7 @@ public class TransactionForRpc
         return tx;
     }
 
-    public Transaction ToTransaction(ulong? chainId = null) => ToTransaction<Transaction>();
+    public Transaction ToTransaction(ulong? chainId = null) => ToTransaction<Transaction>(chainId);
 
     public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
     {
