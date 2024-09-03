@@ -9,56 +9,52 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
 
-public sealed class TxValidator : ITxValidator
+public sealed class TxValidator(ulong chainId) : ITxValidator
 {
-    private readonly Dictionary<TxType, ITxValidator> _validators;
-
-    public TxValidator(ulong chainId, Dictionary<TxType, ITxValidator>? validators = null)
+    private readonly Dictionary<TxType, ITxValidator> _validators = new()
     {
-        _validators = new()
         {
-            {
-                TxType.Legacy, new AllTxValidator([
-                    new IntrinsicGasTxValidator(),
-                    new LegacySignatureTxValidator(chainId),
-                    new ContractSizeTxValidator(),
-                    new NonBlobFieldsTxValidator(),
-                ])
-            },
-            {
-                TxType.AccessList, new AllTxValidator([
-                    new ReleaseSpecTxValidator(spec => spec.IsEip2930Enabled),
-                    new IntrinsicGasTxValidator(),
-                    new SignatureTxValidator(),
-                    new ExpectedChainIdTxValidator(chainId),
-                    new ContractSizeTxValidator(),
-                    new NonBlobFieldsTxValidator(),
-                ])
-            },
-            {
-                TxType.EIP1559, new AllTxValidator([
-                    new ReleaseSpecTxValidator(spec => spec.IsEip1559Enabled),
-                    new IntrinsicGasTxValidator(),
-                    new SignatureTxValidator(),
-                    new ExpectedChainIdTxValidator(chainId),
-                    new GasFieldsTxValidator(),
-                    new ContractSizeTxValidator(),
-                    new NonBlobFieldsTxValidator(),
-                ])
-            },
-            {
-                TxType.Blob, new AllTxValidator([
-                    new ReleaseSpecTxValidator(spec => spec.IsEip4844Enabled),
-                    new IntrinsicGasTxValidator(),
-                    new SignatureTxValidator(),
-                    new ExpectedChainIdTxValidator(chainId),
-                    new GasFieldsTxValidator(),
-                    new ContractSizeTxValidator(),
-                    new BlobFieldsTxValidator(),
-                    new MempoolBlobTxValidator()
-                ])
-            },
-        };
+            TxType.Legacy, new AllTxValidator([
+                new IntrinsicGasTxValidator(),
+                new LegacySignatureTxValidator(chainId),
+                new ContractSizeTxValidator(),
+                new NonBlobFieldsTxValidator(),
+            ])
+        },
+        {
+            TxType.AccessList, new AllTxValidator([
+                new ReleaseSpecTxValidator(spec => spec.IsEip2930Enabled),
+                new IntrinsicGasTxValidator(),
+                new SignatureTxValidator(),
+                new ExpectedChainIdTxValidator(chainId),
+                new ContractSizeTxValidator(),
+                new NonBlobFieldsTxValidator(),
+            ])
+        },
+        {
+            TxType.EIP1559, new AllTxValidator([
+                new ReleaseSpecTxValidator(spec => spec.IsEip1559Enabled),
+                new IntrinsicGasTxValidator(),
+                new SignatureTxValidator(),
+                new ExpectedChainIdTxValidator(chainId),
+                new GasFieldsTxValidator(),
+                new ContractSizeTxValidator(),
+                new NonBlobFieldsTxValidator(),
+            ])
+        },
+        {
+            TxType.Blob, new AllTxValidator([
+                new ReleaseSpecTxValidator(spec => spec.IsEip4844Enabled),
+                new IntrinsicGasTxValidator(),
+                new SignatureTxValidator(),
+                new ExpectedChainIdTxValidator(chainId),
+                new GasFieldsTxValidator(),
+                new ContractSizeTxValidator(),
+                new BlobFieldsTxValidator(),
+                new MempoolBlobTxValidator()
+            ])
+        },
+    };
         if (validators is not null)
         {
             foreach (var (key, value) in validators)
