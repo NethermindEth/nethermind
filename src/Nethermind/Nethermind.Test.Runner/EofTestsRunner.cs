@@ -1,4 +1,4 @@
- // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,7 +32,7 @@ public class EofTestsRunner(ITestSourceLoader testsSource, string? filter) : Eof
             }
             else
             {
-                var result = new EthereumTestResult(test.Name, "Prague", RunTest(test)) ;
+                var result = new EthereumTestResult(test.Name, "Prague", RunTest(test));
                 testResults.Add(result);
                 if (result.Pass)
                     WriteGreen("PASS");
