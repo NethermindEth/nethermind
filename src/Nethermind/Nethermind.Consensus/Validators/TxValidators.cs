@@ -358,4 +358,8 @@ public sealed class LegacySignatureTxValidator(ulong chainId) : BaseSignatureTxV
     }
 }
 
-public sealed class SignatureTxValidator : BaseSignatureTxValidator;
+public sealed class SignatureTxValidator : BaseSignatureTxValidator
+{
+    public static readonly SignatureTxValidator Instance = new();
+    private SignatureTxValidator() { }
+}
