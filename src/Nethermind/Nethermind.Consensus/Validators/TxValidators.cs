@@ -130,6 +130,9 @@ public sealed class ContractSizeTxValidator : ITxValidator
 /// </summary>
 public sealed class NonBlobFieldsTxValidator : ITxValidator
 {
+    public static readonly NonBlobFieldsTxValidator Instance = new();
+    private NonBlobFieldsTxValidator() { }
+
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
         error = null;
