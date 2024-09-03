@@ -342,12 +342,12 @@ internal class Eof1 : IEofVersionHandler
 
         if (validationStrategy.HasFlag(ValidationStrategy.Validate))
         {
-            if(!ValidateContainer(eofContainer.Value, validationStrategy))
+            if (!ValidateContainer(eofContainer.Value, validationStrategy))
             {
                 eofContainer = null;
                 return false;
             }
-        } 
+        }
 
         return true;
     }
@@ -371,9 +371,10 @@ internal class Eof1 : IEofVersionHandler
                 if (containerQueue.VisitedContainers[worklet.Index] != 0)
                     continue;
 
-                if (!TryGetEofContainer(targetContainer.ContainerSections[worklet.Index - 1], worklet.Strategy, out EofContainer ? subContainer))
+                if (!TryGetEofContainer(targetContainer.ContainerSections[worklet.Index - 1], worklet.Strategy, out EofContainer? subContainer))
                     return false;
-            } else
+            }
+            else
             {
                 if (!ValidateCodeSections(targetContainer, worklet.Strategy, containerQueue))
                     return false;
@@ -393,7 +394,7 @@ internal class Eof1 : IEofVersionHandler
             + (header.ContainerSections?.Size ?? 0);
         CompoundSectionHeader codeSections = header.CodeSections;
 
-        if(endOffset > container.Length)
+        if (endOffset > container.Length)
         {
             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, DataSectionSize indicated in bundled header are incorrect, or DataSection is wrong");
             return false;

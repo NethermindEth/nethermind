@@ -283,7 +283,34 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
 
-        public static IEnumerable<GeneralStateTest> Convert(string json)
+        public static IEnumerable<EofTest> ConvertToEofTests(string json)
+        {
+            Dictionary<string, EofTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
+            List<EofTest> tests = new();
+            foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
+            {
+                EofTest test = new();
+                test.Name = namedTest.Key;
+                test.Vectors = namedTest.Value.Vectors.Select(pair =>
+                {
+                    VectorTestJson vectorJson = pair.Value;
+                    VectorTest vector = new();
+                    vector.Code = Bytes.FromHexString(vectorJson.Code);
+                    vector.Results = vectorJson.Results.ToDictionary(
+                        p => p.Key,
+                        p => p.Value.Result
+                            ? new Result { Success = true }
+                            : new Result { Success = false, Error = p.Value.Exception }
+                    );
+                    return vector;
+                }).ToArray();
+                tests.Add(test);
+            }
+
+            return tests;
+        }
+
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
