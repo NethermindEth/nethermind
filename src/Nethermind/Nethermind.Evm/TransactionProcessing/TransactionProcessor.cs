@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -602,20 +603,33 @@ namespace Nethermind.Evm.TransactionProcessing
             in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds)
         {
             long spentGas = tx.GasLimit;
+            var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                long refund = substate.ShouldRevert
-                    ? 0
-                    : RefundHelper.CalculateClaimableRefund(spentGas,
-                        substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled)
-                        + (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds, spec);
+
+                long totalToRefund = codeInsertRefund;
+                if (!substate.ShouldRevert)
+                    totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
+                long actualRefund = RefundHelper.CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
-                    Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
+                    Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
                 // If noValidation we didn't charge for gas, so do not refund
                 if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                    WorldState.AddToBalance(tx.SenderAddress, (ulong)(unspentGas + refund) * gasPrice, spec);
+                    WorldState.AddToBalance(tx.SenderAddress, (ulong)(unspentGas + actualRefund) * gasPrice, spec);
+                spentGas -= actualRefund;
+            }
+            else if(codeInsertRefund > 0)
+            {
+                long refund = RefundHelper.CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
+
+                if (Logger.IsTrace)
+                    Logger.Trace("Refunding delegations only: " + refund);
+                // If noValidation we didn't charge for gas, so do not refund
+                if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                    WorldState.AddToBalance(tx.SenderAddress, (ulong)refund * gasPrice, spec);
                 spentGas -= refund;
             }
 
