@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 using System.Collections;
+using System.ComponentModel;
 
 namespace Nethermind.Serialization.SszGenerator.Test
 {
@@ -117,6 +119,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
     [SszSerializable]
     public struct Test2
     {
+        public Test2()
+        {
+            int[] x = [];
+            Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent(14));
+            merkleizer.Feed(x);
+        }
+
         public Test2Union Selector { get; set; }
         public long Type1 { get; set; }
         public int Type2 { get; set; }

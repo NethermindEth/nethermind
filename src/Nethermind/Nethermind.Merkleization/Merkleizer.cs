@@ -64,11 +64,116 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed<T>(Span<T> bytes, int? limit = null) where T : struct
+    public void Feed(Span<byte> data, int? limit = null)
     {
-        FeedAtLevel(bytes.Length is not 0 ? MemoryMarshal.Cast<T, UInt256>(bytes)[0] : UInt256.Zero, 0);
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], data);
+        }
+
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
+
+    public void Feed(Span<ushort> data, int? limit = null)
+    {
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<ushort, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+    }
+
+    public void Feed(Span<short> data, int? limit = null)
+    {
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<short, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+    }
+
+    public void Feed(Span<uint> data, int? limit = null)
+    {
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<uint, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+    }
+
+    public void Feed(Span<int> data, int? limit = null)
+    {
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<int, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+    }
+
+    public void Feed(Span<ulong> data, int? limit = null)
+    {
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<ulong, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+    }
+
+    public void Feed(Span<long> data, int? limit = null)
+    {
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<long, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+    }
+
+    public void Feed(Span<UInt128> data, int? limit = null)
+    {
+        if (data.Length is 0)
+        {
+            Merkle.Ize(out _chunks[^1], UInt256.Zero);
+        }
+        else
+        {
+            Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<UInt128, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
 
     public void Feed(bool value)
