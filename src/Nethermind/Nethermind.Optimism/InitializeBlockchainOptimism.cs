@@ -10,6 +10,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -72,9 +73,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
         if (_api.TxValidator is null) throw new StepDependencyException(nameof(_api.TxValidator));
 
-        OptimismTxValidator txValidator = new(_api.TxValidator);
         BlockValidator blockValidator = new(
-            txValidator,
+            _api.TxValidator.AddValidator(TxType.DepositTx, new OptimismTxValidator()),
             _api.HeaderValidator,
             _api.UnclesValidator,
             _api.SpecProvider,

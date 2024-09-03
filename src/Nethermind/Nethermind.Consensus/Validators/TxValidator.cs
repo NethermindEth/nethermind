@@ -55,13 +55,11 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
             ])
         },
     };
-        if (validators is not null)
-        {
-            foreach (var (key, value) in validators)
-            {
-                _validators[key] = value;
-            }
-        }
+
+    public TxValidator AddValidator(TxType type, ITxValidator validator)
+    {
+        _validators[type] = validator;
+        return this;
     }
 
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => IsWellFormed(transaction, releaseSpec, out _);
