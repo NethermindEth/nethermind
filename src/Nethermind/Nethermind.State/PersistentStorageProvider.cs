@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -29,15 +28,15 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         internal readonly IStorageTreeFactory _storageTreeFactory;
-        private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
+        private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
         private readonly HashSet<AddressAsKey> _toUpdateRoots = new();
 
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+        private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
-        private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
+        private readonly HashSet<StorageCell> _committedThisRound = new();
         private readonly Dictionary<AddressAsKey, SelfDestructDictionary<UInt256, byte[]>> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
@@ -72,7 +71,7 @@ namespace Nethermind.State
         {
             base.Reset();
             _blockCache.Clear();
-            _storages.Reset(resizeCollections);
+            _storages.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
             _toUpdateRoots.Clear();
@@ -122,14 +121,14 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
-            if (_changes[_currentPosition] is null)
+            int currentPosition = _changes.Count - 1;
+            if (currentPosition < 0)
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
+                return;
             }
-
-            if (_changes[_currentPosition + 1] is not null)
+            if (_changes[currentPosition] is null)
             {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
+                throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
             }
 
             HashSet<Address> toUpdateRoots = new();
@@ -141,9 +140,9 @@ namespace Nethermind.State
                 trace = new Dictionary<StorageCell, ChangeTrace>();
             }
 
-            for (int i = 0; i <= _currentPosition; i++)
+            for (int i = 0; i <= currentPosition; i++)
             {
-                Change change = _changes[_currentPosition - i];
+                Change change = _changes[currentPosition - i];
                 if (!isTracing && change!.ChangeType == ChangeType.JustCache)
                 {
                     continue;
@@ -172,9 +171,9 @@ namespace Nethermind.State
                 }
 
                 int forAssertion = _intraBlockCache[change.StorageCell].Pop();
-                if (forAssertion != _currentPosition - i)
+                if (forAssertion != currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
                 switch (change.ChangeType)
@@ -217,8 +216,8 @@ namespace Nethermind.State
             }
 
             base.CommitCore(tracer);
-            _originalValues.Reset();
-            _committedThisRound.Reset();
+            _originalValues.Clear();
+            _committedThisRound.Clear();
 
             if (isTracing)
             {
@@ -328,13 +327,13 @@ namespace Nethermind.State
 
             _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise
-            _storages.Reset();
-            _preBlockCache?.Clear();
+            _storages.Clear();
+            _preBlockCache?.NoResizeClear();
         }
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            ref StorageTree? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
+            ref StorageTree? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
             if (!exists)
             {
                 value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
@@ -421,10 +420,9 @@ namespace Nethermind.State
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
             StackList<int> stack = SetupRegistry(cell);
-            IncrementChangePosition();
-            stack.Push(_currentPosition);
             _originalValues[cell] = value;
-            _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
+            stack.Push(_changes.Count);
+            _changes.Add(new Change(ChangeType.JustCache, cell, value));
         }
 
         private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)

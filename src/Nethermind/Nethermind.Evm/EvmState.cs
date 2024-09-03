@@ -29,6 +29,11 @@ namespace Nethermind.Evm
         private class StackPool
         {
             private readonly int _maxCallStackDepth;
+            private readonly struct StackItem(byte[] dataStack, ReturnState[] returnStack)
+            {
+                public readonly byte[] DataStack = dataStack;
+                public readonly ReturnState[] ReturnStack = returnStack;
+            }
 
             // TODO: we have wrong call depth calculation somewhere
             public StackPool(int maxCallStackDepth = VirtualMachine.MaxCallDepth * 2)
@@ -36,11 +41,9 @@ namespace Nethermind.Evm
                 _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly Stack<byte[]> _dataStackPool = new(32);
-            private readonly Stack<ReturnState[]> _returnStackPool = new(32);
+            private readonly Stack<StackItem> _stackPool = new(32);
 
-            private int _dataStackPoolDepth;
-            private int _returnStackPoolDepth;
+            private int _stackPoolDepth;
 
             /// <summary>
             /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
@@ -50,45 +53,27 @@ namespace Nethermind.Evm
             /// <param name="returnStack"></param>
             public void ReturnStacks(byte[] dataStack, ReturnState[] returnStack)
             {
-                _dataStackPool.Push(dataStack);
-                _returnStackPool.Push(returnStack);
-            }
-
-            private byte[] RentDataStack()
-            {
-                if (_dataStackPool.TryPop(out byte[] result))
-                {
-                    return result;
-                }
-
-                _dataStackPoolDepth++;
-                if (_dataStackPoolDepth > _maxCallStackDepth)
-                {
-                    EvmStack.ThrowEvmStackOverflowException();
-                }
-
-                return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
-            }
-
-            private ReturnState[] RentReturnStack()
-            {
-                if (_returnStackPool.TryPop(out ReturnState[] result))
-                {
-                    return result;
-                }
-
-                _returnStackPoolDepth++;
-                if (_returnStackPoolDepth > _maxCallStackDepth)
-                {
-                    EvmStack.ThrowEvmStackOverflowException();
-                }
-
-                return new ReturnState[EvmStack.ReturnStackSize];
+                _stackPool.Push(new(dataStack, returnStack));
             }
 
             public (byte[], ReturnState[]) RentStacks()
             {
-                return (RentDataStack(), RentReturnStack());
+                if (_stackPool.TryPop(out StackItem result))
+                {
+                    return (result.DataStack, result.ReturnStack);
+                }
+
+                _stackPoolDepth++;
+                if (_stackPoolDepth > _maxCallStackDepth)
+                {
+                    EvmStack.ThrowEvmStackOverflowException();
+                }
+
+                return
+                (
+                    new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
+                    new ReturnState[EvmStack.ReturnStackSize]
+                );
             }
         }
         private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());

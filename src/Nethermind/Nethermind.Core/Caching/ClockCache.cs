@@ -7,14 +7,17 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
+
+using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.Core.Caching;
 
 public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<TKey>(maxCapacity)
     where TKey : struct, IEquatable<TKey>
 {
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new ConcurrentDictionary<TKey, LruCacheItem>();
+    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(CollectionExtensions.LockPartitions, maxCapacity);
     private readonly McsLock _lock = new();
 
     public TValue Get(TKey key)
@@ -154,7 +157,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
         using var lockRelease = _lock.Acquire();
 
         base.Clear();
-        _cacheMap.Clear();
+        _cacheMap.NoResizeClear();
     }
 
     public bool Contains(TKey key)
