@@ -64,110 +64,11 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<byte> bytes, int? limit = null)
+    public void Feed<T>(Span<T> bytes, int? limit = null) where T : struct
     {
-        if (bytes.Length is not 0)
-        {
-            FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
-        }
-        else
-        {
-            FeedAtLevel(UInt256.Zero, 0);
-        }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
+        FeedAtLevel(bytes.Length is not 0 ? MemoryMarshal.Cast<T, UInt256>(bytes)[0] : UInt256.Zero, 0);
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
-    public void Feed(Span<short> bytes, int? limit = null)
-    {
-        if (bytes.Length is not 0)
-        {
-            FeedAtLevel(MemoryMarshal.Cast<short, UInt256>(bytes)[0], 0);
-        }
-        else
-        {
-            FeedAtLevel(UInt256.Zero, 0);
-        }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
-    }
-    public void Feed(Span<ushort> bytes, int? limit = null)
-    {
-        if (bytes.Length is not 0)
-        {
-            FeedAtLevel(MemoryMarshal.Cast<ushort, UInt256>(bytes)[0], 0);
-        }
-        else
-        {
-            FeedAtLevel(UInt256.Zero, 0);
-        }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
-    }
-    public void Feed(Span<int> bytes, int? limit = null)
-    {
-        if (bytes.Length is not 0)
-        {
-            FeedAtLevel(MemoryMarshal.Cast<int, UInt256>(bytes)[0], 0);
-        }
-        else
-        {
-            FeedAtLevel(UInt256.Zero, 0);
-        }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
-    }
-    public void Feed(Span<uint> bytes, int? limit = null)
-    {
-        if (bytes.Length is not 0)
-        {
-            FeedAtLevel(MemoryMarshal.Cast<uint, UInt256>(bytes)[0], 0);
-        }
-        else
-        {
-            FeedAtLevel(UInt256.Zero, 0);
-        }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
-    }
-    public void Feed(Span<long> bytes, int? limit = null)
-    {
-        if (bytes.Length is not 0)
-        {
-            FeedAtLevel(MemoryMarshal.Cast<long, UInt256>(bytes)[0], 0);
-        }
-        else
-        {
-            FeedAtLevel(UInt256.Zero, 0);
-        }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
-    }
-    public void Feed(Span<ulong> bytes, int? limit = null)
-    {
-        if (bytes.Length is not 0)
-        {
-            FeedAtLevel(MemoryMarshal.Cast<ulong, UInt256>(bytes)[0], 0);
-        }
-        else
-        {
-            FeedAtLevel(UInt256.Zero, 0);
-        }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
     }
 
     public void Feed(bool value)
