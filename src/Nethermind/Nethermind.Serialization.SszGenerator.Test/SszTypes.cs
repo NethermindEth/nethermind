@@ -53,8 +53,6 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         public ulong Fixed1 { get; set; }
         public ulong Fixed2 { get; set; }
-
-
     }
 
     [SszSerializable]
@@ -64,10 +62,9 @@ namespace Nethermind.Serialization.SszGenerator.Test
 
         [SszList(10)]
         public ulong[]? Fixed2 { get; set; }
-
-
     }
 
+    //// Does not compile
     //[SszSerializable]
     //public struct NoProps
     //{

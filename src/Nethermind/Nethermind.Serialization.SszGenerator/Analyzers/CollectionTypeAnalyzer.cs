@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class CollectionTypeAnalyzer : DiagnosticAnalyzer
+public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
 {
     public const string DiagnosticId = "SSZ002";
     private static readonly LocalizableString Title = "Property with a collection type should be marked as SszList or SszVector";
@@ -28,16 +28,12 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
     {
         TypeDeclarationSyntax typeDeclaration = (TypeDeclarationSyntax)context.Node;
 
-        if (!typeDeclaration.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => attr.ToString() == "SszSerializable" || attr.ToString() == "SszSerializableAttribute"))
+        if (!IsSerializableType(typeDeclaration))
         {
             return;
         }
 
-        foreach (var property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
-            .Where(prop =>
-                prop.Modifiers.Any(SyntaxKind.PublicKeyword) &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.SetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true))
+        foreach (PropertyDeclarationSyntax? property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>().Where(IsPublicGetSetProperty))
         {
             CheckProperty(context, property);
         }
@@ -45,32 +41,13 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
 
     private static void CheckProperty(SyntaxNodeAnalysisContext context, PropertyDeclarationSyntax propertyDeclaration)
     {
-        static bool IsCollectionType(ITypeSymbol typeSymbol)
-        {
-            if (typeSymbol is INamedTypeSymbol namedTypeSymbol)
-            {
-                ImmutableArray<INamedTypeSymbol> interfaces = namedTypeSymbol.AllInterfaces;
-                return interfaces.Any(i => i.Name == "IEnumerable");
-            }
-
-            return false;
-        }
-
         ITypeSymbol? typeSymbol = context.SemanticModel.GetTypeInfo(propertyDeclaration.Type).Type;
 
-        if (typeSymbol is not null && (typeSymbol is IArrayTypeSymbol || IsCollectionType(typeSymbol)))
+        if (typeSymbol is not null && IsCollectionType(typeSymbol))
         {
-            bool hasRequiredAttribute = propertyDeclaration.AttributeLists
-                .SelectMany(attrList => attrList.Attributes)
-                .Any(attr =>
-                {
-                    var name = attr.Name.ToString();
-                    return name == "SszList" || name == "SszVector" || name == "SszListAttribute" || name == "SszVectorAttribute" || name == "BitArray";
-                });
-
-            if (!hasRequiredAttribute)
+            if (!IsPropertyMarkedWithCollectionAttribute(propertyDeclaration))
             {
-                var diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
+                Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
                 context.ReportDiagnostic(diagnostic);
             }
         }
