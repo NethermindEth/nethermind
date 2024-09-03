@@ -125,7 +125,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
-            Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(20));
+            Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(20));
         });
 
 
@@ -137,7 +137,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
-            Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(20));
+            Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(20));
         });
 
 
@@ -149,7 +149,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 2));
-            Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(0));
+            Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(0));
         });
 
     }
@@ -169,7 +169,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
-            Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(5));
+            Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(5));
         });
 
 
@@ -182,7 +182,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
-            Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(5));
+            Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(5));
         });
     }
 
@@ -203,7 +203,6 @@ class ShutterTxLoaderTests : EngineModuleTests
     public async Task Can_load_transactions_with_overlapping_eons()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(0, 0);
         ShutterEventSimulatorHalfNextEon eventSimulator = new(
             rnd,
             ShutterTestsCommon.ChainId,
@@ -213,7 +212,7 @@ class ShutterTxLoaderTests : EngineModuleTests
             new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         );
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
+        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
@@ -223,7 +222,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
-            Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(10));
+            Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(10));
         });
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -235,7 +234,7 @@ class ShutterTxLoaderTests : EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
-            Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(10));
+            Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(10));
         });
     }
 }
