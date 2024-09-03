@@ -228,7 +228,7 @@ class ShutterCryptoTests
     )]
     public void Can_verify_decryption_key_signatures(ulong instanceId, ulong eon, ulong slot, ulong txPointer, string keyperAddress, string sigHex, string[] identityPreimagesHex)
     {
-        List<byte[]> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString).ToList();
+        List<IdentityPreimage> identityPreimages = identityPreimagesHex.Select(i => new IdentityPreimage(Convert.FromHexString(i))).ToList();
         Assert.That(ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(instanceId, eon, slot, txPointer, identityPreimages, Convert.FromHexString(sigHex), new(keyperAddress)));
     }
 }

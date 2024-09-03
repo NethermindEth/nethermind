@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>Nethermind.Shutter</RootNamespace>
@@ -49,6 +49,7 @@
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
     <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.SszGenerator\Nethermind.Serialization.SszGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

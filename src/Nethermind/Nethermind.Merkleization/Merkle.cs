@@ -114,6 +114,12 @@ public static partial class Merkle
         root = new UInt256(value);
     }
 
+    public static void Ize(out UInt256 root, long value)
+    {
+        var v = value < 0 ? ulong.MaxValue : 0L;
+        root = new UInt256((ulong)value, v, v, v);
+    }
+
     public static void Ize(out UInt256 root, ulong value)
     {
         root = new UInt256(value);

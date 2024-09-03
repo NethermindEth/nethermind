@@ -215,7 +215,7 @@ public class ShutterEventSimulator
             Key_ = ByteString.CopyFrom(k.Key),
         }).ToList();
 
-        var identityPreimages = rawKeys.Select(k => k.IdentityPreimage).ToList();
+        var identityPreimages = rawKeys.Select(k => new IdentityPreimage(k.IdentityPreimage)).ToList();
         var randomIndices = Enumerable.Range(0, TestItem.PublicKeys.Length).Shuffle(_rnd).ToList();
 
         List<ulong> signerIndices = [];

@@ -124,7 +124,7 @@ public class ShutterKeyValidator(
             return false;
         }
 
-        var identityPreimages = decryptionKeys.Keys.Select(key => key.Identity.ToArray()).ToList();
+        var identityPreimages = decryptionKeys.Keys.Select(key => new IdentityPreimage(key.Identity.ToArray())).ToList();
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
