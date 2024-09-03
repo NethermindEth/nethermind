@@ -175,6 +175,10 @@ namespace Nethermind.Facade
                     result.Error = error;
                 }
             }
+            catch (InsufficientBalanceException ex)
+            {
+                result.Error = ex.Message;
+            }
             catch (Exception ex)
             {
                 result.Error = ex.ToString();
