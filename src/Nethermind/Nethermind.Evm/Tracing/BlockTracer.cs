@@ -9,6 +9,7 @@ namespace Nethermind.Evm.Tracing;
 public abstract class BlockTracer : IBlockTracer
 {
     public virtual bool IsTracingRewards => false;
+    public bool IsTracingFullStateDiff => false;
     public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
     public virtual void StartNewBlockTrace(Block block) { }
     public abstract ITxTracer StartNewTxTrace(Transaction? tx);

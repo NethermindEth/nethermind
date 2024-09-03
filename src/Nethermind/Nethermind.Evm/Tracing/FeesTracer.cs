@@ -20,6 +20,7 @@ public class FeesTracer : TxTracer, IBlockTracer
     }
 
     public bool IsTracingRewards => false;
+    public bool IsTracingFullStateDiff => false;
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
 

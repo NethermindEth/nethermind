@@ -10,11 +10,18 @@ namespace Nethermind.Evm.Tracing
     public class CancellationBlockTracer(IBlockTracer innerTracer, CancellationToken token = default) : IBlockTracer
     {
         private bool _isTracingRewards;
+        private bool _isTracingFullStateDiff;
 
         public bool IsTracingRewards
         {
             get => _isTracingRewards || innerTracer.IsTracingRewards;
             set => _isTracingRewards = value;
+        }
+
+        public bool IsTracingFullStateDiff
+        {
+            get => _isTracingFullStateDiff || innerTracer.IsTracingFullStateDiff;
+            set => _isTracingFullStateDiff = value;
         }
 
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)

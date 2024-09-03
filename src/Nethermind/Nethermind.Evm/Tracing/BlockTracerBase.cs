@@ -30,6 +30,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
     protected abstract TTrace OnEnd(TTracer txTracer);
 
     public virtual bool IsTracingRewards => false;
+    public virtual bool IsTracingFullStateDiff => false;
 
     public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue)
     {

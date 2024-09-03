@@ -12,10 +12,12 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly List<IBlockTracer> _childTracers = new();
         public bool IsTracingRewards { get; private set; }
+        public bool IsTracingFullStateDiff { get; private set; }
 
         public CompositeBlockTracer()
         {
             IsTracingRewards = _childTracers.Any(childTracer => childTracer.IsTracingRewards);
+            IsTracingFullStateDiff = _childTracers.Any(childTracer => childTracer.IsTracingFullStateDiff);
         }
 
         public void EndTxTrace()
@@ -79,18 +81,21 @@ namespace Nethermind.Evm.Tracing
         {
             _childTracers.Add(tracer);
             IsTracingRewards |= tracer.IsTracingRewards;
+            IsTracingFullStateDiff |= tracer.IsTracingFullStateDiff;
         }
 
         public void AddRange(params IBlockTracer[] tracers)
         {
             _childTracers.AddRange(tracers);
             IsTracingRewards |= tracers.Any(t => t.IsTracingRewards);
+            IsTracingFullStateDiff |= tracers.Any(t => t.IsTracingFullStateDiff);
         }
 
         public void Remove(IBlockTracer tracer)
         {
             _childTracers.Remove(tracer);
             IsTracingRewards = _childTracers.Any(t => t.IsTracingRewards);
+            IsTracingFullStateDiff = _childTracers.Any(t => t.IsTracingFullStateDiff);
 
         }
 

@@ -25,6 +25,15 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingRewards { get; }
 
         /// <summary>
+        /// Is all state changes traced
+        /// </summary>
+        /// <remarks>
+        /// Controls
+        /// - <see cref="ReportReward"/>
+        /// </remarks>
+        bool IsTracingFullStateDiff { get; }
+
+        /// <summary>
         /// Reports rewards for bock.
         /// </summary>
         /// <param name="author">Author/coinbase for reward.</param>

@@ -14,5 +14,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         Trace = 4,
         Rewards = 8,
         All = 15,
+        FullStateDiff = 16,
     }
 }

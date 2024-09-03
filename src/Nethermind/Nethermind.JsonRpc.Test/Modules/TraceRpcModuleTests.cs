@@ -855,4 +855,43 @@ public class TraceRpcModuleTests
         state[TestItem.AddressA].Balance!.After.Should().Be(accountA.Balance - 21000 * tx.GasPrice - tx.Value);
         state[TestItem.AddressF].Balance!.After.Should().Be(accountF.Balance + tx.Value);
     }
+
+    [Test]
+    public async Task Trace_replayBlockTransactions_stateDiffStorage()
+    {
+        OverridableReleaseSpec releaseSpec = new(Cancun.Instance);
+        TestSpecProvider specProvider = new(releaseSpec);
+
+        Context context = new();
+        await context.Build(specProvider);
+        TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
+
+        string[] traceTypes = ["fullStateDiff"];
+
+        Hash256 parentBeaconBlockRoot = new Hash256("0x0000beac00beac00beac00beac00beac00beac00beac00beac00beac00beac00");
+
+        Block block = blockchain.BlockFinder.FindLatestBlock()!;
+        block.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        // BeaconBlockRootHandler ApplyContractStateChanges calculations
+        UInt256 timestamp = block.Timestamp;
+        UInt256.Mod(timestamp, Eip4788Constants.HistoryBufferLength, out UInt256 timestampReduced);
+        UInt256 rootIndex = timestampReduced + Eip4788Constants.HistoryBufferLength;
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
+
+        traces.Data.Should().HaveCount(2);
+        var state = traces.Data.ElementAt(0).StateChanges!;
+        state.Count.Should().Be(1);
+
+        state[Eip4788Constants.BeaconRootsAddress].Storage![timestampReduced].Before.Should()
+            .BeEquivalentTo([0]);
+        state[Eip4788Constants.BeaconRootsAddress].Storage![timestampReduced].After.Should()
+            .BeEquivalentTo(timestamp.ToBigEndian().WithoutLeadingZeros().ToArray());
+
+        state[Eip4788Constants.BeaconRootsAddress].Storage![rootIndex].Before.Should()
+            .BeEquivalentTo([0]);
+        state[Eip4788Constants.BeaconRootsAddress].Storage![rootIndex].After.Should()
+            .BeEquivalentTo(parentBeaconBlockRoot.Bytes.WithoutLeadingZeros().ToArray());
+    }
 }
