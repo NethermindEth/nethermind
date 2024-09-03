@@ -13,9 +13,9 @@ public class PropertyRequiredInSszTypeAnalyzer : DiagnosticAnalyzer
     private static readonly LocalizableString Description = "A class or struct marked with SszSerializable should have at least one public property with both a public getter and setter.";
     private const string Category = "Design";
 
-    private static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
+    private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(Rule); } }
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return [Rule]; } }
 
     public override void Initialize(AnalysisContext context)
     {
@@ -25,7 +25,7 @@ public class PropertyRequiredInSszTypeAnalyzer : DiagnosticAnalyzer
         context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.ClassDeclaration, SyntaxKind.StructDeclaration);
     }
 
-    private void AnalyzeNode(SyntaxNodeAnalysisContext context)
+    private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
     {
         TypeDeclarationSyntax typeDeclaration = (TypeDeclarationSyntax)context.Node;
 

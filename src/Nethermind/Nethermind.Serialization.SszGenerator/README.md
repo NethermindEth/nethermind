@@ -23,7 +23,8 @@ Supports vectors, lists, bitvectors, bitlists, unions, etc.
 
 ## Examples
 
-### Container
+### Container with marked collections
+
 ```csharp
 
 [SszSerializable]

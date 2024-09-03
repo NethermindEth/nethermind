@@ -45,7 +45,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public BitArray? BitVec { get; set; }
 
         [SszList(10)]
-        public BitArray? BitList { get; set; }
+        public BitArray? BitList2 { get; set; }
     }
 
     [SszSerializable]
