@@ -37,7 +37,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
                 new ExpectedChainIdTxValidator(chainId),
-                new GasFieldsTxValidator(),
+                GasFieldsTxValidator.Instance,
                 ContractSizeTxValidator.Instance,
                 NonBlobFieldsTxValidator.Instance,
             ])
@@ -48,7 +48,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
                 new ExpectedChainIdTxValidator(chainId),
-                new GasFieldsTxValidator(),
+                GasFieldsTxValidator.Instance,
                 ContractSizeTxValidator.Instance,
                 new BlobFieldsTxValidator(),
                 new MempoolBlobTxValidator()

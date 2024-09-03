@@ -88,6 +88,9 @@ public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
 
 public sealed class GasFieldsTxValidator : ITxValidator
 {
+    public static readonly GasFieldsTxValidator Instance = new();
+    private GasFieldsTxValidator() { }
+
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
         error = null;
