@@ -166,6 +166,9 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
 
 public sealed class BlobFieldsTxValidator : ITxValidator
 {
+    public static readonly BlobFieldsTxValidator Instance = new();
+    private BlobFieldsTxValidator() { }
+
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
         error = null;
@@ -232,6 +235,9 @@ public sealed class BlobFieldsTxValidator : ITxValidator
 /// </summary>
 public sealed class MempoolBlobTxValidator : ITxValidator
 {
+    public static readonly MempoolBlobTxValidator Instance = new();
+    private MempoolBlobTxValidator() { }
+
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
         error = null;

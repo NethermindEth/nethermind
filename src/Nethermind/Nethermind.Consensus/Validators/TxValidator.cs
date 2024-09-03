@@ -50,8 +50,8 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
                 new ExpectedChainIdTxValidator(chainId),
                 GasFieldsTxValidator.Instance,
                 ContractSizeTxValidator.Instance,
-                new BlobFieldsTxValidator(),
-                new MempoolBlobTxValidator()
+                BlobFieldsTxValidator.Instance,
+                MempoolBlobTxValidator.Instance
             ])
         },
     };
