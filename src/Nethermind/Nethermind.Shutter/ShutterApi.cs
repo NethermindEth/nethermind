@@ -16,8 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.Shutter.Dto;
-using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Shutter;
@@ -32,7 +30,7 @@ public class ShutterApi : IShutterApi
     public readonly ShutterTxLoader TxLoader;
     public readonly ShutterTime Time;
     public ShutterTxSource TxSource { get; }
-    public ShutterP2P? P2P;
+    public IShutterP2P? P2P;
     public ShutterBlockImprovementContextFactory? BlockImprovementContextFactory;
 
     protected readonly TimeSpan _slotLength;
@@ -95,7 +93,6 @@ public class ShutterApi : IShutterApi
         KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 
         InitP2P(_cfg, logManager);
-        RegisterOnKeysValidated();
     }
 
     public void StartP2P(CancellationTokenSource? cancellationTokenSource = null)
@@ -121,33 +118,30 @@ public class ShutterApi : IShutterApi
         await (P2P?.DisposeAsync() ?? default);
     }
 
-    protected void KeysReceivedHandler(object? sender, DecryptionKeys keys)
+    protected virtual async void OnKeysReceived(object? sender, IShutterP2P.KeysReceivedArgs keysReceivedArgs)
     {
-        KeyValidator.OnDecryptionKeysReceived(keys);
-    }
+        IShutterKeyValidator.ValidatedKeys? keys = KeyValidator.ValidateKeys(keysReceivedArgs.Keys);
 
-    protected virtual async void KeysValidatedHandler(object? sender, IShutterKeyValidator.ValidatedKeyArgs keys)
-    {
-        Metrics.TxPointer = keys.TxPointer;
+        if (keys is null)
+        {
+            return;
+        }
+
+        Metrics.TxPointer = keys.Value.TxPointer;
 
         // wait for latest block before loading transactions
-        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Slot - 1, new())) ?? _readOnlyBlockTree.Head;
+        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Value.Slot - 1, new())) ?? _readOnlyBlockTree.Head;
         BlockHeader? header = head?.Header;
         BlockHeader parentHeader = header is not null
             ? _readOnlyBlockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
             : _readOnlyBlockTree.FindLatestHeader()!;
-        TxSource.LoadTransactions(head, parentHeader, keys);
+        TxSource.LoadTransactions(head, parentHeader, keys.Value);
     }
 
     protected virtual void InitP2P(IShutterConfig cfg, ILogManager logManager)
     {
-        P2P = new(cfg, logManager);
-        P2P.KeysReceived += KeysReceivedHandler;
-    }
-
-    protected virtual void RegisterOnKeysValidated()
-    {
-        KeyValidator.KeysValidated += KeysValidatedHandler;
+        P2P = new ShutterP2P(cfg, logManager);
+        P2P.KeysReceived += OnKeysReceived;
     }
 
     protected virtual IShutterEon InitEon()

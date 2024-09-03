@@ -24,23 +24,21 @@ public class ShutterKeyValidator(
     private readonly ulong _instanceId = shutterConfig.InstanceID;
     private readonly object _lockObject = new();
 
-    public event EventHandler<IShutterKeyValidator.ValidatedKeyArgs>? KeysValidated;
-
-    public void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys)
+    public IShutterKeyValidator.ValidatedKeys? ValidateKeys(Dto.DecryptionKeys decryptionKeys)
     {
         lock (_lockObject)
         {
             if (_highestValidatedSlot is not null && decryptionKeys.Gnosis.Slot <= _highestValidatedSlot)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping Shutter decryption keys from slot {decryptionKeys.Gnosis.Slot}, keys currently stored for slot {_highestValidatedSlot}.");
-                return;
+                return null;
             }
 
             IShutterEon.Info? eonInfo = eon.GetCurrentEonInfo();
             if (eonInfo is null)
             {
                 if (_logger.IsDebug) _logger.Debug("Cannot check Shutter decryption keys, eon info was not found.");
-                return;
+                return null;
             }
 
             if (_logger.IsDebug) _logger.Debug($"Checking Shutter decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot}");
@@ -49,13 +47,17 @@ public class ShutterKeyValidator(
             {
                 if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption keys for slot {decryptionKeys.Gnosis.Slot}.");
                 _highestValidatedSlot = decryptionKeys.Gnosis.Slot;
-                KeysValidated?.Invoke(this, new()
+                return new()
                 {
                     Eon = decryptionKeys.Eon,
                     Slot = decryptionKeys.Gnosis.Slot,
                     TxPointer = decryptionKeys.Gnosis.TxPointer,
                     Keys = ExtractKeys(decryptionKeys)
-                });
+                };
+            }
+            else
+            {
+                return null;
             }
         }
     }

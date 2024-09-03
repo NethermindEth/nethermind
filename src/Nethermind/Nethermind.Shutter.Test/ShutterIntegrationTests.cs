@@ -41,13 +41,13 @@ public class ShutterIntegrationTests : EngineModuleTests
         public override TimeSpan BlockWaitCutoff { get => TimeSpan.MaxValue; }
     }
 
-    private class ShutterTestBlockchainNoBlockTimeout(Random rnd, ITimestamper timestamper) : ShutterTestBlockchain(rnd, timestamper)
+    private class ShutterTestBlockchainNoBlockTimeout(Random rnd, ITimestamper? timestamper) : ShutterTestBlockchain(rnd, timestamper)
     {
-        protected override ShutterApiSimulator CreateShutterApi(Random rnd, ITimestamper timestamper)
+        protected override ShutterApiSimulator CreateShutterApi()
             => new ShutterApiSimulatorNoBlockTimeout(
-                ShutterTestsCommon.InitEventSimulator(rnd), ShutterTestsCommon.AbiEncoder, BlockTree.AsReadOnly(),
-                EthereumEcdsa, LogFinder, ReceiptStorage, LogManager, SpecProvider, timestamper, WorldStateManager,
-                ShutterTestsCommon.Cfg, [], rnd
+                ShutterTestsCommon.InitEventSimulator(_rnd), ShutterTestsCommon.AbiEncoder, BlockTree.AsReadOnly(),
+                EthereumEcdsa, LogFinder, ReceiptStorage, LogManager, SpecProvider, _timestamper ?? Timestamper,
+                WorldStateManager, ShutterTestsCommon.Cfg, [], _rnd
             );
     }
 

@@ -88,9 +88,10 @@ public class ShutterTxSource(
         return _txCache.Contains(slot);
     }
 
-    public void LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
+    public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {
-        _txCache.Set(keys.Slot, txLoader.LoadTransactions(head, parentHeader, keys));
+        ShutterTransactions transactions = txLoader.LoadTransactions(head, parentHeader, keys);
+        _txCache.Set(keys.Slot, transactions);
 
         lock (_syncObject)
         {
@@ -100,6 +101,8 @@ public class ShutterTxSource(
                 waitTask.Ctr.Dispose();
             }
         }
+
+        return transactions;
     }
 
     private void CancelWaitForTransactions(ulong slot)

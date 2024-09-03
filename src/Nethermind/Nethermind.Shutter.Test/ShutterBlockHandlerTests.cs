@@ -86,21 +86,14 @@ class ShutterBlockHandlerTests : EngineModuleTests
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 2 * (ulong)ShutterTestsCommon.BlockUpToDateCutoff.TotalMilliseconds);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
-        bool eonUpdateCalled = false;
-        CancellationTokenSource source = new();
-        api.EonUpdate += (object? sender, EventArgs e) =>
-        {
-            eonUpdateCalled = true;
-        };
-
         // not triggered on outdated block
         api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject));
-        Assert.That(eonUpdateCalled, Is.False);
+        Assert.That(api.EonUpdateCalled, Is.EqualTo(0));
 
         // triggered on up to date block
         ulong upToDateTimestamp = ShutterTestsCommon.InitialSlotTimestamp + 2 * (ulong)ShutterTestsCommon.BlockUpToDateCutoff.TotalSeconds;
         api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(upToDateTimestamp).TestObject));
-        Assert.That(eonUpdateCalled);
+        Assert.That(api.EonUpdateCalled, Is.EqualTo(1));
     }
 
 }

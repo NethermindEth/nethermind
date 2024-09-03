@@ -8,10 +8,9 @@ namespace Nethermind.Shutter;
 
 public interface IShutterKeyValidator
 {
-    void OnDecryptionKeysReceived(Dto.DecryptionKeys decryptionKeys);
-    event EventHandler<ValidatedKeyArgs> KeysValidated;
+    ValidatedKeys? ValidateKeys(Dto.DecryptionKeys decryptionKeys);
 
-    public struct ValidatedKeyArgs
+    public struct ValidatedKeys
     {
         public ulong Slot;
         public ulong Eon;

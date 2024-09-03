@@ -36,12 +36,12 @@ public class ShutterApiSimulator(
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
         logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, ShutterTestsCommon.SlotLength)
 {
-    public event EventHandler? EonUpdate;
-    private event EventHandler<IShutterKeyValidator.ValidatedKeyArgs>? KeysValidated;
-    private event EventHandler<Dto.DecryptionKeys>? KeysReceived;
+    public int EonUpdateCalled = 0;
+    public int KeysValidated = 0;
+    public ShutterTransactions? LoadedTransactions;
+
     private readonly Random _rnd = rnd;
     private readonly IReceiptStorage _receiptStorage = receiptStorage;
-
 
     public (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount = null)
     {
@@ -55,15 +55,8 @@ public class ShutterApiSimulator(
     public void TriggerNewHeadBlock(BlockEventArgs e)
         => _blockTree.NewHeadBlock += Raise.EventWith(this, e);
 
-    public void TriggerKeysValidated(IShutterKeyValidator.ValidatedKeyArgs keys)
-    {
-        KeysValidated?.Invoke(this, keys);
-    }
-
     public void TriggerKeysReceived(Dto.DecryptionKeys keys)
-    {
-        KeysReceived?.Invoke(this, keys);
-    }
+        => P2P!.KeysReceived += Raise.EventWith<IShutterP2P.KeysReceivedArgs>(this, new(keys));
 
     public void NextEon()
         => eventSimulator.NextEon();
@@ -90,23 +83,42 @@ public class ShutterApiSimulator(
         TxLoader.LoadFromReceipts(block, receipts, eventSimulator.GetCurrentEonInfo().Eon);
     }
 
+    protected override async void OnKeysReceived(object? sender, IShutterP2P.KeysReceivedArgs keysReceivedArgs)
+    {
+        IShutterKeyValidator.ValidatedKeys? keys = KeyValidator.ValidateKeys(keysReceivedArgs.Keys);
+
+        if (keys is null)
+        {
+            return;
+        }
+
+        KeysValidated++;
+        Metrics.TxPointer = keys.Value.TxPointer;
+
+        // wait for latest block before loading transactions
+        Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Value.Slot - 1, new())) ?? _readOnlyBlockTree.Head;
+        BlockHeader? header = head?.Header;
+        BlockHeader parentHeader = header is not null
+            ? _readOnlyBlockTree.FindParentHeader(header, BlockTreeLookupOptions.None)!
+            : _readOnlyBlockTree.FindLatestHeader()!;
+
+        // store transactions to check in tests
+        LoadedTransactions = TxSource.LoadTransactions(head, parentHeader, keys.Value);
+    }
+
+
     // fake out P2P module
     protected override void InitP2P(IShutterConfig cfg, ILogManager logManager)
     {
-        KeysReceived += KeysReceivedHandler;
+        P2P = Substitute.For<IShutterP2P>();
+        P2P.KeysReceived += OnKeysReceived;
     }
-
-    // fake out key validator
-    // protected override void RegisterOnKeysValidated()
-    // {
-
-    // }
 
     protected override IShutterEon InitEon()
     {
         IShutterEon eon = Substitute.For<IShutterEon>();
         eon.GetCurrentEonInfo().Returns(_ => eventSimulator.GetCurrentEonInfo());
-        eon.When(x => x.Update(Arg.Any<BlockHeader>())).Do((_) => EonUpdate?.Invoke(this, new()));
+        eon.When(x => x.Update(Arg.Any<BlockHeader>())).Do((_) => EonUpdateCalled++);
         return eon;
     }
 

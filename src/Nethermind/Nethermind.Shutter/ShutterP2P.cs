@@ -21,9 +21,7 @@ using Google.Protobuf;
 
 namespace Nethermind.Shutter;
 
-public class ShutterP2P(
-    IShutterConfig shutterConfig,
-    ILogManager logManager)
+public class ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager) : IShutterP2P
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
@@ -34,7 +32,8 @@ public class ShutterP2P(
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-    public event EventHandler<Dto.DecryptionKeys>? KeysReceived;
+    public event EventHandler<IShutterP2P.KeysReceivedArgs>? KeysReceived;
+
 
     public void Start(CancellationTokenSource? cts = null)
     {
@@ -151,7 +150,7 @@ public class ShutterP2P(
             Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
             if (envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
             {
-                KeysReceived?.Invoke(this, decryptionKeys);
+                KeysReceived?.Invoke(this, new(decryptionKeys));
             }
             else if (_logger.IsDebug)
             {

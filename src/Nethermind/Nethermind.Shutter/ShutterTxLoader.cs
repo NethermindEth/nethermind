@@ -44,7 +44,7 @@ public class ShutterTxLoader(
     private readonly ShutterTxFilter _txFilter = new(specProvider, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeyArgs keys)
+    public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {
         using ArrayPoolList<SequencedTransaction> sequencedTransactions = new(_maxTransactions, GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0));
 

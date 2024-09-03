@@ -15,14 +15,12 @@ class ShutterKeyValidatorTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
-        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd);
 
-        bool eventFired = false;
-        api.KeyValidator.KeysValidated += (_, _) => eventFired = true;
+        Assert.That(api.KeysValidated, Is.EqualTo(0));
 
         api.AdvanceSlot(5);
 
-        Assert.That(eventFired);
+        Assert.That(api.KeysValidated, Is.EqualTo(1));
     }
 
     [Test]
@@ -30,16 +28,14 @@ class ShutterKeyValidatorTests
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd);
-        ShutterEventSimulator eventSimulator = ShutterTestsCommon.InitEventSimulator(rnd);
 
-        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) = api.AdvanceSlot(5);
+        (List<ShutterEventSimulator.Event> _, Dto.DecryptionKeys keys) = api.AdvanceSlot(5);
 
-        bool eventFired = false;
-        api.KeyValidator.KeysValidated += (_, _) => eventFired = true;
+        Assert.That(api.KeysValidated, Is.EqualTo(1));
 
-        // same keys are now outdated
+        // should ignore more keys from the same slot
         api.TriggerKeysReceived(keys);
 
-        Assert.That(eventFired, Is.False);
+        Assert.That(api.KeysValidated, Is.EqualTo(1));
     }
 }
