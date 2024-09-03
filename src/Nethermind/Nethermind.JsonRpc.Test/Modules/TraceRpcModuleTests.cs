@@ -854,7 +854,7 @@ public class TraceRpcModuleTests
 
     [TestCase(
         "Nonce increments from state override",
-        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","value":"0x0"}""",
+        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xc200000000000000000000000000000000000000"}""",
         "stateDiff",
         """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"nonce":"0x123"}}""",
         """{"jsonrpc":"2.0","result":{"output":null,"stateDiff":{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"=","code":"=","nonce":{"*":{"from":"0x123","to":"0x124"}},"storage":{}}},"trace":[],"vmTrace":null},"id":67}"""
@@ -892,7 +892,7 @@ public class TraceRpcModuleTests
     }
 
     [TestCase(
-        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f","value":"0x0"}""",
+        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xc200000000000000000000000000000000000000"}""",
         """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x123", "nonce": "0x123"}}"""
     )]
     [TestCase(
