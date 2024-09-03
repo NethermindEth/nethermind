@@ -203,7 +203,7 @@ namespace Nethermind.Monitoring.Metrics
             _useCounters = metricsConfig.CountersEnabled;
         }
 
-        public void StartUpdating(Action onForced)
+        public void StartUpdating(Action metricsUpdated)
         {
             _cts = new CancellationTokenSource();
             Task.Run(() => RunLoop(_cts.Token));
@@ -216,15 +216,11 @@ namespace Nethermind.Monitoring.Metrics
 
                 while (ct.IsCancellationRequested == false)
                 {
-                    bool forced = false;
-
                     Task wait = GetForceUpdateWait();
 
                     try
                     {
-
-                        Task finished = await Task.WhenAny(wait, Task.Delay(waitTime, ct));
-                        forced = finished == wait;
+                        await Task.WhenAny(wait, Task.Delay(waitTime, ct));
                     }
                     catch (OperationCanceledException)
                     {
@@ -234,11 +230,8 @@ namespace Nethermind.Monitoring.Metrics
 
                     UpdateMetrics();
 
-                    if (forced && onForced != null)
-                    {
-                        // The update was forced and there's a onForced delegate. Execute it.
-                        onForced();
-                    }
+                    // Inform about metrics updated
+                    metricsUpdated?.Invoke();
 
                     if (ct.IsCancellationRequested == false)
                     {

@@ -21,7 +21,6 @@ using System.Text;
 /// </summary>
 public class MetricPusher : MetricHandler
 {
-    private readonly TimeSpan _pushInterval;
     private readonly HttpMethod _method;
     private readonly Uri _targetUrl;
     private readonly Func<HttpClient> _httpClientProvider;
@@ -64,8 +63,6 @@ public class MetricPusher : MetricHandler
         }
 
         _targetUrl = targetUrl;
-
-        _pushInterval = TimeSpan.FromMilliseconds(options.IntervalMilliseconds);
         _onError = options.OnError;
 
         _method = options.ReplaceOnPush ? HttpMethod.Put : HttpMethod.Post;
@@ -84,22 +81,20 @@ public class MetricPusher : MetricHandler
             {
                 try
                 {
-                    await _wait.WaitAsync(_pushInterval, cancel);
+                    await _wait.WaitAsync(cancel);
                 }
                 catch (OperationCanceledException)
                 {
                     break;
                 }
 
+                // As the wait above is cancellable, this will send at the end
                 await PushOnce();
             }
-
-            // Push the final state
-            await PushOnce();
         });
     }
 
-    public void ForceUpdate() => _wait.Release();
+    public void ScheduleUpdatePush() => _wait.Release();
 
     private async Task PushOnce()
     {

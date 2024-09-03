@@ -8,7 +8,7 @@ namespace Nethermind.Monitoring.Metrics
     public interface IMetricsController
     {
         void RegisterMetrics(Type type);
-        void StartUpdating(Action onForced);
+        void StartUpdating(Action metricsUpdated);
         void StopUpdating();
         void AddMetricsUpdateAction(Action callback);
         void ForceUpdate();
