@@ -111,28 +111,32 @@ public class ValidateSubmissionHandler
     }
 
 
-    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit,  bool excludeWithdrawals, out string? error)
+    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, out string? error)
     {
-        if(!HeaderValidator.ValidateHash(block.Header)){
+        if (!HeaderValidator.ValidateHash(block.Header))
+        {
             error = $"Invalid block header hash {block.Header.Hash}";
             return false;
         }
 
-        if(!_blockTree.IsBetterThanHead(block.Header)){
+        if (!_blockTree.IsBetterThanHead(block.Header))
+        {
             error = $"Block {block.Header.Hash} is not better than head";
             return false;
         }
 
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
-        if (parentHeader is null){
+        if (parentHeader is null)
+        {
             error = $"Parent header {block.ParentHash} not found";
             return false;
         }
 
         long calculatedGasLimit = _gasLimitCalculator.GetGasLimit(parentHeader, registerGasLimit);
 
-        if (calculatedGasLimit != block.Header.GasLimit){
+        if (calculatedGasLimit != block.Header.GasLimit)
+        {
             error = $"Gas limit mismatch. Expected {calculatedGasLimit} but got {block.Header.GasLimit}";
             return false;
         }
@@ -145,14 +149,14 @@ public class ValidateSubmissionHandler
         BlockProcessor blockProcessor = CreateBlockProcessor(currentState);
 
         List<Block> suggestedBlocks = [block];
-        BlockReceiptsTracer blockReceiptsTracer = new ();
+        BlockReceiptsTracer blockReceiptsTracer = new();
 
         ProcessingOptions processingOptions = new ProcessingOptions();
 
-        try 
-        { 
+        try
+        {
             Block processedBlock = blockProcessor.Process(currentState.StateRoot, suggestedBlocks, processingOptions, blockReceiptsTracer)[0];
-            FinalizeStateAndBlock(currentState, processedBlock, _txProcessingEnv.SpecProvider.GetSpec(parentHeader) , block, _blockTree);
+            FinalizeStateAndBlock(currentState, processedBlock, _txProcessingEnv.SpecProvider.GetSpec(parentHeader), block, _blockTree);
         }
         catch (Exception e)
         {
@@ -166,7 +170,7 @@ public class ValidateSubmissionHandler
 
         if (excludeWithdrawals)
         {
-            foreach(Withdrawal withdrawal in block.Withdrawals ?? [])
+            foreach (Withdrawal withdrawal in block.Withdrawals ?? [])
             {
                 if (withdrawal.Address == feeRecipient)
                 {
@@ -175,7 +179,8 @@ public class ValidateSubmissionHandler
             }
         }
 
-        if(!_blockValidator.ValidateSuggestedBlock(block, out error)){
+        if (!_blockValidator.ValidateSuggestedBlock(block, out error))
+        {
             return false;
         }
 
@@ -186,7 +191,7 @@ public class ValidateSubmissionHandler
             UInt256 feeRecipientBalanceDelta = feeRecipientBalanceAfter - amtBeforeOrWithdrawn;
             if (feeRecipientBalanceDelta >= expectedProfit)
             {
-                if(feeRecipientBalanceDelta > expectedProfit)
+                if (feeRecipientBalanceDelta > expectedProfit)
                 {
                     _logger.Warn($"Builder claimed profit is lower than calculated profit. Expected {expectedProfit} but actual {feeRecipientBalanceDelta}");
                 }
@@ -213,9 +218,9 @@ public class ValidateSubmissionHandler
 
         int txIndex = lastReceipt.Index;
 
-        if (txIndex+1 != block.Transactions.Length)
+        if (txIndex + 1 != block.Transactions.Length)
         {
-            error = $"Proposer payment index not last transaction in the block({txIndex} of {block.Transactions.Length-1})";
+            error = $"Proposer payment index not last transaction in the block({txIndex} of {block.Transactions.Length - 1})";
             return false;
         }
 
@@ -239,7 +244,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (paymentTx.GasPrice !=  block.BaseFeePerGas)
+        if (paymentTx.GasPrice != block.BaseFeePerGas)
         {
             error = "Malformed proposer payment, gas price not equal to base fee";
             return false;
@@ -279,7 +284,7 @@ public class ValidateSubmissionHandler
         Address feeRecipient = message.ProposerFeeRecipient;
         UInt256 expectedProfit = message.Value;
 
-        if (!ValidatePayload(block, feeRecipient, expectedProfit, registerGasLimit,  false, false, out error)) // TODO: exclude withdrawals and useBalanceDiffProfit config option for the APIs
+        if (!ValidatePayload(block, feeRecipient, expectedProfit, registerGasLimit, false, false, out error)) // TODO: exclude withdrawals and useBalanceDiffProfit config option for the APIs
         {
             return false;
         }
