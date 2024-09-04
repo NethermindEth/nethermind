@@ -1,19 +1,9 @@
-
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.Intrinsics;
-using System.Threading;
-using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.CodeAnalysis.IL;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
@@ -81,10 +71,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 var trueCount = kvp.Value;
                 var observedCount = sketch.Query(kvp.Key);
-                var expectedKMaxCount = (ulong)trueCount + expectedOverCountDelta;
+                var expectedMaxCount = (ulong)trueCount + expectedOverCountDelta;
                 Assert.That(trueCount <= observedCount,
                      $"Failed at validating trueCount {trueCount} <= observedCount {observedCount}");
-                if (observedCount > expectedKMaxCount)
+                if (observedCount > expectedMaxCount)
                     ++numberOfBoundsBreaches;
             }
             double observedFreqOfBreaches = (double)numberOfBoundsBreaches / actualCounts.Count;
