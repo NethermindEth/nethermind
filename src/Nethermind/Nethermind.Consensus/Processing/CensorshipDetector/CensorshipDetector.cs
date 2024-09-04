@@ -43,7 +43,11 @@ public class CensorshipDetector : IDisposable
         _txPool = txPool;
         _betterTxComparer = betterTxComparer;
         _blockProcessor = blockProcessor;
-        _blockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
+        int configBlockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
+        if (configBlockCensorshipThreshold > 1 && configBlockCensorshipThreshold <= CacheSize)
+        {
+            _blockCensorshipThreshold = configBlockCensorshipThreshold;
+        }
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         if (censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
@@ -196,7 +200,7 @@ public class CensorshipDetector : IDisposable
 
         bool DetectPastBlockCensorship()
         {
-            // Censorship is detected if potential censorship is flagged for the last 4 blocks including the latest.
+            // Censorship is detected if potential censorship is flagged for the last _blockCensorshipThreshold blocks including the latest.
             if (block.Number >= _blockCensorshipThreshold)
             {
                 long blockNumber = block.Number - 1;
