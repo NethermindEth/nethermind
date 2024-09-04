@@ -74,6 +74,8 @@ public static class TxErrorMessages
 
     public const string MissingAuthorizationList = "MissingAuthorizationList: Must be set.";
 
+    public const string InvalidAuthoritySignature = "InvalidAuthoritySignature: Invalid signature in authorization list.";
+
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
