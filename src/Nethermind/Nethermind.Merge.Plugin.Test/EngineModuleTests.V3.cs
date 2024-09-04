@@ -217,6 +217,26 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_UnsupportedTxType_BlockIsRejectedWithCorrectErrorMessage()
+    {
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+
+        payload.TryGetBlock(out Block? b);
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.GetTransactions()[0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        txRlp[0] = 100; // set TxType to 100
+        payload.Transactions = [txRlp];
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)

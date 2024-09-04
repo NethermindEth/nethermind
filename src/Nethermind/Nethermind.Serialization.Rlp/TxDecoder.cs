@@ -79,8 +79,13 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             ThrowIfLegacy(txType);
         }
 
-        return (T)_decoders[txType].Decode(transactionSequence, rlpStream, rlpBehaviors);
+        return (T)GetDecoder(txType).Decode(transactionSequence, rlpStream, rlpBehaviors);
     }
+
+    private ITxDecoder GetDecoder(TxType txType) =>
+        _decoders.TryGetValue(txType, out ITxDecoder decoder)
+            ? decoder
+            : throw new RlpException("Unknown transaction type") { Data = { { "txType", txType } } };
 
     public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -122,7 +127,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             }
         }
 
-        _decoders[txType].Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -157,9 +162,9 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             return;
         }
 
-        _decoders[item.Type].Encode(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        GetDecoder(item.Type).Encode(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
     }
 
     private int GetLength(T? tx, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId) =>
-        tx is null ? Rlp.LengthOfNull : _decoders[tx.Type].GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        tx is null ? Rlp.LengthOfNull : GetDecoder(tx.Type).GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 }
