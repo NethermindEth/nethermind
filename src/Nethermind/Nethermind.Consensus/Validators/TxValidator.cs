@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Validators
                    && ValidateWithError(Validate1559GasFields(transaction, releaseSpec), TxErrorMessages.InvalidMaxPriorityFeePerGas, ref error)
                    && ValidateWithError(Validate3860Rules(transaction, releaseSpec), TxErrorMessages.ContractSizeTooBig, ref error)
                    && Validate4844Fields(transaction, ref error)
-                   && ValidateAuthorityList(transaction, releaseSpec, ref error);
+                   && ValidateAuthorityList(transaction, ref error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -161,6 +161,23 @@ namespace Nethermind.Consensus.Validators
             }
 
             return true;
+        }
+
+        private bool ValidateAuthoritySignature(Signature signature)
+        {
+            if (signature is null)
+            {
+                return false;
+            }
+
+            UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
+
+            if (sValue >= Secp256K1Curve.HalfNPlusOne)
+            {
+                return false;
+            }
+
+            return signature.RecoveryId is 0 or 1;
         }
 
         private static bool Validate4844Fields(Transaction transaction, ref string? error)
@@ -306,7 +323,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateAuthorityList(Transaction tx, IReleaseSpec releaseSpec, ref string error)
+        private bool ValidateAuthorityList(Transaction tx, ref string error)
         {
             if (tx.Type != TxType.SetCode)
             {
@@ -321,7 +338,7 @@ namespace Nethermind.Consensus.Validators
                 error = TxErrorMessages.MissingAuthorizationList;
                 return false;
             }
-            else if (tx.AuthorizationList.Any(a => !ValidateSignature(a.AuthoritySignature, releaseSpec)))
+            else if (tx.AuthorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)))
             {
                 error = TxErrorMessages.InvalidAuthoritySignature;
                 return false;
