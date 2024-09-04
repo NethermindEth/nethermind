@@ -104,10 +104,10 @@ jobs:
           docker_image=""
           
           if [ -z "${{ inputs.nethermind_image }}" ]; then
-            REF_NAME="${GITHUB_REF##*/}"
-            if [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
-              CLEAN_REF=$(echo "${REF_NAME}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-              docker_image="nethermindeth/nethermind:${CLEAN_REF}"
+            REF_NAME=${{ github.ref }}
+            if [[ $REF_NAME == refs/heads/release/* ]]; then
+              CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+              docker_image="nethermindeth/nethermind:$CLEAN_REF"
             else
               docker_image="nethermindeth/nethermind:master"
             fi
@@ -226,6 +226,14 @@ jobs:
     if: success()
     runs-on: ubuntu-latest
     steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+          
       - name: Trigger notification action on test repo
         if: github.event.workflow_run.head_branch == 'master' || startsWith(github.event.workflow_run.head_branch, 'release/')
         continue-on-error: true
