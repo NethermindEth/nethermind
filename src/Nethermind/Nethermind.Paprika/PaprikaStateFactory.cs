@@ -27,7 +27,7 @@ public class PaprikaStateFactory : IStateFactory
 {
     private readonly ILogger _logger;
     private static readonly long _sepolia = 32.GiB();
-    private static readonly long _holesky = 96.GiB();
+    private static readonly long _holesky = 32.GiB();
     private static readonly long _mainnet = 256.GiB();
 
     private static readonly TimeSpan _flushFileEvery = TimeSpan.FromMinutes(10);
@@ -43,15 +43,12 @@ public class PaprikaStateFactory : IStateFactory
     public PaprikaStateFactory()
     {
         _db = PagedDb.NativeMemoryDb(64 * 1024 * 1024);
-        //_merkleBehaviour = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
-        _merkleBehaviour = new ComputeMerkleBehavior(2);
+        _merkleBehaviour = new ComputeMerkleBehavior();
         _blockchain = new Blockchain(_db, _merkleBehaviour);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
 
-        //TODO - implement switching after sync is complete
-        //_accessor = _blockchain.BuildReadOnlyAccessor();
-        _accessor = _blockchain.BuildReadOnlyAccessorForSync();
+        _accessor = _blockchain.BuildReadOnlyAccessor();
 
         _logger = LimboLogs.Instance.GetClassLogger();
     }
@@ -64,6 +61,7 @@ public class PaprikaStateFactory : IStateFactory
 
         _db = PagedDb.MemoryMappedDb(_holesky, 64, directory, flushToDisk: true);
 
+        //TODO - issue for snap-sync - diagnose the root cause
         //var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
         var parallelism = ComputeMerkleBehavior.ParallelismNone;
 
@@ -77,8 +75,7 @@ public class PaprikaStateFactory : IStateFactory
             _logger.Error("Paprika's Flusher task failed and stopped, throwing the following exception", exception);
         };
 
-        //_accessor = _blockchain.BuildReadOnlyAccessor();
-        _accessor = _blockchain.BuildReadOnlyAccessorForSync();
+        _accessor = _blockchain.BuildReadOnlyAccessor();
     }
 
     public ComputeMerkleBehavior MerkleBehaviour => _merkleBehaviour;
@@ -114,6 +111,11 @@ public class PaprikaStateFactory : IStateFactory
     public void ForceFlush()
     {
         _blockchain.ForceFlush();
+    }
+
+    public void ResetAccessor()
+    {
+        _accessor.Reset();
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
@@ -441,21 +443,7 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
-        public void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
-        {
-            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
-            _wrapped.SetBoundary(path, Convert(keccak));
-            //_factory._logger.Info($"Setting account hash for path {path.ToString()} - {keccak}");
-        }
-
-        public void SetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
-        {
-            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
-            _wrapped.SetBoundary(Convert(accountHash), path, Convert(keccak));
-            //_factory._logger.Info($"Setting storage hash for path {path.ToString()} - {keccak}");
-        }
-
-        public void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, byte[] childNibbles, Hash256?[] childHashes)
+        public void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, byte[] childNibbles, Hash256?[] childHashes, bool persist = true)
         {
             NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
             PaprikaKeccak[] hashes = new PaprikaKeccak[childHashes.Length];
@@ -463,17 +451,35 @@ public class PaprikaStateFactory : IStateFactory
             {
                 hashes[i] = childHashes[i] is not null ? Convert(childHashes[i]!) : PaprikaKeccak.Zero;
             }
-            _wrapped.CreateProofBranch(Convert(accountHash), path, childNibbles, hashes);
+            _wrapped.CreateMerkleBranch(Convert(accountHash), path, childNibbles, hashes, persist);
         }
 
         public void CreateProofExtension(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
-            int extPathLength)
+            int extPathLength, bool persist = true)
         {
             var fullPath = NibblePath.FromKey(keyPath);
             NibblePath storagePath = fullPath.SliceTo(targetKeyLength);
             NibblePath extensionPath = fullPath.SliceFrom(targetKeyLength).SliceTo(extPathLength);
 
-            _wrapped.CreateProofExtension(Convert(accountHash), storagePath, extensionPath);
+            _wrapped.CreateMerkleExtension(Convert(accountHash), storagePath, extensionPath, persist);
+        }
+
+        public void CreateProofLeaf(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, int leafKeyIndex)
+        {
+            var fullPath = NibblePath.FromKey(keyPath);
+            NibblePath storagePath = fullPath.SliceTo(targetKeyLength);
+            NibblePath leafPath = fullPath.SliceFrom(targetKeyLength);
+
+            _wrapped.CreateMerkleLeaf(Convert(accountHash), storagePath, leafPath);
+        }
+
+        public void RegisterDeleteByPrefix(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength)
+        {
+            var fullPath = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            Key key = accountHash == Keccak.Zero
+                ? Key.Account(fullPath)
+                : Key.StorageCell(NibblePath.FromKey(Convert(accountHash)), fullPath);
+            _wrapped.RegisterDeleteByPrefix(key);
         }
 
         public void Commit(bool ensureHash)
@@ -489,22 +495,16 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
-        public ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength)
+        public ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength, bool ignoreCache)
         {
             NibblePath nibblePath = NibblePath.FromKey(path).SliceTo(pathLength);
-            return Convert(_wrapped.GetHash(nibblePath));
+            return Convert(_wrapped.GetHash(nibblePath, ignoreCache));
         }
 
         public ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength)
         {
             NibblePath nibblePath = NibblePath.FromKey(storagePath).SliceTo(pathLength);
             return Convert(_wrapped.GetStorageHash(Convert(accountHash), nibblePath));
-        }
-
-        public void CheckBoundaryProof(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength)
-        {
-            NibblePath nibblePath = NibblePath.FromKey(storagePath).SliceTo(pathLength);
-            _wrapped.CheckBoundaryProof(Convert(accountHash), nibblePath);
         }
 
         public void Finalize(uint blockNumber)

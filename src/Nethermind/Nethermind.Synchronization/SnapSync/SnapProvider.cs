@@ -25,8 +25,6 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private readonly ObjectPool<ITrieStore> _trieStorePool;
         private readonly IDb _codeDb;
-        //private readonly ObjectPool<ITrieStore> _trieStorePool;
-        //private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
@@ -39,10 +37,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            //_trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
-
-            // TODO: reintroduce the store
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(new NodeStorage(new MemDb()), logManager));
+            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(nodeStorage, logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
@@ -80,9 +75,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddAccountRange(long blockNumber, in ValueHash256 expectedRootHash, in ValueHash256 startingHash, IReadOnlyList<PathWithAccount> accounts, IReadOnlyList<byte[]> proofs = null, in ValueHash256? hashLimit = null!)
         {
-            //ITrieStore store = _trieStorePool.Get();
-            IScopedTrieStore store = NullTrieStore.Instance;
-            //_progressTracker.AquireRawStateLock();
+            ITrieStore store = _trieStorePool.Get();
             try
             {
                 StateTree tree = new(store, _logManager);
@@ -128,8 +121,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                //_trieStorePool.Return(store);
-                //_progressTracker.ReleaseRawStateLock();
+                _trieStorePool.Return(store);
             }
         }
 

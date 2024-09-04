@@ -337,7 +337,7 @@ namespace Nethermind.Synchronization.Test
                 IStateFactory stateFactory = new PaprikaStateFactory();
                 StateReader reader = new StateReader(stateFactory, codeDb, LimboLogs.Instance);
 
-                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader);
+                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader, stateFactory);
                 INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
 
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);

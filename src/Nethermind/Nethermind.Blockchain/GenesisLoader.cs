@@ -54,6 +54,9 @@ namespace Nethermind.Blockchain
                 _stateProvider.CommitTree(0);
 
                 genesis.Header.StateRoot = _stateProvider.StateRoot;
+
+                //TODO - Paprika - reset state to null to free all dependencies and enable page reuse during sync
+                _stateProvider.FullReset();
             }
 
             genesis.Header.Hash = genesis.Header.CalculateHash();

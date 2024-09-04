@@ -324,6 +324,24 @@ public struct TreePath
         return length.CompareTo(otherTree.Length);
     }
 
+    public readonly int CompareToTruncatedWithEquality(in TreePath otherTree, int length)
+    {
+        int minLength = Math.Min(length, otherTree.Length);
+        int commonByteLength = minLength / 2;
+        int compareByByte =
+            Bytes.BytesComparer.Compare(Span[..commonByteLength], otherTree.Span[..commonByteLength]);
+
+        if (compareByByte != 0) return compareByByte;
+
+        if (minLength % 2 == 1)
+        {
+            int result = this[minLength - 1].CompareTo(otherTree[minLength - 1]);
+            if (result != 0) return result;
+        }
+
+        return compareByByte;
+    }
+
     private static ReadOnlySpan<byte> ZeroMasksData => new byte[]
     {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

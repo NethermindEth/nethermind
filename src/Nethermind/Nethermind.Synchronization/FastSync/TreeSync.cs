@@ -1059,7 +1059,8 @@ namespace Nethermind.Synchronization.FastSync
                 if (syncItem.NodeDataType == NodeDataType.Storage)
                 {
                     Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(node.Value);
-                    rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), rlpContext.DecodeByteArray());
+                    rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)),
+                        rlpContext.DecodeByteArray());
                 }
                 else
                 {
@@ -1074,7 +1075,8 @@ namespace Nethermind.Synchronization.FastSync
                         fullPath[syncItem.Level - 1] = nibble;
                         if (syncItem.NodeDataType == NodeDataType.Storage)
                         {
-                            rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)), new Rlp.ValueDecoderContext(node.Value).DecodeByteArray());
+                            rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)),
+                                new Rlp.ValueDecoderContext(node.Value).DecodeByteArray());
                         }
                         else
                         {
@@ -1083,6 +1085,9 @@ namespace Nethermind.Synchronization.FastSync
                         }
                     }
                 }
+
+                rawState.RegisterDeleteByPrefix(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level);
+
                 if (node.Key.Length > 0)
                     rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level, 0);
             }
@@ -1115,6 +1120,11 @@ namespace Nethermind.Synchronization.FastSync
                                         0);
                             }
                         }
+                        else
+                        {
+                            rawState.RegisterDeleteByPrefix(accountHash, Nibbles.ToBytes(fullPath), pathIndex + 1);
+                            //_logger.Info($"Delete for {fullPath.Slice(0,pathIndex + 1).ToHexString(true)}");
+                        }
                     }
                     else
                     {
@@ -1131,7 +1141,14 @@ namespace Nethermind.Synchronization.FastSync
 
                 rawState.CreateProofExtension(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
                     node.Key.Length);
-                rawState.Commit(false);
+
+                for (byte i = 0; i < 16; i++)
+                {
+                    if (i == node.Key[0])
+                        continue;
+                    fullPath[syncItem.Level] = i;
+                    rawState.RegisterDeleteByPrefix(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level + 1);
+                }
             }
         }
     }

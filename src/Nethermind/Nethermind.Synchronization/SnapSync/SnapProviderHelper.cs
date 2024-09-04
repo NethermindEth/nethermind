@@ -43,7 +43,6 @@ namespace Nethermind.Synchronization.SnapSync
             StateTree tree = new StateTree();
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
-            //(AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
@@ -75,16 +74,20 @@ namespace Nethermind.Synchronization.SnapSync
                 state.SetAccount(account.Path, account.Account);
             }
 
-            Span<byte> lastPath = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(lastHash.BytesAsSpan, lastPath);
-            Span<byte> firstPath = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(startingHash.BytesAsSpan, firstPath);
+
+            TreePath firstPath = TreePath.FromPath(startingHash.BytesAsSpan);
+            TreePath lastPath = TreePath.FromPath(lastHash.BytesAsSpan);
+
+            //Span<byte> lastPath = stackalloc byte[64];
+            //Nibbles.BytesToNibbleBytes(lastHash.BytesAsSpan, lastPath);
+            //Span<byte> firstPath = stackalloc byte[64];
+            //Nibbles.BytesToNibbleBytes(startingHash.BytesAsSpan, firstPath);
+
+            TreePath treePath = TreePath.Empty;
 
             if (sortedBoundaryList?.Count > 0)
             {
-                Span<byte> path = stackalloc byte[64];
-                //FillInAccountHashesOnBoundary(state, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
-                FillInProofNodes(state, Keccak.Zero, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
+                FillInProofNodes(state, Keccak.Zero, firstPath, lastPath, sortedBoundaryList[0].Item1, treePath);
             }
 
             //tree.UpdateRootHash();
@@ -126,100 +129,30 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        private static bool IsNotInRange(Span<byte> path, int index, Span<byte> firstPath, Span<byte> lastPath)
+        private static bool IsNotInRange(TreePath currentPath, TreePath firstPath, TreePath lastPath)
         {
-            Span<byte> currPath = path[..index];
-            if (BytesComparer.Compare(firstPath[..index], currPath) == 0 ||
-                BytesComparer.Compare(lastPath[..index], currPath) == 0)
-                return false;
-            return BytesComparer.Compare(path, lastPath) > 0 || BytesComparer.Compare(path, firstPath) < 0;
+            return currentPath.CompareToTruncatedWithEquality(firstPath, currentPath.Length) < 0 ||
+                   currentPath.CompareToTruncatedWithEquality(lastPath, currentPath.Length) > 0;
         }
 
-        private static void FillInAccountHashesOnBoundary(IRawState state, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
+        private static void FillInProofNodes(IRawState state, ValueHash256 accountHash, TreePath firstPath, TreePath lastPath, TrieNode node, TreePath treePath)
         {
             TreePath emptyPath = TreePath.Empty;
-
             if (node.IsExtension)
             {
-                node.Key.CopyTo(path.Slice(pathIndex));
-                FillInAccountHashesOnBoundary(state, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0), path, pathIndex + node.Key.Length);
-            }
-            else if (node.IsBranch)
-            {
-                for (int i = 0; i < 16; i++)
-                {
-                    path[pathIndex] = (byte)i;
-                    if (IsNotInRange(path, pathIndex + 1, firstPath, lastPath))
-                    {
-                        if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
-                        {
-                            //state.SetAccountHash(Nibbles.ToCompactHexEncoding(path[..(pathIndex + 1)]), pathIndex + 1, new Hash256(childHash));
-                            state.SetAccountHash(Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
-                        }
-                    }
-                    else
-                    {
-                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i);
-                        if (childNode is not null)
-                            FillInAccountHashesOnBoundary(state, firstPath, lastPath, childNode, path, pathIndex + 1);
-                    }
-                }
-            }
-        }
-
-        private static void FillInStorageHashesOnBoundary(IRawState state, ValueHash256 accountHash, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
-        {
-            TreePath emptyPath = TreePath.Empty;
-
-            if (node.IsExtension)
-            {
-                node.Key.CopyTo(path.Slice(pathIndex));
-                FillInStorageHashesOnBoundary(state, accountHash, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0), path, pathIndex + node.Key.Length);
-            }
-            else if (node.IsBranch)
-            {
-                for (int i = 0; i < 16; i++)
-                {
-                    path[pathIndex] = (byte)i;
-                    if (IsNotInRange(path, pathIndex + 1, firstPath, lastPath))
-                    {
-                        if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
-                        {
-                            state.SetStorageHash(accountHash, Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
-                        }
-                        //else
-                        //{
-                        //    state.SetStorageHash(accountHash, Nibbles.ToBytes(path), pathIndex + 1, Keccak.EmptyTreeHash);
-                        //}
-                    }
-                    else
-                    {
-                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i);
-                        if (childNode is not null)
-                            FillInStorageHashesOnBoundary(state, accountHash, firstPath, lastPath, childNode, path, pathIndex + 1);
-                    }
-                }
-            }
-        }
-
-        private static void FillInProofNodes(IRawState state, ValueHash256 accountHash, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
-        {
-            TreePath emptyPath = TreePath.Empty;
-
-            if (node.IsExtension)
-            {
-                node.Key.CopyTo(path.Slice(pathIndex));
-                FillInProofNodes(state, accountHash, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0), path, pathIndex + node.Key.Length);
-                state.CreateProofExtension(accountHash, Nibbles.ToBytes(path), pathIndex, node.Key.Length, false);
+                TreePath childPath = treePath.Append(node.Key);
+                //node.Key.CopyTo(path.Slice(pathIndex));
+                FillInProofNodes(state, accountHash, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0), childPath);
+                state.CreateProofExtension(accountHash, childPath.Span, treePath.Length, node.Key.Length, false);
             }
             else if (node.IsBranch)
             {
                 List<byte> children = new List<byte>();
                 List<Hash256?> childHashes = new List<Hash256?>();
-                for (int i = 0; i < 16; i++)
+                for (byte i = 0; i < 16; i++)
                 {
-                    path[pathIndex] = (byte)i;
-                    if (IsNotInRange(path, pathIndex + 1, firstPath, lastPath))
+                    TreePath childPath = treePath.Append(i);
+                    if (IsNotInRange(childPath, firstPath, lastPath))
                     {
                         if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
                         {
@@ -234,11 +167,13 @@ namespace Nethermind.Synchronization.SnapSync
                                 children.Add((byte)i);
                                 childHashes.Add(null);
                                 childNode.ResolveNode(NullTrieNodeResolver.Instance, in emptyPath);
-                                childNode.Key.CopyTo(path.Slice(pathIndex + 1));
+
+                                TreePath inlineChild = childPath.Append(childNode.Key);
+                                //childNode.Key.CopyTo(path.Slice(pathIndex + 1));
 
                                 //Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(childNode.Value);
 
-                                state.SetStorage(accountHash, new Hash256(Nibbles.ToBytes(path)), childNode.Value);
+                                state.SetStorage(accountHash, inlineChild.Path, childNode.Value);
                             }
                         }
                     }
@@ -247,7 +182,7 @@ namespace Nethermind.Synchronization.SnapSync
                         TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i);
                         if (childNode is not null)
                         {
-                            FillInProofNodes(state, accountHash, firstPath, lastPath, childNode, path, pathIndex + 1);
+                            FillInProofNodes(state, accountHash, firstPath, lastPath, childNode, childPath);
                             children.Add((byte)i);
                             childHashes.Add(null);
                         }
@@ -262,11 +197,11 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (children.Count < 2)
                 {
-                    Console.WriteLine($"Less than 2 children for branch node {path.ToHexString()} | {pathIndex} | {node.FullRlp.ToArray()?.ToHexString()}");
+                    Console.WriteLine($"Less than 2 children for branch node {treePath.ToHexString()} | {treePath.Length} | {node.FullRlp.ToArray()?.ToHexString()}");
                 }
                 else
                 {
-                    state.CreateProofBranch(accountHash, Nibbles.ToBytes(path), pathIndex, children.ToArray(),
+                    state.CreateProofBranch(accountHash, treePath.Span, treePath.Length, children.ToArray(),
                         childHashes.ToArray(), false);
                 }
             }
@@ -308,17 +243,13 @@ namespace Nethermind.Synchronization.SnapSync
                 state.SetStorage(account.Path, slot.Path, rlpContext.DecodeByteArray());
             }
 
-            Span<byte> lastPath = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(lastHash.BytesAsSpan, lastPath);
-            Span<byte> firstPath = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes((startingHash ?? slots[0].Path).BytesAsSpan, firstPath);
+            TreePath firstPath = TreePath.FromPath((startingHash ?? slots[0].Path).BytesAsSpan);
+            TreePath lastPath = TreePath.FromPath(lastHash.BytesAsSpan);
 
             if (sortedBoundaryList?.Count > 0)
             {
-                Span<byte> path = stackalloc byte[64];
-                //FillInStorageHashesOnBoundary(state, account.Path, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
-
-                FillInProofNodes(state, account.Path, firstPath, lastPath, sortedBoundaryList[0].Item1, path, 0);
+                TreePath treePath = TreePath.Empty;
+                FillInProofNodes(state, account.Path, firstPath, lastPath, sortedBoundaryList[0].Item1, treePath);
             }
 
 
@@ -515,45 +446,6 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static void StitchBoundaries(List<(TrieNode, TreePath)> sortedBoundaryList, IScopedTrieStore store)
-        {
-            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
-            {
-                return;
-            }
-
-            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
-            {
-                (TrieNode node, TreePath path) = sortedBoundaryList[i];
-
-                if (!node.IsPersisted)
-                {
-                    if (node.IsExtension)
-                    {
-                        if (IsChildPersisted(node, ref path, 1, store))
-                        {
-                            node.IsBoundaryProofNode = false;
-                        }
-                    }
-
-                    if (node.IsBranch)
-                    {
-                        bool isBoundaryProofNode = false;
-                        for (int ci = 0; ci <= 15; ci++)
-                        {
-                            if (!IsChildPersisted(node, ref path, ci, store))
-                            {
-                                isBoundaryProofNode = true;
-                                break;
-                            }
-                        }
-
-                        node.IsBoundaryProofNode = isBoundaryProofNode;
-                    }
-                }
-            }
-        }
-
         private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IScopedTrieStore store)
         {
             TrieNode data = node.GetData(childIndex) as TrieNode;
@@ -571,81 +463,6 @@ namespace Nethermind.Synchronization.SnapSync
             try
             {
                 return store.IsPersisted(nodePath, childKeccak);
-            }
-            finally
-            {
-                nodePath.TruncateMut(previousPathLength);
-            }
-        }
-
-        private static void StitchBoundaries(List<(TrieNode, TreePath)> sortedBoundaryList, IRawState rawState)
-        {
-            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
-            {
-                return;
-            }
-
-            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
-            {
-                (TrieNode node, TreePath path) = sortedBoundaryList[i];
-
-                if (!node.IsPersisted)
-                {
-                    if (node.IsExtension)
-                    {
-                        if (IsChildPersisted(node, ref path, 1, rawState))
-                        {
-                            node.IsBoundaryProofNode = false;
-                        }
-                        else
-                        {
-                            rawState.RemoveBoundaryProof(path.Span, path.Length);
-                        }
-                    }
-
-                    if (node.IsBranch)
-                    {
-                        if (path == TreePath.FromHexString("000000000000000000000000000000000000000000000000000000000000035"))
-                        {
-                            int b = 10;
-                            b++;
-                        }
-                        
-                        bool isBoundaryProofNode = false;
-                        for (int ci = 0; ci <= 15; ci++)
-                        {
-                            if (!IsChildPersisted(node, ref path, ci, rawState))
-                            {
-                                isBoundaryProofNode = true;
-                                rawState.RemoveBoundaryProof(path.Span, path.Length);
-                                break;
-                            }
-                        }
-
-                        node.IsBoundaryProofNode = isBoundaryProofNode;
-                    }
-                }
-            }
-        }
-
-        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IRawState rawState)
-        {
-            TrieNode data = node.GetData(childIndex) as TrieNode;
-            if (data is not null)
-            {
-                return data.IsBoundaryProofNode == false;
-            }
-
-            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
-            {
-                return true;
-            }
-
-            int previousPathLength = node.AppendChildPath(ref nodePath, childIndex);
-            try
-            {
-                var hash = rawState.GetHash(nodePath.Span, nodePath.Length, true);
-                return childKeccak == hash;
             }
             finally
             {

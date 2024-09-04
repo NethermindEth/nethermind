@@ -1035,7 +1035,7 @@ public partial class EngineModuleTests
 
         SyncProgressResolver syncProgressResolver = new(
             chain.BlockTree,
-            new FullStateFinder(chain.BlockTree, chain.StateReader),
+            new FullStateFinder(chain.BlockTree, chain.StateReader, chain.StateFactory),
             new SyncConfig(),
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),

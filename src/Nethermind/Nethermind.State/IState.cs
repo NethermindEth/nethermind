@@ -58,16 +58,11 @@ public interface IReadOnlyState : IDisposable
 public interface IRawState : IReadOnlyState
 {
     void SetAccount(ValueHash256 hash, Account? account);
-    void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
     void SetStorage(in StorageCell cell, EvmWord value);
     void SetStorage(ValueHash256 accountHash, ValueHash256 storageSlotHash, ReadOnlySpan<byte> encodedValue);
-    void SetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
     void Commit(bool ensureHash);
     ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength, bool ignoreCache);
     ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength);
-    void RemoveBoundaryProof(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength);
-    void RemoveBoundaryProof(ReadOnlySpan<byte> path, int pathLength);
-
     void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
         byte[] childNibbles, Hash256[] childHashes, bool persist = true);
 
@@ -75,6 +70,8 @@ public interface IRawState : IReadOnlyState
         int extPathLength, bool persist = true);
 
     void CreateProofLeaf(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, int leafKeyIndex);
+
+    void RegisterDeleteByPrefix(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength);
 
     void Finalize(uint blockNumber);
     string DumpTrie();
