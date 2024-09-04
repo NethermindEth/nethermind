@@ -1677,7 +1677,7 @@ namespace Nethermind.TxPool.Test
                 .WithAuthorizationCodeIfAuthorizationListTx()
                 .WithMaxFeePerGas(9.GWei())
                 .WithMaxPriorityFeePerGas(9.GWei())
-                .WithGasLimit(txType != TxType.SetCode ? GasCostOf.Transaction : GasCostOf.Transaction + GasCostOf.PerAuthBaseCost)
+                .WithGasLimit(txType != TxType.SetCode ? GasCostOf.Transaction : GasCostOf.Transaction + GasCostOf.NewAccount)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
