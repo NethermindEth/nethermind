@@ -51,5 +51,6 @@ namespace Nethermind.Api
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
+        VerkleSyncServer? VerkleSyncServer { get; set; }
     }
 }
