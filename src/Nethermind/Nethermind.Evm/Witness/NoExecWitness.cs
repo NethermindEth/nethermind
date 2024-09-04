@@ -42,4 +42,5 @@ public class NoExecWitness : IExecutionWitness
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero,
         bool inheritorExist, ref long gasAvailable) => true;
     public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();
+    public bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable) => true;
 }

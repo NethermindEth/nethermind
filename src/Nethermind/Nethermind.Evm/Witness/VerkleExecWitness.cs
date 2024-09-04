@@ -98,7 +98,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         long gasAfter = gasAvailable;
         long accGas = gasBefore - gasAfter;
 
-        if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForCodeSlice: {accGas} {startIncluded} {endNotIncluded} {isWrite} {gasAvailable}");
+        if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForCodeSlice: {address} {accGas} {startIncluded} {endNotIncluded} {isWrite} {gasAvailable}");
         return true;
     }
 
@@ -137,13 +137,17 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable)
     {
-        bool contractNotSameAsBeneficiary = contract != inheritor;
+        // access the basic data for the contract calling the selfdestruct
         if (!AccessBasicData(contract, ref gasAvailable)) return false;
 
-        if (!inheritorExist && !balanceIsZero)
-        {
-            if (!AccessBasicData(inheritor, ref gasAvailable)) return false;
-        }
+        // if the inheritor is a pre-compile and there is no balance transfer, there is nothing else to do
+        if (inheritor.IsPrecompile(Osaka.Instance) && balanceIsZero) return true;
+
+        // now if the contract and inheritor is not the same, then access the inheritor basic data
+        bool contractNotSameAsBeneficiary = contract != inheritor;
+        if (contractNotSameAsBeneficiary && !AccessBasicData(inheritor, ref gasAvailable)) return false;
+
+        // now access for write when the balance is non-zero
         if (!balanceIsZero)
         {
             if (!AccessBasicData(contract, ref gasAvailable, true)) return false;
@@ -161,6 +165,10 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     public byte[][] GetAccessedKeys()
     {
         return _accessedLeaves.Select(x => x.BytesToArray()).ToArray();
+    }
+    public bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable)
+    {
+        return AccessBasicData(from, ref gasAvailable, true) && AccessBasicData(to, ref gasAvailable, true);
     }
 
     private bool AccessBasicData(Address address, ref long gasAvailable, bool isWrite = false)
@@ -220,7 +228,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
     private bool AccessAccountSubTree(Address address, UInt256 treeIndex, byte subIndex, ref long gasAvailable, bool isWrite = false)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return true;
+        // if (address.IsPrecompile(Osaka.Instance)) return true;
         return AccessKey(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), ref gasAvailable, isWrite);
     }
 

@@ -73,4 +73,6 @@ public interface IExecutionWitness
 
     bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable);
     byte[][] GetAccessedKeys();
+
+    bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable);
 }
