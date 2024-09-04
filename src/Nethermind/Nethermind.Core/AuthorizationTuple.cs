@@ -6,7 +6,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using System;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core;
 public class AuthorizationTuple(
@@ -21,8 +20,8 @@ public class AuthorizationTuple(
         Address codeAddress,
         ulong nonce,
         ulong yParity,
-        byte[] r,
-        byte[] s,
+        UInt256 r,
+        UInt256 s,
         Address? authority = null) : this(chainId, codeAddress, nonce, new Signature(r, s, yParity + Signature.VOffset), authority)
     { }
 
