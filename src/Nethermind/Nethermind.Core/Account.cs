@@ -72,6 +72,7 @@ namespace Nethermind.Core
             Nonce = account.Nonce;
             Balance = account.Balance;
             CodeSize = account.CodeSize;
+            Code = account.Code;
             Version = account.Version;
         }
 
@@ -82,6 +83,7 @@ namespace Nethermind.Core
             Nonce = account.Nonce;
             Balance = account.Balance;
             CodeSize = account.CodeSize;
+            Code = account.Code;
             Version = account.Version;
         }
 
@@ -92,6 +94,7 @@ namespace Nethermind.Core
             Nonce = nonce;
             Balance = balance;
             CodeSize = account.CodeSize;
+            Code = account.Code;
             Version = account.Version;
         }
 
