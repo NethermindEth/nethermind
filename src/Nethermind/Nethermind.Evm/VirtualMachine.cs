@@ -20,6 +20,7 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -2413,7 +2414,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address codeSource = stack.PopAddress();
         if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, opCode: instruction)) return EvmExceptionType.OutOfGas;
 
         UInt256 callValue;
         switch (instruction)
@@ -2438,9 +2438,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
         Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
-        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
+        Address target = instruction is Instruction.CALL or Instruction.STATICCALL
             ? codeSource
             : env.ExecutingAccount;
+
+        if (!transferValue.IsZero)
+        {
+            if (!vmState.Env.Witness.AccessForValueTransfer(caller, target, ref gasAvailable))
+                return EvmExceptionType.OutOfGas;
+        }
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, opCode: instruction)) return EvmExceptionType.OutOfGas;
+
 
         if (typeof(TLogger) == typeof(IsTracing))
         {
@@ -2453,7 +2462,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         long gasExtra = 0L;
 
-        if (!transferValue.IsZero)
+        if (!transferValue.IsZero && !spec.IsVerkleTreeEipEnabled)
         {
             gasExtra += GasCostOf.CallValue;
         }
