@@ -69,7 +69,7 @@ namespace Nethermind.Evm.CodeAnalysis
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ulong Increment(ulong item, int hasher)
         {
-            return Interlocked.Increment(ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher, _seeds, hashFunctions) % (ulong)buckets)]);
+            return Interlocked.Increment(ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)buckets)]);
         }
 
         public ulong Query(ulong item)
@@ -77,7 +77,7 @@ namespace Nethermind.Evm.CodeAnalysis
             var minCount = ulong.MaxValue;
             for (int hasher = 0; hasher < hashFunctions; hasher++)
                 minCount = Math.Min(minCount,
-                        _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher, _seeds, hashFunctions) % (ulong)buckets)]);
+                        _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)buckets)]);
             return minCount;
         }
 
@@ -107,13 +107,12 @@ namespace Nethermind.Evm.CodeAnalysis
             return overEstimationMagnitude;
         }
 
-        public static ulong ComputeHash(ulong value, int hasher, int[] _seeds, int _breadth)
+        public ulong ComputeHash(ulong value, int hasher)
         {
             // http://isthe.com/chongo/tech/comp/fnv/#FNV-1a
             // FNV_OFFSET_BASIS_64 = 144066263297769815596495629667062367629
             // FNV_PRIME_64  = 1099511628211
-            ulong hash = FNV_OFFSET_BASIS;
-            hash = (hash ^ (byte)(value & 0xFF)) * FNV_PRIME;
+            var hash = (FNV_OFFSET_BASIS ^ (byte)(value & 0xFF)) * FNV_PRIME;
             hash = (hash ^ (byte)((value >> 8) & 0xFF)) * FNV_PRIME;
             hash = (hash ^ (byte)((value >> 16) & 0xFF)) * FNV_PRIME;
             hash = (hash ^ (byte)((value >> 24) & 0xFF)) * FNV_PRIME;
@@ -121,10 +120,10 @@ namespace Nethermind.Evm.CodeAnalysis
             hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME;
             hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME;
             hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)(_seeds[hasher % _breadth] & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((_seeds[hasher % _breadth] >> 8) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((_seeds[hasher % _breadth] >> 16) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((_seeds[hasher % _breadth] >> 24) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)(_seeds[hasher % hashFunctions] & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((_seeds[hasher % hashFunctions] >> 8) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((_seeds[hasher % hashFunctions] >> 16) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((_seeds[hasher % hashFunctions] >> 24) & 0xFF)) * FNV_PRIME;
 
             return hash;
 
