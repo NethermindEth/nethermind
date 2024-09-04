@@ -107,9 +107,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
             HashSet<Address> accessedAddresses = new();
             int delegationRefunds = 0;
-            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
+            if (spec.IsEip7702Enabled)
             {
-                delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, accessedAddresses, spec);
+                if (tx.HasAuthorizationList)
+                {
+                    delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, accessedAddresses, spec);
+                }
             }
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessedAddresses);
