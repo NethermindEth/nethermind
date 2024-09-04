@@ -24,8 +24,8 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         ulong nonce = stream.DecodeULong();
 
         ulong yParity = stream.DecodeULong();
-        byte[] r = stream.DecodeByteArray();
-        byte[] s = stream.DecodeByteArray();
+        UInt256 r = stream.DecodeUInt256();
+        UInt256 s = stream.DecodeUInt256();
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
             stream.Check(check);
         return new AuthorizationTuple(
@@ -48,8 +48,8 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         ulong nonce = decoderContext.DecodeULong();
 
         ulong yParity = decoderContext.DecodeULong();
-        byte[] r = decoderContext.DecodeByteArray();
-        byte[] s = decoderContext.DecodeByteArray();
+        UInt256 r = decoderContext.DecodeUInt256();
+        UInt256 s = decoderContext.DecodeUInt256();
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
             decoderContext.Check(check);
         return new AuthorizationTuple(

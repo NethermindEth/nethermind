@@ -127,8 +127,8 @@ namespace Nethermind.Evm.Test
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextULong(),
-                    TestContext.CurrentContext.Random.NextBytes(10),
-                    TestContext.CurrentContext.Random.NextBytes(10))
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
                 ],
                 GasCostOf.PerAuthBaseCost);
             yield return (
@@ -137,15 +137,15 @@ namespace Nethermind.Evm.Test
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextULong(),
-                    TestContext.CurrentContext.Random.NextBytes(10),
-                    TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10))),
                    new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextULong(),
-                    TestContext.CurrentContext.Random.NextBytes(10),
-                    TestContext.CurrentContext.Random.NextBytes(10))
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
                ],
                GasCostOf.PerAuthBaseCost * 2);
             yield return (
@@ -154,22 +154,22 @@ namespace Nethermind.Evm.Test
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextULong(),
-                    TestContext.CurrentContext.Random.NextBytes(10),
-                    TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10))),
                    new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextULong(),
-                    TestContext.CurrentContext.Random.NextBytes(10),
-                    TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10))),
                    new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
                     new Address(TestContext.CurrentContext.Random.NextBytes(20)),
                     TestContext.CurrentContext.Random.NextULong(),
                     TestContext.CurrentContext.Random.NextULong(),
-                    TestContext.CurrentContext.Random.NextBytes(10),
-                    TestContext.CurrentContext.Random.NextBytes(10))
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
                ],
                GasCostOf.PerAuthBaseCost * 3);
         }
@@ -194,8 +194,8 @@ namespace Nethermind.Evm.Test
                     TestItem.AddressF,
                     0,
                     TestContext.CurrentContext.Random.NextULong(),
-                    TestContext.CurrentContext.Random.NextBytes(10),
-                    TestContext.CurrentContext.Random.NextBytes(10))
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
                 )
                 .TestObject;
 
