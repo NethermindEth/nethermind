@@ -189,7 +189,7 @@ public partial class EthRpcModuleTests
 
         TransactionForRpc transaction =
             test.JsonSerializer.Deserialize<TransactionForRpc>(
-                $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+                $$"""{"from": "0x0d8775f648430679a709e98d2b0cb6250d2887ef", "type":"0x1", "data": "{{code.ToHexString(true)}}"}""");
 
         transaction.AccessList = accessList;
         string serialized = await test.TestEthRpc("eth_call", test.JsonSerializer.Serialize(transaction), "0x0");
