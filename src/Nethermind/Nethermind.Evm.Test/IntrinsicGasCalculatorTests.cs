@@ -130,7 +130,7 @@ namespace Nethermind.Evm.Test
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10))
                 ],
-                GasCostOf.PerAuthBaseCost);
+                GasCostOf.NewAccount);
             yield return (
                [new AuthorizationTuple(
                    TestContext.CurrentContext.Random.NextULong(),
@@ -147,7 +147,7 @@ namespace Nethermind.Evm.Test
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10))
                ],
-               GasCostOf.PerAuthBaseCost * 2);
+               GasCostOf.NewAccount * 2);
             yield return (
                [new AuthorizationTuple(
                     TestContext.CurrentContext.Random.NextULong(),
@@ -171,7 +171,7 @@ namespace Nethermind.Evm.Test
                     TestContext.CurrentContext.Random.NextBytes(10),
                     TestContext.CurrentContext.Random.NextBytes(10))
                ],
-               GasCostOf.PerAuthBaseCost * 3);
+               GasCostOf.NewAccount * 3);
         }
         [TestCaseSource(nameof(AuthorizationListTestCaseSource))]
         public void Calculate_TxHasAuthorizationList_ReturnsExpectedCostOfTx((AuthorizationTuple[] AuthorizationList, long ExpectedCost) testCase)
