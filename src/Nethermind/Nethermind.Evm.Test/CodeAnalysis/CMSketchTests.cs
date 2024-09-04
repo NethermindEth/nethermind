@@ -83,24 +83,44 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
 
-        [TestCase(100, 2)]
-        [TestCase(10, 1)]
-        public void validate_number_of_buckets(int buckets, int hashFunctions = 1, int numberOfUpdates = 1)
+        [TestCase(10000)]
+        public void validate_number_of_buckets(int buckets)
         {
 
-            CMSketch sketch = new CMSketch(hashFunctions, buckets);
+            CMSketch sketch = new CMSketch(100, buckets);
             ulong totalItems = 0;
             for (int i = 0; i < buckets; i++)
             {
-                for (int j = 0; j < numberOfUpdates; j++)
+                Assert.That(sketch.Query(totalItems) == 0,
+                    $"Expected not previously updated item  {totalItems} to be 0, found {sketch.Query((ulong)i)}");
                     sketch.Update(totalItems);
+                Assert.That(sketch.Query(totalItems) == 1,
+                    $"Expected previously updated item  {totalItems} to be 1, found {sketch.Query((ulong)i)}");
                 totalItems++;
             }
 
             for (ulong _item = 0; _item < totalItems; _item++)
             {
-                Assert.That(sketch.Query(_item) >= (ulong)numberOfUpdates,
+                Assert.That(sketch.Query(_item) >= 1,
                     $"Failed at all insertions check for {totalItems}. Expected minimum count: {1}, found: {sketch.Query(_item)} ");
+            }
+
+        }
+
+        [Test]
+        public void validate_reset()
+        {
+
+            CMSketch sketch = new CMSketch(10, 10);
+            for (ulong i = 0 ; i <=10; i++)
+            {
+              sketch.Update(i);
+            }
+            sketch.Reset();
+            for (ulong i = 0 ; i <=10; i++)
+            {
+                Assert.That(sketch.Query(i) == 0,
+                    $"Found non empty sketch");
             }
 
         }
