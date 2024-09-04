@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -18,6 +19,7 @@ namespace Nethermind.Consensus.Processing.CensorshipDetector;
 
 public class CensorshipDetector : IDisposable
 {
+    private readonly IBlockTree _blockTree;
     private readonly ITxPool _txPool;
     private readonly IComparer<Transaction> _betterTxComparer;
     private readonly IBlockProcessor _blockProcessor;
@@ -25,19 +27,23 @@ public class CensorshipDetector : IDisposable
     private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
+    private readonly int _blockCensorshipThreshold;
+
     private const int CacheSize = 64;
-    private const int BlockCensorshipThreshold = 4;
 
     public CensorshipDetector(
+        IBlockTree blockTree,
         ITxPool txPool,
         IComparer<Transaction> betterTxComparer,
         IBlockProcessor blockProcessor,
         ILogManager logManager,
         ICensorshipDetectorConfig censorshipDetectorConfig)
     {
+        _blockTree = blockTree;
         _txPool = txPool;
         _betterTxComparer = betterTxComparer;
         _blockProcessor = blockProcessor;
+        _blockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         if (censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
@@ -61,8 +67,18 @@ public class CensorshipDetector : IDisposable
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
 
+    private bool IsSyncing()
+    {
+        long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+        long headNumberOrZero = _blockTree.Head?.Number ?? 0;
+        return bestSuggestedNumber > headNumberOrZero + 8;
+    }
+
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
+        // skip censorship detection if node is not synced yet
+        if (IsSyncing()) return;
+
         bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
         if (tracksPerAddressCensorship)
         {
@@ -178,14 +194,14 @@ public class CensorshipDetector : IDisposable
             if (_logger.IsInfo) _logger.Info($"Censorship detected for block {block.Number} with hash {block.Hash!}");
         }
 
-        bool DetectPastBlockCensorship(int n = BlockCensorshipThreshold)
+        bool DetectPastBlockCensorship()
         {
             // Censorship is detected if potential censorship is flagged for the last 4 blocks including the latest.
-            if (block.Number >= BlockCensorshipThreshold)
+            if (block.Number >= _blockCensorshipThreshold)
             {
                 long blockNumber = block.Number - 1;
                 ValueHash256 parentHash = blockCensorshipInfo.ParentHash!.Value;
-                for (int i = 1; i < BlockCensorshipThreshold; i++)
+                for (int i = 1; i < _blockCensorshipThreshold; i++)
                 {
                     BlockCensorshipInfo info = _potentiallyCensoredBlocks.Get(new BlockNumberHash(blockNumber, parentHash));
 

@@ -1,30 +1,29 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Processing;
-using Nethermind.TxPool;
-using Nethermind.Logging;
-using NSubstitute;
-using NUnit.Framework;
-using Nethermind.Blockchain;
-using Nethermind.Core;
 using System.Collections.Generic;
-using Nethermind.Core.Specs;
+using System.Linq;
+using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Specs;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.Db;
-using FluentAssertions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Extensions;
-using Nethermind.Specs.Forks;
-using Nethermind.Core.Crypto;
-using System.Linq;
-using Nethermind.Consensus.Processing.CensorshipDetector;
-using System;
+using Nethermind.TxPool;
+using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
@@ -33,6 +32,7 @@ public class CensorshipDetectorTests
 {
     private ILogManager _logManager;
     private WorldState _stateProvider;
+    private IBlockTree _blockTree;
     private IBlockProcessor _blockProcessor;
     private ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
@@ -62,7 +62,7 @@ public class CensorshipDetectorTests
     public void Censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_true_for_all_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -93,7 +93,7 @@ public class CensorshipDetectorTests
     public void No_censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_false_for_some_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -129,20 +129,21 @@ public class CensorshipDetectorTests
     {
         _txPool = CreatePool();
         _censorshipDetector = new(
-        _txPool,
-        _comparer,
-        _blockProcessor,
-        _logManager,
-        new CensorshipDetectorConfig()
-        {
-            AddressesForCensorshipDetection = [
-            TestItem.AddressA.ToString(),
-            TestItem.AddressB.ToString(),
-            TestItem.AddressC.ToString(),
-            TestItem.AddressD.ToString(),
-            TestItem.AddressE.ToString(),
-            TestItem.AddressF.ToString()]
-        });
+            _blockTree,
+            _txPool,
+            _comparer,
+            _blockProcessor,
+            _logManager,
+            new CensorshipDetectorConfig()
+            {
+                AddressesForCensorshipDetection = [
+                    TestItem.AddressA.ToString(),
+                    TestItem.AddressB.ToString(),
+                    TestItem.AddressC.ToString(),
+                    TestItem.AddressD.ToString(),
+                    TestItem.AddressE.ToString(),
+                    TestItem.AddressF.ToString()]
+            });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
@@ -184,19 +185,20 @@ public class CensorshipDetectorTests
     {
         _txPool = CreatePool();
         _censorshipDetector = new(
-        _txPool,
-        _comparer,
-        _blockProcessor,
-        _logManager,
-        new CensorshipDetectorConfig()
-        {
-            AddressesForCensorshipDetection = [
-            TestItem.AddressA.ToString(),
-            TestItem.AddressB.ToString(),
-            TestItem.AddressC.ToString(),
-            TestItem.AddressD.ToString(),
-            TestItem.AddressE.ToString()]
-        });
+            _blockTree,
+            _txPool,
+            _comparer,
+            _blockProcessor,
+            _logManager,
+            new CensorshipDetectorConfig()
+            {
+                AddressesForCensorshipDetection = [
+                    TestItem.AddressA.ToString(),
+                    TestItem.AddressB.ToString(),
+                    TestItem.AddressC.ToString(),
+                    TestItem.AddressD.ToString(),
+                    TestItem.AddressE.ToString()]
+            });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
@@ -245,15 +247,15 @@ public class CensorshipDetectorTests
             _specProvider = MainnetSpecProvider.Instance;
         }
 
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1_000_000).TestObject);
+        _blockTree = Substitute.For<IBlockTree>();
+        _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1_000_000).TestObject);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-        _comparer = new TransactionComparerProvider(_specProvider, blockTree).GetDefaultComparer();
+        _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
 
         return new(
             _ethereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(_specProvider, blockTree, _stateProvider),
+            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,
