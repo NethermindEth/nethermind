@@ -167,8 +167,8 @@ namespace Ethereum.Test.Base
                         new Address(i.Address),
                         ParseFromHex(i.Nonce),
                         ParseFromHex(i.V),
-                        new UInt256(Bytes.FromHexString(i.R)),
-                        new UInt256(Bytes.FromHexString(i.S)))).ToArray();
+                        Bytes.FromHexString(i.R),
+                        Bytes.FromHexString(i.S))).ToArray();
                 if (transaction.AuthorizationList.Any())
                 {
                     transaction.Type = TxType.SetCode;
@@ -180,12 +180,19 @@ namespace Ethereum.Test.Base
             static ulong ParseFromHex(string i)
             {
                 Span<byte> bytes = stackalloc byte[8];
-                var bytes1 = Bytes.FromHexString(i);
+                var bytes1 = Bytes.FromHexString(i).AsSpan();
                 if (bytes1.Length <= 8)
                 {
+                    bytes1.Reverse();
                     bytes1.CopyTo(bytes);
                 }
-                return BitConverter.ToUInt64(bytes);
+                else
+                {
+                    throw new InvalidDataException("Transaction json contains an invalid value for uint64.");
+                }
+
+                var result = BitConverter.ToUInt64(bytes);
+                return result;
             }
         }
 
