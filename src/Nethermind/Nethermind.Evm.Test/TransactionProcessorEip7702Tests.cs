@@ -63,7 +63,7 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
+            .WithGasLimit(100_000)
             .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
@@ -116,13 +116,13 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> SenderSignerCases()
     {
-        yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB };
-        yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyA };
+        yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, 0ul };
+        yield return new object[] { TestItem.PrivateKeyA, TestItem.PrivateKeyA, 1ul };
     }
     [TestCaseSource(nameof(SenderSignerCases))]
-    public void Execute_SenderAndSignerIsTheSameOrNotWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer)
+    public void Execute_SenderAndSignerIsTheSameOrNotWithCodeThatSavesCallerAddress_SenderAddressIsSaved(PrivateKey sender, PrivateKey signer, ulong nonce)
     {
-        Address codeSource = TestItem.AddressB;
+        Address codeSource = TestItem.AddressC;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
         //Save caller in storage slot 0
         byte[] code = Prepare.EvmCode
@@ -136,7 +136,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
+            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -148,18 +148,16 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
-        Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
+        Assert.That(sender.Address.Bytes, Is.EqualTo(cell.ToArray()));
     }
     public static IEnumerable<object[]> DifferentCommitValues()
     {
         //Base case 
-        yield return new object[] { 1ul, 0, TestItem.AddressA.Bytes };
+        yield return new object[] { 1ul, 0ul, TestItem.AddressA.Bytes };
         //Wrong nonce
-        yield return new object[] { 1ul, 1, new[] { (byte)0x0 } };
-        //Null nonce means it should be ignored
-        yield return new object[] { 1ul, 0, TestItem.AddressA.Bytes };
+        yield return new object[] { 1ul, 1ul, new[] { (byte)0x0 } };
         //Wrong chain id
-        yield return new object[] { 2ul, 0, new[] { (byte)0x0 } };
+        yield return new object[] { 2ul, 0ul, new[] { (byte)0x0 } };
     }
 
     [TestCaseSource(nameof(DifferentCommitValues))]
@@ -207,7 +205,7 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(GasCostOf.Transaction + GasCostOf.PerAuthBaseCost * count)
+            .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount * count)
             .WithAuthorizationCode(Enumerable.Range(0, count)
                                              .Select(i => CreateAuthorizationTuple(
                                                  signer,
@@ -226,7 +224,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, block.Header, tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseCost * count));
+        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.NewAccount * count));
     }
 
     [Test]
@@ -265,15 +263,15 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx, block.Header, tracer);
         //Tx should only be charged for warm state read
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction
-            + GasCostOf.PerAuthBaseCost
+            + GasCostOf.NewAccount
             + Prague.Instance.GetBalanceCost()
             + GasCostOf.WarmStateRead
             + GasCostOf.VeryLow));
     }
 
-    [TestCase(false, 1)]
-    [TestCase(true, 2)]
-    public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyFirstInstanceIsUsed(bool reverseOrder, int expectedStoredValue)
+    [TestCase(2)]
+    [TestCase(1)]
+    public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyLastInstanceIsUsed(int expectedStoredValue)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -282,14 +280,14 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
 
         byte[] firstCode = Prepare.EvmCode
-            .PushData(1)
+            .PushData(0)
             .Op(Instruction.PUSH0)
             .Op(Instruction.SSTORE)
             .Done;
         DeployCode(firstCodeSource, firstCode);
 
         byte[] secondCode = Prepare.EvmCode
-            .PushData(2)
+            .PushData(expectedStoredValue)
             .Op(Instruction.PUSH0)
             .Op(Instruction.SSTORE)
             .Done;
@@ -305,16 +303,12 @@ internal class TransactionProcessorEip7702Tests
                     signer,
                     _specProvider.ChainId,
                     secondCodeSource,
-                    0),
+                    1),
         ];
-        if (reverseOrder)
-        {
-            authList = authList.Reverse();
-        }
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
+            .WithGasLimit(100_000)
             .WithAuthorizationCode(authList)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;

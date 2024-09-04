@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 
 namespace Nethermind.Serialization.Rlp;
 
