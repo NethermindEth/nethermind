@@ -85,7 +85,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
     private ITxDecoder GetDecoder(TxType txType) =>
         _decoders.TryGetValue(txType, out ITxDecoder decoder)
             ? decoder
-            : throw new RlpException("Unknown transaction type") { Data = { { "txType", txType } } };
+            : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
     public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
