@@ -14,13 +14,13 @@ public readonly struct AccountHeader
     public const int CodeHash = 1;
 
     public const int VersionOffset = 0;
-    public const int NonceOffset = 4;
-    public const int CodeSizeOffset = 12;
+    public const int CodeSizeOffset = 5;
+    public const int NonceOffset = 8;
     public const int BalanceOffset = 16;
 
     public const int VersionBytesLength = 1;
+    public const int CodeSizeBytesLength = 3;
     public const int NonceBytesLength = 8;
-    public const int CodeSizeBytesLength = 4;
     public const int BalanceBytesLength = 16;
 
     private const int MainStorageOffsetExponent = 8 * 31;
@@ -123,13 +123,16 @@ public readonly struct AccountHeader
         account.Balance.ToBigEndian(balanceBytes);
         balanceBytes[(32 - BalanceBytesLength)..].CopyTo(basicDataSpan.Slice(BalanceOffset, BalanceBytesLength));
 
+        // we know that codeSize is just 3 bytes - this is just a hack to avoid allocations
+        // treat code size as 4 bytes and start writing from CodeSizeOffset - 1 and write for CodeSizeBytesLength + 1
+        // we can add another check here that codeSize is not greater than 2^24
+        uint codeSize = (uint)account.CodeSize.u0;
+        if (codeSize >= Math.Pow(2, CodeSizeBytesLength * 8)) throw new NotSupportedException("Code Size too big");
+        BinaryPrimitives.WriteUInt32BigEndian(basicDataSpan.Slice(CodeSizeOffset - 1, CodeSizeBytesLength + 1), codeSize);
+
         // we know that nonce is just 8 bytes
         ulong nonce = account.Nonce.u0;
         BinaryPrimitives.WriteUInt64BigEndian(basicDataSpan.Slice(NonceOffset, NonceBytesLength), nonce);
-
-        // we know that codeSize is just 4 bytes
-        uint codeSize = (uint)account.CodeSize.u0;
-        BinaryPrimitives.WriteUInt32BigEndian(basicDataSpan.Slice(CodeSizeOffset, CodeSizeBytesLength), codeSize);
 
         return basicData;
     }
