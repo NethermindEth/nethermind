@@ -37,6 +37,10 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using Nethermind.Specs;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Evm.Tracing.GethStyle;
 
 namespace Ethereum.Test.Base
 {
@@ -214,8 +218,27 @@ namespace Ethereum.Test.Base
                     Assert.Fail($"null hash in {test.Name} block {i}");
                 }
 
+                TestBlockJson testBlockJson = test.Blocks[i];
+
+
                 try
                 {
+
+                    for (var y = 0; y < correctRlp[i].Block.Transactions.Length; y++)
+                    {
+                        Transaction tx = correctRlp[i].Block.Transactions[y];
+
+                        //var txTracer = new NativeCallTracer(new Transaction(), GethTraceOptions.Default);
+                        //txProcessor.Trace(tx, new BlockExecutionContext(correctRlp[i].Block.Header), txTracer);
+
+
+
+                        Address address = ecdsa.RecoverAddress(tx);
+                        if (stateProvider.GetBalance(address) == 0)
+                        {
+                            throw new InvalidOperationException("Test tx sender is unfunded.");
+                        }
+                    }
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
                     if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, out _))

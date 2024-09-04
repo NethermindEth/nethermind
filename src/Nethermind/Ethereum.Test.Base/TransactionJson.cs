@@ -8,6 +8,8 @@ namespace Ethereum.Test.Base
 {
     public class TransactionJson
     {
+        public string Type { get; set; }
+        public string Sender { get; set; }
         public byte[][]? Data { get; set; }
         public long[]? GasLimit { get; set; }
         public UInt256? GasPrice { get; set; }
@@ -19,6 +21,7 @@ namespace Ethereum.Test.Base
         public byte[]? SecretKey { get; set; }
         public AccessListItemJson[]?[]? AccessLists { get; set; }
         public AccessListItemJson[]? AccessList { get; set; }
+        public AuthorizationListJson[]? AuthorizationList { get; set; }
         public byte[]?[]? BlobVersionedHashes { get; set; }
         public UInt256? MaxFeePerBlobGas { get; set; }
     }

@@ -36,7 +36,7 @@ public class CodeInfoRepositoryTests
         {
             CreateAuthorizationTuple(authority, 1, TestItem.AddressB, 0),
         };
-        HashSet<Address> accessedAddresses = new ();
+        HashSet<Address> accessedAddresses = new();
         int result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
 
         accessedAddresses.Should().BeEquivalentTo([authority.Address]);
@@ -71,7 +71,7 @@ public class CodeInfoRepositoryTests
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         CodeInfoRepository sut = new(1);
-        HashSet<Address> accessedAddresses = new ();
+        HashSet<Address> accessedAddresses = new();
         sut.InsertFromAuthorizations(stateProvider, [tuple], accessedAddresses, Substitute.For<IReleaseSpec>());
 
         Assert.That(stateProvider.HasCode(tuple.Authority), Is.EqualTo(shouldInsert));
@@ -109,7 +109,7 @@ public class CodeInfoRepositoryTests
         byte[] code = new byte[23];
         Eip7702Constants.DelegationHeader.CopyTo(code);
         stateProvider.CreateAccount(authority.Address, 0);
-        stateProvider.InsertCode(authority.Address,Keccak.Compute(code), code, Substitute.For<IReleaseSpec>());
+        stateProvider.InsertCode(authority.Address, Keccak.Compute(code), code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {

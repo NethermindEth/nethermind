@@ -18,7 +18,7 @@ namespace Nethermind.State
             Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
             worldState.InsertCode(address, codeHash, code, spec, isGenesis);
         }
-     
+
         public static string DumpState(this IWorldState stateProvider)
         {
             TreeDumper dumper = new();
