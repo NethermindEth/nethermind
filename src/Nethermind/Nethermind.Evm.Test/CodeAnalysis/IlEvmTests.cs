@@ -301,19 +301,60 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
 
-            var accumulatedTraces = new List<ChunkTrace>();
+            var accumulatedTraces = new List<ChunkTraceEntry>();
             for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++)
             {
                 var tracer = new IlvmBlockTracer();
                 ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTrace>()).ToList();
+                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).Where(tr => !tr.IsPrecompiled).ToList();
                 accumulatedTraces.AddRange(traces);
             }
 
             Assert.Greater(accumulatedTraces.Count, 0);
         }
 
+        [Test]
+        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment()
+        {
+            byte[] bytecode =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(1000)
+                    .GAS()
+                    .LT()
+                    .JUMPI(59)
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .Call(Address.FromNumber(23), 10000)
+                    .POP()
+                    .PushSingle(42)
+                    .PushSingle(5)
+                    .ADD()
+                    .POP()
+                    .JUMP(0)
+                    .JUMPDEST()
+                    .STOP()
+                    .Done;
 
+            var accumulatedTraces = new List<ChunkTraceEntry>();
+            for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
+            {
+                var tracer = new IlvmBlockTracer();
+                ExecuteBlock(tracer, bytecode);
+                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).ToList();
+                accumulatedTraces.AddRange(traces);
+            }
+
+
+            // check if these patterns occur in the traces
+            // segment 0
+            // pattern p1p1padd
+
+            // segment 0
+            // segment 1 
+            Assert.Greater(accumulatedTraces.GroupBy(tr => tr.IsPrecompiled).Count(), 0);
+        }
 
         [Test]
         public void Execution_Swap_Happens_When_Segments_are_compiled()
@@ -340,12 +381,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            var accumulatedTraces = new List<SegmentTrace>();
+            var accumulatedTraces = new List<ChunkTraceEntry>();
             for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 2; i++)
             {
                 var tracer = new IlvmBlockTracer();
                 ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<SegmentTrace>()).ToList();
+                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).Where(tr => tr.IsPrecompiled).ToList();
                 accumulatedTraces.AddRange(traces);
             }
 

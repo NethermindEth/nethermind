@@ -12,36 +12,18 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
-internal class IlvmTxTrace(List<IlvmTrace> ilvmTraceEntries)
+internal class IlvmTxTrace(List<ChunkTraceEntry> ilvmTraceEntries)
 {
-    public List<IlvmTrace> IlvmTrace { get; set; } = ilvmTraceEntries;
+    public List<ChunkTraceEntry> IlvmTrace { get; set; } = ilvmTraceEntries;
 }
 
-internal abstract class IlvmTrace;
-internal class ChunkTrace : IlvmTrace
+internal class ChunkTraceEntry
 {
-    public int Start { get; set; }
-    public int End { get; set; }
+    public bool IsPrecompiled { get; set; }
     public int Gas { get; set; }
     public int PC { get; set; }
     public string SegmentID { get; set; }
 }
-
-internal class SegmentTrace : IlvmTrace
-{
-    public int Gas { get; set; }
-    public int PC { get; set; }
-    public string SegmentID { get; set; }
-}
-
-internal class AnalysisTrace : IlvmTrace
-{
-    public IlInfo.ILMode Mode { get; set; }
-    public bool IsStart { get; set; }
-    public bool IsEnd => !IsStart;
-
-}
-
 internal class IlvmBlockTracer : BlockTracerBase<IlvmTxTrace, ILVMTxTracer>
 {
     protected override IlvmTxTrace OnEnd(ILVMTxTracer txTracer)
@@ -57,14 +39,14 @@ internal class IlvmBlockTracer : BlockTracerBase<IlvmTxTrace, ILVMTxTracer>
 
 internal class ILVMTxTracer : TxTracer
 {
-    public List<IlvmTrace> IlvmTraceEntries { get; set; } = new List<IlvmTrace>();
-    public override void ReportChunkExecution(long gas, int pc, string segmentID)
+    public List<ChunkTraceEntry> IlvmTraceEntries { get; set; } = new List<ChunkTraceEntry>();
+    public override void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
     {
-        IlvmTraceEntries.Add(new ChunkTrace { Gas = (int)gas, PC = pc, SegmentID = segmentID });
+        IlvmTraceEntries.Add(new ChunkTraceEntry { Gas = (int)gas, PC = pc, SegmentID = segmentID, IsPrecompiled = false });
     }
 
     public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
     {
-        IlvmTraceEntries.Add(new SegmentTrace { Gas = (int)gas, PC = pc, SegmentID = segmentId });
+        IlvmTraceEntries.Add(new ChunkTraceEntry { Gas = (int)gas, PC = pc, SegmentID = segmentId, IsPrecompiled = true });
     }
 }

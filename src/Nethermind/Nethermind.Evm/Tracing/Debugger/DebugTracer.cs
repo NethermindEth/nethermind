@@ -61,9 +61,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
-    public bool IsTracingEvmChunks => InnerTracer.IsTracingEvmChunks;
+    public bool IsTracingPredefinedPatterns => InnerTracer.IsTracingPredefinedPatterns;
 
-    public bool IsTracingEvmSegments => InnerTracer.IsTracingEvmSegments;
+    public bool IsTracingCompiledSegments => InnerTracer.IsTracingCompiledSegments;
 
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
@@ -293,8 +293,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void Dispose()
         => _autoResetEvent.Dispose();
 
-    public void ReportChunkExecution(long gas, int pc, string segmentID)
-        => InnerTracer.ReportChunkExecution(gas, pc, segmentID);
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+        => InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
 
     public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
         => InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);

@@ -119,15 +119,15 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingOpLevelLogs = value;
     }
 
-    public bool IsTracingEvmChunks
+    public bool IsTracingPredefinedPatterns
     {
-        get => _isTracingEvmChunks || innerTracer.IsTracingEvmChunks;
+        get => _isTracingEvmChunks || innerTracer.IsTracingPredefinedPatterns;
         init => _isTracingEvmChunks = value;
     }
 
-    public bool IsTracingEvmSegments
+    public bool IsTracingCompiledSegments
     {
-        get => _isTracingEvmSegments || innerTracer.IsTracingEvmSegments;
+        get => _isTracingEvmSegments || innerTracer.IsTracingCompiledSegments;
         init => _isTracingEvmSegments = value;
     }
 
@@ -469,12 +469,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         innerTracer.Dispose();
     }
 
-    public void ReportChunkExecution(long gas, int pc, string segmentID)
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingFees)
         {
-            InnerTracer.ReportChunkExecution(gas, pc, segmentID);
+            InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
         }
     }
 

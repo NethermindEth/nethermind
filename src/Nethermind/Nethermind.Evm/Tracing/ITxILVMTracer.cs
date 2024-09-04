@@ -18,9 +18,9 @@ public interface IILVMTracer
     /// </summary>
     /// <remarks>
     /// Controls
-    /// - <see cref="ReportChunkExecution"/>
+    /// - <see cref="ReportPredefinedPatternExecution"/>
     /// </remarks>
-    bool IsTracingEvmChunks { get; }
+    bool IsTracingPredefinedPatterns { get; }
 
     /// <summary>
     /// Traces EVM precompiled segments
@@ -29,9 +29,9 @@ public interface IILVMTracer
     /// Controls
     /// - <see cref="ReportCompiledSegmentExecution"/>
     /// </remarks>
-    bool IsTracingEvmSegments { get; }
+    bool IsTracingCompiledSegments { get; }
 
-    void ReportChunkExecution(long gas, int pc, string segmentID);
+    void ReportPredefinedPatternExecution(long gas, int pc, string segmentID);
     void ReportCompiledSegmentExecution(long gas, int pc, string segmentId);
 
 }

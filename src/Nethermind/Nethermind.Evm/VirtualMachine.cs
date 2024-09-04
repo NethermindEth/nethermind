@@ -762,7 +762,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = EvmExceptionType.InvalidJumpDestination;
                     goto InvalidJumpDestination;
                 }
-                if (chunkExecutionResult.Value.ShouldAbort)
+                if (chunkExecutionResult.Value.ShouldFail)
                 {
                     exceptionType = chunkExecutionResult.Value.ExceptionType;
                     switch (exceptionType)

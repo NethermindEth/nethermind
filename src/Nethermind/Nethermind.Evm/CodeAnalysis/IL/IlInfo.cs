@@ -17,7 +17,7 @@ internal class IlInfo
 {
     internal struct ILChunkExecutionResult
     {
-        public bool ShouldAbort;
+        public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
         public bool ShouldJump;
         public bool ShouldStop;
         public bool ShouldRevert;
@@ -95,16 +95,17 @@ internal class IlInfo
             executionResult.ShouldReturn = ilvmState.ShouldReturn;
             executionResult.ShouldRevert = ilvmState.ShouldRevert;
             executionResult.ShouldStop = ilvmState.ShouldStop;
-            executionResult.ShouldAbort = ilvmState.EvmException != EvmExceptionType.None;
             executionResult.ShouldJump = ilvmState.ShouldJump;
             executionResult.ExceptionType = ilvmState.EvmException;
             executionResult.ReturnData = ilvmState.ReturnBuffer;
+
+            vmState.DataStackHead = ilvmState.StackHead;
+            stack.Head = ilvmState.StackHead;
         }
         else if (Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
-            tracer.ReportChunkExecution(gasAvailable, programCounter, chunk.GetType().Name);
+            tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, chunk.GetType().Name);
             var evmException = chunk.Invoke(vmState, worldState, spec, ref programCounter, ref gasAvailable, ref stack);
-            executionResult.ShouldAbort = evmException != EvmExceptionType.None;
             executionResult.ExceptionType = evmException;
         }
         else

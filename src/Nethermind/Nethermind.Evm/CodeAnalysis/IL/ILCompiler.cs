@@ -141,10 +141,10 @@ internal class ILCompiler
             method.LoadArgument(4);
             method.LoadConstant((byte)op.Operation);
             method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
-            method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.InvalidCode]);
+            method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
 
             // set pc
-            method.LoadConstant(op.ProgramCounter);
+            method.LoadConstant(op.ProgramCounter + (op.Metadata?.AdditionalBytes ?? 0));
             method.StoreLocal(programCounter);
 
             // load gasAvailable
@@ -173,7 +173,7 @@ internal class ILCompiler
                     method.Branch(ret);
                     break;
                 case Instruction.INVALID:
-                    method.Branch(evmExceptionLabels[EvmExceptionType.InvalidCode]);
+                    method.Branch(evmExceptionLabels[EvmExceptionType.BadInstruction]);
                     break;
                 case Instruction.CHAINID:
                     method.CleanWord(stack, head);
@@ -1619,6 +1619,8 @@ internal class ILCompiler
 
         method.LoadArgument(0);
         method.LoadLocal(programCounter);
+        method.LoadConstant(1);
+        method.Add();
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
 
         method.MarkLabel(skipProgramCounterSetting);
@@ -1646,9 +1648,23 @@ internal class ILCompiler
 
         //check if jump crosses segment boundaies
         Label jumpIsLocal = method.DefineLabel();
+
+        int maxJump = code[^1].ProgramCounter + (code[^1].Metadata?.AdditionalBytes ?? 0);
+        int minJump = code[0].ProgramCounter;
+
+        // if (jumpDest <= maxJump)
         method.LoadLocal(jmpDestination);
-        method.LoadConstant(code[code.Length - 1].ProgramCounter + code[code.Length - 1].Metadata?.AdditionalBytes ?? 0);
-        method.BranchIfLessOrEqual(jumpIsLocal);
+        method.LoadConstant(maxJump);
+        method.CompareLessThan();
+
+        // if (jumpDest >= minJump)
+        method.LoadLocal(jmpDestination);
+        method.LoadConstant(minJump);
+        method.CompareGreaterThan();
+
+        method.And();
+
+        method.BranchIfTrue(jumpIsLocal);
 
         method.LoadArgument(0);
         method.Duplicate();
@@ -1701,7 +1717,7 @@ internal class ILCompiler
                 method.BranchIfEqual(jumpDestinations[dest]);
             }
             // each bucket ends with a jump to invalid access to do not fall through to another one
-            method.Branch(evmExceptionLabels[EvmExceptionType.InvalidCode]);
+            method.Branch(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
         }
 
         foreach (var kvp in evmExceptionLabels)
@@ -1830,8 +1846,8 @@ internal class ILCompiler
         il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(uint256R);
         il.Call(operation, null);
 
@@ -1855,8 +1871,8 @@ internal class ILCompiler
         il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(locals[1]);
         il.Call(operation, null);
 
         // convert to conv_i
@@ -1886,9 +1902,9 @@ internal class ILCompiler
         il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[1]);
-        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.LoadLocalAddress(locals[0]);
+        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
+        il.LoadLocalAddress(locals[1]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.LoadObject<Int256.Int256>();
         il.Call(operation, null);
@@ -1936,8 +1952,8 @@ internal class ILCompiler
         customHandling?.Invoke(il, label, locals);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(uint256R);
         il.Call(operation);
 
@@ -1969,9 +1985,9 @@ internal class ILCompiler
         customHandling?.Invoke(il, label, locals);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[1]);
-        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.LoadLocalAddress(locals[0]);
+        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
+        il.LoadLocalAddress(locals[1]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
@@ -2008,9 +2024,9 @@ internal class ILCompiler
         customHandling?.Invoke(il, label, locals);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[2]);
-        il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(locals[2]);
         il.LoadLocalAddress(uint256R);
         il.Call(operation);
 
@@ -2143,6 +2159,15 @@ internal class ILCompiler
 
     }
 
+    private static void EmitGasAvailabilityCheck<T>(
+        Emit<T> il,
+        Local gasAvailable,
+        Label outOfGasLabel)
+    {
+        il.LoadLocal(gasAvailable);
+        il.LoadConstant(0);
+        il.BranchIfLess(outOfGasLabel);
+    }
     private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
         Dictionary<int, long> costs = new();
