@@ -11,7 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs.Forks;
@@ -22,10 +22,90 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public partial class EthRpcModule
     {
         // Single call executor
-        private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-            : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
+        private abstract class SimulateCallExecutor<TResult>(
+            IBlockchainBridge blockchainBridge,
+            IBlockFinder blockFinder,
+            IJsonRpcConfig rpcConfig,
+            ulong? secondsPerSlot = null
+        ) : SimulateTxExecutor(blockchainBridge, blockFinder, rpcConfig, secondsPerSlot)
         {
             private bool NoBaseFee { get; set; }
+
+            protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
+                BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload,
+                Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token
+            )
+            {
+                Transaction tx = GetSingleTransaction(payload);
+
+                if (NoBaseFee)
+                {
+                    header.BaseFeePerGas = 0;
+                }
+                if (tx.IsContractCreation && tx.DataLength == 0)
+                {
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
+                        "Contract creation without any data provided.", ErrorCodes.InvalidInput
+                    );
+                }
+
+                return base.Execute(header, payload, stateOverride, token);
+            }
+
+            private static Transaction GetSingleTransaction(SimulatePayload<TransactionWithSourceDetails> payload) =>
+                payload.BlockStateCalls!.Single().Calls!.Single().Transaction;
+
+            private static SimulatePayload<TransactionForRpc> GetPayload(
+                TransactionForRpc transactionCall, Dictionary<Address, AccountOverride>? stateOverride = null
+            ) => new()
+            {
+                Validation = false,
+                TraceTransfers = false,
+                ReturnFullTransactionObjects = false,
+                BlockStateCalls =
+                [
+                    new()
+                    {
+                        Calls = [transactionCall],
+                        StateOverrides = stateOverride,
+                        BlockOverrides = null
+                    }
+                ]
+            };
+
+            private static bool ShouldSetBaseFee(TransactionForRpc t) =>
+                // x?.IsZero == false <=> x > 0
+                t.GasPrice?.IsZero == false || t.MaxFeePerGas?.IsZero == false || t.MaxPriorityFeePerGas?.IsZero == false;
+
+            public ResultWrapper<TResult> ExecuteCall(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter,
+                Dictionary<Address, AccountOverride>? stateOverride = null)
+            {
+                NoBaseFee = !ShouldSetBaseFee(transactionCall);
+
+                SimulatePayload<TransactionForRpc> payload = GetPayload(transactionCall, stateOverride);
+                ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = base.Execute(payload, blockParameter);
+
+                if (result.Result.Error != null)
+                    return ResultWrapper<TResult>.Fail(result.Result.Error, result.ErrorCode == 0 ? ErrorCodes.InvalidInput : result.ErrorCode);
+
+                SimulateCallResult? simulateResult = result.Data?.SingleOrDefault()?.Calls.SingleOrDefault();
+
+                if (simulateResult == null)
+                    return ResultWrapper<TResult>.Fail("Internal error");
+
+                return GetResult(simulateResult);
+            }
+
+            protected abstract ResultWrapper<TResult> GetResult(SimulateCallResult simulateResult);
+        }
+
+        private abstract class TxExecutor<TResult> : ExecutorBase<TResult, TransactionForRpc, Transaction>
+        {
+            private bool NoBaseFee { get; set; }
+
+            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) : base(blockchainBridge, blockFinder, rpcConfig) { }
 
             protected override Transaction Prepare(TransactionForRpc call) => call.ToTransaction(_blockchainBridge.GetChainId());
 
@@ -66,16 +146,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
         }
 
-        private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-            : TxExecutor<string>(blockchainBridge, blockFinder, rpcConfig)
+        private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null) : SimulateCallExecutor<string>(blockchainBridge, blockFinder, rpcConfig, secondsPerSlot)
         {
-            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
+            protected override ResultWrapper<string> GetResult(SimulateCallResult simulateResult)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
+                var data = simulateResult.ReturnData?.ToHexString(true);
+                var error = simulateResult.Error;
 
-                return result.Error is null
-                    ? ResultWrapper<string>.Success(result.OutputData.ToHexString(true))
-                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                return error is null
+                    ? ResultWrapper<string>.Success(data)
+                    : ResultWrapper<string>.Fail(error.Data ?? "VM execution error.", error.Code, error.Message);
             }
         }
 
