@@ -10,8 +10,8 @@ namespace Nethermind.Evm.CodeAnalysis
 
     public class StatsAnalyzer
     {
-        public readonly PriorityQueue<ulong, uint> topNQueue;
-        public readonly Dictionary<ulong, uint> topNMap;
+        public readonly PriorityQueue<ulong, ulong> topNQueue;
+        public readonly Dictionary<ulong, ulong> topNMap;
 
         private CMSketch _sketch;
 
@@ -19,8 +19,8 @@ namespace Nethermind.Evm.CodeAnalysis
         private ulong _ngram = 0;
 
         private int _capacity;
-        private uint _minSupport;
-        private uint _recentCount;
+        private ulong _minSupport;
+        private ulong _recentCount;
 
         const ulong twogramBitMask = (255UL << 8) | 255UL;
         const ulong threegramBitMask = (255UL << 8 * 2) | twogramBitMask;
@@ -36,8 +36,8 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             _topN = topN;
             _sketch = new CMSketch(numberOfHashFunctions, buckets);
-            topNMap = new Dictionary<ulong, uint>(capacity);
-            topNQueue = new PriorityQueue<ulong, uint>(_topN);
+            topNMap = new Dictionary<ulong, ulong>(capacity);
+            topNQueue = new PriorityQueue<ulong, ulong>(_topN);
             _capacity = capacity;
             _minSupport = minSupport;
         }
@@ -88,21 +88,25 @@ namespace Nethermind.Evm.CodeAnalysis
             // if recentCount is greater than minSupport  and not enqueued, we add
             if (topNQueue.Count >= _topN)
             {
-                while (topNQueue.TryDequeue(out ulong lowesQueuedNGram0, out uint lowestQueuedNGramCount0))
+                while (topNQueue.TryDequeue(out ulong lowestQueuedNGram, out _))
                 {
-                    if (lowesQueuedNGram0 >= _recentCount) break;
-                    if (topNQueue.TryPeek(out ulong nextLowestQueuedNGram0, out uint nextLowestQueuedNGramCount0))
+                    // if lowest is greater than this we break out of the loop;
+                    if (topNMap[lowestQueuedNGram] >= _recentCount) break;
+                    if (topNQueue.TryPeek(out ulong nextLowestQueuedNGram, out ulong nextLowestQueuedNGramCount))
                     {
-                        if (topNMap[lowesQueuedNGram0] > topNMap[nextLowestQueuedNGram0])
+                        //if the lowest is greater than next lowest, our queue is stale we refresh;
+                        if (topNMap[lowestQueuedNGram] > topNMap[nextLowestQueuedNGram])
                         {
-                            topNQueue.TryDequeue(out nextLowestQueuedNGram0, out nextLowestQueuedNGramCount0);
-                            topNQueue.Enqueue(lowestQueuedNGramCount0, topNMap[lowestQueuedNGramCount0]);
-                            topNQueue.Enqueue(lowestQueuedNGramCount0, topNMap[lowestQueuedNGramCount0]);
-                        }
-                        else if (topNMap[lowesQueuedNGram0] >= _recentCount) topNQueue.DequeueEnqueue(lowesQueuedNGram0, topNMap[lowesQueuedNGram0]);
+                            topNQueue.TryDequeue(out nextLowestQueuedNGram, out nextLowestQueuedNGramCount);
+                            topNQueue.Enqueue(lowestQueuedNGram, topNMap[lowestQueuedNGram]);
+                            topNQueue.Enqueue(nextLowestQueuedNGram, topNMap[nextLowestQueuedNGram]);
+                        } // if lowest is stale we re-queue it with its recent count
+                        else if (topNMap[lowestQueuedNGram] >= _recentCount) topNQueue.DequeueEnqueue(lowestQueuedNGram, topNMap[lowestQueuedNGram]);
                         else
                         {
-                            topNMap.Remove(topNQueue.DequeueEnqueue(ngram, _recentCount));
+                            // this ngram is greater than the lowest, we remove the lowest and add this ngram
+                            topNMap.Remove(lowestQueuedNGram);
+                            topNQueue.Enqueue(ngram, _recentCount);
                             break;
                         }
 
@@ -110,7 +114,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 }
 
                 //Queue has filled up, we update min support to filter out lower count updates
-                topNQueue.TryPeek(out ulong _, out uint lowestQueuedNGramCount);
+                topNQueue.TryPeek(out _, out ulong lowestQueuedNGramCount);
                 _minSupport = lowestQueuedNGramCount;
 
             }

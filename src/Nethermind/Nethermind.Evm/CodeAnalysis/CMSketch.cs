@@ -1,23 +1,40 @@
 
 using System;
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
 
     public class CMSketch
     {
-        private ConcurrentDictionary<(int Row, int Column), uint> _sketch;
-        private int[] _seeds;
-        private int _buckets;
-        private int _numberOfhashFunctions;
+        public readonly double error;
+        public readonly double probabilityOneMinusDelta;
 
-        public CMSketch(int numberOfhashFunctions, int buckets)
+        private ulong[] _sketch;
+        private int[] _seeds;
+        public readonly int buckets;
+        public readonly int hashFunctions;
+        private const ulong FNV_OFFSET_BASIS = 14695981039346656037; //64-bit
+        private const ulong FNV_PRIME = 1099511628211; //64-bit
+
+
+        // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
+        // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= oneMinusDelta
+        public CMSketch(double e, double oneMinusDelta)
         {
-            _sketch = new ConcurrentDictionary<(int, int), uint>();
-            _buckets = buckets;
-            _numberOfhashFunctions = numberOfhashFunctions;
+
+            var numberOfBuckets = (int)Math.Round((2.0 / e));
+            probabilityOneMinusDelta = oneMinusDelta;
+            double delta = 1 - oneMinusDelta;
+            double OneByDelta = 1.0 / delta;
+            var numberOfhashFunctions = (int)Math.Round(Math.Log2(OneByDelta)) | 1;
+            _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
+            buckets = numberOfBuckets;
+            error = (double)2.0 / numberOfBuckets;
+            hashFunctions = numberOfhashFunctions;
             _seeds = new int[numberOfhashFunctions];
+
             Random rand = new Random();
             for (int i = 0; i < numberOfhashFunctions; i++)
             {
@@ -25,57 +42,91 @@ namespace Nethermind.Evm.CodeAnalysis
             }
         }
 
-        public void Update(ulong item)
+
+        public CMSketch(int numberOfhashFunctions, int numberOfBuckets)
         {
-            for (int hasher = 0; hasher < _numberOfhashFunctions; hasher++)
+            probabilityOneMinusDelta = 1 - Math.Pow(0.5, numberOfhashFunctions);
+            _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
+            buckets = numberOfBuckets;
+            error = (double)2.0 / numberOfBuckets;
+            hashFunctions = numberOfhashFunctions;
+            _seeds = new int[numberOfhashFunctions];
+
+            Random rand = new Random();
+            for (int i = 0; i < numberOfhashFunctions; i++)
             {
-                _sketch.AddOrUpdate((hasher, ComputeHash(item, hasher, _seeds, _numberOfhashFunctions) % _buckets),
-                             1,
-                         (key, value) => value + 1
-                        );
+                _seeds[i] = rand.Next(int.MinValue, int.MaxValue);
             }
         }
 
-        public uint Query(ulong item)
+
+        public void Update(ulong item)
         {
-            var minCount = uint.MaxValue;
-            for (int hasher = 0; hasher < _numberOfhashFunctions; hasher++)
-            {
-                _sketch.TryGetValue((hasher, ComputeHash(item, hasher, _seeds, _numberOfhashFunctions) % _buckets), out uint count);
-                minCount = Math.Min(minCount, count);
-            }
+            for (int hasher = 0; hasher < hashFunctions; hasher++)
+                Increment(item, hasher);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ulong Increment(ulong item, int hasher)
+        {
+            return Interlocked.Increment(ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher, _seeds, hashFunctions) % (ulong)buckets)]);
+        }
+
+        public ulong Query(ulong item)
+        {
+            var minCount = ulong.MaxValue;
+            for (int hasher = 0; hasher < hashFunctions; hasher++)
+                minCount = Math.Min(minCount,
+                        _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher, _seeds, hashFunctions) % (ulong)buckets)]);
             return minCount;
         }
 
 
-        public uint UpdateAndQuery(ulong item)
+        public ulong UpdateAndQuery(ulong item)
         {
-            Update(item);
-            return Query(item);
+            var minCount = ulong.MaxValue;
+            for (int hasher = 0; hasher < hashFunctions; hasher++)
+                minCount = Math.Min(minCount, Increment(item, hasher));
+            return minCount;
         }
 
-        public void Reset()
+        public ulong[] Reset()
         {
-            _sketch = new ConcurrentDictionary<(int, int), uint>();
+            var oldSketch = _sketch;
+            _sketch = new ulong[buckets * hashFunctions];
+            return oldSketch;
         }
 
-        public static int ComputeHash(ulong value, int hasher, int[] _seeds, int _breadth)
+
+        public ulong OverEstimationMagnitude()
+        {
+            ulong overEstimationMagnitude = 0;
+            for (int i = 0; i < buckets; i++)
+                overEstimationMagnitude += _sketch[i];
+            overEstimationMagnitude = (ulong)Math.Round(error * (double)overEstimationMagnitude);
+            return overEstimationMagnitude;
+        }
+
+        public static ulong ComputeHash(ulong value, int hasher, int[] _seeds, int _breadth)
         {
             // http://isthe.com/chongo/tech/comp/fnv/#FNV-1a
-            // FNV_OFFSET_BASIS_32BIT = 2166136261
-            // FNV_PRIME_32BIT  = 16777619
-            return (int)(((((((((((((((((((((((2166136261 ^ (byte)(value & 0xFF)) * 16777619)
-                  ^ (byte)((value >> 8) & 0xFF)) * 16777619)
-                  ^ (byte)((value >> 16) & 0xFF)) * 16777619)
-                  ^ (byte)((value >> 24) & 0xFF)) * 16777619)
-                  ^ (byte)((value >> 32) & 0xFF)) * 16777619)
-                  ^ (byte)((value >> 40) & 0xFF)) * 16777619)
-                  ^ (byte)((value >> 48) & 0xFF)) * 16777619)
-                  ^ (byte)((value >> 56) & 0xFF)) * 16777619)
-          ^ (byte)(_seeds[hasher % _breadth] & 0xFF)) * 16777619)
-          ^ (byte)((_seeds[hasher % _breadth] >> 8) & 0xFF)) * 16777619)
-          ^ (byte)((_seeds[hasher % _breadth] >> 16) & 0xFF)) * 16777619)
-          ^ (byte)((_seeds[hasher % _breadth] >> 24) & 0xFF)) * 16777619;
+            // FNV_OFFSET_BASIS_64 = 144066263297769815596495629667062367629
+            // FNV_PRIME_64  = 1099511628211
+            ulong hash = FNV_OFFSET_BASIS;
+            hash = (hash ^ (byte)(value & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((value >> 8) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((value >> 16) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((value >> 24) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((value >> 32) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)(_seeds[hasher % _breadth] & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((_seeds[hasher % _breadth] >> 8) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((_seeds[hasher % _breadth] >> 16) & 0xFF)) * FNV_PRIME;
+            hash = (hash ^ (byte)((_seeds[hasher % _breadth] >> 24) & 0xFF)) * FNV_PRIME;
+
+            return hash;
 
         }
 

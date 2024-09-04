@@ -153,7 +153,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(NgramTestCases))]
         public void validate_ngram_generation_exhaustive(Instruction[] transaction, (Instruction[] ngram, int count)[] ngrams)
         {
-            Dictionary<ulong, uint> counts = new Dictionary<ulong, uint>();
+            Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
             StatsAnalyzer statsAnalyzer = new StatsAnalyzer(100, 600000, 2, 100000, 1);
             foreach (Instruction instruction in transaction)
             {
@@ -163,7 +163,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             foreach ((Instruction[] ngram, int expectedCount) ngramAndCount in ngrams)
             {
                 ulong currentNGram = AsNGram(ngramAndCount.ngram);
-                Assert.That(statsAnalyzer.topNMap[currentNGram] == ngramAndCount.expectedCount, $"{ngramAndCount.ngram} found count: {statsAnalyzer.topNMap[currentNGram]}, expected Count: {ngramAndCount.expectedCount}");
+                Assert.That(statsAnalyzer.topNMap[currentNGram] == (ulong)ngramAndCount.expectedCount, $"{ngramAndCount.ngram} found count: {statsAnalyzer.topNMap[currentNGram]}, expected Count: {ngramAndCount.expectedCount}");
             }
 
         }
