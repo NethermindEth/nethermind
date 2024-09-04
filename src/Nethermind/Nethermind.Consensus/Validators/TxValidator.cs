@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -48,7 +50,7 @@ namespace Nethermind.Consensus.Validators
                    && ValidateWithError(Validate1559GasFields(transaction, releaseSpec), TxErrorMessages.InvalidMaxPriorityFeePerGas, ref error)
                    && ValidateWithError(Validate3860Rules(transaction, releaseSpec), TxErrorMessages.ContractSizeTooBig, ref error)
                    && Validate4844Fields(transaction, ref error)
-                   && ValidateAuthorityList(transaction, ref error);
+                   && ValidateAuthorityList(transaction, releaseSpec, ref error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -120,6 +122,26 @@ namespace Nethermind.Consensus.Validators
         {
             Signature? signature = tx.Signature;
 
+            if (!ValidateSignature(signature, spec))
+            {
+                return false;
+            }
+
+            if (signature.V is 27 or 28)
+            {
+                return true;
+            }
+
+            if (tx.Type == TxType.Legacy && spec.IsEip155Enabled && (signature.V == _chainIdValue * 2 + 35ul || signature.V == _chainIdValue * 2 + 36ul))
+            {
+                return true;
+            }
+
+            return !spec.ValidateChainId;
+        }
+
+        private bool ValidateSignature(Signature signature, IReleaseSpec spec)
+        {
             if (signature is null)
             {
                 return false;
@@ -138,17 +160,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            if (signature.V is 27 or 28)
-            {
-                return true;
-            }
-
-            if (tx.Type == TxType.Legacy && spec.IsEip155Enabled && (signature.V == _chainIdValue * 2 + 35ul || signature.V == _chainIdValue * 2 + 36ul))
-            {
-                return true;
-            }
-
-            return !spec.ValidateChainId;
+            return true;
         }
 
         private static bool Validate4844Fields(Transaction transaction, ref string? error)
@@ -294,7 +306,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateAuthorityList(Transaction tx, ref string error)
+        private bool ValidateAuthorityList(Transaction tx, IReleaseSpec releaseSpec, ref string error)
         {
             if (tx.Type != TxType.SetCode)
             {
@@ -307,6 +319,11 @@ namespace Nethermind.Consensus.Validators
             else if (tx.AuthorizationList is null)
             {
                 error = TxErrorMessages.MissingAuthorizationList;
+                return false;
+            }
+            else if (tx.AuthorizationList.Any(a => !ValidateSignature(a.AuthoritySignature, releaseSpec)))
+            {
+                error = TxErrorMessages.InvalidAuthoritySignature;
                 return false;
             }
             return true;
