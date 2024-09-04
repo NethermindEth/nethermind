@@ -27,9 +27,8 @@ public class CensorshipDetector : IDisposable
     private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
-    private readonly int _blockCensorshipThreshold;
-
-    private const int CacheSize = 64;
+    private readonly uint _blockCensorshipThreshold;
+    private readonly int _cacheSize;
 
     public CensorshipDetector(
         IBlockTree blockTree,
@@ -43,11 +42,8 @@ public class CensorshipDetector : IDisposable
         _txPool = txPool;
         _betterTxComparer = betterTxComparer;
         _blockProcessor = blockProcessor;
-        int configBlockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
-        if (configBlockCensorshipThreshold > 1 && configBlockCensorshipThreshold <= CacheSize)
-        {
-            _blockCensorshipThreshold = configBlockCensorshipThreshold;
-        }
+        _blockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
+        _cacheSize = (int)(4 * _blockCensorshipThreshold);
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         if (censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
@@ -66,8 +62,8 @@ public class CensorshipDetector : IDisposable
             }
         }
 
-        _potentiallyCensoredBlocks = new(CacheSize, CacheSize, "potentiallyCensoredBlocks");
-        _censoredBlocks = new(CacheSize);
+        _potentiallyCensoredBlocks = new(_cacheSize, _cacheSize, "potentiallyCensoredBlocks");
+        _censoredBlocks = new(_cacheSize);
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
 
@@ -75,7 +71,7 @@ public class CensorshipDetector : IDisposable
     {
         long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
         long headNumberOrZero = _blockTree.Head?.Number ?? 0;
-        return bestSuggestedNumber > headNumberOrZero + 8;
+        return bestSuggestedNumber > headNumberOrZero;
     }
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
