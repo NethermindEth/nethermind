@@ -20,7 +20,6 @@ public class EthereumL1Bridge : IL1Bridge
 
     public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config, ILogManager logManager)
     {
-        ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
         _logger = logManager.GetClassLogger();
         _config = config;
         _ethL1Api = ethL1Rpc;
@@ -36,23 +35,26 @@ public class EthereumL1Bridge : IL1Bridge
         // TODO: Cancellation token
         while (true)
         {
-            BeaconBlock beaconBlock = _beaconApi.GetHead();
+            // TODO: can we do it with subscription?
+            BeaconBlock beaconBlock = await _beaconApi.GetHead();
             while (beaconBlock.SlotNumber <= _currentSlot)
             {
-                beaconBlock = _beaconApi.GetHead();
+                await Task.Delay(100);
+                beaconBlock = await _beaconApi.GetHead();
             }
 
+            _logger.Error($"HEAD UPDATED: slot {beaconBlock.SlotNumber}");
             // new slot
             _currentSlot = beaconBlock.SlotNumber;
-            BlockForRpc? block = await _ethL1Api.GetBlockByNumber(beaconBlock.PayloadNumber);
+            // BlockForRpc? block = await _ethL1Api.GetBlockByNumber(beaconBlock.PayloadNumber);
 
-            if (block is null)
-            {
-                if (_logger.IsError) _logger.Error($"Unable to get L1 block");
-                return;
-            }
+            // if (block is null)
+            // {
+            //     if (_logger.IsError) _logger.Error($"Unable to get L1 block");
+            //     return;
+            // }
 
-            OnNewL1Head?.Invoke(block, _currentSlot);
+            OnNewL1Head?.Invoke(beaconBlock, _currentSlot);
 
             // Wait next slot
             await Task.Delay(12000);
@@ -61,12 +63,14 @@ public class EthereumL1Bridge : IL1Bridge
 
     public void Start()
     {
+        // var res = await _beaconApi.GetHead();
+        // await _beaconApi.GetBlobSidecars(res.SlotNumber);
         _headUpdateTask.Start();
     }
 
-    public event Action<BlockForRpc, ulong>? OnNewL1Head;
+    public event Action<BeaconBlock, ulong>? OnNewL1Head;
 
-    public BlobSidecar[] GetBlobSidecars(int slotNumber)
+    public Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber)
     {
         return _beaconApi.GetBlobSidecars(slotNumber);
     }
