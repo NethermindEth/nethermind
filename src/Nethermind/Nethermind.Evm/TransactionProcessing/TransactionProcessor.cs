@@ -618,7 +618,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     WorldState.AddToBalance(tx.SenderAddress, (ulong)(unspentGas + actualRefund) * gasPrice, spec);
                 spentGas -= actualRefund;
             }
-            else if(codeInsertRefund > 0)
+            else if (codeInsertRefund > 0)
             {
                 long refund = RefundHelper.CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
 
