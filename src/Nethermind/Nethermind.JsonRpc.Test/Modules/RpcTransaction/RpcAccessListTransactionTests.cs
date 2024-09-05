@@ -20,7 +20,7 @@ public class RpcAccessListTransactionTests
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.AccessList);
 
-    public static readonly Transaction[] LegacyTransactions =
+    public static readonly Transaction[] Transactions =
     [
         Build.TestObject,
 
@@ -84,7 +84,7 @@ public class RpcAccessListTransactionTests
         RpcAccessListTransaction.DefaultChainId = BlockchainIds.Mainnet;
     }
 
-    [TestCaseSource(nameof(LegacyTransactions))]
+    [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
         var rpcTx = RpcAccessListTransaction.FromTransaction(transaction);

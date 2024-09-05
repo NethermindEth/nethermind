@@ -4,7 +4,6 @@
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -19,7 +18,7 @@ public class RpcLegacyTransactionTests
 
     private static TransactionBuilder<Transaction> BuildALegacyTransaction => Build.A.Transaction.WithType(TxType.Legacy);
 
-    public static readonly Transaction[] LegacyTransactions =
+    public static readonly Transaction[] Transactions =
     [
         BuildALegacyTransaction.TestObject,
 
@@ -62,7 +61,7 @@ public class RpcLegacyTransactionTests
         BuildALegacyTransaction.WithSignature(TestItem.RandomSignatureB).TestObject,
     ];
 
-    [TestCaseSource(nameof(LegacyTransactions))]
+    [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
         var rpcTx = RpcLegacyTransaction.FromTransaction(transaction);
