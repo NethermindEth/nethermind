@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _worldStateManager, _blockTree, _specProvider, _logManager);
 
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash, TODO);
 
             RpcBlockTransactionsExecutor traceExecutor = new(scope.TransactionProcessor, scope.WorldState);
 

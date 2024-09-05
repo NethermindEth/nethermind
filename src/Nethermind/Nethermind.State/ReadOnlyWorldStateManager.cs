@@ -15,33 +15,31 @@ namespace Nethermind.State;
 public class ReadOnlyWorldStateManager : IWorldStateManager
 {
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
+    private readonly IDbProvider _dbProvider;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _codeDb;
+    public virtual IWorldStateProvider WorldStateProvider { get; }
 
     public ReadOnlyWorldStateManager(
+        ReadOnlyWorldStateProvider worldStateProvider,
         IDbProvider dbProvider,
         IReadOnlyTrieStore readOnlyTrieStore,
         ILogManager logManager
     )
     {
+        WorldStateProvider = worldStateProvider;
         _readOnlyTrieStore = readOnlyTrieStore;
+        _dbProvider = dbProvider;
         _logManager = logManager;
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
-        GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
     }
 
-    public virtual IWorldState GlobalWorldState => throw new InvalidOperationException("global world state not supported");
-
-    public IStateReader GlobalStateReader { get; }
-
-    public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
-
-    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
+    public IWorldStateProvider CreateResettableWorldStateProvider(IWorldState? forWarmup = null)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
+        WorldState worldState = preBlockCaches is not null
             ? new WorldState(
                 new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
                 _codeDb,
@@ -51,6 +49,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
                 _readOnlyTrieStore,
                 _codeDb,
                 _logManager);
+        return new WorldStateProvider(worldState, _readOnlyTrieStore, _dbProvider, _logManager);
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

@@ -9,42 +9,44 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class OverlayWorldStateManager(
-    IReadOnlyDbProvider dbProvider,
-    OverlayTrieStore overlayTrieStore,
-    ILogManager? logManager)
-    : IWorldStateManager
+public class OverlayWorldStateManager : IWorldStateManager
 {
-    private readonly IDb _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
+    private OverlayTrieStore _overlayTrieStore;
+    private ILogManager? _logManager;
+    private readonly IDb _codeDb;
+    private IDbProvider _dbProvider;
+    public IWorldStateProvider WorldStateProvider { get; }
 
-    private readonly StateReader _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+    public OverlayWorldStateManager(IReadOnlyDbProvider dbProvider, OverlayTrieStore overlayTrieStore, ILogManager? logManager)
+    {
+        WorldState worldState = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+        _overlayTrieStore = overlayTrieStore;
+        _dbProvider = dbProvider;
+        WorldStateProvider = new OverlayWorldStateProvider(worldState, dbProvider, overlayTrieStore, logManager);
+        _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
 
-    private readonly WorldState _state = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+        _logManager = logManager;
+    }
 
-    public IWorldState GlobalWorldState => _state;
-
-    public IStateReader GlobalStateReader => _reader;
-
-    public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
-
-    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
+    public IWorldStateProvider CreateResettableWorldStateProvider(IWorldState? forWarmup = null)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
+        WorldState worldState = preBlockCaches is not null
             ? new WorldState(
-                new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache),
+                new PreCachedTrieStore(_overlayTrieStore, preBlockCaches.RlpCache),
                 _codeDb,
-                logManager,
+                _logManager,
                 preBlockCaches)
             : new WorldState(
-                overlayTrieStore,
+                _overlayTrieStore,
                 _codeDb,
-                logManager);
+                _logManager);
+        return new WorldStateProvider(worldState, _overlayTrieStore, _dbProvider, _logManager);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
-        add => overlayTrieStore.ReorgBoundaryReached += value;
-        remove => overlayTrieStore.ReorgBoundaryReached -= value;
+        add => _overlayTrieStore.ReorgBoundaryReached += value;
+        remove => _overlayTrieStore.ReorgBoundaryReached -= value;
     }
 }

@@ -54,7 +54,7 @@ public class TraceRpcModuleTests
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(Blockchain.WorldStateManager, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash, TODO);
 
             RewardCalculator rewardCalculatorSource = new(Blockchain.SpecProvider);
 

@@ -58,7 +58,7 @@ public class TraceModuleFactory(
     public override ITraceRpcModule Create()
     {
         ReadOnlyTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
-        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash, TODO);
 
         IRewardCalculator rewardCalculator =
             new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),

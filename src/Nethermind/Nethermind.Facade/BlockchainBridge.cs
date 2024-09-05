@@ -185,7 +185,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
-            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!, header);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -252,7 +252,7 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
 
             Hash256 stateRoot = blockHeader.StateRoot!;
-            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot, TODO);
 
             if (transaction.Nonce == 0)
             {

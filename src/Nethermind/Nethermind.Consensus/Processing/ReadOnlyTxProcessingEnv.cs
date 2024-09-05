@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -61,11 +62,12 @@ namespace Nethermind.Consensus.Processing
             return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
         }
 
-        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot, BlockHeader blockHeader)
         {
-            Hash256 originalStateRoot = StateProvider.StateRoot;
-            StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+            IWorldState worldStateToUse = WorldStateProvider.GetWorldState(blockHeader);
+            Hash256 originalStateRoot = worldStateToUse.StateRoot;
+            worldStateToUse.StateRoot = stateRoot;
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, worldStateToUse, originalStateRoot);
         }
     }
 }

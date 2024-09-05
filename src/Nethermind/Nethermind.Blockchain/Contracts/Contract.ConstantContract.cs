@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Contracts
 
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using var scope = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
+                    using var scope = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader), TODO);
                     return CallRaw(callInfo, scope);
                 }
             }
