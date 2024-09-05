@@ -7,6 +7,8 @@ namespace Nethermind.Evm.CodeAnalysis
     public class StatsAnalyzer
     {
 
+        public NGram NGram => new NGram(_ngram);
+
         public const Instruction STOP = Instruction.STOP;
 
         public readonly PriorityQueue<ulong, ulong> topNQueue;
@@ -15,7 +17,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private CMSketch _sketch;
 
         private int _topN;
-        private ulong _ngram = 0;
+        private ulong _ngram = NGram.NULL;
 
         private int _capacity;
         private ulong _minSupport;

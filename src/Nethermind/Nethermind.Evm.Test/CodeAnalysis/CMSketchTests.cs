@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 Assert.That(sketch.Query(totalItems) == 0,
                     $"Expected not previously updated item  {totalItems} to be 0, found {sketch.Query((ulong)i)}");
-                    sketch.Update(totalItems);
+                sketch.Update(totalItems);
                 Assert.That(sketch.Query(totalItems) == 1,
                     $"Expected previously updated item  {totalItems} to be 1, found {sketch.Query((ulong)i)}");
                 totalItems++;
@@ -112,12 +112,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
 
             CMSketch sketch = new CMSketch(10, 10);
-            for (ulong i = 0 ; i <=10; i++)
+            for (ulong i = 0; i <= 10; i++)
             {
-              sketch.Update(i);
+                sketch.Update(i);
             }
             sketch.Reset();
-            for (ulong i = 0 ; i <=10; i++)
+            for (ulong i = 0; i <= 10; i++)
             {
                 Assert.That(sketch.Query(i) == 0,
                     $"Found non empty sketch");

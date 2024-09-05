@@ -62,7 +62,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public CMSketch(ulong[] sketch, int buckets, int hashFunctions) : this(buckets, hashFunctions)
         {
             if (sketch.Length != buckets * hashFunctions)
-                  throw new ArgumentException($"Invalid sketch array length, expected {buckets * hashFunctions} found: {sketch.Length}.");
+                throw new ArgumentException($"Invalid sketch array length, expected {buckets * hashFunctions} found: {sketch.Length}.");
             this._sketch = sketch;
         }
 
@@ -98,7 +98,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public CMSketch Reset()
         {
-            CMSketch cms = new CMSketch(_sketch,buckets,hashFunctions);
+            CMSketch cms = new CMSketch(_sketch, buckets, hashFunctions);
             _sketch = new ulong[buckets * hashFunctions];
             return cms;
         }
