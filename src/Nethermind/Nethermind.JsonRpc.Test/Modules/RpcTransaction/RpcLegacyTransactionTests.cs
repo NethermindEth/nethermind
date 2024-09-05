@@ -58,8 +58,8 @@ public class RpcLegacyTransactionTests
         BuildALegacyTransaction.WithChainId(0).TestObject,
         BuildALegacyTransaction.WithChainId(ulong.MaxValue).TestObject,
 
-        BuildALegacyTransaction.WithSignature(TestItemSignatures.RandomSignatureA).TestObject,
-        BuildALegacyTransaction.WithSignature(TestItemSignatures.RandomSignatureB).TestObject,
+        BuildALegacyTransaction.WithSignature(TestItem.RandomSignatureA).TestObject,
+        BuildALegacyTransaction.WithSignature(TestItem.RandomSignatureB).TestObject,
     ];
 
     [TestCaseSource(nameof(LegacyTransactions))]
@@ -85,22 +85,5 @@ public class RpcLegacyTransactionTests
         json.GetProperty("v").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-    }
-}
-
-// TODO: We don't have a good source of "random" signatures for testing
-public static class TestItemSignatures
-{
-    public static readonly Signature RandomSignatureA;
-    public static readonly Signature RandomSignatureB;
-
-    static TestItemSignatures()
-    {
-        byte[] r = new byte[32];
-        byte[] s = new byte[32];
-        r[1] = 1;
-        s[2] = 2;
-        RandomSignatureA = new Signature(r, s, 27);
-        RandomSignatureB = new Signature(r, s, 28);
     }
 }

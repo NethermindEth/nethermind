@@ -74,8 +74,8 @@ public class RpcAccessListTransactionTests
             .AddStorage(3)
             .Build()).TestObject,
 
-        Build.WithSignature(TestItemSignatures.RandomSignatureA).TestObject,
-        Build.WithSignature(TestItemSignatures.RandomSignatureB).TestObject,
+        Build.WithSignature(TestItem.RandomSignatureA).TestObject,
+        Build.WithSignature(TestItem.RandomSignatureB).TestObject,
     ];
 
     [SetUp]
