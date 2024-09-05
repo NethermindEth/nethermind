@@ -12,6 +12,10 @@ public static class Metrics
     [Description("Total number of censored blocks.")]
     public static long NumberOfCensoredBlocks;
 
+    [CounterMetric]
+    [Description("Total number of potentially censored blocks.")]
+    public static long NumberOfPotentiallyCensoredBlocks;
+
     [GaugeMetric]
     [Description("Number of last potentially censored block.")]
     public static long LastPotentiallyCensoredBlockNumber;

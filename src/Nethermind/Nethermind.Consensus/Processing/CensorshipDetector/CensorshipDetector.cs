@@ -169,6 +169,7 @@ public class CensorshipDetector : IDisposable
 
             if (isCensored)
             {
+                Metrics.NumberOfPotentiallyCensoredBlocks++;
                 Metrics.LastPotentiallyCensoredBlockNumber = block.Number;
                 DetectMultiBlockCensorship(blockNumberHash, blockCensorshipInfo);
             }
