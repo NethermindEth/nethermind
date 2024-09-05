@@ -1,15 +1,14 @@
-
-using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
 
     public class StatsAnalyzer
     {
+
+        public const Instruction STOP = Instruction.STOP;
+
         public readonly PriorityQueue<ulong, ulong> topNQueue;
         public readonly Dictionary<ulong, ulong> topNMap;
 
@@ -22,16 +21,6 @@ namespace Nethermind.Evm.CodeAnalysis
         private ulong _minSupport;
         private ulong _recentCount;
 
-        const ulong twogramBitMask = (255UL << 8) | 255UL;
-        const ulong threegramBitMask = (255UL << 8 * 2) | twogramBitMask;
-        const ulong fourgramBitMask = (255U << 8 * 3) | threegramBitMask;
-        const ulong fivegramBitMask = (255UL << 8 * 4) | fourgramBitMask;
-        const ulong sixgramBitMask = (255UL << 8 * 5) | fivegramBitMask;
-        const ulong sevengramBitMask = (255UL << 8 * 6) | sixgramBitMask;
-        public ulong[] ngramBitMaks = [255UL, twogramBitMask, threegramBitMask, fourgramBitMask, fivegramBitMask, sixgramBitMask, sevengramBitMask];
-        public static ulong[] byteIndexes = { 255UL, 255UL << 8, 255UL << 16, 255UL << 24, 255UL << 32, 255UL << 40, 255UL << 48, 255UL << 56 };
-        public static ulong[] byteIndexShifts = { 0, 8, 16, 24, 32, 40, 48, 56 };
-
         public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, uint minSupport)
         {
             _topN = topN;
@@ -42,48 +31,37 @@ namespace Nethermind.Evm.CodeAnalysis
             _minSupport = minSupport;
         }
 
-        public bool Add(IEnumerable<Instruction> instructions)
+        public void Add(IEnumerable<Instruction> instructions)
         {
             foreach (Instruction instruction in instructions)
-            {
-                if (!Add(instruction)) return false;
-            }
-            return true;
+                Add(instruction);
         }
 
-        public bool Add(Instruction instruction)
+        public void Add(Instruction instruction)
         {
-            if (instruction == Instruction.STOP)
-            {
-                _ngram = 0;
-                return true;
-            }
+            if (instruction == STOP)
+                _ngram = NGram.NULL;
 
-            _ngram = (_ngram << 8) | (byte)instruction;
+            _ngram = NGram.AddByte(_ngram, (byte)instruction);
 
-            for (int i = 1; i < 7; i++)
-                if (byteIndexes[i - 1] < _ngram)
-                    if (!ProcessNGram(_ngram & ngramBitMaks[i])) return false;
-
-            return true;
+            for (int i = 1; i < NGram.SIZE; i++)
+                if (NGram.byteIndexes[i - 1] < _ngram)
+                    ProcessNGram(_ngram & NGram.bitMasks[i]);
         }
 
-        private bool ProcessNGram(ulong ngram)
+        private void ProcessNGram(ulong ngram)
         {
             _recentCount = _sketch.UpdateAndQuery(ngram);
 
             // if recentCount is less than minSupport  return early;
-            if (_recentCount < _minSupport) return true;
+            if (_recentCount < _minSupport) return;
 
             // if recentCount is greater than minSupport  and enqueued, we update early and return
             if (topNMap.ContainsKey(ngram))
-            {
                 topNMap[ngram] = _recentCount;
-                return true;
-            }
 
-            // if recentCount is greater than minSupport  and not enqueued , but no capacity we return (superfluous?)
-            if (topNMap.Count >= _capacity) return false;
+            Debug.Assert(topNMap.Count <= _capacity,
+                    $"topNMap had count {topNMap.Count} that breached capacity of {_capacity}");
 
             // if recentCount is greater than minSupport  and not enqueued, we add
             if (topNQueue.Count >= _topN)
@@ -124,7 +102,6 @@ namespace Nethermind.Evm.CodeAnalysis
                 topNQueue.Enqueue(ngram, _recentCount); // we haven't seen it and we have capacity  so we enqueue
             }
 
-            return true;
         }
     }
 

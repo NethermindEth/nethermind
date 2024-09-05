@@ -4,14 +4,22 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public record NGram
+    public record NGram(ulong ngram)
     {
-        public ulong ngram;
-        const uint SIZE = 7;
+        public const uint SIZE = 7;
+        public const ulong NULL = 0;
         const byte STOP = (byte)Instruction.STOP;
-        private ulong[] bitMasks { get; init; }
-        private ulong[] byteIndexes { get; init; }
-        private ulong[] byteIndexShifts { get; init; }
+
+        const ulong twogramBitMask = (255UL << 8) | 255UL;
+        const ulong threegramBitMask = (255UL << 8 * 2) | twogramBitMask;
+        const ulong fourgramBitMask = (255U << 8 * 3) | threegramBitMask;
+        const ulong fivegramBitMask = (255UL << 8 * 4) | fourgramBitMask;
+        const ulong sixgramBitMask = (255UL << 8 * 5) | fivegramBitMask;
+        const ulong sevengramBitMask = (255UL << 8 * 6) | sixgramBitMask;
+        public static ulong[] bitMasks = [255UL, twogramBitMask, threegramBitMask, fourgramBitMask, fivegramBitMask, sixgramBitMask, sevengramBitMask];
+        public static ulong[] byteIndexes = { 255UL, 255UL << 8, 255UL << 16, 255UL << 24, 255UL << 32, 255UL << 40, 255UL << 48, 255UL << 56 };
+        public static ulong[] byteIndexShifts = { 0, 8, 16, 24, 32, 40, 48, 56 };
+
 
         public NGram(Instruction[] instructions) : this(InstructionsToNGram(instructions))
         {
@@ -21,18 +29,6 @@ namespace Nethermind.Evm.CodeAnalysis
         {
         }
 
-        public NGram(ulong ngram) : this(ngram, GetMasksIndexesAndShifts())
-        {
-        }
-
-        private NGram(ulong ngram, (ulong[] bitMasks, ulong[] byteIndexes, ulong[] byteIndexShifts) masksIndexesAndShifts)
-        {
-            this.ngram = ngram;
-            this.bitMasks = masksIndexesAndShifts.bitMasks;
-            this.byteIndexes = masksIndexesAndShifts.byteIndexes;
-            this.byteIndexShifts = masksIndexesAndShifts.byteIndexShifts;
-
-        }
 
         public byte[] AsByte()
         {
@@ -61,24 +57,6 @@ namespace Nethermind.Evm.CodeAnalysis
                 s += $"{instruction.ToString()}";
             return s;
         }
-
-
-        private static (ulong[] bitMasks, ulong[] byteIndexes, ulong[] byteIndexShifts) GetMasksIndexesAndShifts(uint bytes = 64)
-        {
-            ulong[] bitMasks = new ulong[] { 255UL };
-            ulong[] byteIndexes = new ulong[] { 255UL };
-            ulong[] byteIndexShifts = new ulong[] { 0 };
-
-            for (int i = 1; i < bytes / 8; i++)
-            {
-                byteIndexShifts[i] = 255UL << 8 * i;
-                bitMasks[i] = byteIndexShifts[i] | bitMasks[i - 1];
-                byteIndexShifts[i] = (ulong)i;
-
-            }
-            return (bitMasks, byteIndexes, byteIndexShifts);
-        }
-
 
         private static ulong InstructionsToNGram(Instruction[] instructions)
         {
