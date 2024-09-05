@@ -30,9 +30,8 @@ public sealed class RpcLegacyTransaction
 
     public UInt256 V { get; set; }
 
-    public UInt256 S { get; set; }
-
     public UInt256 R { get; set; }
+    public UInt256 S { get; set; }
 
     private RpcLegacyTransaction() { }
 
