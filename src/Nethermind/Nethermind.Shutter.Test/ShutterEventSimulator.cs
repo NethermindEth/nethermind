@@ -121,17 +121,17 @@ public class ShutterEventSimulator
 
             ulong txIndex = _eonData[eon].TxIndex++;
             G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
-            G1 key = identity.dup().mult(_eonData[eon].SecretKey.ToLittleEndian());
+            G1 key = identity.Dup().Mult(_eonData[eon].SecretKey.ToLittleEndian());
 
             byte[] encodedTx = Rlp.Encode<Transaction>(tx).Bytes;
-            EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(encodedTx, identity, _eonData[eon].Key, new(sigma));
-            byte[] encryptedTx = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage);
+            EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(encodedTx, identity, new(_eonData[eon].Key), new(sigma));
+            byte[] encryptedTx = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage).ToArray();
 
             yield return new()
             {
                 EncryptedTransaction = encryptedTx,
                 IdentityPreimage = identityPreimage,
-                Key = key.compress(),
+                Key = key.Compress(),
                 LogEntry = EncodeShutterLog(encryptedTx, identityPreimage, eon, txIndex, _defaultGasLimit),
                 Transaction = encodedTx,
                 Eon = eon
@@ -175,7 +175,7 @@ public class ShutterEventSimulator
         return new()
         {
             Eon = _eon,
-            Key = eonData.Key,
+            Key = new G2(eonData.Key.AsSpan()).Compress(),
             Threshold = _threshold,
             Addresses = TestItem.Addresses
         };
@@ -251,7 +251,7 @@ public class ShutterEventSimulator
     private struct EonData
     {
         public ulong Eon { get; }
-        public G2 Key { get; }
+        public byte[] Key { get; }
         public UInt256 SecretKey { get; }
         public ulong TxIndex { get; set; }
 
@@ -262,7 +262,7 @@ public class ShutterEventSimulator
 
             Eon = eon;
             SecretKey = new(sk);
-            Key = G2.generator().mult(SecretKey.ToLittleEndian());
+            Key = G2.Generator().Mult(SecretKey.ToLittleEndian()).Compress();
             TxIndex = 0;
         }
     }

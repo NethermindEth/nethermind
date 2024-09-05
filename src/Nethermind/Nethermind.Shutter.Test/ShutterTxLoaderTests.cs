@@ -5,24 +5,14 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using NUnit.Framework;
-using Nethermind.Blockchain.Find;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Abi;
-using Nethermind.Blockchain;
-using Nethermind.Crypto;
-using Nethermind.Logging;
-using Nethermind.Core.Specs;
-using Nethermind.State;
-using Nethermind.Shutter.Config;
 using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Shutter.Test;
-
-using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 
 [TestFixture]
 class ShutterTxLoaderTests : EngineModuleTests

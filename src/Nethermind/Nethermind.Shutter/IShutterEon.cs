@@ -15,7 +15,7 @@ public interface IShutterEon
     public readonly struct Info
     {
         public ulong Eon { get; init; }
-        public Bls.P2 Key { get; init; }
+        public byte[] Key { get; init; }
         public ulong Threshold { get; init; }
         public Address[] Addresses { get; init; }
     }

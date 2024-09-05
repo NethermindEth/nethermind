@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text;
 
 namespace Nethermind.Crypto;
 
@@ -11,34 +12,29 @@ using GT = Bls.PT;
 
 public class BlsSigner
 {
-    internal static readonly string Cryptosuite = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+    internal static readonly byte[] Cryptosuite = Encoding.UTF8.GetBytes("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_");
     internal static int InputLength = 64;
 
-    public static Signature Sign(in PrivateKey privateKey, ReadOnlySpan<byte> message)
+    public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
     {
         G2 p = new();
-        p.hash_to(message.ToArray(), Cryptosuite);
-        p.sign_with(new Bls.SecretKey(privateKey.Bytes, Bls.ByteOrder.LittleEndian));
-        Signature s = new()
-        {
-            Bytes = p.compress()
-        };
-        return s;
+        p.HashTo(message, Cryptosuite);
+        p.SignWith(sk);
+        return new(new byte[96]);
     }
 
-    public static bool Verify(in PublicKey publicKey, in Signature signature, in byte[] message)
+    public static bool Verify(G1 publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
         try
         {
             G2 sig = new(signature.Bytes);
-            GT p1 = new(sig, G1.generator());
+            GT p1 = new(sig, G1.Generator());
 
             G2 m = new();
-            m.hash_to(message, Cryptosuite);
-            G1 pk = new(publicKey.Bytes);
-            GT p2 = new(m, pk);
+            m.HashTo(message, Cryptosuite);
+            GT p2 = new(m, publicKey);
 
-            return GT.finalverify(p1, p2);
+            return GT.FinalVerify(p1, p2);
         }
         catch (Bls.Exception)
         {
@@ -47,40 +43,21 @@ public class BlsSigner
         }
     }
 
-    public static PublicKey GetPublicKey(in PrivateKey privateKey)
+    public static G1 GetPublicKey(Bls.SecretKey sk)
+        => new(sk);
+
+    // Compressed G2 point
+    public readonly ref struct Signature()
     {
-        Bls.SecretKey sk = new(privateKey.Bytes, Bls.ByteOrder.LittleEndian);
-        G1 p = new(sk);
-        PublicKey pk = new()
+        public readonly ReadOnlySpan<byte> Bytes;
+
+        public Signature(ReadOnlySpan<byte> s) : this()
         {
-            Bytes = p.compress()
-        };
-        return pk;
-    }
-
-    public struct PrivateKey
-    {
-        public byte[] Bytes = new byte[32];
-        public PrivateKey()
-        {
-        }
-    }
-
-    public struct PublicKey
-    {
-        public byte[] Bytes = new byte[48];
-
-        public PublicKey()
-        {
-        }
-    }
-
-    public struct Signature
-    {
-        public byte[] Bytes = new byte[96];
-
-        public Signature()
-        {
+            if (s.Length != 96)
+            {
+                throw new Bls.Exception(Bls.ERROR.BADENCODING);
+            }
+            Bytes = s;
         }
     }
 }

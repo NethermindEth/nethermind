@@ -57,7 +57,7 @@ public class ShutterEon(
                     _currentInfo = new()
                     {
                         Eon = eon,
-                        Key = key,
+                        Key = key.Serialize(),
                         Threshold = threshold,
                         Addresses = addresses
                     };

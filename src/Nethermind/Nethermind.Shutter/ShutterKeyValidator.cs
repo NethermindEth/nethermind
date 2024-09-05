@@ -97,7 +97,7 @@ public class ShutterKeyValidator(
                 return false;
             }
 
-            if (!ShutterCrypto.CheckDecryptionKey(dk, eonInfo.Key, identity))
+            if (!ShutterCrypto.CheckDecryptionKey(dk, new(eonInfo.Key), identity))
             {
                 if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: decryption key did not match eon key.");
                 return false;

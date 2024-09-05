@@ -136,18 +136,21 @@ public class ShutterTxLoader(
             G1 key = new(decryptionKey.Key);
             G1 identity = ShutterCrypto.ComputeIdentity(decryptionKey.IdentityPreimage.AsSpan());
 
-            if (!identity.is_equal(sequencedTransaction.Identity))
+            if (!identity.IsEqual(new(sequencedTransaction.Identity.AsSpan())))
             {
                 if (_logger.IsDebug) _logger.Debug("Could not decrypt Shutter transaction: Transaction identity did not match decryption key.");
                 return null;
             }
 
-            byte[] encodedTransaction = ShutterCrypto.Decrypt(encryptedMessage, key);
+            int len = ShutterCrypto.GetDecryptedDataLength(encryptedMessage);
+            Span<byte> encodedTransaction = stackalloc byte[len];
+            ShutterCrypto.Decrypt(ref encodedTransaction, encryptedMessage, key);
 
             if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
 
+            // todo: fix the decoder to work with spans
             // N.B. does not work with encodedTransaction.AsSpan()
-            Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction);
+            Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction.ToArray());
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction, true);
 
             return transaction;
@@ -212,7 +215,7 @@ public class ShutterTxLoader(
             Eon = eon,
             EncryptedTransaction = e.EncryptedTransaction,
             GasLimit = e.GasLimit,
-            Identity = ShutterCrypto.ComputeIdentity(identityPreimage),
+            Identity = ShutterCrypto.ComputeIdentity(identityPreimage).Compress(),
             IdentityPreimage = identityPreimage
         };
     }
@@ -240,7 +243,7 @@ public class ShutterTxLoader(
         public ulong Eon;
         public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
-        public G1 Identity;
+        public byte[] Identity;
         public byte[] IdentityPreimage;
     }
 

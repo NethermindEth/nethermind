@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -12,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Merkleization;
+using System.Text;
 
 namespace Nethermind.Shutter;
 
@@ -21,53 +21,48 @@ using GT = Bls.PT;
 
 public static class ShutterCrypto
 {
-    // todo: remove bytes32?
-    private static readonly string DST = "SHUTTER_V01_BLS12381G1_XMD:SHA-256_SSWU_RO_";
+    private static readonly byte[] DST = Encoding.UTF8.GetBytes("SHUTTER_V01_BLS12381G1_XMD:SHA-256_SSWU_RO_");
     private static readonly byte CryptoVersion = 0x3;
     private static readonly UInt256 BlsSubgroupOrder = new((byte[])[0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48, 0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05, 0x53, 0xbd, 0xa4, 0x02, 0xff, 0xfe, 0x5b, 0xfe, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01], true);
 
-    public struct EncryptedMessage
+    public readonly ref struct EncryptedMessage
     {
-        public byte VersionId;
-        public G2 C1;
-        public Bytes32 C2;
-        public Bytes32[] C3;
+        public readonly byte VersionId { get; init; }
+        public readonly G2 C1 { get; init; }
+        public readonly ReadOnlySpan<byte> C2 { get; init; }
+        public readonly ReadOnlySpan<byte> C3 { get; init; }
     }
 
     public class ShutterCryptoException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-    public static Bytes32 XorBlocks(Bytes32 x, Bytes32 y)
-        => new(x.Unwrap().Xor(y.Unwrap()));
-
     public static G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
     {
-        Span<byte> preimage = stackalloc byte[52];
+        Span<byte> preimage = new byte[52];
         identityPrefix.Unwrap().CopyTo(preimage);
         sender.Bytes.CopyTo(preimage[32..]);
         return ComputeIdentity(preimage);
     }
 
-    public static byte[] Decrypt(EncryptedMessage encryptedMessage, G1 key)
+    public static void Decrypt(ref Span<byte> res, EncryptedMessage encryptedMessage, G1 key)
     {
-        Bytes32 sigma = RecoverSigma(encryptedMessage, key);
-        Bytes32[] keys = ComputeBlockKeys(sigma, encryptedMessage.C3.Count());
-        for (int i = 0; i < keys.Length; i++)
-        {
-            XorBlocks(keys[i], encryptedMessage.C3[i]);
-        }
-        Bytes32[] decryptedBlocks = keys.Zip(encryptedMessage.C3, XorBlocks).ToArray();
-        byte[] msg = UnpadAndJoin(decryptedBlocks);
+        RecoverSigma(out Span<byte> sigma, encryptedMessage, key);
+        ComputeBlockKeys(res, sigma, encryptedMessage.C3.Length / 32);
 
-        ComputeR(sigma, msg, out UInt256 r);
+        res.Xor(encryptedMessage.C3);
+
+        UnpadAndJoin(ref res);
+
+        ComputeR(sigma, res, out UInt256 r);
 
         G2 expectedC1 = ComputeC1(r);
-        if (!expectedC1.is_equal(encryptedMessage.C1))
+        if (!expectedC1.IsEqual(encryptedMessage.C1))
         {
             throw new ShutterCryptoException("Could not decrypt message.");
         }
-
-        return msg;
     }
+
+    public static int GetDecryptedDataLength(EncryptedMessage encryptedMessage)
+        => encryptedMessage.C3.Length;
 
     public static EncryptedMessage DecodeEncryptedMessage(ReadOnlySpan<byte> bytes)
     {
@@ -76,21 +71,21 @@ public static class ShutterCrypto
             throw new ShutterCryptoException($"Encrypted message had wrong Shutter crypto version. Expected version {CryptoVersion}, found {bytes[0]}.");
         }
 
-        ReadOnlySpan<byte> c3Bytes = bytes[(1 + 96 + 32)..];
-        Bytes32[] c3 = new Bytes32[c3Bytes.Length / 32];
-        for (int i = 0; i < c3Bytes.Length / 32; i++)
+        ReadOnlySpan<byte> c3 = bytes[(1 + 96 + 32)..];
+
+        if (c3.Length % 32 != 0)
         {
-            c3[i] = new(c3Bytes[(i * 32)..((i + 1) * 32)]);
+            throw new ShutterCryptoException("Encrypted Shutter message had invalid c3");
         }
 
         try
         {
-            var c1 = new G2(bytes[1..(1 + 96)].ToArray());
-            return new EncryptedMessage
+            G2 c1 = new(bytes[1..(1 + 96)]);
+            return new()
             {
                 VersionId = bytes[0],
                 C1 = c1,
-                C2 = new Bytes32(bytes[(1 + 96)..(1 + 96 + 32)]),
+                C2 = bytes[(1 + 96)..(1 + 96 + 32)],
                 C3 = c3
             };
         }
@@ -100,38 +95,40 @@ public static class ShutterCrypto
         }
     }
 
-    public static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
+    public static void RecoverSigma(out Span<byte> res, EncryptedMessage encryptedMessage, G1 decryptionKey)
     {
         GT p = new(decryptionKey, encryptedMessage.C1);
-        Bytes32 key = Hash2(p);
-        return XorBlocks(encryptedMessage.C2, key);
+        res = Hash2(p); // key
+        res.Xor(encryptedMessage.C2);
     }
 
-    public static Bytes32[] ComputeBlockKeys(Bytes32 sigma, int n)
+    public static void ComputeBlockKeys(Span<byte> res, ReadOnlySpan<byte> sigma, int n)
     {
-        var blocks = new Bytes32[n];
+        if (res.Length != 32 * n)
+        {
+            throw new ArgumentException("Block keys buffer was the wrong size.");
+        }
+
         Span<byte> preimageBuf = stackalloc byte[36];
         Span<byte> suffix = stackalloc byte[4];
 
-        for (int x = 0; x < n; x++)
+        for (int i = 0; i < n; i++)
         {
-            BinaryPrimitives.WriteUInt32BigEndian(suffix, (uint)x);
+            BinaryPrimitives.WriteUInt32BigEndian(suffix, (uint)i);
             int suffixLength = 4;
-            for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
             {
-                if (suffix[i] != 0)
+                if (suffix[j] != 0)
                 {
                     break;
                 }
                 suffixLength--;
             }
             Span<byte> preimage = preimageBuf[..(32 + suffixLength)];
-            sigma.Unwrap().CopyTo(preimage);
+            sigma.CopyTo(preimage);
             suffix[(4 - suffixLength)..4].CopyTo(preimage[32..]);
-            blocks[x] = Hash4(preimage);
+            Hash4(preimage).CopyTo(res[(i * 32)..]);
         }
-
-        return blocks;
     }
 
     // Hash1 in spec
@@ -141,36 +138,36 @@ public static class ShutterCrypto
         preimage[0] = 0x1;
         bytes.CopyTo(preimage.AsSpan()[1..]);
 
-        return new G1().hash_to(preimage, DST);
+        return G1.Generator().HashTo(preimage, DST);
     }
 
-    public static Bytes32 Hash2(GT p)
+    public static Span<byte> Hash2(GT p)
     {
-        Span<byte> preimage = stackalloc byte[577];
+        Span<byte> preimage = new byte[577];
         preimage[0] = 0x2;
-        p.final_exp().to_bendian().CopyTo(preimage[1..]);
+        p.FinalExp().ToBendian().CopyTo(preimage[1..]);
         return HashBytesToBlock(preimage);
     }
 
     public static GT GTExp(GT x, UInt256 exp)
     {
         GT a = x;
-        GT acc = GT.one();
+        GT acc = GT.One();
 
         for (; exp > 0; exp >>= 1)
         {
             if ((exp & 1) == 1)
             {
-                acc.mul(a);
+                acc.Mul(a);
             }
-            a.sqr();
+            a.Sqr();
         }
 
         return acc;
     }
 
     public static bool CheckDecryptionKey(G1 decryptionKey, G2 eonPublicKey, G1 identity) =>
-        GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
+        GT.FinalVerify(new(decryptionKey, G2.Generator()), new(identity, eonPublicKey));
 
     public static bool CheckSlotDecryptionIdentitiesSignature(
         ulong instanceId,
@@ -197,122 +194,95 @@ public static class ShutterCrypto
         return expectedPubkey is not null && keyperAddress == expectedPubkey.Address;
     }
 
-    public static bool CheckValidatorRegistrySignature(in byte[] pkBytes, in byte[] sigBytes, in byte[] msgBytes)
+    public static bool CheckValidatorRegistrySignature(ReadOnlySpan<byte> pkBytes, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> msgBytes)
     {
-        BlsSigner.PublicKey pk = new() { Bytes = pkBytes };
-        BlsSigner.Signature sig = new() { Bytes = sigBytes };
+        BlsSigner.Signature sig = new(sigBytes);
         Hash256 h = Keccak.Compute(msgBytes);
 
-        return BlsSigner.Verify(pk, sig, h.BytesToArray());
+        return BlsSigner.Verify(new(pkBytes), sig, h.BytesToArray());
     }
 
-    public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
+    public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, ReadOnlySpan<byte> sigma)
     {
         ComputeR(sigma, msg, out UInt256 r);
+        ReadOnlySpan<byte> msgBlocks = PadAndSplit(msg);
+        Span<byte> c3 = new byte[msgBlocks.Length];
+        ComputeC3(c3, msgBlocks, sigma);
 
         return new()
         {
             VersionId = CryptoVersion,
             C1 = ComputeC1(r),
             C2 = ComputeC2(sigma, r, identity, eonKey),
-            C3 = ComputeC3(PadAndSplit(msg), sigma)
+            C3 = c3
         };
     }
 
-    public static byte[] EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
+    public static Span<byte> EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
     {
-        byte[] bytes = new byte[1 + 96 + 32 + (encryptedMessage.C3.Length * 32)];
+        Span<byte> encoded = new byte[1 + 96 + 32 + encryptedMessage.C3.Length];
 
-        bytes[0] = encryptedMessage.VersionId;
-        encryptedMessage.C1.compress().CopyTo(bytes.AsSpan()[1..]);
-        encryptedMessage.C2.Unwrap().CopyTo(bytes.AsSpan()[(1 + 96)..]);
+        encoded[0] = encryptedMessage.VersionId;
+        encryptedMessage.C1.Compress().CopyTo(encoded[1..]);
+        encryptedMessage.C2.CopyTo(encoded[(1 + 96)..]);
+        encryptedMessage.C3.CopyTo(encoded[(1 + 96 + 32)..]);
 
-        foreach ((Bytes32 block, int i) in encryptedMessage.C3.WithIndex())
-        {
-            int offset = 1 + 96 + 32 + (32 * i);
-            block.Unwrap().CopyTo(bytes.AsSpan()[offset..]);
-        }
-
-        return bytes;
+        return encoded;
     }
 
     private static G2 ComputeC1(UInt256 r)
-        => G2.generator().mult(r.ToLittleEndian());
+        => G2.Generator().Mult(r.ToLittleEndian());
 
-    private static Bytes32 HashBytesToBlock(ReadOnlySpan<byte> bytes)
-        => new(Keccak.Compute(bytes).Bytes);
+    private static Span<byte> HashBytesToBlock(ReadOnlySpan<byte> bytes)
+        => Keccak.Compute(bytes).Bytes;
 
-    private static byte[] UnpadAndJoin(in Bytes32[] blocks)
+    private static void UnpadAndJoin(ref Span<byte> blocks)
     {
         if (blocks.Length == 0)
         {
-            return [];
+            return;
         }
 
-        Bytes32 lastBlock = blocks[^1];
-        byte n = lastBlock.Unwrap().Last();
+        byte n = blocks[^1];
 
         if (n == 0 || n > 32)
         {
             throw new ShutterCryptoException("Invalid padding length");
         }
 
-        byte[] res = new byte[blocks.Length * 32 - n];
-
-        for (int i = 0; i < blocks.Length - 1; i++)
-        {
-            blocks.ElementAt(i).Unwrap().CopyTo(res.AsSpan()[(i * 32)..]);
-        }
-
-        for (int i = 0; i < 32 - n; i++)
-        {
-            res[(blocks.Length - 1) * 32 + i] = lastBlock.Unwrap()[i];
-        }
-
-        return res;
+        blocks = blocks[..(blocks.Length - n)];
     }
 
-    private static Bytes32 ComputeC2(Bytes32 sigma, UInt256 r, G1 identity, G2 eonKey)
+    private static Span<byte> ComputeC2(ReadOnlySpan<byte> sigma, UInt256 r, G1 identity, G2 eonKey)
     {
         GT p = new(identity, eonKey);
         GT preimage = GTExp(p, r);
-        Bytes32 key = Hash2(preimage);
-        return XorBlocks(sigma, key);
-    }
-
-    private static Bytes32[] ComputeC3(in Bytes32[] messageBlocks, Bytes32 sigma)
-    {
-        // keys ^ msgs = blocks
-        Bytes32[] blocks = ComputeBlockKeys(sigma, messageBlocks.Length);
-        for (int i = 0; i < blocks.Length; i++)
-        {
-            blocks[i] = XorBlocks(blocks[i], messageBlocks[i]);
-        }
-        return blocks;
-    }
-
-    private static Bytes32[] PadAndSplit(ReadOnlySpan<byte> bytes)
-    {
-        int n = 32 - (bytes.Length % 32);
-
-        Span<byte> padded = stackalloc byte[bytes.Length + n];
-        padded.Fill((byte)n);
-        bytes.CopyTo(padded);
-
-        var res = new Bytes32[padded.Length / 32];
-
-        for (int i = 0; i < padded.Length / 32; i++)
-        {
-            int offset = i * 32;
-            res[i] = new(padded[offset..(offset + 32)]);
-        }
+        Span<byte> res = Hash2(preimage); //key
+        res.Xor(sigma);
         return res;
     }
 
-    private static void ComputeR(Bytes32 sigma, ReadOnlySpan<byte> msg, out UInt256 res)
+    private static void ComputeC3(Span<byte> res, ReadOnlySpan<byte> msgBlocks, ReadOnlySpan<byte> sigma)
+    {
+        // res = keys ^ msgs
+        ComputeBlockKeys(res, sigma, msgBlocks.Length / 32);
+        res.Xor(msgBlocks);
+    }
+
+    private static Span<byte> PadAndSplit(ReadOnlySpan<byte> bytes)
+    {
+        int n = 32 - (bytes.Length % 32);
+
+        Span<byte> res = new byte[bytes.Length + n];
+        res.Fill((byte)n);
+        bytes.CopyTo(res);
+        return res;
+    }
+
+    private static void ComputeR(ReadOnlySpan<byte> sigma, ReadOnlySpan<byte> msg, out UInt256 res)
     {
         Span<byte> preimage = stackalloc byte[32 + msg.Length];
-        sigma.Unwrap().CopyTo(preimage);
+        sigma.CopyTo(preimage);
         msg.CopyTo(preimage[32..]);
         Hash3(preimage, out res);
     }
@@ -341,12 +311,11 @@ public static class ShutterCrypto
         UInt256.Mod(new UInt256(hash, true), BlsSubgroupOrder, out res);
     }
 
-    private static Bytes32 Hash4(ReadOnlySpan<byte> bytes)
+    private static Span<byte> Hash4(ReadOnlySpan<byte> bytes)
     {
         byte[] preimage = new byte[bytes.Length + 1];
         preimage[0] = 0x4;
         bytes.CopyTo(preimage.AsSpan()[1..]);
-        Span<byte> hash = Keccak.Compute(preimage).Bytes;
-        return new(hash);
+        return Keccak.Compute(preimage).Bytes;
     }
 }
