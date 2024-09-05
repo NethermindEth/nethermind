@@ -64,7 +64,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithChainId(ulong chainId)
+        public TransactionBuilder<T> WithChainId(ulong? chainId)
         {
             TestObjectInternal.ChainId = chainId;
             return this;

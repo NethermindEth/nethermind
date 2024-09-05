@@ -52,6 +52,7 @@ public class RpcLegacyTransactionTests
         BuildALegacyTransaction.WithGasPrice((UInt256) 123).TestObject,
         BuildALegacyTransaction.WithGasPrice(UInt256.MaxValue).TestObject,
 
+        BuildALegacyTransaction.WithChainId(null).TestObject,
         BuildALegacyTransaction.WithChainId(BlockchainIds.Mainnet).TestObject,
         BuildALegacyTransaction.WithChainId(BlockchainIds.Sepolia).TestObject,
         BuildALegacyTransaction.WithChainId(0).TestObject,
