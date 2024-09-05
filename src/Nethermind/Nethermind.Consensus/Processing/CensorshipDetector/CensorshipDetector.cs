@@ -70,6 +70,10 @@ public class CensorshipDetector : IDisposable
     private bool IsSyncing()
     {
         long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+        if (bestSuggestedNumber == 0)
+        {
+            return true;
+        }
         long headNumberOrZero = _blockTree.Head?.Number ?? 0;
         return bestSuggestedNumber > headNumberOrZero;
     }
@@ -106,72 +110,81 @@ public class CensorshipDetector : IDisposable
 
         try
         {
-            // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block.
-            long blockTxsOfTrackedAddresses = 0;
-
-            // Number of unique addresses specified by the user for censorship detection, to which includable txs are sent in the pool.
-            // Includable txs consist of pool transactions better than the worst tx in block.
-            long poolTxsThatAreBetterThanWorstInBlock = 0;
-
-            Transaction bestTxInBlock = block.Transactions.Length == 0 ? null : block.Transactions[0];
-            Transaction worstTxInBlock = block.Transactions.Length == 0 ? null : block.Transactions[0];
-            HashSet<AddressAsKey> trackedAddressesInBlock = [];
-
-            foreach (Transaction tx in block.Transactions)
+            if (block.Transactions.Length == 0)
             {
-                if (!tx.SupportsBlobs)
-                {
-                    // Finds best tx in block
-                    if (_betterTxComparer.Compare(bestTxInBlock, tx) > 0)
-                    {
-                        bestTxInBlock = tx;
-                    }
+                BlockCensorshipInfo blockCensorshipInfo = new(false, block.ParentHash);
+                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
+            }
+            else
+            {
+                // Number of unique addresses specified by the user for censorship detection, to which txs are sent in the block.
+                long blockTxsOfTrackedAddresses = 0;
 
-                    if (tracksPerAddressCensorship)
+                // Number of unique addresses specified by the user for censorship detection, to which includable txs are sent in the pool.
+                // Includable txs consist of pool transactions better than the worst tx in block.
+                long poolTxsThatAreBetterThanWorstInBlock = 0;
+
+                Transaction bestTxInBlock = block.Transactions[0];
+                Transaction worstTxInBlock = block.Transactions[0];
+                HashSet<AddressAsKey> trackedAddressesInBlock = [];
+
+                foreach (Transaction tx in block.Transactions)
+                {
+                    if (!tx.SupportsBlobs)
                     {
-                        // Finds worst tx in pool to compare with pool transactions of tracked addresses
-                        if (_betterTxComparer.Compare(worstTxInBlock, tx) < 0)
+                        // Finds best tx in block
+                        if (_betterTxComparer.Compare(bestTxInBlock, tx) > 0)
                         {
-                            worstTxInBlock = tx;
+                            bestTxInBlock = tx;
                         }
 
-                        bool trackAddress = _bestTxPerObservedAddresses.ContainsKey(tx.To!);
-                        if (trackAddress && trackedAddressesInBlock.Add(tx.To!))
+                        if (tracksPerAddressCensorship)
                         {
-                            blockTxsOfTrackedAddresses++;
+                            // Finds worst tx in pool to compare with pool transactions of tracked addresses
+                            if (_betterTxComparer.Compare(worstTxInBlock, tx) < 0)
+                            {
+                                worstTxInBlock = tx;
+                            }
+
+                            bool trackAddress = _bestTxPerObservedAddresses.ContainsKey(tx.To!);
+                            if (trackAddress && trackedAddressesInBlock.Add(tx.To!))
+                            {
+                                blockTxsOfTrackedAddresses++;
+                            }
                         }
                     }
                 }
-            }
 
-            if (tracksPerAddressCensorship)
-            {
-                foreach (Transaction? bestTx in _bestTxPerObservedAddresses.Values)
+                if (tracksPerAddressCensorship)
                 {
-                    // if there is no transaction in block or the best tx in the pool is better than the worst tx in the block
-                    if (bestTx is null || _betterTxComparer.Compare(bestTx, worstTxInBlock) < 0)
+                    foreach (Transaction? bestTx in _bestTxPerObservedAddresses.Values)
                     {
-                        poolTxsThatAreBetterThanWorstInBlock++;
+                        // if there is no transaction in block or the best tx in the pool is better than the worst tx in the block
+                        if (bestTx is null || _betterTxComparer.Compare(bestTx, worstTxInBlock) < 0)
+                        {
+                            poolTxsThatAreBetterThanWorstInBlock++;
+                        }
                     }
                 }
-            }
 
-            // Checking to see if the block exhibits high-paying tx censorship or address censorship or both.
-            // High-paying tx censorship is flagged if the best tx in the pool is not included in the block.
-            // Address censorship is flagged if txs sent to less than half of the user-specified addresses
-            // for censorship detection with includable txs in the pool are included in the block.
-            bool isCensored = _betterTxComparer.Compare(bestTxInBlock, _txPool.GetBestTx()) > 0
-                              || blockTxsOfTrackedAddresses * 2 < poolTxsThatAreBetterThanWorstInBlock;
+                // Checking to see if the block exhibits high-paying tx censorship or address censorship or both.
+                // High-paying tx censorship is flagged if the best tx in the pool is not included in the block.
+                // Address censorship is flagged if txs sent to less than half of the user-specified addresses
+                // for censorship detection with includable txs in the pool are included in the block.
+                bool isCensored = _betterTxComparer.Compare(bestTxInBlock, _txPool.GetBestTx()) > 0
+                                  || blockTxsOfTrackedAddresses * 2 < poolTxsThatAreBetterThanWorstInBlock;
 
-            BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
-            BlockNumberHash blockNumberHash = new BlockNumberHash(block);
-            _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
+                BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
+                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
 
-            if (isCensored)
-            {
-                Metrics.NumberOfPotentiallyCensoredBlocks++;
-                Metrics.LastPotentiallyCensoredBlockNumber = block.Number;
-                DetectMultiBlockCensorship(blockNumberHash, blockCensorshipInfo);
+                if (isCensored)
+                {
+                    Metrics.NumberOfPotentiallyCensoredBlocks++;
+                    Metrics.LastPotentiallyCensoredBlockNumber = block.Number;
+                    DetectMultiBlockCensorship(blockNumberHash, blockCensorshipInfo);
+                }
             }
         }
         finally
