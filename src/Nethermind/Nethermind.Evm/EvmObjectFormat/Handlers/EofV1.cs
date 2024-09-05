@@ -350,11 +350,13 @@ internal class Eof1 : IEofVersionHandler
 
     private bool ValidateContainer(EofContainer eofContainer, ValidationStrategy validationStrategy)
     {
-        Queue<EofContainer> containers = new Queue<EofContainer>();
-        containers.Enqueue(eofContainer);
-
-        while (containers.TryDequeue(out EofContainer targetContainer))
+        Queue<(EofContainer container, ValidationStrategy strategy)> containers = new();
+        containers.Enqueue((eofContainer, validationStrategy));
+        while (containers.TryDequeue(out var target))
         {
+            EofContainer targetContainer = target.container;
+            validationStrategy = target.strategy;
+
             QueueManager containerQueue = new(1 + (targetContainer.Header.ContainerSections?.Count ?? 0));
             containerQueue.Enqueue(0, validationStrategy);
 
@@ -367,10 +369,10 @@ internal class Eof1 : IEofVersionHandler
                     if (containerQueue.VisitedContainers[worklet.Index] != 0)
                         continue;
 
-                    if (targetContainer.CodeSections.Length < worklet.Index)
+                    if (targetContainer.ContainerSections.Length < worklet.Index)
                         continue;
 
-                    ReadOnlyMemory<byte> subsection = targetContainer.CodeSections[worklet.Index - 1];
+                    ReadOnlyMemory<byte> subsection = targetContainer.ContainerSections[worklet.Index - 1];
                     if (!TryParseEofHeader(subsection, out EofHeader? header) ||
                         !ValidateBody(subsection.Span, header.Value, validationStrategy))
                     {
@@ -379,7 +381,11 @@ internal class Eof1 : IEofVersionHandler
 
                     if (validationStrategy.HasFlag(ValidationStrategy.Validate))
                     {
-                        containers.Enqueue(new EofContainer(subsection, header.Value));
+                        // Clear the Initcode flag for subcontainer
+                        ValidationStrategy subContainerValidation = validationStrategy & ~ValidationStrategy.ValidateInitcodeMode;
+                        // Set the Runtime flag for subcontainer
+                        subContainerValidation |= ValidationStrategy.ValidateRuntimeMode;
+                        containers.Enqueue((new EofContainer(subsection, header.Value), subContainerValidation));
                     }
                 }
                 else
