@@ -1,10 +1,12 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public record NGram(ulong ngram)
+    public record NGram(ulong ngram) : IEnumerable<ulong>
     {
         public const uint SIZE = 7;
         public const ulong NULL = 0;
@@ -21,12 +23,25 @@ namespace Nethermind.Evm.CodeAnalysis
         public static ulong[] byteIndexShifts = { 0, 8, 16, 24, 32, 40, 48, 56 };
 
 
-        public NGram(Instruction[] instructions) : this(InstructionsToNGram(instructions))
+        public NGram(Instruction[] instructions) : this(FromInstructions(instructions))
         {
         }
 
-        public NGram(byte[] instructions) : this(BytesToNGram(instructions))
+        public NGram(byte[] instructions) : this(FromBytes(instructions))
         {
+        }
+
+
+        public NGram AddByte(byte instruction)
+        {
+            return this with { ngram = AddByte(ngram, instruction) };
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong AddByte(ulong ngram, byte instruction)
+        {
+            if (instruction == STOP) return 0;
+            return (ngram << 8) | instruction;
         }
 
 
@@ -73,28 +88,14 @@ namespace Nethermind.Evm.CodeAnalysis
             return AsString(ngram);
         }
 
-        public static NGram[] GetNGrams(ulong ngram)
-        {
-            NGram[] ngrams = new NGram[] { };
-            for (int i = 1; i < NGram.SIZE; i++)
-                if (NGram.byteIndexes[i - 1] < ngram)
-                    ngrams[i - 1] = new NGram(ngram & NGram.bitMasks[i]);
-            return ngrams;
-        }
-
-        public NGram[] GetNGrams()
-        {
-            return GetNGrams(ngram);
-        }
-
-        private static ulong InstructionsToNGram(Instruction[] instructions)
+        private static ulong FromInstructions(Instruction[] instructions)
         {
 
             byte[] byteArray = instructions.Select(i => (byte)i).ToArray();
-            return BytesToNGram(byteArray);
+            return FromBytes(byteArray);
         }
 
-        private static ulong BytesToNGram(byte[] instructions)
+        private static ulong FromBytes(byte[] instructions)
         {
             if (instructions.Length > 7)
                 throw new ArgumentException($"Invalid byte length found expected {SIZE}");
@@ -107,10 +108,21 @@ namespace Nethermind.Evm.CodeAnalysis
             return _ngram;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong AddByte(ulong ngram, byte instruction)
+
+        public IEnumerator<ulong> GetEnumerator()
         {
-            return (ngram << 8) | instruction;
+            for (int i = 1; i < NGram.SIZE; i++)
+            {
+                if (NGram.byteIndexes[i - 1] < ngram)
+                {
+                    yield return this.ngram & NGram.bitMasks[i]; // Corrected the syntax here
+                }
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
         }
 
     }

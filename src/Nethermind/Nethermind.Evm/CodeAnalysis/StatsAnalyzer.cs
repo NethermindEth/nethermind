@@ -7,7 +7,7 @@ namespace Nethermind.Evm.CodeAnalysis
     public class StatsAnalyzer
     {
 
-        public NGram NGram => new NGram(_ngram);
+        public NGram NGram => _ngram;
 
         public const Instruction STOP = Instruction.STOP;
 
@@ -17,7 +17,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private CMSketch _sketch;
 
         private int _topN;
-        private ulong _ngram = NGram.NULL;
+        private NGram _ngram = new NGram(NGram.NULL);
 
         private int _capacity;
         private ulong _minSupport;
@@ -41,14 +41,9 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public void Add(Instruction instruction)
         {
-            if (instruction == STOP)
-                _ngram = NGram.NULL;
-
-            _ngram = NGram.AddByte(_ngram, (byte)instruction);
-
-            for (int i = 1; i < NGram.SIZE; i++)
-                if (NGram.byteIndexes[i - 1] < _ngram)
-                    ProcessNGram(_ngram & NGram.bitMasks[i]);
+            _ngram = _ngram.AddByte((byte)instruction);
+            foreach (ulong ngram in _ngram)
+                ProcessNGram(ngram);
         }
 
         private void ProcessNGram(ulong ngram)
