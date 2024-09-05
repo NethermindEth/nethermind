@@ -566,6 +566,40 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out _), Is.True);
     }
 
+    [Test]
+    public void IsWellFormed_EmptyAuthorizationList_ReturnsFalse()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode([])
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out _), Is.False);
+    }
+
+    [Test]
+    public void IsWellFormed_NullAuthorizationList_ReturnsFalse()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode((AuthorizationTuple[])null!)
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out _), Is.False);
+    }
+
     private static byte[] MakeArray(int count, params byte[] elements) =>
         elements.Take(Math.Min(count, elements.Length))
             .Concat(new byte[Math.Max(0, count - elements.Length)])

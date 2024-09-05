@@ -122,26 +122,6 @@ namespace Nethermind.Consensus.Validators
         {
             Signature? signature = tx.Signature;
 
-            if (!ValidateSignature(signature, spec))
-            {
-                return false;
-            }
-
-            if (signature.V is 27 or 28)
-            {
-                return true;
-            }
-
-            if (tx.Type == TxType.Legacy && spec.IsEip155Enabled && (signature.V == _chainIdValue * 2 + 35ul || signature.V == _chainIdValue * 2 + 36ul))
-            {
-                return true;
-            }
-
-            return !spec.ValidateChainId;
-        }
-
-        private bool ValidateSignature(Signature signature, IReleaseSpec spec)
-        {
             if (signature is null)
             {
                 return false;
@@ -160,7 +140,17 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            return true;
+            if (signature.V is 27 or 28)
+            {
+                return true;
+            }
+
+            if (tx.Type == TxType.Legacy && spec.IsEip155Enabled && (signature.V == _chainIdValue * 2 + 35ul || signature.V == _chainIdValue * 2 + 36ul))
+            {
+                return true;
+            }
+
+            return !spec.ValidateChainId;
         }
 
         private bool ValidateAuthoritySignature(Signature signature)
@@ -333,7 +323,7 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
             }
-            else if (tx.AuthorizationList is null)
+            else if (tx.AuthorizationList is null || tx.AuthorizationList.Length == 0)
             {
                 error = TxErrorMessages.MissingAuthorizationList;
                 return false;
