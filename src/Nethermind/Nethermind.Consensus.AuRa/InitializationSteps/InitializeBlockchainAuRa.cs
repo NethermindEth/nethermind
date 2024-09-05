@@ -23,6 +23,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -254,7 +255,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return CreateTxPoolTxComparer();
     }
 
-    protected override TxPool.TxPool CreateTxPool()
+    protected override TxPool.TxPool CreateTxPool(IWorldState worldState, CodeInfoRepository codeInfoRepository)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
         var txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
@@ -274,6 +275,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.TxValidator,
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
+            codeInfoRepository,
+            worldState,
             _api.TxGossipPolicy,
             new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
             txPriorityContract is not null || localDataSource is not null);

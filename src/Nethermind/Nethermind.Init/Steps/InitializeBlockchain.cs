@@ -73,7 +73,9 @@ namespace Nethermind.Init.Steps
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             IStateReader stateReader = setApi.StateReader!;
-            ITxPool txPool = _api.TxPool = CreateTxPool();
+            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
+            CodeInfoRepository codeInfoRepository = new(1, preBlockCaches?.PrecompileCache);
+            ITxPool txPool = _api.TxPool = CreateTxPool(_api.WorldState!, codeInfoRepository);
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
@@ -82,8 +84,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
-            CodeInfoRepository codeInfoRepository = new(1, preBlockCaches?.PrecompileCache);
+
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
             _api.TransactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
 
@@ -200,7 +201,7 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual TxPool.TxPool CreateTxPool() =>
+        protected virtual TxPool.TxPool CreateTxPool(IWorldState worldState, CodeInfoRepository codeInfoRepository) =>
             new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
@@ -208,6 +209,8 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
+                codeInfoRepository,
+                worldState,
                 _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();

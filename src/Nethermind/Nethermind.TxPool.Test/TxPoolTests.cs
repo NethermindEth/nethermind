@@ -1728,6 +1728,8 @@ namespace Nethermind.TxPool.Test
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
+                new CodeInfoRepository(specProvider.ChainId),
+                _stateProvider,
                 ShouldGossip.Instance,
                 incomingTxFilter,
                 thereIsPriorityContract);
