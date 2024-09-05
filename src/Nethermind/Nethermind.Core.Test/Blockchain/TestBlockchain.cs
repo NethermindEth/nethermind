@@ -322,7 +322,9 @@ public class TestBlockchain : IDisposable
             new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
-            TransactionComparerProvider.GetDefaultComparer());
+            TransactionComparerProvider.GetDefaultComparer(),
+            new CodeInfoRepository(SpecProvider.ChainId),
+            WorldStateManager.GlobalWorldState);
 
     protected virtual TxPoolTxSource CreateTxPoolTxSource()
     {

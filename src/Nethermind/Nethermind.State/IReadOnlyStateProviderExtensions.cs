@@ -14,9 +14,7 @@ namespace Nethermind.State
             stateProvider.TryGetAccount(address, out AccountStruct account);
             return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash) ?? Array.Empty<byte>();
         }
-
         public static bool IsInvalidContractSender(this IReadOnlyStateProvider stateProvider, IReleaseSpec spec, Address address) =>
            spec.IsEip3607Enabled && stateProvider.HasCode(address) && !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, address));
-
     }
 }

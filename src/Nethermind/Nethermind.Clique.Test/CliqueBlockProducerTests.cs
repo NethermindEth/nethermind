@@ -114,7 +114,9 @@ namespace Nethermind.Clique.Test
                     new TxPoolConfig(),
                     new TxValidator(goerliSpecProvider.ChainId),
                     _logManager,
-                    transactionComparerProvider.GetDefaultComparer());
+                    transactionComparerProvider.GetDefaultComparer(),
+                    new CodeInfoRepository(specProvider.ChainId),
+                    stateProvider);
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
