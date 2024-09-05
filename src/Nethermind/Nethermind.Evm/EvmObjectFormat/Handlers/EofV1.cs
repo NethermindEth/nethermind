@@ -2,36 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
-using Nethermind.Logging;
-using Nethermind.Evm;
-using System.Buffers;
-using FastEnumUtility;
 using System.Runtime.InteropServices;
 using DotNetty.Common.Utilities;
+using FastEnumUtility;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm;
+
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
-using System.Reflection;
 
 namespace Nethermind.Evm.EvmObjectFormat.Handlers;
 
 internal class Eof1 : IEofVersionHandler
 {
-    struct QueueManager
+    private readonly struct QueueManager
     {
-        public Queue<(int index, ValidationStrategy strategy)> ContainerQueue;
-        public byte[] VisitedContainers;
+        public readonly Queue<(int index, ValidationStrategy strategy)> ContainerQueue;
+        public readonly ValidationStrategy[] VisitedContainers;
 
         public QueueManager(int containerCount)
         {
             ContainerQueue = new();
-            VisitedContainers = new byte[containerCount];
-
-            VisitedContainers.Fill((byte)0);
+            VisitedContainers = new ValidationStrategy[containerCount];
         }
 
         public void Enqueue(int index, ValidationStrategy strategy)
@@ -39,9 +35,9 @@ internal class Eof1 : IEofVersionHandler
             ContainerQueue.Enqueue((index, strategy));
         }
 
-        public void MarkVisited(int index, byte strategy)
+        public void MarkVisited(int index, ValidationStrategy strategy)
         {
-            VisitedContainers[index] = (byte)strategy;
+            VisitedContainers[index] = strategy;
         }
 
         public bool TryDequeue(out (int Index, ValidationStrategy Strategy) worklet) => ContainerQueue.TryDequeue(out worklet);
@@ -50,7 +46,7 @@ internal class Eof1 : IEofVersionHandler
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    struct StackBounds()
+    private struct StackBounds()
     {
         public short Max = -1;
         public short Min = 1023;
@@ -324,7 +320,7 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    public bool TryGetEofContainer(ReadOnlyMemory<byte> code, ValidationStrategy validationStrategy, out EofContainer? eofContainer)
+    public bool TryGetEofContainer(ReadOnlyMemory<byte> code, ValidationStrategy validationStrategy, [NotNullWhen(true)] out EofContainer? eofContainer)
     {
         if (!TryParseEofHeader(code, out EofHeader? header))
         {
@@ -352,39 +348,73 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    public bool ValidateContainer(EofContainer eofContainer, ValidationStrategy validationStrategy)
+    private bool ValidateContainer(EofContainer eofContainer, ValidationStrategy validationStrategy)
     {
-        QueueManager containerQueue = new(1 + (eofContainer.Header.ContainerSections?.Count ?? 0));
-        containerQueue.Enqueue(0, validationStrategy);
+        Queue<EofContainer> containers = new Queue<EofContainer>();
+        containers.Enqueue(eofContainer);
 
-        containerQueue.VisitedContainers[0] = validationStrategy.HasFlag(ValidationStrategy.ValidateInitcodeMode)
-            ? (byte)ValidationStrategy.ValidateInitcodeMode
-            : validationStrategy.HasFlag(ValidationStrategy.ValidateRuntimeMode)
-                ? (byte)ValidationStrategy.ValidateRuntimeMode
-                : (byte)0;
-
-        while (containerQueue.TryDequeue(out var worklet))
+        while (containers.TryDequeue(out EofContainer targetContainer))
         {
-            EofContainer targetContainer = eofContainer;
-            if (worklet.Index != 0)
-            {
-                if (containerQueue.VisitedContainers[worklet.Index] != 0)
-                    continue;
+            QueueManager containerQueue = new(1 + (targetContainer.Header.ContainerSections?.Count ?? 0));
+            containerQueue.Enqueue(0, validationStrategy);
 
-                if (!TryGetEofContainer(targetContainer.ContainerSections[worklet.Index - 1], worklet.Strategy, out EofContainer? subContainer))
-                    return false;
-            }
-            else
+            containerQueue.VisitedContainers[0] = GetValidation(validationStrategy);
+
+            while (containerQueue.TryDequeue(out var worklet))
             {
-                if (!ValidateCodeSections(targetContainer, worklet.Strategy, containerQueue))
-                    return false;
+                if (worklet.Index != 0)
+                {
+                    if (containerQueue.VisitedContainers[worklet.Index] != 0)
+                        continue;
+
+                    if (targetContainer.CodeSections.Length < worklet.Index)
+                        continue;
+
+                    ReadOnlyMemory<byte> subsection = targetContainer.CodeSections[worklet.Index - 1];
+                    if (!TryParseEofHeader(subsection, out EofHeader? header) ||
+                        !ValidateBody(subsection.Span, header.Value, validationStrategy))
+                    {
+                        return false;
+                    }
+
+                    if (validationStrategy.HasFlag(ValidationStrategy.Validate))
+                    {
+                        containers.Enqueue(new EofContainer(subsection, header.Value));
+                    }
+                }
+                else
+                {
+                    if (!ValidateCodeSections(targetContainer, worklet.Strategy, in containerQueue))
+                        return false;
+                }
+                containerQueue.MarkVisited(worklet.Index, GetVisited(worklet.Strategy));
             }
-            containerQueue.MarkVisited(worklet.Index, (byte)(worklet.Strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode) ? ValidationStrategy.ValidateInitcodeMode : ValidationStrategy.ValidateRuntimeMode));
+            if (!containerQueue.IsAllVisited())
+            {
+                return false;
+            }
         }
-        return containerQueue.IsAllVisited();
+
+        return true;
     }
 
-    bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header, ValidationStrategy strategy)
+    private static ValidationStrategy GetVisited(ValidationStrategy validationStrategy)
+    {
+        return validationStrategy.HasFlag(ValidationStrategy.ValidateInitcodeMode)
+            ? ValidationStrategy.ValidateInitcodeMode
+            : ValidationStrategy.ValidateRuntimeMode;
+    }
+
+    private static ValidationStrategy GetValidation(ValidationStrategy validationStrategy)
+    {
+        return validationStrategy.HasFlag(ValidationStrategy.ValidateInitcodeMode)
+            ? ValidationStrategy.ValidateInitcodeMode
+            : validationStrategy.HasFlag(ValidationStrategy.ValidateRuntimeMode)
+                ? ValidationStrategy.ValidateRuntimeMode
+                : ValidationStrategy.None;
+    }
+
+    private bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header, ValidationStrategy strategy)
     {
         int startOffset = header.TypeSection.Start;
         int endOffset = header.DataSection.Start;
@@ -452,7 +482,7 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    bool ValidateCodeSections(EofContainer eofContainer, ValidationStrategy strategy, QueueManager containerQueue)
+    private bool ValidateCodeSections(EofContainer eofContainer, ValidationStrategy strategy, in QueueManager containerQueue)
     {
         QueueManager sectionQueue = new(eofContainer.Header.CodeSections.Count);
 
@@ -463,16 +493,16 @@ internal class Eof1 : IEofVersionHandler
             if (sectionQueue.VisitedContainers[sectionIdx.Index] != 0)
                 continue;
 
-            if (!ValidateInstructions(eofContainer, sectionIdx.Index, strategy, sectionQueue, containerQueue))
+            if (!ValidateInstructions(eofContainer, sectionIdx.Index, strategy, in sectionQueue, in containerQueue))
                 return false;
 
-            sectionQueue.MarkVisited(sectionIdx.Index, 1);
+            sectionQueue.MarkVisited(sectionIdx.Index, ValidationStrategy.Validate);
         }
 
         return sectionQueue.IsAllVisited();
     }
 
-    bool ValidateTypeSection(ReadOnlySpan<byte> types)
+    private bool ValidateTypeSection(ReadOnlySpan<byte> types)
     {
         if (types[INPUTS_OFFSET] != 0 || types[OUTPUTS_OFFSET] != NON_RETURNING)
         {
@@ -513,7 +543,7 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    bool ValidateInstructions(EofContainer eofContainer, int sectionId, ValidationStrategy strategy, QueueManager sectionsWorklist, QueueManager containersWorklist)
+    private bool ValidateInstructions(EofContainer eofContainer, int sectionId, ValidationStrategy strategy, in QueueManager sectionsWorklist, in QueueManager containersWorklist)
     {
         ReadOnlySpan<byte> code = eofContainer.CodeSections[sectionId].Span;
 
@@ -548,14 +578,14 @@ internal class Eof1 : IEofVersionHandler
                     }
                     else
                     {
-                        if (containersWorklist.VisitedContainers[0] == (byte)ValidationStrategy.ValidateInitcodeMode)
+                        if (containersWorklist.VisitedContainers[0] == ValidationStrategy.ValidateInitcodeMode)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
                             return false;
                         }
                         else
                         {
-                            containersWorklist.VisitedContainers[0] = (byte)ValidationStrategy.ValidateRuntimeMode;
+                            containersWorklist.VisitedContainers[0] = ValidationStrategy.ValidateRuntimeMode;
                         }
                     }
                 }
@@ -729,14 +759,14 @@ internal class Eof1 : IEofVersionHandler
                     }
                     else
                     {
-                        if (containersWorklist.VisitedContainers[0] == (byte)ValidationStrategy.ValidateRuntimeMode)
+                        if (containersWorklist.VisitedContainers[0] == ValidationStrategy.ValidateRuntimeMode)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
                             return false;
                         }
                         else
                         {
-                            containersWorklist.VisitedContainers[0] = (byte)ValidationStrategy.ValidateInitcodeMode;
+                            containersWorklist.VisitedContainers[0] = ValidationStrategy.ValidateInitcodeMode;
                         }
                     }
 
@@ -754,7 +784,7 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     if (containersWorklist.VisitedContainers[runtimeContainerId + 1] != 0
-                        && containersWorklist.VisitedContainers[runtimeContainerId + 1] != (byte)ValidationStrategy.ValidateRuntimeMode)
+                        && containersWorklist.VisitedContainers[runtimeContainerId + 1] != ValidationStrategy.ValidateRuntimeMode)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s target container can only be a runtime mode bytecode");
                         return false;
@@ -783,7 +813,7 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     if (containersWorklist.VisitedContainers[initcodeSectionId + 1] != 0
-                        && containersWorklist.VisitedContainers[initcodeSectionId + 1] != (byte)ValidationStrategy.ValidateInitcodeMode)
+                        && containersWorklist.VisitedContainers[initcodeSectionId + 1] != ValidationStrategy.ValidateInitcodeMode)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s target container can only be a initcode mode bytecode");
                         return false;

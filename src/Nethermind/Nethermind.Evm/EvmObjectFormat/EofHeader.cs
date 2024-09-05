@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Evm.EvmObjectFormat.Handlers;
 using System;
 using System.Linq;
+using Nethermind.Evm.EvmObjectFormat.Handlers;
 
 namespace Nethermind.Evm.EvmObjectFormat;
 
-
-public struct EofContainer
+public readonly struct EofContainer
 {
-    public ReadOnlyMemory<byte> Container;
+    public readonly ReadOnlyMemory<byte> Container;
     public bool IsEmpty => Container.IsEmpty;
 
     public EofContainer(ReadOnlyMemory<byte> container, EofHeader eofHeader)
@@ -50,19 +49,19 @@ public struct EofContainer
         DataSection = container.Slice(eofHeader.DataSection.Start);
     }
 
-    public EofHeader Header;
-    public ReadOnlyMemory<byte> Prefix;
+    public readonly EofHeader Header;
+    public readonly ReadOnlyMemory<byte> Prefix;
 
-    public ReadOnlyMemory<byte> TypeSection;
-    public ReadOnlyMemory<byte>[] TypeSections;
+    public readonly ReadOnlyMemory<byte> TypeSection;
+    public readonly ReadOnlyMemory<byte>[] TypeSections;
 
-    public ReadOnlyMemory<byte> CodeSection;
-    public ReadOnlyMemory<byte>[] CodeSections;
+    public readonly ReadOnlyMemory<byte> CodeSection;
+    public readonly ReadOnlyMemory<byte>[] CodeSections;
 
 
-    public ReadOnlyMemory<byte> ContainerSection;
-    public ReadOnlyMemory<byte>[] ContainerSections;
-    public ReadOnlyMemory<byte> DataSection;
+    public readonly ReadOnlyMemory<byte> ContainerSection;
+    public readonly ReadOnlyMemory<byte>[] ContainerSections;
+    public readonly ReadOnlyMemory<byte> DataSection;
 }
 public struct EofHeader()
 {
@@ -74,7 +73,7 @@ public struct EofHeader()
     public required SectionHeader DataSection;
 }
 
-public struct SectionHeader(int start, ushort size)
+public readonly struct SectionHeader(int start, ushort size)
 {
     public readonly int Start => start;
     public readonly int Size => size;
@@ -83,7 +82,7 @@ public struct SectionHeader(int start, ushort size)
     public static implicit operator Range(SectionHeader section) => new(section.Start, section.EndOffset);
 }
 
-public struct CompoundSectionHeader(int start, int[] subSectionsSizes)
+public readonly struct CompoundSectionHeader(int start, int[] subSectionsSizes)
 {
     public readonly int Start => start;
 
@@ -93,24 +92,19 @@ public struct CompoundSectionHeader(int start, int[] subSectionsSizes)
     public readonly int Size => EndOffset - Start;
     public readonly int Count => SubSectionsSizes.Length;
 
-    private int[] subSectionsSizesAcc;
-    private int[] SubSectionsSizesAcc
+    private static int[] CreateSubSectionsSizes(int[] subSectionsSizes)
     {
-        get
+        var subSectionsSizesAcc = new int[subSectionsSizes.Length];
+        subSectionsSizesAcc[0] = 0;
+        for (var i = 1; i < subSectionsSizes.Length; i++)
         {
-            if (subSectionsSizesAcc is null)
-            {
-                subSectionsSizesAcc = new int[SubSectionsSizes.Length];
-                subSectionsSizesAcc[0] = 0;
-                for (var i = 1; i < SubSectionsSizes.Length; i++)
-                {
-                    subSectionsSizesAcc[i] = subSectionsSizesAcc[i - 1] + SubSectionsSizes[i - 1];
-                }
-            }
-
-            return subSectionsSizesAcc;
+            subSectionsSizesAcc[i] = subSectionsSizesAcc[i - 1] + subSectionsSizes[i - 1];
         }
+
+        return subSectionsSizesAcc;
     }
+
+    private int[] SubSectionsSizesAcc { get; } = CreateSubSectionsSizes(subSectionsSizes);
 
     public SectionHeader this[int i] => new SectionHeader(SubSectionsSizesAcc[i], (ushort)SubSectionsSizes[i]);
 

@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
