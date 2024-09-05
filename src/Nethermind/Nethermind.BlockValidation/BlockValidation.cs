@@ -13,7 +13,10 @@ namespace Nethermind.BlockValidation;
 
 public class BlockValidation : INethermindPlugin
 {
-    protected INethermindApi _api = null!;
+    private INethermindApi _api = null!;
+
+    private IBlockValidationConfig _blockValidationConfig = null!;
+
     public virtual string Name => "BlockValidation";
     public virtual string Description => "BlockValidation";
     public string Author => "Nethermind";
@@ -28,7 +31,8 @@ public class BlockValidation : INethermindPlugin
         ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
             _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
             readOnlyTxProcessingEnv,
-            _api.GasLimitCalculator ?? throw new ArgumentNullException(nameof(_api.GasLimitCalculator))
+            _api.GasLimitCalculator ?? throw new ArgumentNullException(nameof(_api.GasLimitCalculator)),
+            _blockValidationConfig
         );
         IFlashbotsRpcModule flashbotsRpcModule = new FlashbotsRpcModule(validateSubmissionHandler);
 
@@ -41,6 +45,7 @@ public class BlockValidation : INethermindPlugin
     public Task Init(INethermindApi api)
     {
         _api = api;
+        _blockValidationConfig = api.Config<IBlockValidationConfig>();
         return Task.CompletedTask;
     }
 

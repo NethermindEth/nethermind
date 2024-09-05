@@ -35,18 +35,22 @@ public class ValidateSubmissionHandler
     private readonly IGasLimitCalculator _gasLimitCalculator;
     private readonly ILogger _logger;
 
+    private readonly IBlockValidationConfig _blockValidationConfig;
+
     private readonly IReceiptStorage _receiptStorage = new InMemoryReceiptStorage();
 
     public ValidateSubmissionHandler(
         IBlockValidator blockValidator,
         ReadOnlyTxProcessingEnv txProcessingEnv,
-        IGasLimitCalculator gasLimitCalculator)
+        IGasLimitCalculator gasLimitCalculator,
+        IBlockValidationConfig blockValidationConfig)
     {
         _blockValidator = blockValidator;
         _txProcessingEnv = txProcessingEnv;
         _blockTree = _txProcessingEnv.BlockTree;
         _gasLimitCalculator = gasLimitCalculator;
         _logger = txProcessingEnv.LogManager!.GetClassLogger();
+        _blockValidationConfig = blockValidationConfig;
     }
 
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
@@ -284,7 +288,7 @@ public class ValidateSubmissionHandler
         Address feeRecipient = message.ProposerFeeRecipient;
         UInt256 expectedProfit = message.Value;
 
-        if (!ValidatePayload(block, feeRecipient, expectedProfit, registerGasLimit, false, false, out error)) // TODO: exclude withdrawals and useBalanceDiffProfit config option for the APIs
+        if (!ValidatePayload(block, feeRecipient, expectedProfit, registerGasLimit, _blockValidationConfig.UseBalanceDiffProfit, _blockValidationConfig.ExcludeWithdrawals, out error))
         {
             return false;
         }
