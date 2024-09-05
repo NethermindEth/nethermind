@@ -5,9 +5,9 @@ using Nethermind.Config;
 
 namespace Nethermind.BlockValidation;
 
-public class BlockValidationConfig: IBlockValidationConfig
+public class BlockValidationConfig : IBlockValidationConfig
 {
-    public bool UseBalanceDiffProfit { get; set; } = false ;
+    public bool UseBalanceDiffProfit { get; set; } = false;
 
     public bool ExcludeWithdrawals { get; set; } = false;
 }
