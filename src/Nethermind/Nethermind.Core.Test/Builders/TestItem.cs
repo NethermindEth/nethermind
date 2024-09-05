@@ -38,6 +38,13 @@ namespace Nethermind.Core.Test.Builders
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
                 ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
+
+            byte[] r = new byte[32];
+            byte[] s = new byte[32];
+            r[1] = 1;
+            s[2] = 2;
+            RandomSignatureA = new Signature(r, s, 27);
+            RandomSignatureB = new Signature(r, s, 28);
         }
 
         public static Hash256 KeccakFromNumber(int i)
@@ -91,6 +98,9 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressD = PublicKeyD.Address;
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
+
+        public static readonly Signature RandomSignatureA;
+        public static readonly Signature RandomSignatureB;
 
         public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGwei = 1_000_000_000 };
         public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGwei = 2_000_000_000 };
