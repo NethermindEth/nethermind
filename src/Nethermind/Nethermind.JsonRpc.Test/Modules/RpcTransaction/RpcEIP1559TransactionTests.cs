@@ -89,7 +89,7 @@ public class RpcEIP1559TransactionTests
     [SetUp]
     public void SetUp()
     {
-        RpcAccessListTransaction.DefaultChainId = BlockchainIds.Mainnet;
+        RpcEIP1559Transaction.DefaultChainId = BlockchainIds.Mainnet;
     }
 
     [TestCaseSource(nameof(Transactions))]
