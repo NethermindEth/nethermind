@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithMaxFeePerBlobGas(UInt256? maxFeePerBlobGas)
+        public TransactionBuilder<T> WithMaxFeePerBlobGas(UInt256 maxFeePerBlobGas)
         {
             TestObjectInternal.MaxFeePerBlobGas = maxFeePerBlobGas;
             return this;
@@ -265,6 +265,16 @@ namespace Nethermind.Core.Test.Builders
         protected override void BeforeReturn()
         {
             base.BeforeReturn();
+
+            // Since hash calculation requires certail values to be present in Blob transactions
+            // we initalize them to sane defaults here.
+            // TODO: This should be removed when we have a proper Transaction type hierarchy
+            if (TestObjectInternal.Type == TxType.Blob)
+            {
+                TestObjectInternal.BlobVersionedHashes ??= [];
+                TestObjectInternal.MaxFeePerBlobGas ??= 0;
+            }
+
             if (TestObjectInternal.IsSigned)
             {
                 TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
