@@ -230,9 +230,9 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.AuthorizationList = TestObjectInternal.AuthorizationList is not null ? [.. TestObjectInternal.AuthorizationList, authTuple] : [authTuple];
             return this;
         }
-        public TransactionBuilder<T> WithAuthorizationCode(IEnumerable<AuthorizationTuple> authList)
+        public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple[] authList)
         {
-            TestObjectInternal.AuthorizationList = authList?.ToArray();
+            TestObjectInternal.AuthorizationList = authList;
             return this;
         }
 

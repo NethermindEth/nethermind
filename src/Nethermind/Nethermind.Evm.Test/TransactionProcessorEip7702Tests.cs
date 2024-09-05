@@ -212,7 +212,7 @@ internal class TransactionProcessorEip7702Tests
                                                  _specProvider.ChainId,
                                                  //Copy empty code so will not add to gas cost
                                                  TestItem.AddressC,
-                                                 0)))
+                                                 0)).ToArray())
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -293,7 +293,7 @@ internal class TransactionProcessorEip7702Tests
             .Done;
         DeployCode(secondCodeSource, secondCode);
 
-        IEnumerable<AuthorizationTuple> authList = [
+        AuthorizationTuple[] authList = [
             CreateAuthorizationTuple(
                     signer,
                     _specProvider.ChainId,
