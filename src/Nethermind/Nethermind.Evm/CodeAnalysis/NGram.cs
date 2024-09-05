@@ -30,7 +30,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
 
-        public byte[] AsByte()
+        public static byte[] AsByte(ulong ngram)
         {
             byte[] instructions = new byte[7];
             int i = 0;
@@ -45,17 +45,46 @@ namespace Nethermind.Evm.CodeAnalysis
             return instructions[(instructions.Length - i)..instructions.Length];
         }
 
+        public byte[] AsByte()
+        {
+            return AsByte(ngram);
+        }
+
+        public static Instruction[] AsInstructions(ulong ngram)
+        {
+            return AsByte(ngram).Select(i => (Instruction)i).ToArray();
+        }
+
         public Instruction[] AsInstructions()
         {
-            return AsByte().Select(i => (Instruction)i).ToArray();
+            return AsInstructions(ngram);
+        }
+
+        public static string AsString(ulong ngram)
+        {
+            string s = "";
+            foreach (Instruction instruction in AsInstructions(ngram))
+                s += $"{instruction.ToString()}".PadRight(1);
+            return s;
         }
 
         public string AsString()
         {
-            string s = "";
-            foreach (Instruction instruction in AsInstructions())
-                s += $"{instruction.ToString()}";
-            return s;
+            return AsString(ngram);
+        }
+
+        public static NGram[] GetNGrams(ulong ngram)
+        {
+            NGram[] ngrams = new NGram[] { };
+            for (int i = 1; i < NGram.SIZE; i++)
+                if (NGram.byteIndexes[i - 1] < ngram)
+                    ngrams[i - 1] = new NGram(ngram & NGram.bitMasks[i]);
+            return ngrams;
+        }
+
+        public NGram[] GetNGrams()
+        {
+            return GetNGrams(ngram);
         }
 
         private static ulong InstructionsToNGram(Instruction[] instructions)
