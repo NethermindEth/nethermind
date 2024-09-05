@@ -11,7 +11,7 @@ public interface ICensorshipDetectorConfig : IConfig
         Description = "Enabling censorship detection feature")]
     bool Enabled { get; set; }
 
-    [ConfigItem(DefaultValue = "4",
+    [ConfigItem(DefaultValue = "2",
         Description = "Number of consecutive blocks with detected potential censorship to report censorship attempt")]
     uint BlockCensorshipThreshold { get; set; }
 
