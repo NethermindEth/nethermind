@@ -33,7 +33,7 @@ public class ShutterTxSource(
     {
         if (!shutterConfig.Validator)
         {
-            if (_logger.IsDebug) _logger.Debug($"Not building Shutterized block since running in non-validator mode.");
+            if (_logger.IsInfo) _logger.Info($"Not building Shutterized block since running in non-validator mode.");
             return [];
         }
 
@@ -50,14 +50,14 @@ public class ShutterTxSource(
         }
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            if (_logger.IsInfo) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             return [];
         }
 
         ShutterTransactions? shutterTransactions = _txCache.Get(buildingSlot);
         if (shutterTransactions is null)
         {
-            if (_logger.IsDebug) _logger.Debug($"No Shutter transactions currently loaded for slot {buildingSlot}.");
+            if (_logger.IsInfo) _logger.Info($"No Shutter transactions currently loaded for slot {buildingSlot}.");
             return [];
         }
 

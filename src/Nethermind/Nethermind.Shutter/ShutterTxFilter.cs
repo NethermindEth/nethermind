@@ -22,10 +22,10 @@ public class ShutterTxFilter(
         IReleaseSpec releaseSpec = specProvider.GetSpec(parentHeader);
         bool wellFormed = _txValidator.IsWellFormed(tx, releaseSpec, out string? error);
 
-        if (_logger.IsDebug)
+        if (_logger.IsInfo)
         {
-            if (!wellFormed) _logger.Debug($"Decrypted Shutter transaction was not well-formed{(error is null ? "." : ": " + error)}");
-            if (tx.Type == TxType.Blob) _logger.Debug("Decrypted Shutter transaction was blob, cannot include.");
+            if (!wellFormed) _logger.Info($"Decrypted Shutter transaction was not well-formed{(error is null ? "." : ": " + error)}");
+            if (tx.Type == TxType.Blob) _logger.Info("Decrypted Shutter transaction was blob, cannot include.");
         }
 
         if (wellFormed && tx.Type != TxType.Blob)

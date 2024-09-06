@@ -55,31 +55,31 @@ public class ValidatorRegistryContract(
 
             if (msg.Version != messageVersion)
             {
-                if (_logger.IsDebug) _logger.Debug($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
+                if (_logger.IsInfo) _logger.Info($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
                 continue;
             }
 
             if (msg.ChainId != chainId)
             {
-                if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
+                if (_logger.IsInfo) _logger.Info($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
                 continue;
             }
 
             if (!msg.ContractAddress.SequenceEqual(ContractAddress!.Bytes))
             {
-                if (_logger.IsDebug) _logger.Debug($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
+                if (_logger.IsInfo) _logger.Info($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
                 continue;
             }
 
             if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
             {
-                if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
+                if (_logger.IsInfo) _logger.Info($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
                 continue;
             }
 
             if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo[msg.ValidatorIndex], update.Signature, update.Message))
             {
-                if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
+                if (_logger.IsInfo) _logger.Info("Registration message has invalid signature.");
                 continue;
             }
 

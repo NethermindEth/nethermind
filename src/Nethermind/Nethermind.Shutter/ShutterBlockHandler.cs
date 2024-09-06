@@ -82,7 +82,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         Block head = e.Block;
         if (_time.IsBlockUpToDate(head))
         {
-            if (_logger.IsDebug) _logger.Debug($"Shutter block handler {head.Number}");
+            if (_logger.IsInfo) _logger.Info($"Shutter block handler {head.Number}");
 
             if (!_haveCheckedRegistered)
             {
@@ -104,7 +104,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
                 }
             }
         }
-        else if (_logger.IsDebug)
+        else if (_logger.IsInfo)
         {
             _logger.Warn($"Shutter block handler not running, outdated block {head.Number}");
         }
@@ -120,13 +120,13 @@ public class ShutterBlockHandler : IShutterBlockHandler
                 return _readOnlyBlockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
+            if (_logger.IsInfo) _logger.Info($"Waiting for block in {slot} to get Shutter transactions.");
 
             long offset = _time.GetCurrentOffsetMs(slot);
             long waitTime = (long)_blockWaitCutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)_blockWaitCutoff.TotalMilliseconds}ms.");
+                if (_logger.IsInfo) _logger.Info($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)_blockWaitCutoff.TotalMilliseconds}ms.");
                 return null;
             }
             waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);

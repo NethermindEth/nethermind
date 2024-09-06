@@ -152,14 +152,14 @@ public class ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager) : 
             {
                 KeysReceived?.Invoke(this, new(decryptionKeys));
             }
-            else if (_logger.IsDebug)
+            else if (_logger.IsInfo)
             {
-                _logger.Debug($"Could not parse Shutter decryption keys: protobuf type names did not match.");
+                _logger.Info($"Could not parse Shutter decryption keys: protobuf type names did not match.");
             }
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"Could not parse Shutter decryption keys: {e}");
+            if (_logger.IsInfo) _logger.Warn($"Could not parse Shutter decryption keys: {e}");
         }
     }
 

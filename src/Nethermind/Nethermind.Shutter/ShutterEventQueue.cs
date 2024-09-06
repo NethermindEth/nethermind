@@ -34,7 +34,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 
         if (e.Eon == _eon)
         {
-            if (_logger.IsDebug && _txIndex is not null && e.TxIndex != _txIndex)
+            if (_logger.IsInfo && _txIndex is not null && e.TxIndex != _txIndex)
             {
                 _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon}, expected {_txIndex}.");
             }
@@ -53,7 +53,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
         }
         else if (e.Eon == _eon + 1)
         {
-            if (_logger.IsDebug && e.TxIndex != _nextEonTxIndex)
+            if (_logger.IsInfo && e.TxIndex != _nextEonTxIndex)
             {
                 _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon + 1}, expected {_nextEonTxIndex}.");
             }
@@ -70,7 +70,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
                 return;
             }
         }
-        else if (_logger.IsDebug)
+        else if (_logger.IsInfo)
         {
             _logger.Warn($"Ignoring Shutter event with future eon {e.Eon}.");
         }
@@ -103,7 +103,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
             if (totalGas + e.GasLimit > _encryptedGasLimit)
             {
                 Metrics.ShutterEncryptedGasUsed = (ulong)totalGas;
-                if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
+                if (_logger.IsInfo) _logger.Info("Shutter gas limit reached.");
                 yield break;
             }
 

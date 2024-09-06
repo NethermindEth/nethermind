@@ -55,7 +55,7 @@ public class ShutterTxLoader(
 
         using DecryptedTransactions? decrypted = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
 
-        if (_logger.IsDebug && decrypted is not null) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, decrypted.Value.Transactions.Select(tx => tx.ToShortString()))}");
+        if (_logger.IsInfo && decrypted is not null) _logger.Info($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, decrypted.Value.Transactions.Select(tx => tx.ToShortString()))}");
 
         Transaction[] filtered = decrypted is null ? [] : FilterTransactions(decrypted.Value.Transactions, parentHeader).ToArray();
 
@@ -68,7 +68,7 @@ public class ShutterTxLoader(
         Metrics.ShutterTransactions = (uint)filtered.Length;
         Metrics.ShutterBadTransactions = (uint)(sequencedTransactions.Count - filtered.Length);
 
-        if (_logger.IsDebug && shutterTransactions.Transactions.Length > 0) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
+        if (_logger.IsInfo && shutterTransactions.Transactions.Length > 0) _logger.Info($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
         return shutterTransactions;
     }
 
@@ -138,7 +138,7 @@ public class ShutterTxLoader(
 
             if (!identity.IsEqual(new(sequencedTransaction.Identity.AsSpan())))
             {
-                if (_logger.IsDebug) _logger.Debug("Could not decrypt Shutter transaction: Transaction identity did not match decryption key.");
+                if (_logger.IsInfo) _logger.Info("Could not decrypt Shutter transaction: Transaction identity did not match decryption key.");
                 return null;
             }
 
@@ -146,29 +146,29 @@ public class ShutterTxLoader(
             Span<byte> encodedTransaction = stackalloc byte[len];
             ShutterCrypto.Decrypt(ref encodedTransaction, encryptedMessage, key);
 
-            if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
+            if (_logger.IsInfo) _logger.Info($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
 
             return DecodeTransaction(encodedTransaction);
         }
         catch (ShutterCrypto.ShutterCryptoException e)
         {
-            if (_logger.IsDebug) _logger.Error($"Could not decode encrypted Shutter transaction", e);
+            if (_logger.IsInfo) _logger.Error($"Could not decode encrypted Shutter transaction", e);
         }
         catch (Bls.Exception e)
         {
-            if (_logger.IsDebug) _logger.Error("Could not decrypt Shutter transaction with invalid key", e);
+            if (_logger.IsInfo) _logger.Error("Could not decrypt Shutter transaction with invalid key", e);
         }
         catch (RlpException e)
         {
-            if (_logger.IsDebug) _logger.Error("Could not decode decrypted Shutter transaction", e);
+            if (_logger.IsInfo) _logger.Error("Could not decode decrypted Shutter transaction", e);
         }
         catch (ArgumentException e)
         {
-            if (_logger.IsDebug) _logger.Error("Could not recover Shutter transaction sender address", e);
+            if (_logger.IsInfo) _logger.Error("Could not recover Shutter transaction sender address", e);
         }
         catch (InvalidDataException e)
         {
-            if (_logger.IsDebug) _logger.Error("Decrypted Shutter transaction had no signature", e);
+            if (_logger.IsInfo) _logger.Error("Decrypted Shutter transaction had no signature", e);
         }
 
         return null;
@@ -187,7 +187,7 @@ public class ShutterTxLoader(
         {
             if (_loadFromReceipts)
             {
-                if (_logger.IsDebug) _logger.Debug($"Found {_events.Count} Shutter events in recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
+                if (_logger.IsInfo) _logger.Info($"Found {_events.Count} Shutter events in recent blocks up to {headBlockNumber}, local tx pointer is {_txPointer}.");
             }
             else
             {
@@ -235,7 +235,7 @@ public class ShutterTxLoader(
             count++;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Found {count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
+        if (_logger.IsInfo) _logger.Info($"Found {count} Shutter events from scanning logs up to block {headBlockNumber}, local tx pointer is {_txPointer}.");
     }
 
 

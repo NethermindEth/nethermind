@@ -104,7 +104,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     private async Task<Block?> ImproveBlock()
     {
-        if (_logger.IsDebug) _logger.Debug("Running Shutter block improvement.");
+        if (_logger.IsInfo) _logger.Info("Running Shutter block improvement.");
 
         ulong slot;
         long offset;
@@ -133,7 +133,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         }
         waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
 
-        if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
+        if (_logger.IsInfo) _logger.Info($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
         ObjectDisposedException.ThrowIf(_cancellationTokenSource is null, this);
 
