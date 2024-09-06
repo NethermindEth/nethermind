@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -24,8 +26,53 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private int _leafNodeCounter = 0;
     private DateTime _lastUpdateTime = DateTime.UtcNow;
 
+    Dictionary<Address, Account> _accountChange = new Dictionary<Address, Account>();
+    Dictionary<StorageCell, byte[]> toSetStorage = new Dictionary<StorageCell, byte[]>();
     public event EventHandler<ProgressEventArgs>? _progressChanged;
 
+
+    protected void BulkSet(Dictionary<Address, Account> accountChange)
+    {
+        void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
+        {
+            _verkleStateTree.Set(keyValuePair.Key, keyValuePair.Value);
+        }
+
+        if (accountChange.Count == 1)
+        {
+            foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
+            {
+                SetStateKV(keyValuePair);
+            }
+
+            return;
+        }
+
+        ActionBlock<KeyValuePair<Address, Account>> setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+        foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
+        {
+            setStateAction.Post(keyValuePair);
+        }
+
+        setStateAction.Complete();
+        setStateAction.Completion.Wait();
+    }
+
+    private void CommitTree()
+    {
+        var watch = Stopwatch.StartNew();
+        BulkSet(_accountChange);
+        _verkleStateTree.BulkSet(toSetStorage);
+        _verkleStateTree.Commit();
+        _verkleStateTree.CommitTree(0);
+        Console.Write($"Time For Commit: {watch.Elapsed.Microseconds}uS");
+    }
 
     public class ProgressEventArgs : EventArgs
     {
@@ -155,7 +202,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         _leafNodeCounter++;
         if (_leafNodeCounter >= StateTreeCommitThreshold)
         {
-            _verkleStateTree.Commit();
+            CommitTree();
             _leafNodeCounter = 0;
         }
     }
@@ -178,25 +225,27 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
     private void MigrateAccount(Address address, Account account)
     {
-        _verkleStateTree.Set(address, account);
+        _accountChange[address] = account;
+        // _verkleStateTree.Set(address, account);
     }
 
     private void MigrateContractCode(Address address, byte[] code)
     {
-        _verkleStateTree.SetCode(address, code);
+        // _verkleStateTree.SetCode(address, code);
     }
 
     private void MigrateAccountStorage(Address address, UInt256 index, byte[] value)
     {
         var storageKey = new StorageCell(address, index);
-        _verkleStateTree.SetStorage(storageKey, value);
+        toSetStorage[storageKey] = value;
+        // _verkleStateTree.SetStorage(storageKey, value);
     }
 
     public void FinalizeMigration(long blockNumber)
     {
         // Commit any remaining changes
         if (_leafNodeCounter > 0)
-            _verkleStateTree.Commit();
+            CommitTree();
         _verkleStateTree.CommitTree(blockNumber);
 
         // Ensure we report 100% progress at the end

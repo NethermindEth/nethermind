@@ -87,7 +87,7 @@ namespace Nethermind.VerkleMigration.Cli
             await initializer.Execute(_processExitSource.Token);
 
             // initialize verkle tree
-            var verkleStore = new VerkleTreeStore<VerkleSyncCache>(nethermindApi.DbProvider, _logManager);
+            var verkleStore = new VerkleTreeStore<PersistEveryBlock>(nethermindApi.DbProvider, _logManager);
             var verkleStateTree = new VerkleStateTree(verkleStore, _logManager);
 
             // initialize migrator
