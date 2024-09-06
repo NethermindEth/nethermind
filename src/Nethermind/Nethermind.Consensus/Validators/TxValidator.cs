@@ -387,7 +387,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
 
 public abstract class BaseSignatureTxValidator : ITxValidator
 {
-    protected virtual bool AdditionalCheck(Transaction transaction, IReleaseSpec releaseSpec) => false;
+    protected virtual bool ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) => false;
 
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
@@ -420,7 +420,7 @@ public abstract class BaseSignatureTxValidator : ITxValidator
             return true;
         }
 
-        if (AdditionalCheck(transaction, releaseSpec))
+        if (ValidateChainId(transaction, releaseSpec))
         {
             return true;
         }
@@ -437,7 +437,7 @@ public abstract class BaseSignatureTxValidator : ITxValidator
 
 public sealed class LegacySignatureTxValidator(ulong chainId) : BaseSignatureTxValidator
 {
-    protected override bool AdditionalCheck(Transaction transaction, IReleaseSpec releaseSpec)
+    protected override bool ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec)
     {
         Signature signature = transaction.Signature;
         return releaseSpec.IsEip155Enabled && (signature.V == chainId * 2 + 35ul || signature.V == chainId * 2 + 36ul);
