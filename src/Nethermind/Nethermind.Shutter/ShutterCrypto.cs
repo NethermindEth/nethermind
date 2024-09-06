@@ -35,10 +35,10 @@ public static class ShutterCrypto
 
     public class ShutterCryptoException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-    public static G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
+    public static G1 ComputeIdentity(ReadOnlySpan<byte> identityPrefix, Address sender)
     {
         Span<byte> preimage = new byte[52];
-        identityPrefix.Unwrap().CopyTo(preimage);
+        identityPrefix.CopyTo(preimage);
         sender.Bytes.CopyTo(preimage[32..]);
         return ComputeIdentity(preimage);
     }
