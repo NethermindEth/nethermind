@@ -411,7 +411,7 @@ namespace Nethermind.Trie.Pruning
                     ThrowUnknownPackage(blockNumber, node);
                 }
 
-                if (node!.LastSeen > 0)
+                if (node!.LastSeen >= 0)
                 {
                     ThrowNodeHasBeenSeen(blockNumber, node);
                 }
@@ -938,7 +938,7 @@ namespace Nethermind.Trie.Pruning
             TinyTreePath treePath = new(key.Path);
             // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
             // recalculated to the same hash.
-            if (node.LastSeen > 0)
+            if (node.LastSeen >= 0)
             {
                 // Update _persistedLastSeen to later value.
                 _persistedLastSeen.AddOrUpdate(
@@ -1076,7 +1076,7 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak is not null)
             {
-                Debug.Assert(currentNode.LastSeen > 0, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(currentNode.LastSeen >= 0, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
@@ -1100,9 +1100,9 @@ namespace Nethermind.Trie.Pruning
             return IsNoLongerNeeded(node.LastSeen);
         }
 
-        private bool IsNoLongerNeeded(long? lastSeen)
+        private bool IsNoLongerNeeded(long lastSeen)
         {
-            Debug.Assert(lastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
+            Debug.Assert(lastSeen >= 0, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return lastSeen < LastPersistedBlockNumber
                    && lastSeen < LatestCommittedBlockNumber - _pruningStrategy.MaxDepth;
         }

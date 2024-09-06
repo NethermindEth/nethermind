@@ -70,7 +70,7 @@ public class InitializeStateDb : IStep
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
         {
-            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
             pruningConfig.PruningBoundary = 128;
         }
 
