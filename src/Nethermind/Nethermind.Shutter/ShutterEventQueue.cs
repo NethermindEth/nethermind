@@ -13,7 +13,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 {
     private readonly int _maxQueueSize = 10000;
     private readonly int _encryptedGasLimit = encryptedGasLimit;
-    private ulong _eon = ulong.MaxValue - 1;
+    private ulong? _eon;
     private ulong? _txIndex;
     private ulong _nextEonTxIndex = 0;
     private Queue<ISequencerContract.TransactionSubmitted> _events = [];
@@ -27,7 +27,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 
     public void EnqueueEvent(ISequencerContract.TransactionSubmitted e, ulong eon)
     {
-        if (eon != _eon)
+        if (_eon is null || eon > _eon)
         {
             SetEon(eon);
         }
@@ -79,6 +79,11 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
     public IEnumerable<ISequencerContract.TransactionSubmitted> DequeueToGasLimit(ulong eon, ulong txPointer)
     {
         UInt256 totalGas = 0;
+
+        if (_eon is null || eon > _eon)
+        {
+            SetEon(eon);
+        }
 
         if (eon != _eon)
         {
