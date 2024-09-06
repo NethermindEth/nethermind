@@ -137,7 +137,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         watch.Restart();
         BulkSetStorage(toSetStorage);
         timeToBulkSetStorage = watch.Elapsed;
-        Console.WriteLine($"timeToCompletePrevCommit:{timeToCompletePrevCommit} timeToBulkSetAccount:{timeToBulkSetAccount} timeToBulkSetStorage:{timeToBulkSetStorage} timeToCommit:{timeToCommit} timeToCommitTree:{timeToCommitTree}");
+        Console.WriteLine($"timeToCompletePrevCommit:{timeToCompletePrevCommit} timeToBulkSetAccount:{_accountChange.Count}:{timeToBulkSetAccount} timeToBulkSetStorage:{toSetStorage.Count}:{timeToBulkSetStorage} timeToCommit:{timeToCommit} timeToCommitTree:{timeToCommitTree}");
         _accountChange.Clear();
         toSetStorage.Clear();
     }
