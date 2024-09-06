@@ -126,7 +126,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo = new CodeInfo(code, codeHash);
             cachedCodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
@@ -149,7 +149,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (!_codeCache.TryGet(codeHash, out CodeInfo? codeInfo))
         {
-            codeInfo = new(initCode.ToArray());
+            codeInfo = new(initCode.ToArray(), codeHash);
 
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
@@ -161,10 +161,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        CodeInfo codeInfo = new(code);
-        codeInfo.AnalyseInBackgroundIfRequired();
-
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
+        CodeInfo codeInfo = new(code, codeHash);
+        codeInfo.AnalyseInBackgroundIfRequired();
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);
     }

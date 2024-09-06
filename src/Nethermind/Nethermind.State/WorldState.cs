@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -272,6 +272,8 @@ namespace Nethermind.State
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
 
-        public bool ClearCache() => PreBlockCaches?.Clear() == true;
+        public bool ClearCache() => PreBlockCaches?.ClearImmediate() == true;
+
+        public Task ClearCachesInBackground() => PreBlockCaches?.ClearCachesInBackground() ?? Task.CompletedTask;
     }
 }

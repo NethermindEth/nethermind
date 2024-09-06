@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using System;
 using System.Collections.Frozen;
@@ -18,36 +21,28 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 internal static class IlAnalyzer
 {
-    public class ByteArrayComparer : IEqualityComparer<byte[]>
-    {
-        public bool Equals(byte[] left, byte[] right)
-        {
-            if (left == null || right == null)
-            {
-                return left == right;
-            }
-            return left.SequenceEqual(right);
-        }
-        public int GetHashCode(byte[] key)
-        {
-            if (key == null)
-                throw new ArgumentNullException("key");
-            return key.Sum(b => b);
-        }
-    }
-
-    private static Dictionary<byte[], InstructionChunk> Patterns = new Dictionary<byte[], InstructionChunk>(new ByteArrayComparer());
-    public static Dictionary<byte[], InstructionChunk> AddPattern(byte[] pattern, InstructionChunk chunk)
+    private static Dictionary<Type, InstructionChunk> Patterns = new Dictionary<Type, InstructionChunk>();
+    public static void AddPattern(InstructionChunk handler)
     {
         lock (Patterns)
         {
-            Patterns[pattern] = chunk;
+            Patterns[handler.GetType()] = handler;
         }
-        return Patterns;
     }
-    public static T GetPatternHandler<T>(byte[] pattern) where T : InstructionChunk
+    public static void AddPattern<T>() where T : InstructionChunk
     {
-        return (T)Patterns[pattern];
+        var handler = Activator.CreateInstance<T>();
+        lock (Patterns)
+        {
+            Patterns[typeof(T)] = handler;
+        }
+    }
+    public static T GetPatternHandler<T>() where T : InstructionChunk
+    {
+        lock (Patterns)
+        {
+            return (T)Patterns[typeof(T)];
+        }
     }
 
 
@@ -55,9 +50,9 @@ internal static class IlAnalyzer
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode)
+    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode, ITxTracer tracer)
     {
-        return Task.Run(() => Analysis(codeInfo, mode));
+        return Task.Run(() => Analysis(codeInfo, mode, tracer));
     }
 
     public static (OpcodeInfo[], byte[][]) StripByteCode(ReadOnlySpan<byte> machineCode)
@@ -85,12 +80,14 @@ internal static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode)
+    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode, ITxTracer tracer)
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode((OpcodeInfo[], byte[][]) codeData)
+        static FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, ITxTracer tracer)
         {
+            string GenerateName(List<OpcodeInfo> segment) => $"ILEVM_PRECOMPILED_({codeInfo.CodeHash.ToShortString()})[{segment[0].ProgramCounter}..{segment[^1].ProgramCounter + segment[^1].Metadata.AdditionalBytes}]";
+
             Dictionary<ushort, SegmentExecutionCtx> opcodeInfos = [];
 
             List<OpcodeInfo> segment = [];
@@ -100,7 +97,7 @@ internal static class IlAnalyzer
                 {
                     if (segment.Count > 0)
                     {
-                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
+                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment(GenerateName(segment), segment.ToArray(), codeData.Item2));
                         segment.Clear();
                     }
                 }
@@ -111,29 +108,29 @@ internal static class IlAnalyzer
             }
             if (segment.Count > 0)
             {
-                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
+                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment(GenerateName(segment), segment.ToArray(), codeData.Item2));
             }
             return opcodeInfos.ToFrozenDictionary();
         }
 
-        FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode)
+        static FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode, ITxTracer tracer)
         {
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
             var patternFound = new Dictionary<ushort, InstructionChunk>();
-            foreach (var (pattern, mapping) in Patterns)
+            foreach (var (_, chunkHandler) in Patterns)
             {
-                for (int i = 0; i < strippedBytecode.Length - pattern.Length + 1; i++)
+                for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
                 {
                     bool found = true;
-                    for (int j = 0; j < pattern.Length && found; j++)
+                    for (int j = 0; j < chunkHandler.Pattern.Length && found; j++)
                     {
-                        found = ((byte)strippedBytecode[i + j].Operation == pattern[j]);
+                        found = ((byte)strippedBytecode[i + j].Operation == chunkHandler.Pattern[j]);
                     }
 
                     if (found)
                     {
-                        patternFound.Add((ushort)strippedBytecode[i].ProgramCounter, mapping);
-                        i += pattern.Length - 1;
+                        patternFound.Add((ushort)strippedBytecode[i].ProgramCounter, chunkHandler);
+                        i += chunkHandler.Pattern.Length - 1;
                     }
                 }
             }
@@ -143,10 +140,10 @@ internal static class IlAnalyzer
         switch (mode)
         {
             case IlInfo.ILMode.PatternMatching:
-                codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode));
+                codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode, tracer));
                 break;
             case IlInfo.ILMode.SubsegmentsCompiling:
-                codeInfo.IlInfo.WithSegments(SegmentCode(StripByteCode(machineCode.Span)));
+                codeInfo.IlInfo.WithSegments(SegmentCode(codeInfo, StripByteCode(machineCode.Span), tracer));
                 break;
         }
     }

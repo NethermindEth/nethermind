@@ -26,7 +26,9 @@ public class TxTracer : ITxTracer
                     || IsTracingBlockHash
                     || IsTracingAccess
                     || IsTracingFees
-                    || IsTracingLogs;
+                    || IsTracingLogs
+                    || IsTracingPredefinedPatterns
+                    || IsTracingCompiledSegments;
     }
     public bool IsTracing { get; protected set; }
     public virtual bool IsTracingState { get; protected set; }
@@ -43,6 +45,9 @@ public class TxTracer : ITxTracer
     public virtual bool IsTracingFees { get; protected set; }
     public virtual bool IsTracingStorage { get; protected set; }
     public virtual bool IsTracingLogs { get; protected set; }
+    public virtual bool IsTracingPredefinedPatterns { get; protected set; }
+    public virtual bool IsTracingCompiledSegments { get; protected set; }
+
     public virtual void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
     public virtual void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
@@ -76,5 +81,7 @@ public class TxTracer : ITxTracer
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
     public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
+    public virtual void ReportPredefinedPatternExecution(long gas, int pc, string segmentID) { }
+    public virtual void ReportCompiledSegmentExecution(long gas, int pc, string segmentId) { }
     public virtual void Dispose() { }
 }

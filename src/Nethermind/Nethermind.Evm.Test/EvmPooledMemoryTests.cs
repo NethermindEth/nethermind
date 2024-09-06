@@ -221,6 +221,8 @@ namespace Nethermind.Evm.Test
         public bool IsTracingAccess { get; } = false;
         public bool IsTracingFees => false;
         public bool IsTracingLogs => false;
+        public bool IsTracingPredefinedPatterns => false;
+        public bool IsTracingCompiledSegments => false;
         public bool IsTracing => IsTracingReceipt
                                  || IsTracingActions
                                  || IsTracingOpLevelStorage
@@ -232,7 +234,10 @@ namespace Nethermind.Evm.Test
                                  || IsTracingBlockHash
                                  || IsTracingAccess
                                  || IsTracingFees
-                                 || IsTracingLogs;
+                                 || IsTracingLogs
+                                 || IsTracingPredefinedPatterns
+                                 || IsTracingCompiledSegments;
+
 
         public string lastmemline;
 
@@ -391,5 +396,13 @@ namespace Nethermind.Evm.Test
         }
 
         public void Dispose() { }
+
+        public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+        {
+        }
+
+        public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+        {
+        }
     }
 }

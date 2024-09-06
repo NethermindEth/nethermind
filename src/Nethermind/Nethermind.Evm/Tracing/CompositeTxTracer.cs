@@ -54,6 +54,8 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
     public bool IsTracingLogs { get; }
+    public bool IsTracingPredefinedPatterns { get; }
+    public bool IsTracingCompiledSegments { get; }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -516,6 +518,29 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < _txTracers.Count; index++)
         {
             _txTracers[index].Dispose();
+        }
+    }
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingPredefinedPatterns)
+            {
+                innerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
+            }
+        }
+    }
+
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingCompiledSegments)
+            {
+                innerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
+            }
         }
     }
 }

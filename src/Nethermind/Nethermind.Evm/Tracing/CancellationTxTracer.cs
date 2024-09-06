@@ -27,6 +27,8 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
+    private readonly bool _isTracingEvmChunks;
+    private readonly bool _isTracingEvmSegments;
 
     public ITxTracer InnerTracer => innerTracer;
 
@@ -117,6 +119,17 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingOpLevelLogs = value;
     }
 
+    public bool IsTracingPredefinedPatterns
+    {
+        get => _isTracingEvmChunks || innerTracer.IsTracingPredefinedPatterns;
+        init => _isTracingEvmChunks = value;
+    }
+
+    public bool IsTracingCompiledSegments
+    {
+        get => _isTracingEvmSegments || innerTracer.IsTracingCompiledSegments;
+        init => _isTracingEvmSegments = value;
+    }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -454,5 +467,23 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     public void Dispose()
     {
         innerTracer.Dispose();
+    }
+
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingFees)
+        {
+            InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
+        }
+    }
+
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingFees)
+        {
+            InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
+        }
     }
 }

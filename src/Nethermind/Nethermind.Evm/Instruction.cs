@@ -205,6 +205,7 @@ namespace Nethermind.Evm
                 [Instruction.STOP] = new(0, 0, 0, 0),
                 [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
 
+                [Instruction.PUSH0] = new(GasCostOf.VeryLow, 0, 0, 1),
                 [Instruction.PUSH1] = new(GasCostOf.VeryLow, 1, 0, 1),
                 [Instruction.PUSH2] = new(GasCostOf.VeryLow, 2, 0, 1),
                 [Instruction.PUSH3] = new(GasCostOf.VeryLow, 3, 0, 1),
@@ -371,7 +372,7 @@ namespace Nethermind.Evm
     }
     public struct OpcodeInfo(ushort pc, Instruction instruction, int? argumentIndex)
     {
-        public OpcodeMetadata? Metadata => OpcodeMetadata.Operations[instruction];
+        public OpcodeMetadata Metadata => OpcodeMetadata.Operations[instruction];
         public Instruction Operation => instruction;
         public ushort ProgramCounter => pc;
         public int? Arguments { get; set; } = argumentIndex;
@@ -379,7 +380,7 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static bool IsEnabled(this Instruction instruction, IReleaseSpec? spec = null) => instruction switch
+        public static bool IsEnabled(this IReleaseSpec? spec, Instruction instruction) => instruction switch
         {
             Instruction.STOP => true,
             Instruction.ADD => true,

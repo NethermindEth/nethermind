@@ -470,7 +470,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
     }
 
-    private static bool UpdateGas(long gasCost, ref long gasAvailable)
+    public static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
         if (gasAvailable < gasCost)
         {
@@ -481,7 +481,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return true;
     }
 
-    private static void UpdateGasUp(long refund, ref long gasAvailable)
+    public static void UpdateGasUp(long refund, ref long gasAvailable)
     {
         gasAvailable += refund;
     }
@@ -653,7 +653,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (_vmConfig.IsVmOptimizationEnabled)
         {
-            vmState.Env.CodeInfo.NoticeExecution();
+            vmState.Env.CodeInfo.NoticeExecution(_txTracer);
         }
 
         vmState.InitStacks();
@@ -728,13 +728,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         SkipInit(out UInt256 result);
         SkipInit(out StorageCell storageCell);
         object returnData = null;
-
+        IlInfo.ILChunkExecutionResult? chunkExecutionResult = null;
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
-        bool shouldStop = false;
-        bool shouldReturn = false;
-        bool shouldJump = false;
         while ((uint)programCounter < codeLength)
         {
 #if DEBUG
@@ -742,12 +739,48 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, out shouldJump, out shouldStop, out shouldReturn, out isRevert, out returnData))
+            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
                    .GetValueOrDefault(false))
             {
-                if (shouldReturn || isRevert) goto DataReturn;
-                if (shouldStop is true) goto EmptyReturn;
-                if (shouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter)) goto InvalidJumpDestination;
+                if (chunkExecutionResult.Value.ShouldReturn)
+                {
+                    returnData = chunkExecutionResult.Value.ReturnData;
+                    goto DataReturn;
+                }
+                if (chunkExecutionResult.Value.ShouldRevert)
+                {
+                    isRevert = true;
+                    returnData = chunkExecutionResult.Value.ReturnData;
+                    goto DataReturn;
+                }
+                if (chunkExecutionResult.Value.ShouldStop)
+                {
+                    goto EmptyReturn;
+                }
+                if (chunkExecutionResult.Value.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
+                {
+                    exceptionType = EvmExceptionType.InvalidJumpDestination;
+                    goto InvalidJumpDestination;
+                }
+                if (chunkExecutionResult.Value.ShouldFail)
+                {
+                    exceptionType = chunkExecutionResult.Value.ExceptionType;
+                    switch (exceptionType)
+                    {
+                        case EvmExceptionType.StackUnderflow:
+                            goto StackUnderflow;
+                        case EvmExceptionType.InvalidJumpDestination:
+                            goto InvalidJumpDestination;
+                        case EvmExceptionType.BadInstruction:
+                            goto InvalidInstruction;
+                        case EvmExceptionType.AccessViolation:
+                            goto AccessViolation;
+                        case EvmExceptionType.OutOfGas:
+                            goto OutOfGas;
+                        case EvmExceptionType.StaticCallViolation:
+                            goto StaticCallViolation;
+                    }
+                }
             }
 
             Instruction instruction = (Instruction)code[programCounter];
