@@ -695,7 +695,7 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
-                    method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Int0)));
+                    method.Call(Word.SetInt0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.MSIZE:
