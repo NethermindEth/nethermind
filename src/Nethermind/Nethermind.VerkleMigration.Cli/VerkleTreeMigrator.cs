@@ -123,7 +123,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         _verkleStateTree.CommitTree(0);
         BulkSet(_accountChange);
         BulkSetStorage(toSetStorage);
-        Console.Write($"Time For Commit: {watch.Elapsed.Microseconds}uS");
+        Console.Write($"Time For Commit: {watch.Elapsed}");
         _accountChange.Clear();
         toSetStorage.Clear();
     }
@@ -191,11 +191,15 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         TreePath path = nodeContext.Path.Append(node.Key);
         Span<byte> pathBytes = path.Path.BytesAsSpan;
 
-        var (progress, currentAddress) = CalculateProgress(pathBytes);
-        DateTime now = DateTime.UtcNow;
-        TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
-        _lastUpdateTime = now;
-        OnProgressChanged(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
+        if (_leafNodeCounter >= StateTreeCommitThreshold)
+        {
+            var (progress, currentAddress) = CalculateProgress(pathBytes);
+            DateTime now = DateTime.UtcNow;
+            TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
+            _lastUpdateTime = now;
+            OnProgressChanged(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
+
+        }
 
 
         if (!trieVisitContext.IsStorage)
