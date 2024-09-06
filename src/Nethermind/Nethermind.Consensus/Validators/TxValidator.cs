@@ -62,7 +62,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
         },
     };
 
-    public TxValidator AddValidator(TxType type, ITxValidator validator)
+    public TxValidator WithValidator(TxType type, ITxValidator validator)
     {
         _validators[type] = validator;
         return this;

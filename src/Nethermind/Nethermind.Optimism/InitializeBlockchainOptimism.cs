@@ -74,7 +74,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         if (_api.TxValidator is null) throw new StepDependencyException(nameof(_api.TxValidator));
 
         BlockValidator blockValidator = new(
-            _api.TxValidator.AddValidator(TxType.DepositTx, new OptimismTxValidator()),
+            _api.TxValidator.WithValidator(TxType.DepositTx, new OptimismTxValidator()),
             _api.HeaderValidator,
             _api.UnclesValidator,
             _api.SpecProvider,
