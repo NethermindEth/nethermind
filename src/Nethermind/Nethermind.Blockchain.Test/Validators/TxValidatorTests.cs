@@ -531,6 +531,10 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
     }
 
+    /// <remarks>
+    /// According to https://github.com/ethereum/EIPs/blob/e2c094cd0f50303eddcfb87f36899e00545dcaaf/EIPS/eip-4844.md?plain=1#L11
+    /// EIP 4844 implies 1559, thus the <c>ReleaseSpec</c> we're constructing here should not be possible.
+    /// </remarks>
     [Test]
     public void BlobTransactions_are_valid_with_eip4844_no_eip1559()
     {
@@ -550,6 +554,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, releaseSpec).Should().BeTrue();
     }
 
+    /// Same as <see cref="BlobTransactions_are_valid_with_eip4844_no_eip1559"/>
     [Test]
     public void BlobTransactions_bad_gas_fields_is_valid_when_no_eip1559()
     {
