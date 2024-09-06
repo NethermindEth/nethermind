@@ -32,7 +32,12 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
 
     private ActionBlock<KeyValuePair<Address, Account>>? _setStateAction;
+    private ActionBlock<KeyValuePair<Address, Account>>? _setStorageAction;
 
+    protected void BulkSetStorage()
+    {
+
+    }
     protected void BulkSet(Dictionary<Address, Account> accountChange)
     {
         void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
@@ -81,6 +86,8 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         _verkleStateTree.Commit();
         _verkleStateTree.CommitTree(0);
         Console.Write($"Time For Commit: {watch.Elapsed.Microseconds}uS");
+        _accountChange.Clear();
+        toSetStorage.Clear();
     }
 
     public class ProgressEventArgs : EventArgs
