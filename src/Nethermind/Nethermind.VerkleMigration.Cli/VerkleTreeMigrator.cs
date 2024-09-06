@@ -31,6 +31,8 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     public event EventHandler<ProgressEventArgs>? _progressChanged;
 
 
+    private ActionBlock<KeyValuePair<Address, Account>>? _setStateAction;
+
     protected void BulkSet(Dictionary<Address, Account> accountChange)
     {
         void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
@@ -48,20 +50,27 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
             return;
         }
 
-        ActionBlock<KeyValuePair<Address, Account>> setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
-            SetStateKV,
-            new ExecutionDataflowBlockOptions()
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            });
+        if (_setStateAction == null)
+        {
+            _setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
+                SetStateKV,
+                new ExecutionDataflowBlockOptions()
+                {
+                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                });
+        }
+        else
+        {
+            _setStateAction.Completion.Wait();
+        }
+
 
         foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
         {
-            setStateAction.Post(keyValuePair);
+            _setStateAction.Post(keyValuePair);
         }
 
-        setStateAction.Complete();
-        setStateAction.Completion.Wait();
+        _setStateAction.Complete();
     }
 
     private void CommitTree()
