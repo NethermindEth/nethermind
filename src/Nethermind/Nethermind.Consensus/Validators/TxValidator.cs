@@ -204,10 +204,10 @@ public sealed class ContractSizeTxValidator : ITxValidator
     }
 }
 
-/// <summary>
+/// <remark>
 ///  Ensure that non Blob transactions do not contain Blob specific fields.
 ///  This validator will be deprecated once we have a proper Transaction type hierarchy.
-/// </summary>
+/// </remark>
 public sealed class NonBlobFieldsTxValidator : ITxValidator
 {
     public static readonly NonBlobFieldsTxValidator Instance = new();
