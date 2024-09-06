@@ -274,7 +274,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
     }
 
-    public virtual Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (MergeEnabled)
         {
@@ -372,6 +372,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
+
         return Task.CompletedTask;
     }
 

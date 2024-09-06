@@ -24,5 +24,4 @@ public partial class Ssz
         dynamicOffset = (int)DecodeUInt(span.Slice(offset, VarOffsetSize));
         offset += sizeof(uint);
     }
-
 }

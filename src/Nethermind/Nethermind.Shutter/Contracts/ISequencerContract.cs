@@ -20,15 +20,5 @@ public interface ISequencerContract
         public Address Sender;
         public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
-
-        public readonly bool Equals(TransactionSubmitted o)
-        {
-            return Eon == o.Eon
-                && TxIndex == o.TxIndex
-                && IdentityPrefix.Equals(o.IdentityPrefix)
-                && Sender.Equals(o.Sender)
-                && Enumerable.SequenceEqual(EncryptedTransaction, o.EncryptedTransaction)
-                && GasLimit.Equals(GasLimit);
-        }
     }
 }
