@@ -148,9 +148,7 @@ public class ShutterTxLoader(
 
             if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
 
-            // todo: fix the decoder to work with spans
-            // N.B. does not work with encodedTransaction.AsSpan()
-            Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction.ToArray());
+            Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction);
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction, true);
 
             return transaction;
