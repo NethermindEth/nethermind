@@ -34,48 +34,36 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
 
     private ActionBlock<KeyValuePair<Address, Account>>? _setStateAction;
-    private ActionBlock<(Hash256, Dictionary<byte, byte[]>)>? _setStorageAction;
+    private ActionBlock<KeyValuePair<StorageCell,  byte[]>>? _setStorageAction;
 
     protected void BulkSetStorage(Dictionary<StorageCell, byte[]> storageChange)
     {
-        _setStorageAction = new ActionBlock<(Hash256, Dictionary<byte, byte[]>)>((item) =>
-            {
-                _verkleStateTree.InsertStemBatch(item.Item1.Bytes[..31], item.Item2.Select(kv => (kv.Key, kv.Value)));
-            },
-            new ExecutionDataflowBlockOptions()
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount,
-            });
-
-        using var theList = new ArrayPoolList<KeyValuePair<StorageCell, byte[]>>(storageChange.Count, storageChange);
-        Hash256 currentStem = Hash256.Zero;
-        var stemValues = new Dictionary<byte, byte[]>();
-        foreach (KeyValuePair<StorageCell, byte[]> kv in theList)
+        void SetStateKV(KeyValuePair<StorageCell, byte[]> keyValuePair)
         {
-            // Because of the way the mapping works
-            Hash256 theKey = AccountHeader.GetTreeKeyForStorageSlot(kv.Key.Address.Bytes, kv.Key.Index);
+            _verkleStateTree.SetStorage(keyValuePair.Key, keyValuePair.Value);
+        }
 
-            if (!currentStem.Bytes[..31].SequenceEqual(theKey.Bytes[..31]))
+        if (storageChange.Count == 1)
+        {
+            foreach (var keyValuePair in storageChange)
             {
-                // Different stem, will attempt to insert the stem batch
-                if (stemValues.Count != 0)
-                {
-                    // Stem is different and stemValues have value.
-                    _setStorageAction.Post((currentStem, stemValues));
-                    stemValues = new Dictionary<byte, byte[]>();
-                }
-
-                // And set the next stem
-                currentStem = theKey;
+                SetStateKV(keyValuePair);
             }
 
-            stemValues[theKey.Bytes[31]] = kv.Value;
+            return;
+        }
+        _setStorageAction =  new ActionBlock<KeyValuePair<StorageCell,  byte[]>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+        foreach (var keyValuePair in storageChange)
+        {
+            _setStorageAction.Post(keyValuePair);
         }
 
-        if (stemValues.Count != 0)
-        {
-            _setStorageAction.Post((currentStem, stemValues));
-        }
 
         _setStorageAction.Complete();
     }
