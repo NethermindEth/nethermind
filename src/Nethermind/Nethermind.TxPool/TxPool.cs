@@ -52,8 +52,6 @@ namespace Nethermind.TxPool
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly ICodeInfoRepository _codeInfoRepository;
-        private readonly IWorldState _worldState;
         private readonly bool _blobReorgsSupportEnabled;
 
         private readonly ILogger _logger;
@@ -106,8 +104,6 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _codeInfoRepository = codeInfoRepository;
-            _worldState = worldState;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.AccountStateProvider);
             _specProvider = _headInfo.SpecProvider;
@@ -157,7 +153,7 @@ namespace Nethermind.TxPool
                 postHashFilters.Add(incomingTxFilter);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(_worldState, _codeInfoRepository, _specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(worldState, codeInfoRepository, _specProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
