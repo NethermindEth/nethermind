@@ -75,6 +75,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _blockWaitCutoff = blockWaitCutoff;
 
         _blockTree.NewHeadBlock += OnNewHeadBlock;
+        if (_logger.IsInfo) _logger.Info($"Shutter registered block handler.");
     }
 
     private void OnNewHeadBlock(object? _, BlockEventArgs e)
@@ -176,6 +177,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
     public void Dispose()
     {
+        if (_logger.IsInfo) _logger.Info($"Shutter deregistered block handler.");
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
         _blockWaitTasks.ForEach(x => x.Value.Dispose());
     }
