@@ -15,56 +15,51 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Validators;
 
-public sealed class TxValidator(ulong chainId) : ITxValidator
+public sealed class TxValidator : ITxValidator
 {
-    private readonly Dictionary<TxType, ITxValidator> _validators = new()
+    private readonly ITxValidator[] _validators;
+
+    public TxValidator(ulong chainId)
     {
-        {
-            TxType.Legacy, new CompositeTxValidator([
-                IntrinsicGasTxValidator.Instance,
-                new LegacySignatureTxValidator(chainId),
-                ContractSizeTxValidator.Instance,
-                NonBlobFieldsTxValidator.Instance,
-            ])
-        },
-        {
-            TxType.AccessList, new CompositeTxValidator([
-                new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
-                IntrinsicGasTxValidator.Instance,
-                SignatureTxValidator.Instance,
-                new ExpectedChainIdTxValidator(chainId),
-                ContractSizeTxValidator.Instance,
-                NonBlobFieldsTxValidator.Instance,
-            ])
-        },
-        {
-            TxType.EIP1559, new CompositeTxValidator([
-                new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
-                IntrinsicGasTxValidator.Instance,
-                SignatureTxValidator.Instance,
-                new ExpectedChainIdTxValidator(chainId),
-                GasFieldsTxValidator.Instance,
-                ContractSizeTxValidator.Instance,
-                NonBlobFieldsTxValidator.Instance,
-            ])
-        },
-        {
-            TxType.Blob, new CompositeTxValidator([
-                new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
-                IntrinsicGasTxValidator.Instance,
-                SignatureTxValidator.Instance,
-                new ExpectedChainIdTxValidator(chainId),
-                GasFieldsTxValidator.Instance,
-                ContractSizeTxValidator.Instance,
-                BlobFieldsTxValidator.Instance,
-                MempoolBlobTxValidator.Instance
-            ])
-        },
-    };
+        _validators = new ITxValidator[byte.MaxValue + 1];
+        _validators[(byte)TxType.Legacy] = new CompositeTxValidator([
+            IntrinsicGasTxValidator.Instance,
+            new LegacySignatureTxValidator(chainId),
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+        ]);
+        _validators[(byte)TxType.AccessList] = new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
+            IntrinsicGasTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            new ExpectedChainIdTxValidator(chainId),
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+        ]);
+        _validators[(byte)TxType.EIP1559] = new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
+            IntrinsicGasTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            new ExpectedChainIdTxValidator(chainId),
+            GasFieldsTxValidator.Instance,
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+        ]);
+        _validators[(byte)TxType.Blob] = new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
+            IntrinsicGasTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            new ExpectedChainIdTxValidator(chainId),
+            GasFieldsTxValidator.Instance,
+            ContractSizeTxValidator.Instance,
+            BlobFieldsTxValidator.Instance,
+            MempoolBlobTxValidator.Instance
+        ]);
+    }
 
     public TxValidator WithValidator(TxType type, ITxValidator validator)
     {
-        _validators[type] = validator;
+        _validators[(byte)type] = validator;
         return this;
     }
 
@@ -81,7 +76,8 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
     /// </remarks>
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
     {
-        if (!_validators.TryGetValue(transaction.Type, out ITxValidator validator))
+        ITxValidator? validator = _validators[(byte)transaction.Type];
+        if (validator is null)
         {
             error = TxErrorMessages.InvalidTxType(releaseSpec.Name);
             return false;
