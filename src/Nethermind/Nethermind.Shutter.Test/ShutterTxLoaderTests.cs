@@ -11,6 +11,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
 using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Crypto;
 
 namespace Nethermind.Shutter.Test;
 

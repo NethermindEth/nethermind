@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;

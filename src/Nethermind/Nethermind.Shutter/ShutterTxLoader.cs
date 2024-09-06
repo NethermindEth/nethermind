@@ -148,10 +148,7 @@ public class ShutterTxLoader(
 
             if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
 
-            Transaction transaction = Rlp.Decode<Transaction>(encodedTransaction);
-            transaction.SenderAddress = ecdsa.RecoverAddress(transaction, true);
-
-            return transaction;
+            return DecodeTransaction(encodedTransaction);
         }
         catch (ShutterCrypto.ShutterCryptoException e)
         {
@@ -175,6 +172,13 @@ public class ShutterTxLoader(
         }
 
         return null;
+    }
+
+    private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
+    {
+        Transaction tx = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping);
+        tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
+        return tx;
     }
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)

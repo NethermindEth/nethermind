@@ -123,7 +123,7 @@ public class ShutterEventSimulator
             G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
             G1 key = identity.Dup().Mult(_eonData[eon].SecretKey.ToLittleEndian());
 
-            byte[] encodedTx = Rlp.Encode<Transaction>(tx).Bytes;
+            byte[] encodedTx = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
             EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(encodedTx, identity, new(_eonData[eon].Key), new(sigma));
             byte[] encryptedTx = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage).ToArray();
 
@@ -150,16 +150,32 @@ public class ShutterEventSimulator
     protected IEnumerable<Transaction> EmitDefaultTransactions()
     {
         ulong nonce = 0;
+        // alternate legacy and type 2 transactions
+        bool type2 = false;
         while (true)
         {
-            yield return Build.A.Transaction
+            TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
                 .WithNonce(nonce++)
                 .WithChainId(_chainId)
                 .WithSenderAddress(TestItem.AddressA)
                 .WithTo(TestItem.AddressA)
-                .WithValue(100)
-                .Signed(TestItem.PrivateKeyA)
-                .TestObject;
+                .WithValue(100);
+
+            if (type2)
+            {
+                txBuilder = txBuilder
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(4)
+                    .WithGasLimit(21000);
+
+                type2 = false;
+            }
+            else
+            {
+                type2 = true;
+            }
+
+            yield return txBuilder.Signed(TestItem.PrivateKeyA).TestObject;
         }
     }
 
