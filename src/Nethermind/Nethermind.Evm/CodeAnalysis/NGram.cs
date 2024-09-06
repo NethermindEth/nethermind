@@ -45,7 +45,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
 
-        public static byte[] AsByte(ulong ngram)
+        public static byte[] ToByte(ulong ngram)
         {
             byte[] instructions = new byte[7];
             int i = 0;
@@ -60,32 +60,32 @@ namespace Nethermind.Evm.CodeAnalysis
             return instructions[(instructions.Length - i)..instructions.Length];
         }
 
-        public byte[] AsByte()
+        public byte[] ToByte()
         {
-            return AsByte(ngram);
+            return ToByte(ngram);
         }
 
-        public static Instruction[] AsInstructions(ulong ngram)
+        public static Instruction[] ToInstructions(ulong ngram)
         {
-            return AsByte(ngram).Select(i => (Instruction)i).ToArray();
+            return ToByte(ngram).Select(i => (Instruction)i).ToArray();
         }
 
-        public Instruction[] AsInstructions()
+        public Instruction[] ToInstructions()
         {
-            return AsInstructions(ngram);
+            return ToInstructions(ngram);
         }
 
-        public static string AsString(ulong ngram)
+        public static string ToString(ulong ngram)
         {
             string s = "";
-            foreach (Instruction instruction in AsInstructions(ngram))
+            foreach (Instruction instruction in ToInstructions(ngram))
                 s += $"{instruction.ToString()}".PadRight(1);
             return s;
         }
 
-        public string AsString()
+        public override string ToString()
         {
-            return AsString(ngram);
+            return ToString(ngram);
         }
 
         private static ulong FromInstructions(Instruction[] instructions)
@@ -115,7 +115,7 @@ namespace Nethermind.Evm.CodeAnalysis
             {
                 if (NGram.byteIndexes[i - 1] < ngram)
                 {
-                    yield return this.ngram & NGram.bitMasks[i]; // Corrected the syntax here
+                    yield return this.ngram & NGram.bitMasks[i];
                 }
             }
         }
