@@ -30,7 +30,7 @@ public class BlsSigner
             G2 sig = new(signature.Bytes);
             GT p1 = new(sig, G1.Generator());
 
-            G2 m = new();
+            G2 m = G2.Generator();
             m.HashTo(message, Cryptosuite);
             GT p2 = new(m, publicKey);
 
