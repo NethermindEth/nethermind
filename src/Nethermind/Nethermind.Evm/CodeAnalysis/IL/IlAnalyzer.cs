@@ -84,9 +84,9 @@ internal static class IlAnalyzer
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        static FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode((OpcodeInfo[], byte[][]) codeData, ITxTracer tracer)
+        static FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, ITxTracer tracer)
         {
-            string GenerateName(List<OpcodeInfo> segment) => $"ILEVM_PRECOMPILED_[{segment[0].ProgramCounter}..{segment[^1].ProgramCounter + segment[^1].Metadata.AdditionalBytes}]";
+            string GenerateName(List<OpcodeInfo> segment) => $"ILEVM_PRECOMPILED_({codeInfo.CodeHash.ToShortString()})[{segment[0].ProgramCounter}..{segment[^1].ProgramCounter + segment[^1].Metadata.AdditionalBytes}]";
 
             Dictionary<ushort, SegmentExecutionCtx> opcodeInfos = [];
 
@@ -143,7 +143,7 @@ internal static class IlAnalyzer
                 codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode, tracer));
                 break;
             case IlInfo.ILMode.SubsegmentsCompiling:
-                codeInfo.IlInfo.WithSegments(SegmentCode(StripByteCode(machineCode.Span), tracer));
+                codeInfo.IlInfo.WithSegments(SegmentCode(codeInfo, StripByteCode(machineCode.Span), tracer));
                 break;
         }
     }

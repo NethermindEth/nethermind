@@ -413,10 +413,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             string[] desiredTracePattern = new[]
             {
-                "ILEVM_PRECOMPILED_[0..46]",
-                "ILEVM_PRECOMPILED_[0..5]",
-                "ILEVM_PRECOMPILED_[48..59]",
-                "ILEVM_PRECOMPILED_[0..46]",
+                "ILEVM_PRECOMPILED_(0x195fe3...9dbe75)[0..46]",
+                "ILEVM_PRECOMPILED_(0x3dff15...1db9a1)[0..5]",
+                "ILEVM_PRECOMPILED_(0x195fe3...9dbe75)[48..59]",
+                "ILEVM_PRECOMPILED_(0x195fe3...9dbe75)[0..46]",
                 "AbortDestinationPattern"
             };
 
