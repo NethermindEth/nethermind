@@ -98,7 +98,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
             _shutterApi = new ShutterApi(
                 _api.AbiEncoder,
-                _api.BlockTree.AsReadOnly(),
+                _api.BlockTree,
                 _api.EthereumEcdsa,
                 _api.LogFinder,
                 _api.ReceiptFinder,
