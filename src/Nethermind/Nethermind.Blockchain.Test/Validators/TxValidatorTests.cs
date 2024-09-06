@@ -531,6 +531,25 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
     }
 
+    [Test]
+    public void BlobTransactions_are_valid_with_eip4844_no_eip1559()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithTimestamp(ulong.MaxValue)
+            .WithTo(TestItem.AddressA)
+            .WithMaxFeePerGas(1)
+            .WithMaxFeePerBlobGas(1)
+            .WithBlobVersionedHashes(1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip4844Enabled = true, IsEip1559Enabled = false };
+
+        txValidator.IsWellFormed(tx, releaseSpec).Should().BeTrue();
+    }
+
     private static byte[] MakeArray(int count, params byte[] elements) =>
         elements.Take(Math.Min(count, elements.Length))
             .Concat(new byte[Math.Max(0, count - elements.Length)])
