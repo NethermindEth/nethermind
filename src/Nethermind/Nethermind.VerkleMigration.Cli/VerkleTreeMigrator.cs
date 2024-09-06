@@ -91,7 +91,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     }
 
 
-    private const int StateTreeCommitThreshold = 1000;
+    private const int StateTreeCommitThreshold = 10000;
 
     public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, ILogManager logManager, IDb? preImageDb = null, EventHandler<ProgressEventArgs>? progressChanged = null)
     {
