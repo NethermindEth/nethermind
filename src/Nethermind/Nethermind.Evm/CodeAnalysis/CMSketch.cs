@@ -12,11 +12,9 @@ namespace Nethermind.Evm.CodeAnalysis
         public readonly double probabilityOneMinusDelta;
 
         private ulong[] _sketch;
-        private int[] _seeds;
+        private Int64[] _seeds;
         public readonly int buckets;
         public readonly int hashFunctions;
-        private const ulong FNV_OFFSET_BASIS = 14695981039346656037; //64-bit
-        private const ulong FNV_PRIME = 1099511628211; //64-bit
 
 
         // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
@@ -33,13 +31,7 @@ namespace Nethermind.Evm.CodeAnalysis
             buckets = numberOfBuckets;
             error = (double)2.0 / numberOfBuckets;
             hashFunctions = numberOfhashFunctions;
-            _seeds = new int[numberOfhashFunctions];
-
-            Random rand = new Random();
-            for (int i = 0; i < numberOfhashFunctions; i++)
-            {
-                _seeds[i] = rand.Next(int.MinValue, int.MaxValue);
-            }
+            _seeds = GenerateSeed(numberOfhashFunctions);
         }
 
 
@@ -50,14 +42,9 @@ namespace Nethermind.Evm.CodeAnalysis
             buckets = numberOfBuckets;
             error = (double)2.0 / numberOfBuckets;
             hashFunctions = numberOfhashFunctions;
-            _seeds = new int[numberOfhashFunctions];
-
-            Random rand = new Random();
-            for (int i = 0; i < numberOfhashFunctions; i++)
-            {
-                _seeds[i] = rand.Next(int.MinValue, int.MaxValue);
-            }
+            _seeds = GenerateSeed(numberOfhashFunctions);
         }
+
 
         public CMSketch(ulong[] sketch, int buckets, int hashFunctions) : this(buckets, hashFunctions)
         {
@@ -70,6 +57,18 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             for (int hasher = 0; hasher < hashFunctions; hasher++)
                 Increment(item, hasher);
+        }
+
+
+        private Int64[] GenerateSeed(int numberOfhashFunctions)
+        {
+            var seeds = new Int64[numberOfhashFunctions];
+            Random rand = new Random();
+            for (int i = 0; i < numberOfhashFunctions; i++)
+            {
+                seeds[i] = rand.NextInt64(Int64.MinValue, Int64.MaxValue);
+            }
+            return seeds;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,21 +114,38 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public ulong ComputeHash(ulong value, int hasher)
         {
+           // Ideally more families of hash functions should go here:
+           switch(hasher)
+           {
+               default:
+                   return FNV1a64(value, _seeds[hasher]);
+           }
+        }
+
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong FNV1a64(ulong value, Int64 seed)
+        {
+
             // http://isthe.com/chongo/tech/comp/fnv/#FNV-1a
-            // FNV_OFFSET_BASIS_64 = 144066263297769815596495629667062367629
-            // FNV_PRIME_64  = 1099511628211
-            var hash = (FNV_OFFSET_BASIS ^ (byte)(value & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((value >> 8) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((value >> 16) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((value >> 24) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((value >> 32) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)(_seeds[hasher % hashFunctions] & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((_seeds[hasher % hashFunctions] >> 8) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((_seeds[hasher % hashFunctions] >> 16) & 0xFF)) * FNV_PRIME;
-            hash = (hash ^ (byte)((_seeds[hasher % hashFunctions] >> 24) & 0xFF)) * FNV_PRIME;
+            const ulong FNV_OFFSET_BASIS_64 = 14695981039346656037; //64-bit
+            const ulong FNV_PRIME_54 = 1099511628211; //64-bit
+
+            var hash = (FNV_OFFSET_BASIS_64 ^ (byte)(value & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((value >> 8) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((value >> 16) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((value >> 24) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((value >> 32) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)(seed & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((seed >> 8) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((seed >> 16) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((seed >> 24) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((seed >> 32) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((seed >> 40) & 0xFF)) * FNV_PRIME_54;
+            hash = (hash ^ (byte)((seed >> 56) & 0xFF)) * FNV_PRIME_54;
 
             return hash;
 

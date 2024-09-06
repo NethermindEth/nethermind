@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             if (testcase.Length <= 1)
                 Assert.That(grams == 0,
-                        $" Expected 0 grams to be iterated on instruction array of size 1");
+                        $" Expected 0 grams to be iterated on the given instruction array of length {testcase.Length}");
         }
     }
 }
