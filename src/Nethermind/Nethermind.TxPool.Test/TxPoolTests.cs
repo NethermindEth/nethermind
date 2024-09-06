@@ -1690,6 +1690,35 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactions().Should().NotContain(testTx);
         }
 
+        static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
+        {
+            yield return (new byte[16], AcceptTxResult.SenderIsContract);
+            //Delegation code
+            yield return ([..Eip7702Constants.DelegationHeader, ..new byte[20]], AcceptTxResult.Accepted);
+        }
+        [TestCaseSource(nameof(CodeCases))]
+        public void SubmitTx_((byte[] code, AcceptTxResult expected) testCase)
+        {
+            ISpecProvider specProvider = GetPragueSpecProvider();
+            TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
+            _txPool = CreatePool(txPoolConfig, specProvider);
+
+            Transaction testTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithMaxFeePerGas(9.GWei())
+                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            _stateProvider.InsertCode(TestItem.PrivateKeyA.Address, testCase.code, Prague.Instance);
+
+            AcceptTxResult result = _txPool.SubmitTx(testTx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(testCase.expected);
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
