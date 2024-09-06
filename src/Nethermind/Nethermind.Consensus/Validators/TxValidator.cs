@@ -20,7 +20,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
     private readonly Dictionary<TxType, ITxValidator> _validators = new()
     {
         {
-            TxType.Legacy, new AllTxValidator([
+            TxType.Legacy, new CompositeTxValidator([
                 IntrinsicGasTxValidator.Instance,
                 new LegacySignatureTxValidator(chainId),
                 ContractSizeTxValidator.Instance,
@@ -28,7 +28,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
             ])
         },
         {
-            TxType.AccessList, new AllTxValidator([
+            TxType.AccessList, new CompositeTxValidator([
                 new ReleaseSpecTxValidator(spec => spec.IsEip2930Enabled),
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
@@ -38,7 +38,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
             ])
         },
         {
-            TxType.EIP1559, new AllTxValidator([
+            TxType.EIP1559, new CompositeTxValidator([
                 new ReleaseSpecTxValidator(spec => spec.IsEip1559Enabled),
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
@@ -49,7 +49,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
             ])
         },
         {
-            TxType.Blob, new AllTxValidator([
+            TxType.Blob, new CompositeTxValidator([
                 new ReleaseSpecTxValidator(spec => spec.IsEip4844Enabled),
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
@@ -70,7 +70,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
 
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => IsWellFormed(transaction, releaseSpec, out _);
 
-    /// <summary>
+    /// <remarks>
     /// Full and correct validation is only possible in the context of a specific block
     /// as we cannot generalize correctness of the transaction without knowing the EIPs implemented
     /// and the world state(account nonce in particular).
@@ -78,7 +78,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
     /// from the same account with the same nonce got included on the chain.
     /// As such, we can decide whether tx is well formed as long as we also validate nonce
     /// just before the execution of the block / tx.
-    /// </summary>
+    /// </remarks>
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
     {
         if (!_validators.TryGetValue(transaction.Type, out ITxValidator? validator))
@@ -91,7 +91,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
     }
 }
 
-public sealed class AllTxValidator(List<ITxValidator> validators) : ITxValidator
+public sealed class CompositeTxValidator(List<ITxValidator> validators) : ITxValidator
 {
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
     {
