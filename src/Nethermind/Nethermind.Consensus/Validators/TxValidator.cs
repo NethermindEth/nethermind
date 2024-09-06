@@ -81,7 +81,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
     /// </remarks>
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
     {
-        if (!_validators.TryGetValue(transaction.Type, out ITxValidator? validator))
+        if (!_validators.TryGetValue(transaction.Type, out ITxValidator validator))
         {
             error = TxErrorMessages.InvalidTxType(releaseSpec.Name);
             return false;
