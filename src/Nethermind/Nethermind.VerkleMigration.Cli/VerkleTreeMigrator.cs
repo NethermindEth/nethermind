@@ -124,13 +124,13 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         _setStateAction?.Completion.Wait();
         _setStorageAction?.Completion.Wait();
         timeToCompletePrevCommit = watch.Elapsed;
-        watch.Reset();
+        watch.Restart();
         _verkleStateTree.Commit();
         timeToCommit = watch.Elapsed;
-        watch.Reset();
+        watch.Restart();
         _verkleStateTree.CommitTree(0);
         timeToCommitTree = watch.Elapsed;
-        watch.Reset();
+        watch.Restart();
         BulkSet(_accountChange);
         BulkSetStorage(toSetStorage);
         timeToBulkSet = watch.Elapsed;
