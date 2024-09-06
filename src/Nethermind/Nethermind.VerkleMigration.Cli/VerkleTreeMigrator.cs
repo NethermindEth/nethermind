@@ -28,8 +28,8 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private int _leafNodeCounter = 0;
     private DateTime _lastUpdateTime = DateTime.UtcNow;
 
-    Dictionary<Address, Account> _accountChange = new Dictionary<Address, Account>();
-    Dictionary<StorageCell, byte[]> toSetStorage = new Dictionary<StorageCell, byte[]>();
+    Dictionary<Address, Account> _accountChange = new();
+    Dictionary<StorageCell, byte[]> toSetStorage = new();
     public event EventHandler<ProgressEventArgs>? _progressChanged;
 
 
@@ -116,14 +116,25 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
     private void CommitTree()
     {
+        TimeSpan timeToCompletePrevCommit;
+        TimeSpan timeToBulkSet;
+        TimeSpan timeToCommit;
+        TimeSpan timeToCommitTree;
         var watch = Stopwatch.StartNew();
         _setStateAction?.Completion.Wait();
         _setStorageAction?.Completion.Wait();
+        timeToCompletePrevCommit = watch.Elapsed;
+        watch.Reset();
         _verkleStateTree.Commit();
+        timeToCommit = watch.Elapsed;
+        watch.Reset();
         _verkleStateTree.CommitTree(0);
+        timeToCommitTree = watch.Elapsed;
+        watch.Reset();
         BulkSet(_accountChange);
         BulkSetStorage(toSetStorage);
-        Console.WriteLine($"Time For Commit: {watch.Elapsed}");
+        timeToBulkSet = watch.Elapsed;
+        Console.WriteLine($"timeToCompletePrevCommit:{timeToCompletePrevCommit} timeToBulkSet:{timeToBulkSet} timeToCommit:{timeToCommit} timeToCommitTree:{timeToCommitTree}");
         _accountChange.Clear();
         toSetStorage.Clear();
     }
