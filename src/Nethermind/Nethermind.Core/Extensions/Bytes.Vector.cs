@@ -38,7 +38,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void Or(this Span<byte> thisSpan, Span<byte> valueSpan)
+        public static void Or(this Span<byte> thisSpan, ReadOnlySpan<byte> valueSpan)
         {
             var length = thisSpan.Length;
             if (length != valueSpan.Length)
@@ -78,7 +78,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void Xor(this Span<byte> thisSpan, Span<byte> valueSpan)
+        public static void Xor(this Span<byte> thisSpan, ReadOnlySpan<byte> valueSpan)
         {
             var length = thisSpan.Length;
             if (length != valueSpan.Length)

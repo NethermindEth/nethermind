@@ -166,19 +166,5 @@ namespace Nethermind.Core.Extensions
             newList.AddRange(span);
             return newList;
         }
-
-        public static void Xor(this in Span<byte> bytes, in ReadOnlySpan<byte> otherBytes)
-        {
-            if (bytes.Length != otherBytes.Length)
-            {
-                throw new InvalidOperationException($"Trying to xor arrays of different lengths: {bytes.Length} and {otherBytes.Length}");
-            }
-
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = (byte)(bytes[i] ^ otherBytes[i]);
-            }
-        }
-
     }
 }
