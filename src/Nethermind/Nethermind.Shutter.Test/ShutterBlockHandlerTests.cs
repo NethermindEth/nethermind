@@ -4,7 +4,6 @@
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
 using System.Threading;
-using Nethermind.Merge.Plugin.Test;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using System;
@@ -12,7 +11,7 @@ using System;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-class ShutterBlockHandlerTests : EngineModuleTests
+class ShutterBlockHandlerTests
 {
     [Test]
     public async Task Can_wait_for_valid_block()

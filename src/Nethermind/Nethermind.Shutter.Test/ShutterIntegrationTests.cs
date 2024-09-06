@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Test;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using System.Threading;
@@ -21,11 +20,12 @@ using Nethermind.Core.Specs;
 using Nethermind.State;
 using Nethermind.Shutter.Config;
 using Nethermind.Blockchain.Find;
+using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-public class ShutterIntegrationTests : EngineModuleTests
+public class ShutterIntegrationTests
 {
     private readonly int _buildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private readonly ulong _buildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;

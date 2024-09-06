@@ -8,14 +8,14 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Test;
 using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
+using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-class ShutterTxLoaderTests : EngineModuleTests
+class ShutterTxLoaderTests
 {
     private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
     {

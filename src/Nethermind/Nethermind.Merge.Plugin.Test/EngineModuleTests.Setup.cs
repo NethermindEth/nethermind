@@ -66,7 +66,7 @@ public partial class EngineModuleTests
         ILogManager? logManager = null)
         => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
 
-    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
+    public static IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         var synchronizationConfig = syncConfig ?? new SyncConfig();
