@@ -37,6 +37,10 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingEvmSegments => false;
     public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs || IsTracingEvmChunks || IsTracingEvmSegments;
 
+    public bool IsTracingPredefinedPatterns => throw new NotImplementedException();
+
+    public bool IsTracingCompiledSegments => throw new NotImplementedException();
+
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
         _trace.Result.Output = output;
@@ -274,15 +278,14 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportChunkExecution(long gas, int pc, string segmentID)
-    {
-        throw new NotSupportedException();
-    }
-
     public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
     {
         throw new NotSupportedException();
     }
     public void Dispose() { }
 
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+    {
+        throw new NotImplementedException();
+    }
 }
