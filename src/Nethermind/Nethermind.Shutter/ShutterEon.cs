@@ -62,9 +62,9 @@ public class ShutterEon(
                         Addresses = addresses
                     };
 
-                    Metrics.Eon = eon;
-                    Metrics.Threshold = (int)threshold;
-                    Metrics.Keypers = addresses.Length;
+                    Metrics.ShutterEon = eon;
+                    Metrics.ShutterThreshold = (int)threshold;
+                    Metrics.ShutterKeypers = addresses.Length;
 
                     if (_logger.IsInfo) _logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
                 }

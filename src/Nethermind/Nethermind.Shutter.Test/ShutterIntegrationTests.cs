@@ -172,7 +172,7 @@ public class ShutterIntegrationTests
         long time = 1;
         Timestamper timestamper = new(time);
 
-        Metrics.KeysMissed = 0;
+        Metrics.ShutterKeysMissed = 0;
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -191,7 +191,7 @@ public class ShutterIntegrationTests
         var payloadImprovementDelay = TimeSpan.FromMilliseconds(ShutterTestsCommon.Cfg.MaxKeyDelay + 200);
         lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5, payloadImprovementDelay))[0];
 
-        Assert.That(Metrics.KeysMissed, Is.EqualTo(6));
+        Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(6));
     }
 
 }

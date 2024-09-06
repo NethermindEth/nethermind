@@ -93,7 +93,7 @@ public class ShutterApiSimulator(
         }
 
         KeysValidated++;
-        Metrics.TxPointer = keys.Value.TxPointer;
+        Metrics.ShutterTxPointer = keys.Value.TxPointer;
 
         // wait for latest block before loading transactions
         Block? head = (await BlockHandler.WaitForBlockInSlot(keys.Value.Slot - 1, new())) ?? _readOnlyBlockTree.Head;

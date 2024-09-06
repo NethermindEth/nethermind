@@ -49,7 +49,7 @@ public class ShutterTxLoader(
         using ArrayPoolList<SequencedTransaction> sequencedTransactions = new(_maxTransactions, GetNextTransactions(keys.Eon, keys.TxPointer, head?.Number ?? 0));
 
         long offset = time.GetCurrentOffsetMs(keys.Slot);
-        Metrics.KeysReceivedTimeOffset = offset;
+        Metrics.ShutterKeysReceivedTimeOffset = offset;
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms fter";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
@@ -65,8 +65,8 @@ public class ShutterTxLoader(
             Slot = keys.Slot
         };
 
-        Metrics.Transactions = (uint)filtered.Length;
-        Metrics.BadTransactions = (uint)(sequencedTransactions.Count - filtered.Length);
+        Metrics.ShutterTransactions = (uint)filtered.Length;
+        Metrics.ShutterBadTransactions = (uint)(sequencedTransactions.Count - filtered.Length);
 
         if (_logger.IsDebug && shutterTransactions.Transactions.Length > 0) _logger.Debug($"Filtered Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, shutterTransactions.Transactions.Select(tx => tx.ToShortString()))}");
         return shutterTransactions;

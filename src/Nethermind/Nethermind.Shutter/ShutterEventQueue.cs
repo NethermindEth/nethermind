@@ -102,7 +102,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 
             if (totalGas + e.GasLimit > _encryptedGasLimit)
             {
-                Metrics.EncryptedGasUsed = (ulong)totalGas;
+                Metrics.ShutterEncryptedGasUsed = (ulong)totalGas;
                 if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
                 yield break;
             }
