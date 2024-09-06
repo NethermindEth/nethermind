@@ -50,14 +50,13 @@ public class ShutterEon(
                     Address[] addresses = keyperSetContract.GetMembers(header);
 
                     KeyBroadcastContract keyBroadcastContract = new(processor, abiEncoder, _keyBroadcastContractAddress);
-                    byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(blockTree.Head!.Header, eon);
-                    Bls.P2 key = new(eonKeyBytes);
+                    byte[] eonKey = keyBroadcastContract.GetEonKey(blockTree.Head!.Header, eon);
 
                     // update atomically
                     _currentInfo = new()
                     {
                         Eon = eon,
-                        Key = key.Serialize(),
+                        Key = eonKey,
                         Threshold = threshold,
                         Addresses = addresses
                     };
