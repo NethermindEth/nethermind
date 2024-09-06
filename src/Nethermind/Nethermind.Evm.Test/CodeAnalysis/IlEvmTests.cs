@@ -426,7 +426,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
 
         [Test]
-        public void JIT_invalid_opcode_resultd_in_failure()
+        public void JIT_invalid_opcode_results_in_failure()
         {
             byte[] bytecode =
                 Prepare.EvmCode
@@ -480,7 +480,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             var accumulatedTraces = new List<ChunkTraceEntry>();
-            for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 2; i++)
+            for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
             {
                 var tracer = new IlvmBlockTracer();
                 ExecuteBlock(tracer, bytecode);
