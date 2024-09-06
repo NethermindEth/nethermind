@@ -23,7 +23,8 @@ internal class ILCompiler
     public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, byte[][] immediatesData);
     public class SegmentExecutionCtx
     {
-        public ExecuteSegment Method;
+        public string Name => PrecompiledSegment.Method.Name;
+        public ExecuteSegment PrecompiledSegment;
         public byte[][] Data;
     }
     public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data)
@@ -46,14 +47,14 @@ internal class ILCompiler
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
-            Method = dynEmitedDelegate,
+            PrecompiledSegment = dynEmitedDelegate,
             Data = data
         };
     }
 
     private static void EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code)
     {
-        using Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
+        using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
 
         using Local address = method.DeclareLocal(typeof(Address));
@@ -144,14 +145,14 @@ internal class ILCompiler
             method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
 
             // set pc
-            method.LoadConstant(op.ProgramCounter + (op.Metadata?.AdditionalBytes ?? 0));
+            method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
             method.StoreLocal(programCounter);
 
             // load gasAvailable
             method.LoadLocal(gasAvailable);
 
             // get pc gas cost
-            method.LoadConstant(op.Metadata?.GasCost ?? 0);
+            method.LoadConstant(op.Metadata.GasCost);
 
             // subtract the gas cost
             method.Subtract();
@@ -180,7 +181,7 @@ internal class ILCompiler
                     method.Load(stack, head);
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ChainId)));
-                    method.StoreField(Word.Ulong0Field);
+                    method.Call(Word.SetULong0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.NOT:
@@ -447,7 +448,7 @@ internal class ILCompiler
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadLocal(byte8A);
-                    method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Byte0)));
+                    method.StoreField(Word.Byte0Field);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.POP:
@@ -516,14 +517,14 @@ internal class ILCompiler
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadConstant(code.Length);
-                    method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.UInt0)));
+                    method.Call(Word.SetInt0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.PC:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadLocal(programCounter);
-                    method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.UInt0)));
+                    method.Call(Word.SetUInt0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.COINBASE:
@@ -543,7 +544,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Timestamp), false, out _));
-                    method.StoreField(Word.Ulong0Field);
+                    method.Call(Word.SetULong0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.NUMBER:
@@ -553,7 +554,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
-                    method.StoreField(Word.Ulong0Field);
+                    method.Call(Word.SetULong0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.GASLIMIT:
@@ -563,7 +564,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
-                    method.StoreField(Word.Ulong0Field);
+                    method.Call(Word.SetULong0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.CALLER:
@@ -704,7 +705,7 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
-                    method.StoreField(GetFieldInfo(typeof(Word), nameof(Word.Ulong0)));
+                    method.Call(Word.SetULong0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.MSTORE:
@@ -976,7 +977,8 @@ internal class ILCompiler
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadLocal(gasAvailable);
-                    method.StoreField(Word.Ulong0Field);
+                    method.Call(Word.SetULong0);
+
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.RETURNDATASIZE:
@@ -985,7 +987,7 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
-                    method.StoreField(Word.Int0Field);
+                    method.Call(Word.SetInt0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.RETURNDATACOPY:
@@ -1132,7 +1134,7 @@ internal class ILCompiler
                     endOfOpcode = method.DefineLabel();
 
                     method.StackLoadPrevious(stack, head, 1);
-                    method.LoadField(Word.Int0Field);
+                    method.Call(Word.GetInt0);
                     method.StoreLocal(uint32A);
                     method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
 
@@ -1175,7 +1177,7 @@ internal class ILCompiler
                     Label pushToStackRegion = method.DefineLabel();
 
                     method.StackLoadPrevious(stack, head, 1);
-                    method.LoadField(Word.Ulong0Field);
+                    method.Call(Word.GetUInt0);
                     method.Convert<long>();
                     method.LoadConstant(long.MaxValue);
                     method.Call(typeof(Math).GetMethod(nameof(Math.Min), [typeof(long), typeof(long)]));
@@ -1221,7 +1223,7 @@ internal class ILCompiler
                     Label endOfOpcodeHandling = method.DefineLabel();
 
                     method.StackLoadPrevious(stack, head, 1);
-                    method.LoadField(Word.UInt0Field);
+                    method.Call(Word.GetUInt0);
                     method.StoreLocal(uint32A);
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetSpan);
@@ -1428,7 +1430,7 @@ internal class ILCompiler
                     method.LoadLocalAddress(localReadOnlyMemory);
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
 
-                    method.StoreField(Word.Int0Field);
+                    method.Call(Word.SetInt0);
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
 
@@ -1637,7 +1639,7 @@ internal class ILCompiler
         // jump table
         method.MarkLabel(jumpTable);
         method.StackLoadPrevious(stack, head, 1);
-        method.LoadField(Word.Int0Field);
+        method.Call(Word.GetInt0);
         method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
         method.StoreLocal(jmpDestination);
         method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow]);
@@ -1649,7 +1651,7 @@ internal class ILCompiler
         //check if jump crosses segment boundaies
         Label jumpIsLocal = method.DefineLabel();
 
-        int maxJump = code[^1].ProgramCounter + (code[^1].Metadata?.AdditionalBytes ?? 0);
+        int maxJump = code[^1].ProgramCounter + code[^1].Metadata.AdditionalBytes;
         int minJump = code[0].ProgramCounter;
 
         // if (jumpDest <= maxJump)
@@ -1753,7 +1755,7 @@ internal class ILCompiler
 
         il.LoadLocalAddress(locals[0]);
         il.StackLoadPrevious(stack.span, stack.idx, 2);
-        il.LoadField(Word.Int0Field);
+        il.Call(Word.GetInt0);
         il.LoadLocalAddress(uint256R);
         il.Call(shiftOp);
         il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
@@ -1792,7 +1794,7 @@ internal class ILCompiler
         il.LoadLocalAddress(locals[0]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.StackLoadPrevious(stack.span, stack.idx, 2);
-        il.LoadField(Word.Int0Field);
+        il.Call(Word.GetInt0);
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.RightShift), [typeof(int), typeof(Int256.Int256).MakeByRefType()]));
@@ -2182,17 +2184,17 @@ internal class ILCompiler
                 case Instruction.JUMPDEST:
                     costs[costStart] = coststack; // remember the stack chain of opcodes
                     costStart = pc;
-                    coststack = op.Metadata?.GasCost ?? 0;
+                    coststack = op.Metadata.GasCost;
                     break;
                 case Instruction.JUMPI:
                 case Instruction.JUMP:
-                    coststack += op.Metadata?.GasCost ?? 0;
+                    coststack += op.Metadata.GasCost;
                     costs[costStart] = coststack; // remember the stack chain of opcodes
                     costStart = pc + 1;             // start with the next again
                     coststack = 0;
                     break;
                 default:
-                    coststack += op.Metadata?.GasCost ?? 0;
+                    coststack += op.Metadata.GasCost;
                     costs[pc] = coststack;
                     break;
             }

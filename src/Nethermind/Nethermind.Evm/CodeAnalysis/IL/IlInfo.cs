@@ -84,10 +84,10 @@ internal class IlInfo
         var executionResult = new ILChunkExecutionResult();
         if (Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
-            tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, ctx.Method.Method.Name);
+            tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, ctx.Name);
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
-            ctx.Method.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
+            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
 
             gasAvailable = ilvmState.GasAvailable;
             programCounter = ilvmState.ProgramCounter;
@@ -104,9 +104,8 @@ internal class IlInfo
         }
         else if (Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
-            tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, chunk.GetType().Name);
-            var evmException = chunk.Invoke(vmState, worldState, spec, ref programCounter, ref gasAvailable, ref stack);
-            executionResult.ExceptionType = evmException;
+            tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, chunk.Name);
+            chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
         }
         else
         {

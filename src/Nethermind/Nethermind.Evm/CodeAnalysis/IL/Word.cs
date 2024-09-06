@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
 using Newtonsoft.Json.Linq;
+using Org.BouncyCastle.Utilities;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -25,34 +26,34 @@ internal struct Word
     [FieldOffset(0)] public unsafe fixed byte _buffer[Size];
 
     [FieldOffset(Size - sizeof(byte))]
-    public byte Byte0;
+    public byte _uByte0;
 
     [FieldOffset(Size - sizeof(int))]
-    public int Int0;
+    private int _sInt0;
 
     [FieldOffset(Size - sizeof(int))]
-    public uint UInt0;
+    private uint _uInt0;
 
     [FieldOffset(Size - 2 * sizeof(int))]
-    public uint UInt1;
+    private uint _uInt1;
 
     [FieldOffset(Size - 1 * sizeof(ulong))]
-    public ulong Ulong0;
+    private ulong _ulong0;
 
     [FieldOffset(Size - 2 * sizeof(ulong))]
-    public ulong Ulong1;
+    private ulong _ulong1;
 
     [FieldOffset(Size - 3 * sizeof(ulong))]
-    public ulong Ulong2;
+    private ulong _ulong2;
 
     [FieldOffset(Size - 4 * sizeof(ulong))]
-    public ulong Ulong3;
+    private ulong _ulong3;
 
-    public bool IsZero => (Ulong0 | Ulong1 | Ulong2 | Ulong3) == 0;
+    public bool IsZero => (_ulong0 | _ulong1 | _ulong2 | _ulong3) == 0;
     public void ToZero()
     {
-        Ulong0 = 0; Ulong1 = 0;
-        Ulong2 = 0; Ulong3 = 0;
+        _ulong0 = 0; _ulong1 = 0;
+        _ulong2 = 0; _ulong3 = 0;
     }
 
     public unsafe byte[] Array
@@ -138,10 +139,10 @@ internal struct Word
     {
         get
         {
-            ulong u3 = Ulong3;
-            ulong u2 = Ulong2;
-            ulong u1 = Ulong1;
-            ulong u0 = Ulong0;
+            ulong u3 = _ulong3;
+            ulong u2 = _ulong2;
+            ulong u1 = _ulong1;
+            ulong u0 = _ulong0;
 
             if (BitConverter.IsLittleEndian)
             {
@@ -157,32 +158,88 @@ internal struct Word
         {
             if (BitConverter.IsLittleEndian)
             {
-                Ulong3 = BinaryPrimitives.ReverseEndianness(value.u3);
-                Ulong2 = BinaryPrimitives.ReverseEndianness(value.u2);
-                Ulong1 = BinaryPrimitives.ReverseEndianness(value.u1);
-                Ulong0 = BinaryPrimitives.ReverseEndianness(value.u0);
+                _ulong3 = BinaryPrimitives.ReverseEndianness(value.u3);
+                _ulong2 = BinaryPrimitives.ReverseEndianness(value.u2);
+                _ulong1 = BinaryPrimitives.ReverseEndianness(value.u1);
+                _ulong0 = BinaryPrimitives.ReverseEndianness(value.u0);
             }
             else
             {
-                Ulong3 = value.u3;
-                Ulong2 = value.u2;
-                Ulong1 = value.u1;
-                Ulong0 = value.u0;
+                _ulong3 = value.u3;
+                _ulong2 = value.u2;
+                _ulong1 = value.u1;
+                _ulong0 = value.u0;
             }
         }
     }
 
-    public static readonly FieldInfo Byte0Field = typeof(Word).GetField(nameof(Byte0));
+    public uint UInt0
+    {
+        get
+        {
+            return _uInt0;
+        }
+        set
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                _uInt0 = BinaryPrimitives.ReverseEndianness(value);
+            }
+            else
+            {
+                _uInt0 = value;
+            }
+        }
+    }
 
-    public static readonly FieldInfo Int0Field = typeof(Word).GetField(nameof(Int0));
+    public int Int0
+    {
+        get
+        {
+            return _sInt0;
+        }
+        set
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                _sInt0 = BinaryPrimitives.ReverseEndianness(value);
+            }
+            else
+            {
+                _sInt0 = value;
+            }
+        }
+    }
 
-    public static readonly FieldInfo UInt0Field = typeof(Word).GetField(nameof(UInt0));
-    public static readonly FieldInfo UInt1Field = typeof(Word).GetField(nameof(UInt1));
+    public ulong ULong0
+    {
+        get
+        {
+            return _ulong0;
+        }
+        set
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                _ulong0 = BinaryPrimitives.ReverseEndianness(value);
+            }
+            else
+            {
+                _ulong0 = value;
+            }
+        }
+    }
 
-    public static readonly FieldInfo Ulong0Field = typeof(Word).GetField(nameof(Ulong0));
-    public static readonly FieldInfo Ulong1Field = typeof(Word).GetField(nameof(Ulong1));
-    public static readonly FieldInfo Ulong2Field = typeof(Word).GetField(nameof(Ulong2));
-    public static readonly FieldInfo Ulong3Field = typeof(Word).GetField(nameof(Ulong3));
+    public static readonly FieldInfo Byte0Field = typeof(Word).GetField(nameof(_uByte0));
+
+    public static readonly MethodInfo GetInt0 = typeof(Word).GetProperty(nameof(Int0))!.GetMethod;
+    public static readonly MethodInfo SetInt0 = typeof(Word).GetProperty(nameof(Int0))!.SetMethod;
+
+    public static readonly MethodInfo GetUInt0 = typeof(Word).GetProperty(nameof(UInt0))!.GetMethod;
+    public static readonly MethodInfo SetUInt0 = typeof(Word).GetProperty(nameof(UInt0))!.SetMethod;
+
+    public static readonly MethodInfo GetULong0 = typeof(Word).GetProperty(nameof(ULong0))!.GetMethod;
+    public static readonly MethodInfo SetULong0 = typeof(Word).GetProperty(nameof(ULong0))!.SetMethod;
 
     public static readonly MethodInfo GetIsZero = typeof(Word).GetProperty(nameof(IsZero))!.GetMethod;
     public static readonly MethodInfo SetToZero = typeof(Word).GetMethod(nameof(ToZero))!;

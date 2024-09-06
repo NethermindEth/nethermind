@@ -25,12 +25,39 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
-    public class P01P01ADD : InstructionChunk
+    internal class AbortDestinationPattern : InstructionChunk // for testing
     {
+        public string Name => nameof(AbortDestinationPattern);
+        public byte[] Pattern => [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
+        public byte CallCount { get; set; } = 0;
+        public long GasCost(EvmState vmState, IReleaseSpec spec)
+        {
+            return GasCostOf.JumpDest;
+        }
+
+        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+        {
+            CallCount++;
+
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+                result.ExceptionType = EvmExceptionType.OutOfGas;
+
+            programCounter += 2;
+            result.ShouldStop = true;
+        }
+    }
+    internal class SomeAfterTwoPush : InstructionChunk
+    {
+        public string Name => nameof(SomeAfterTwoPush);
         public byte[] Pattern => [96, 96, 01];
         public byte CallCount { get; set; } = 0;
 
@@ -40,23 +67,28 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public EvmExceptionType Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
 
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+                result.ExceptionType = EvmExceptionType.OutOfGas;
 
             UInt256 lhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
             UInt256 rhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
             stack.PushUInt256(lhs + rhs);
 
             programCounter += 5;
-            return EvmExceptionType.None;
         }
     }
 
-    public class MethodSelector : InstructionChunk
+    internal class MethodSelector : InstructionChunk
     {
+        public string Name => nameof(MethodSelector);
         public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.CALLVALUE, (byte)Instruction.DUP1];
         public byte CallCount { get; set; } = 0;
 
@@ -66,11 +98,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public EvmExceptionType Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
 
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+                result.ExceptionType = EvmExceptionType.OutOfGas;
 
             byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
             byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
@@ -80,12 +117,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             stack.PushUInt256(vmState.Env.Value);
 
             programCounter += 2 + 2 + 1 + 1 + 1;
-            return EvmExceptionType.None;
         }
     }
 
-    public class IsContractCheck : InstructionChunk
+    internal class IsContractCheck : InstructionChunk
     {
+        public string Name => nameof(IsContractCheck);
         public byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
         public byte CallCount { get; set; } = 0;
 
@@ -95,11 +132,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public EvmExceptionType Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
 
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+                result.ExceptionType = EvmExceptionType.OutOfGas;
 
             Address address = stack.PopAddress();
             int contractCodeSize = worldState.GetCode(address).Length;
@@ -114,12 +156,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
 
             programCounter += 3;
-            return EvmExceptionType.None;
         }
 
     }
-    public class EmulatedStaticJump : InstructionChunk
+    internal class EmulatedStaticJump : InstructionChunk
     {
+        public string Name => nameof(EmulatedStaticJump);
         public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
         public byte CallCount { get; set; } = 0;
 
@@ -129,11 +171,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public EvmExceptionType Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
 
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+                result.ExceptionType = EvmExceptionType.OutOfGas;
 
             int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
             if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
@@ -142,14 +189,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
             else
             {
-                return EvmExceptionType.InvalidJumpDestination;
+                result.ExceptionType = EvmExceptionType.InvalidJumpDestination;
             }
-            return EvmExceptionType.None;
         }
 
     }
-    public class EmulatedStaticCJump : InstructionChunk
+    internal class EmulatedStaticCJump : InstructionChunk
     {
+        public string Name => nameof(EmulatedStaticCJump);
         public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
         public byte CallCount { get; set; } = 0;
 
@@ -159,11 +206,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public EvmExceptionType Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
         {
             CallCount++;
 
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+                result.ExceptionType = EvmExceptionType.OutOfGas;
 
             stack.PopUInt256(out UInt256 condition);
             int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
@@ -175,22 +227,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 }
                 else
                 {
-                    return EvmExceptionType.InvalidJumpDestination;
+                    result.ExceptionType = EvmExceptionType.InvalidJumpDestination;
                 }
             }
             else
             {
                 programCounter += 4;
             }
-
-            return EvmExceptionType.None;
         }
     }
 
 
 
     [TestFixture]
-    public class IlEvmTests : VirtualMachineTestsBase
+    internal class IlEvmTests : VirtualMachineTestsBase
     {
         private const string AnalyzerField = "_analyzer";
         private readonly IVMConfig _vmConfig = new VMConfig()
@@ -212,14 +262,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _vmConfig);
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
 
-            var code = Prepare.EvmCode.STOP().Done;
+            var code = Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .ADD()
+                .STOP().Done;
             TestState.CreateAccount(Address.FromNumber(23), 1000000);
             TestState.InsertCode(Address.FromNumber(23), code, SpecProvider.GenesisSpec);
 
-            IlAnalyzer.AddPattern<P01P01ADD>();
+            IlAnalyzer.AddPattern<SomeAfterTwoPush>();
             IlAnalyzer.AddPattern<EmulatedStaticCJump>();
             IlAnalyzer.AddPattern<EmulatedStaticJump>();
             IlAnalyzer.AddPattern<IsContractCheck>();
+            IlAnalyzer.AddPattern<MethodSelector>();
+            IlAnalyzer.AddPattern<AbortDestinationPattern>();
         }
 
         [Test]
@@ -274,7 +330,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Execution_Swap_Happens_When_Pattern_Occurs()
         {
-            var pattern1 = IlAnalyzer.GetPatternHandler<P01P01ADD>();
+            var pattern1 = IlAnalyzer.GetPatternHandler<SomeAfterTwoPush>();
             var pattern2 = IlAnalyzer.GetPatternHandler<EmulatedStaticJump>();
             var pattern3 = IlAnalyzer.GetPatternHandler<EmulatedStaticCJump>();
 
@@ -322,11 +378,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(1000)
                     .GAS()
                     .LT()
-                    .JUMPI(59)
+                    .JUMPI(58)
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
-                    .Call(Address.FromNumber(23), 10000)
+                    .Call(Address.FromNumber(23), 100)
                     .POP()
                     .PushSingle(42)
                     .PushSingle(5)
@@ -342,6 +398,48 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 var tracer = new IlvmBlockTracer();
                 ExecuteBlock(tracer, bytecode);
+                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).ToList();
+                accumulatedTraces.AddRange(traces);
+
+            }
+
+            // in the last stint gas is almost below 1000
+            // it executes segment 0 (0..46)
+            // then calls address 23 (segment 0..5 since it is precompiled as well)
+            // then it executes segment 48..59 which ends in jump back to pc = 0
+            // then it executes segment 0..46 again but this time gas is below 1000
+            // it ends jumping to pc = 59 (which is index of AbortDestinationPattern)
+            // so the last segment executed is AbortDestinationPattern
+
+            string[] desiredTracePattern = new[]
+            {
+                "ILEVM_PRECOMPILED_[0..46]",
+                "ILEVM_PRECOMPILED_[0..5]",
+                "ILEVM_PRECOMPILED_[48..59]",
+                "ILEVM_PRECOMPILED_[0..46]",
+                "AbortDestinationPattern"
+            };
+
+            string[] actualTracePattern = accumulatedTraces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
+            Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
+        }
+
+
+        [Test]
+        public void JIT_invalid_opcode_resultd_in_failure()
+        {
+            byte[] bytecode =
+                Prepare.EvmCode
+                    .PUSHx() // PUSH0
+                    .POP()
+                    .STOP()
+                    .Done;
+
+            var accumulatedTraces = new List<ChunkTraceEntry>();
+            for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
+            {
+                var tracer = new IlvmBlockTracer();
+                ExecuteBlock(tracer, bytecode, (1024, null));
                 var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).ToList();
                 accumulatedTraces.AddRange(traces);
             }
@@ -806,7 +904,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.Method(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
+            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 

@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.State;
+using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
@@ -13,10 +14,13 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 ///
 interface InstructionChunk
 {
+    string Name { get; }
     byte[] Pattern { get; }
-    EvmExceptionType Invoke<T>(EvmState vmState, IWorldState worldState, IReleaseSpec spec, ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack) where T : struct, IIsTracing;
+    void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing;
 
     long GasCost(EvmState vmState, IReleaseSpec spec);
 }

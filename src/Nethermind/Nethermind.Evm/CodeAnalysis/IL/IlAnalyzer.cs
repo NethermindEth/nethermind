@@ -86,6 +86,8 @@ internal static class IlAnalyzer
 
         static FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode((OpcodeInfo[], byte[][]) codeData, ITxTracer tracer)
         {
+            string GenerateName(List<OpcodeInfo> segment) => $"ILEVM_PRECOMPILED_[{segment[0].ProgramCounter}..{segment[^1].ProgramCounter + segment[^1].Metadata.AdditionalBytes}]";
+
             Dictionary<ushort, SegmentExecutionCtx> opcodeInfos = [];
 
             List<OpcodeInfo> segment = [];
@@ -95,7 +97,7 @@ internal static class IlAnalyzer
                 {
                     if (segment.Count > 0)
                     {
-                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
+                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment(GenerateName(segment), segment.ToArray(), codeData.Item2));
                         segment.Clear();
                     }
                 }
@@ -106,7 +108,7 @@ internal static class IlAnalyzer
             }
             if (segment.Count > 0)
             {
-                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
+                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment(GenerateName(segment), segment.ToArray(), codeData.Item2));
             }
             return opcodeInfos.ToFrozenDictionary();
         }
