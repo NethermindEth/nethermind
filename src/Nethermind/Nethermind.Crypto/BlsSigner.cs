@@ -17,10 +17,10 @@ public class BlsSigner
 
     public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
     {
-        G2 p = new();
+        G2 p = G2.Generator();
         p.HashTo(message, Cryptosuite);
         p.SignWith(sk);
-        return new(new byte[96]);
+        return new(p.Compress());
     }
 
     public static bool Verify(G1 publicKey, Signature signature, ReadOnlySpan<byte> message)
