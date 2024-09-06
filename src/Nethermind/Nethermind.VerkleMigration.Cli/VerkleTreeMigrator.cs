@@ -123,7 +123,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         _verkleStateTree.CommitTree(0);
         BulkSet(_accountChange);
         BulkSetStorage(toSetStorage);
-        Console.Write($"Time For Commit: {watch.Elapsed}");
+        Console.WriteLine($"Time For Commit: {watch.Elapsed}");
         _accountChange.Clear();
         toSetStorage.Clear();
     }
