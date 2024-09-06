@@ -29,7 +29,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
         },
         {
             TxType.AccessList, new CompositeTxValidator([
-                new ReleaseSpecTxValidator(spec => spec.IsEip2930Enabled),
+                new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
                 new ExpectedChainIdTxValidator(chainId),
@@ -39,7 +39,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
         },
         {
             TxType.EIP1559, new CompositeTxValidator([
-                new ReleaseSpecTxValidator(spec => spec.IsEip1559Enabled),
+                new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
                 new ExpectedChainIdTxValidator(chainId),
@@ -50,7 +50,7 @@ public sealed class TxValidator(ulong chainId) : ITxValidator
         },
         {
             TxType.Blob, new CompositeTxValidator([
-                new ReleaseSpecTxValidator(spec => spec.IsEip4844Enabled),
+                new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
                 IntrinsicGasTxValidator.Instance,
                 SignatureTxValidator.Instance,
                 new ExpectedChainIdTxValidator(chainId),
