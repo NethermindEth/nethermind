@@ -191,16 +191,10 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         TreePath path = nodeContext.Path.Append(node.Key);
         Span<byte> pathBytes = path.Path.BytesAsSpan;
 
-        if (_leafNodeCounter >= StateTreeCommitThreshold/2)
-        {
-            var (progress, currentAddress) = CalculateProgress(pathBytes);
-            DateTime now = DateTime.UtcNow;
-            TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
-            _lastUpdateTime = now;
-            OnProgressChanged(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
-
-        }
-
+        var (progress, currentAddress) = CalculateProgress(pathBytes);
+        DateTime now = DateTime.UtcNow;
+        TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
+        _lastUpdateTime = now;
 
         if (!trieVisitContext.IsStorage)
         {
@@ -252,14 +246,15 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
             MigrateAccountStorage(_lastAddress, storageSlot, storageValue);
         }
 
-        CommitIfThresholdReached();
+        CommitIfThresholdReached(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
     }
 
-    private void CommitIfThresholdReached()
+    private void CommitIfThresholdReached(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress, bool isStorage)
     {
         _leafNodeCounter++;
         if (_leafNodeCounter >= StateTreeCommitThreshold)
         {
+            OnProgressChanged(progress, timeSinceLastUpdate, currentAddress, isStorage);
             CommitTree();
             _leafNodeCounter = 0;
         }
