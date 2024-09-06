@@ -217,7 +217,7 @@ public class ShutterTxLoader(
             Eon = eon,
             EncryptedTransaction = e.EncryptedTransaction,
             GasLimit = e.GasLimit,
-            Identity = ShutterCrypto.ComputeIdentity(identityPreimage).Compress(),
+            Identity = ShutterCrypto.ComputeIdentity(identityPreimage.AsSpan()).Compress(),
             IdentityPreimage = identityPreimage
         };
     }
