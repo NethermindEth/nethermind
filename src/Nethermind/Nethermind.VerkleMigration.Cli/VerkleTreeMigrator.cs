@@ -191,7 +191,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         TreePath path = nodeContext.Path.Append(node.Key);
         Span<byte> pathBytes = path.Path.BytesAsSpan;
 
-        if (_leafNodeCounter >= StateTreeCommitThreshold)
+        if (_leafNodeCounter >= StateTreeCommitThreshold/2)
         {
             var (progress, currentAddress) = CalculateProgress(pathBytes);
             DateTime now = DateTime.UtcNow;
