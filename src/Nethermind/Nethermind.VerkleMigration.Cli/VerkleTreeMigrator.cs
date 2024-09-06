@@ -4,11 +4,13 @@
 using System.Diagnostics;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Int256;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Verkle;
 using Nethermind.Db;
 using Nethermind.State;
 using Nethermind.Logging;
@@ -32,12 +34,52 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
 
     private ActionBlock<KeyValuePair<Address, Account>>? _setStateAction;
-    private ActionBlock<KeyValuePair<Address, Account>>? _setStorageAction;
+    private ActionBlock<(Hash256, Dictionary<byte, byte[]>)>? _setStorageAction;
 
-    protected void BulkSetStorage()
+    protected void BulkSetStorage(Dictionary<StorageCell, byte[]> storageChange)
     {
+        _setStorageAction = new ActionBlock<(Hash256, Dictionary<byte, byte[]>)>((item) =>
+            {
+                _verkleStateTree.InsertStemBatch(item.Item1.Bytes[..31], item.Item2.Select(kv => (kv.Key, kv.Value)));
+            },
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+            });
 
+        using var theList = new ArrayPoolList<KeyValuePair<StorageCell, byte[]>>(storageChange.Count, storageChange);
+        Hash256 currentStem = Hash256.Zero;
+        var stemValues = new Dictionary<byte, byte[]>();
+        foreach (KeyValuePair<StorageCell, byte[]> kv in theList)
+        {
+            // Because of the way the mapping works
+            Hash256 theKey = AccountHeader.GetTreeKeyForStorageSlot(kv.Key.Address.Bytes, kv.Key.Index);
+
+            if (!currentStem.Bytes[..31].SequenceEqual(theKey.Bytes[..31]))
+            {
+                // Different stem, will attempt to insert the stem batch
+                if (stemValues.Count != 0)
+                {
+                    // Stem is different and stemValues have value.
+                    _setStorageAction.Post((currentStem, stemValues));
+                    stemValues = new Dictionary<byte, byte[]>();
+                }
+
+                // And set the next stem
+                currentStem = theKey;
+            }
+
+            stemValues[theKey.Bytes[31]] = kv.Value;
+        }
+
+        if (stemValues.Count != 0)
+        {
+            _setStorageAction.Post((currentStem, stemValues));
+        }
+
+        _setStorageAction.Complete();
     }
+
     protected void BulkSet(Dictionary<Address, Account> accountChange)
     {
         void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
@@ -55,19 +97,13 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
             return;
         }
 
-        if (_setStateAction == null)
-        {
-            _setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
-                SetStateKV,
-                new ExecutionDataflowBlockOptions()
-                {
-                    MaxDegreeOfParallelism = Environment.ProcessorCount
-                });
-        }
-        else
-        {
-            _setStateAction.Completion.Wait();
-        }
+        _setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
 
 
         foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
@@ -81,10 +117,12 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private void CommitTree()
     {
         var watch = Stopwatch.StartNew();
-        BulkSet(_accountChange);
-        _verkleStateTree.BulkSet(toSetStorage);
+        _setStateAction?.Completion.Wait();
+        _setStorageAction?.Completion.Wait();
         _verkleStateTree.Commit();
         _verkleStateTree.CommitTree(0);
+        BulkSet(_accountChange);
+        BulkSetStorage(toSetStorage);
         Console.Write($"Time For Commit: {watch.Elapsed.Microseconds}uS");
         _accountChange.Clear();
         toSetStorage.Clear();
