@@ -118,6 +118,9 @@ internal class Eof1 : IEofVersionHandler
                                         + MINIMUM_CODESECTION_SIZE // minimum code section body size
                                         + MINIMUM_DATASECTION_SIZE; // minimum data section body size
 
+    // EIP-3540 ties this to MAX_INIT_CODE_SIZE from EIP-3860, but we need a constant here
+    internal const ushort MAXIMUM_SIZE = 0xc000;
+
     public bool TryParseEofHeader(ReadOnlyMemory<byte> containerMemory, out EofHeader? header)
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -131,6 +134,11 @@ internal class Eof1 : IEofVersionHandler
         if (container.Length < MINIMUM_SIZE)
         {
             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+        if (container.Length > MAXIMUM_SIZE)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is larger than allowed maximum size of {MAXIMUM_SIZE}");
             return false;
         }
 
@@ -1031,7 +1039,14 @@ internal class Eof1 : IEofVersionHandler
                 if (opcode.IsTerminating())
                 {
                     if (programCounter < code.Length)
+                    {
+                        if (recordedStackHeight[programCounter].Max < 0)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, opcode not forward referenced, section {sectionId} pc {programCounter}");
+                            return false;
+                        }
                         currentStackBounds = recordedStackHeight[programCounter];
+                    }
                 }
                 else
                 {
