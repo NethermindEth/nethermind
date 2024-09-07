@@ -41,7 +41,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public void Add(Instruction instruction)
         {
-            _ngram = _ngram.AddByte((byte)instruction);
+            _ngram = _ngram.ShiftAdd(instruction);
             foreach (ulong ngram in _ngram)
                 ProcessNGram(ngram);
         }

@@ -9,7 +9,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
     public readonly struct NGram : IEnumerable<ulong>
     {
         public readonly ulong ngram;
-        public const uint SIZE = 7;
+        public const uint MAX_SIZE = 7;
         public const ulong NULL = 0;
         const byte STOP = (byte)Instruction.STOP;
 
@@ -28,30 +28,26 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
         }
 
-        public NGram(byte[] instructions) : this(FromBytes(instructions))
-        {
-        }
-
         public NGram(ulong value)
         {
             ngram = value;
         }
 
 
-        public NGram AddByte(byte instruction)
+        public NGram ShiftAdd(Instruction instruction)
         {
-            return new NGram(AddByte(ngram, instruction));
+            return new NGram(ShiftAdd(ngram, instruction));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong AddByte(ulong ngram, byte instruction)
+        public static ulong ShiftAdd(ulong ngram, Instruction instruction)
         {
             if (instruction == STOP) return 0;
-            return (ngram << 8) | instruction;
+            return (ngram << 8) | (byte)instruction;
         }
 
 
-        public static byte[] ToByte(ulong ngram)
+        public static byte[] ToBytes(ulong ngram)
         {
             byte[] instructions = new byte[7];
             int i = 0;
@@ -66,14 +62,14 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             return instructions[(instructions.Length - i)..instructions.Length];
         }
 
-        public byte[] ToByte()
+        public byte[] ToBytes()
         {
-            return ToByte(ngram);
+            return ToBytes(ngram);
         }
 
         public static Instruction[] ToInstructions(ulong ngram)
         {
-            return ToByte(ngram).Select(i => (Instruction)i).ToArray();
+            return ToBytes(ngram).Select(i => (Instruction)i).ToArray();
         }
 
         public Instruction[] ToInstructions()
@@ -97,19 +93,13 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private static ulong FromInstructions(Instruction[] instructions)
         {
 
-            byte[] byteArray = instructions.Select(i => (byte)i).ToArray();
-            return FromBytes(byteArray);
-        }
-
-        private static ulong FromBytes(byte[] instructions)
-        {
             if (instructions.Length > 7)
-                throw new ArgumentException($"Invalid byte length found expected {SIZE}");
+                throw new ArgumentException($"Invalid byte length found expected {MAX_SIZE}");
 
             ulong _ngram = 0;
-            foreach (byte instruction in instructions)
+            foreach (Instruction instruction in instructions)
             {
-                _ngram = AddByte(_ngram, instruction);
+                _ngram = ShiftAdd(_ngram, instruction);
             }
             return _ngram;
         }
@@ -117,7 +107,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public IEnumerator<ulong> GetEnumerator()
         {
-            for (int i = 1; i < NGram.SIZE; i++)
+            for (int i = 1; i < NGram.MAX_SIZE; i++)
             {
                 if (NGram.byteIndexes[i - 1] < ngram)
                 {

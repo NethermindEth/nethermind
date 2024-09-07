@@ -41,8 +41,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase(0.1, 0.99, 500)]
         [TestCase(0.01, 0.999, 50)]
         [TestCase(0.45, 0.7, 50)]
-        [TestCase(0.1, 0.1, 10)]
-        [TestCase(0.2, 0.9, 10)]
+        [TestCase(0.1, 0.1, 100)]
+        [TestCase(0.2, 0.9, 100)]
         public void validate_count_min_sketch_from_bounds_single_update(double e, double oneMinusdelta, int numberOfItemsInStream = 1)
         {
 
@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
             double observedFreqOfBreaches = (double)numberOfBoundsBreaches / actualCounts.Count;
             Assert.That(observedFreqOfBreaches <= probabilityOneMinusDelta,
-                         $" Failed at validating observedFreqOfBreaches <= sketch.probabilityOneMinusDelta ,observedFreqOfOverCount {observedFreqOfBreaches}, expectedOverCountDelta: {expectedOverCountDelta} found freq of breaches: {observedFreqOfBreaches} which is greater than expectedBoundsProbability: {sketch.probabilityOneMinusDelta}  ");
+                         $" Failed at validating observedFreqOfBreaches <= sketch.probabilityOneMinusDelta ,observedFreqOfOverCount {observedFreqOfBreaches}, expectedOverCountDelta: {expectedOverCountDelta} found freq of breaches: {observedFreqOfBreaches} which is greater than expectedBoundsProbability: {probabilityOneMinusDelta}  ");
         }
 
 
