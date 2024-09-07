@@ -33,19 +33,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 totalItems++;
             }
 
-            validate_count_min_sketch_bounds(sketch, actualCounts);
+            validate_count_min_sketch_bounds(sketch, actualCounts, sketch.error, sketch.probabilityOneMinusDelta);
         }
 
 
-        [TestCase(0.99999, 0.999, 500)]
-        [TestCase(0.999, 0.99, 50)]
-        [TestCase(0.85, 0.8, 50)]
+        [TestCase(0.1, 0.99, 500)]
+        [TestCase(0.01, 0.999, 50)]
+        [TestCase(0.45, 0.7, 50)]
         [TestCase(0.1, 0.1, 10)]
-        [TestCase(0.999, 0.9, 10)]
-        public void validate_count_min_sketch_from_bounds_single_update(double e, double delta, int numberOfItemsInStream = 1)
+        [TestCase(0.2, 0.9, 10)]
+        public void validate_count_min_sketch_from_bounds_single_update(double e, double oneMinusdelta, int numberOfItemsInStream = 1)
         {
 
-            CMSketch sketch = new CMSketch(e, delta);
+            CMSketch sketch = new CMSketch(e, oneMinusdelta);
+            Assert.That(sketch.error <= e, $" expected sketch error to be initialized to at most {e} found {sketch.error}");
+            Assert.That(sketch.probabilityOneMinusDelta >= oneMinusdelta, $" expected sketch probabilityOneMinusDelta to be at least {oneMinusdelta} found {sketch.probabilityOneMinusDelta}");
             Dictionary<ulong, ulong> actualCounts = new Dictionary<ulong, ulong>();
             ulong totalItems = 0;
 
@@ -56,16 +58,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 totalItems++;
             }
 
-            validate_count_min_sketch_bounds(sketch, actualCounts);
+            validate_count_min_sketch_bounds(sketch, actualCounts, e, oneMinusdelta);
         }
 
 
         // CMSketch bounds
         // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
-        private static void validate_count_min_sketch_bounds(CMSketch sketch, Dictionary<ulong, ulong> actualCounts)
+        private static void validate_count_min_sketch_bounds(CMSketch sketch, Dictionary<ulong, ulong> actualCounts, double error, double probabilityOneMinusDelta)
         {
             var numberOfBoundsBreaches = 0;
-            var expectedOverCountDelta = (ulong)Math.Round((double)sketch.error * (double)(actualCounts.Count));
+            var expectedOverCountDelta = (ulong)Math.Round((double)error * (double)(actualCounts.Count));
 
             foreach (KeyValuePair<ulong, ulong> kvp in actualCounts)
             {
@@ -78,7 +80,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     ++numberOfBoundsBreaches;
             }
             double observedFreqOfBreaches = (double)numberOfBoundsBreaches / actualCounts.Count;
-            Assert.That(observedFreqOfBreaches <= sketch.probabilityOneMinusDelta,
+            Assert.That(observedFreqOfBreaches <= probabilityOneMinusDelta,
                          $" Failed at validating observedFreqOfBreaches <= sketch.probabilityOneMinusDelta ,observedFreqOfOverCount {observedFreqOfBreaches}, expectedOverCountDelta: {expectedOverCountDelta} found freq of breaches: {observedFreqOfBreaches} which is greater than expectedBoundsProbability: {sketch.probabilityOneMinusDelta}  ");
         }
 
