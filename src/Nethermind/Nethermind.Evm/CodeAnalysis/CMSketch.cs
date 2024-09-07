@@ -19,28 +19,18 @@ namespace Nethermind.Evm.CodeAnalysis
 
         // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
         // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= oneMinusDelta
-        public CMSketch(double e, double oneMinusDelta)
+        // To maximize accuracy minimize maxError and maximize oneMinusDelta
+        public CMSketch(double maxError, double oneMinusDelta) : this((int)Math.Ceiling(Math.Log2(1.0d / (1.0d - oneMinusDelta))), (int)Math.Ceiling((2.0d / maxError)))
         {
-
-            var numberOfBuckets = (int)Math.Round((2.0 / e));
-            probabilityOneMinusDelta = oneMinusDelta;
-            double delta = 1 - oneMinusDelta;
-            double OneByDelta = 1.0 / delta;
-            var numberOfhashFunctions = (int)Math.Round(Math.Log2(OneByDelta)) | 1;
-            _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
-            buckets = numberOfBuckets;
-            error = (double)2.0 / numberOfBuckets;
-            hashFunctions = numberOfhashFunctions;
-            _seeds = GenerateSeed(numberOfhashFunctions);
         }
 
 
         public CMSketch(int numberOfhashFunctions, int numberOfBuckets)
         {
-            probabilityOneMinusDelta = 1 - Math.Pow(0.5, numberOfhashFunctions);
+            probabilityOneMinusDelta = 1 - Math.Pow(0.5d, numberOfhashFunctions);
             _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
             buckets = numberOfBuckets;
-            error = (double)2.0 / numberOfBuckets;
+            error = 2.0d / (double)numberOfBuckets;
             hashFunctions = numberOfhashFunctions;
             _seeds = GenerateSeed(numberOfhashFunctions);
         }
@@ -115,12 +105,12 @@ namespace Nethermind.Evm.CodeAnalysis
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong ComputeHash(ulong value, int hasher)
         {
-           // Ideally more families of hash functions should go here:
-           switch(hasher)
-           {
-               default:
-                   return FNV1a64(value, _seeds[hasher]);
-           }
+            // Ideally more families of hash functions should go here:
+            switch (hasher)
+            {
+                default:
+                    return FNV1a64(value, _seeds[hasher]);
+            }
         }
 
 
@@ -145,7 +135,7 @@ namespace Nethermind.Evm.CodeAnalysis
             hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME_64;
             hash = (hash ^ (byte)((seed >> 40) & 0xFF)) * FNV_PRIME_64;
             hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME_64;
-            hash = (hash ^ (byte)((seed >> 58) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 48) & 0xFF)) * FNV_PRIME_64;
             hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME_64;
             hash = (hash ^ (byte)((seed >> 56) & 0xFF)) * FNV_PRIME_64;
 
