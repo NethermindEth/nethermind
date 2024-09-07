@@ -316,6 +316,12 @@ internal class Eof1 : IEofVersionHandler
             : new CompoundSectionHeader(codeSectionSubHeader.EndOffset, containerSections);
         var dataSectionSubHeader = new SectionHeader(containerSectionSubHeader?.EndOffset ?? codeSectionSubHeader.EndOffset, sectionSizes.DataSectionSize.Value);
 
+        if (dataSectionSubHeader.EndOffset < containerMemory.Length)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Extra data after end of container, starting at {dataSectionSubHeader.EndOffset}");
+            return false;
+        }
+
         header = new EofHeader
         {
             Version = VERSION,
