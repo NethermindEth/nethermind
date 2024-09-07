@@ -167,6 +167,12 @@ internal class Eof1 : IEofVersionHandler
             switch (separator)
             {
                 case Separator.KIND_TYPE:
+                    if (sectionSizes.TypeSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple type sections");
+                        return false;
+                    }
+
                     if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
@@ -183,6 +189,12 @@ internal class Eof1 : IEofVersionHandler
                     pos += EofValidator.TWO_BYTE_LENGTH;
                     break;
                 case Separator.KIND_CODE:
+                    if (sectionSizes.CodeSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple code sections");
+                        return false;
+                    }
+
                     if (sectionSizes.TypeSectionSize is null)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
@@ -228,6 +240,12 @@ internal class Eof1 : IEofVersionHandler
                     pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfCodeSections;
                     break;
                 case Separator.KIND_CONTAINER:
+                    if (sectionSizes.ContainerSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple container sections");
+                        return false;
+                    }
+
                     if (sectionSizes.CodeSectionSize is null)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
@@ -273,6 +291,12 @@ internal class Eof1 : IEofVersionHandler
                     pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfContainerSections;
                     break;
                 case Separator.KIND_DATA:
+                    if (sectionSizes.DataSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple data sections");
+                        return false;
+                    }
+
                     if (sectionSizes.CodeSectionSize is null)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
