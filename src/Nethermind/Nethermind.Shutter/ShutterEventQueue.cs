@@ -102,7 +102,6 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 
             if (totalGas + e.GasLimit > _encryptedGasLimit)
             {
-                Metrics.ShutterEncryptedGasUsed = (ulong)totalGas;
                 if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
                 yield break;
             }
@@ -111,6 +110,8 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
             totalGas += e.GasLimit;
             yield return e;
         }
+
+        Metrics.ShutterEncryptedGasUsed = (ulong)totalGas;
     }
 
     private void SetEon(ulong eon)
