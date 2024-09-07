@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
-    public readonly struct NGram : IEnumerable<ulong>
+    public readonly struct NGrams : IEnumerable<ulong>
     {
         public readonly ulong ngram;
         public const uint MAX_SIZE = 7;
@@ -24,19 +24,19 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         public static ulong[] byteIndexShifts = { 0, 8, 16, 24, 32, 40, 48, 56 };
 
 
-        public NGram(Instruction[] instructions) : this(FromInstructions(instructions))
+        public NGrams(Instruction[] instructions) : this(FromInstructions(instructions))
         {
         }
 
-        public NGram(ulong value)
+        public NGrams(ulong value)
         {
             ngram = value;
         }
 
 
-        public NGram ShiftAdd(Instruction instruction)
+        public NGrams ShiftAdd(Instruction instruction)
         {
-            return new NGram(ShiftAdd(ngram, instruction));
+            return new NGrams(ShiftAdd(ngram, instruction));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public static byte[] ToBytes(ulong ngram)
         {
-            byte[] instructions = new byte[7];
+            byte[] instructions = new byte[MAX_SIZE];
             int i = 0;
             for (i = 0; i < instructions.Length; i++)
             {
@@ -96,8 +96,8 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private static ulong FromInstructions(Instruction[] instructions)
         {
 
-            if (instructions.Length > 7)
-                throw new ArgumentException($"Invalid byte length found expected {MAX_SIZE}");
+            if (instructions.Length > MAX_SIZE)
+                throw new ArgumentException($"Instructions length {instructions.Length} given exceeds max length of {MAX_SIZE}");
 
             ulong _ngram = 0;
             foreach (Instruction instruction in instructions)
@@ -110,11 +110,11 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public IEnumerator<ulong> GetEnumerator()
         {
-            for (int i = 1; i < NGram.MAX_SIZE; i++)
+            for (int i = 1; i < MAX_SIZE; i++)
             {
-                if (NGram.byteIndexes[i - 1] < ngram)
+                if (NGrams.byteIndexes[i - 1] < ngram)
                 {
-                    yield return this.ngram & NGram.bitMasks[i];
+                    yield return this.ngram & NGrams.bitMasks[i];
                 }
             }
         }

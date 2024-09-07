@@ -8,60 +8,60 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
     [TestFixture]
-    public class NGramTests
+    public class NGramsTests
     {
-        public static IEnumerable<TestCaseData> NGramIterationTestCases
+        public static IEnumerable<TestCaseData> NGramsIterationTestCases
         {
             get
             {
                 yield return new TestCaseData(new Instruction[] { Instruction.POP },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { }, 1)
+                        new Instruction[][] {
+                        new Instruction[] { }
                         })
                     .SetName("OneGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.POP }, 1)
+                        new Instruction[][] {
+                        new Instruction[] { Instruction.POP, Instruction.POP }
                         })
                     .SetName("TwoGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1)
+                        new Instruction[][] {
+                        new Instruction[] { Instruction.POP, Instruction.ADD },
+                        new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }
                         })
                     .SetName("ThreeGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }, 1)
+                        new Instruction[][] {
+                        new Instruction[] { Instruction.ADD, Instruction.MUL },
+                        new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL },
+                        new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }
                         })
                     .SetName("FourGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] {  Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV}, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
+                        new Instruction[][] {
+                        new Instruction[] { Instruction.MUL, Instruction.DIV },
+                        new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV },
+                        new Instruction[] {  Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV},
+                        new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV },
                         })
                     .SetName("FiveGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] {  Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB}, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
+                        new Instruction[][] {
+                        new Instruction[] {  Instruction.DIV, Instruction.SUB },
+                        new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB },
+                        new Instruction[] {  Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB},
+                        new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB },
+                        new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB },
                         })
                     .SetName("SixGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] {  Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT}, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
+                        new Instruction[][] {
+                        new Instruction[] {  Instruction.SUB, Instruction.NOT },
+                        new Instruction[] {  Instruction.DIV, Instruction.SUB, Instruction.NOT },
+                        new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT},
+                        new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT },
+                        new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT },
+                        new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT },
                         })
                     .SetName("SevenGramTest");
             }
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase("ADD DIV", new Instruction[] { Instruction.ADD, Instruction.DIV })]
         public void validate_ngram_string_conversion(string str, Instruction[] testcase)
         {
-            NGram ngram = new NGram(testcase);
+            NGrams ngram = new NGrams(testcase);
             string instructions = ngram.ToString();
             Assert.That(instructions == str, $" expected {str} found {instructions}");
         }
@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase(new Instruction[] { Instruction.ADD, Instruction.DIV })]
         public void validate_ngram_byte_conversion(Instruction[] testcase)
         {
-            NGram ngram = new NGram(testcase);
+            NGrams ngram = new NGrams(testcase);
             byte[] instructions = ngram.ToBytes();
             Assert.That(instructions.Length == testcase.Length);
             for (int i = 0; i < testcase.Length; i++)
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase(new Instruction[] { Instruction.ADD, Instruction.DIV }, Instruction.MUL)]
         public void validate_ngram_shift_add_op(Instruction[] instructions, Instruction instruction)
         {
-            NGram ngram = new NGram(instructions);
+            NGrams ngram = new NGrams(instructions);
             ngram = ngram.ShiftAdd(instruction);
             Instruction[] _instructions = ngram.ToInstructions();
             if (instructions.Length < 7)
@@ -113,19 +113,19 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
 
-        [Test, TestCaseSource(nameof(NGramIterationTestCases))]
-        public void validate_ngram_iteration(Instruction[] testcase, (Instruction[] gram, int count)[] ngrams)
+        [Test, TestCaseSource(nameof(NGramsIterationTestCases))]
+        public void validate_ngram_iteration(Instruction[] testcase, Instruction[][] expectedNGrams)
         {
             Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
-            NGram ngram = new NGram(testcase);
+            NGrams ngrams = new NGrams(testcase);
 
 
-            foreach ((Instruction[] _ngram, int expectedCount) gram in ngrams)
-                counts[new NGram(gram._ngram).ngram] = (ulong)gram.expectedCount;
+            foreach (Instruction[] _ngram in expectedNGrams)
+                counts[new NGrams(_ngram).ngram] = 1;
 
             var ngramCount = 0;
 
-            foreach (ulong _ngram in ngram)
+            foreach (ulong _ngram in ngrams)
             {
                 --counts[_ngram];
                 ++ngramCount;
@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
 
             if (testcase.Length > 1)
-                Assert.That(counts.Count == 0 && ngrams.Length == ngramCount,
+                Assert.That(counts.Count == 0 && expectedNGrams.Length == ngramCount,
                         $" {counts.Count} ngrams generated are different from the ones given");
 
             if (testcase.Length <= 1)
