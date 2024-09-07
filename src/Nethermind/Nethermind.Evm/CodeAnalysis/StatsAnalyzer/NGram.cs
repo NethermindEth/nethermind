@@ -6,8 +6,9 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
-    public record NGram(ulong ngram) : IEnumerable<ulong>
+    public readonly struct NGram : IEnumerable<ulong>
     {
+        public readonly ulong ngram;
         public const uint SIZE = 7;
         public const ulong NULL = 0;
         const byte STOP = (byte)Instruction.STOP;
@@ -31,10 +32,15 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
         }
 
+        public NGram(ulong value)
+        {
+            ngram = value;
+        }
+
 
         public NGram AddByte(byte instruction)
         {
-            return this with { ngram = AddByte(ngram, instruction) };
+            return new NGram(AddByte(ngram, instruction));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
