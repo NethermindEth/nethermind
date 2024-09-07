@@ -81,8 +81,11 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
             string s = "";
             foreach (Instruction instruction in ToInstructions(ngram))
-                s += $"{instruction.ToString()}".PadRight(1);
-            return s;
+            {
+                s += $"{instruction.ToString()}";
+                s = s.PadRight(s.Length + 1);
+            }
+            return s.Trim();
         }
 
         public override string ToString()

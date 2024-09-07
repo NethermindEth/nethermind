@@ -68,6 +68,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
 
+        [TestCase("POP POP ADD MUL DIV SUB NOT", new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT })]
+        [TestCase("GT LT DIV", new Instruction[] { Instruction.GT, Instruction.LT, Instruction.DIV })]
+        [TestCase("ADD DIV", new Instruction[] { Instruction.ADD, Instruction.DIV })]
+        public void validate_ngram_string_conversion(string str, Instruction[] testcase)
+        {
+            NGram ngram = new NGram(testcase);
+            string instructions = ngram.ToString();
+            Assert.That(instructions == str, $" expected {str} found {instructions}");
+        }
+
         [TestCase(new Instruction[] { Instruction.EQ, Instruction.MUL, Instruction.POP, Instruction.DIV })]
         [TestCase(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.DIV })]
         [TestCase(new Instruction[] { Instruction.ADD, Instruction.DIV })]
@@ -85,7 +95,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase(new Instruction[] { Instruction.EQ, Instruction.MUL, Instruction.POP, Instruction.DIV }, Instruction.PUSH1)]
         [TestCase(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.DIV }, Instruction.POP)]
         [TestCase(new Instruction[] { Instruction.ADD, Instruction.DIV }, Instruction.MUL)]
-        public void validate_ngram_shift_op(Instruction[] instructions, Instruction instruction)
+        public void validate_ngram_shift_add_op(Instruction[] instructions, Instruction instruction)
         {
             NGram ngram = new NGram(instructions);
             ngram = ngram.ShiftAdd(instruction);
@@ -93,23 +103,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             if (instructions.Length < 7)
             {
                 Assert.That(_instructions[0] == instructions[0]);
+                Assert.That(_instructions.Length == instructions.Length + 1);
             }
             else
             {
                 Assert.That(_instructions[0] == instructions[1]);
+                Assert.That(_instructions.Length == instructions.Length);
             }
         }
 
-        [TestCase(new Instruction[] { Instruction.EQ, Instruction.MUL, Instruction.POP, Instruction.DIV }, Instruction.PUSH1)]
-        [TestCase(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.DIV }, Instruction.POP)]
-        [TestCase(new Instruction[] { Instruction.ADD, Instruction.DIV }, Instruction.MUL)]
-        public void validate_ngram_add_op(Instruction[] instructions, Instruction instruction)
-        {
-            NGram ngram = new NGram(instructions);
-            ngram = ngram.ShiftAdd(instruction);
-            Instruction[] _instructions = ngram.ToInstructions();
-            Assert.That(_instructions[_instructions.Length - 1] == instruction);
-        }
 
         [Test, TestCaseSource(nameof(NGramIterationTestCases))]
         public void validate_ngram_iteration(Instruction[] testcase, (Instruction[] gram, int count)[] ngrams)
