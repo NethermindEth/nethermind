@@ -112,6 +112,7 @@ namespace Nethermind.Evm.CodeAnalysis
             return overEstimationMagnitude;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong ComputeHash(ulong value, int hasher)
         {
            // Ideally more families of hash functions should go here:
@@ -129,23 +130,24 @@ namespace Nethermind.Evm.CodeAnalysis
 
             // http://isthe.com/chongo/tech/comp/fnv/#FNV-1a
             const ulong FNV_OFFSET_BASIS_64 = 14695981039346656037; //64-bit
-            const ulong FNV_PRIME_54 = 1099511628211; //64-bit
+            const ulong FNV_PRIME_64 = 1099511628211; //64-bit
 
-            var hash = (FNV_OFFSET_BASIS_64 ^ (byte)(value & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((value >> 8) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((value >> 16) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((value >> 24) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((value >> 32) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)(seed & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((seed >> 8) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((seed >> 16) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((seed >> 24) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((seed >> 32) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((seed >> 40) & 0xFF)) * FNV_PRIME_54;
-            hash = (hash ^ (byte)((seed >> 56) & 0xFF)) * FNV_PRIME_54;
+            var hash = (FNV_OFFSET_BASIS_64 ^ (byte)(value & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)(seed & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((value >> 8) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 8) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((value >> 16) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 16) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((value >> 24) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 24) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((value >> 32) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 32) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((value >> 40) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 40) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((value >> 48) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 58) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((value >> 56) & 0xFF)) * FNV_PRIME_64;
+            hash = (hash ^ (byte)((seed >> 56) & 0xFF)) * FNV_PRIME_64;
 
             return hash;
 
