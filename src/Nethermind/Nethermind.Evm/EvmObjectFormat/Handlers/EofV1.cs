@@ -553,6 +553,12 @@ internal class Eof1 : IEofVersionHandler
     {
         ReadOnlySpan<byte> code = eofContainer.CodeSections[sectionId].Span;
 
+        if (code.Length < 1)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection {sectionId} is too short to be valid");
+            return false;
+        }
+
         var length = code.Length / BYTE_BIT_COUNT + 1;
         byte[] codeBitmapArray = ArrayPool<byte>.Shared.Rent(length);
         byte[] jumpDestsArray = ArrayPool<byte>.Shared.Rent(length);
@@ -570,9 +576,10 @@ internal class Eof1 : IEofVersionHandler
             var isCurrentSectionNonReturning = currentTypesection[OUTPUTS_OFFSET] == 0x80;
 
             int pos;
+            Instruction opcode = Instruction.STOP;
             for (pos = 0; pos < code.Length;)
             {
-                var opcode = (Instruction)code[pos];
+                opcode = (Instruction)code[pos];
                 var postInstructionByte = pos + 1;
 
                 if (opcode is Instruction.RETURN or Instruction.STOP)
@@ -810,7 +817,6 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     var initcodeSectionId = code[postInstructionByte];
-                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
                     if (eofContainer.Header.ContainerSections is null || initcodeSectionId >= eofContainer.Header.ContainerSections?.Count)
                     {
@@ -846,6 +852,12 @@ internal class Eof1 : IEofVersionHandler
             if (pos > code.Length)
             {
                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
+                return false;
+            }
+
+            if (!opcode.IsTerminating())
+            {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code section {sectionId} ends with a non-terminating opcode");
                 return false;
             }
 
