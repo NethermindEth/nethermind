@@ -18,25 +18,25 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         new (Instruction[], int)[] {
                         (new Instruction[] { }, 1)
                         })
-                    .SetName("ZeroGramTest");
+                    .SetName("OneGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP },
                         new (Instruction[], int)[] {
                         (new Instruction[] { Instruction.POP, Instruction.POP }, 1)
                         })
-                    .SetName("OneGramTest");
+                    .SetName("TwoGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD },
                         new (Instruction[], int)[] {
                         (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
                         (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1)
                         })
-                    .SetName("TwoGramTest");
+                    .SetName("ThreeGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL },
                         new (Instruction[], int)[] {
                         (new Instruction[] { Instruction.ADD, Instruction.MUL }, 1),
                         (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
                         (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }, 1)
                         })
-                    .SetName("ThreeGramTest");
+                    .SetName("FourGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV },
                         new (Instruction[], int)[] {
                         (new Instruction[] { Instruction.MUL, Instruction.DIV }, 1),
@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         (new Instruction[] {  Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV}, 1),
                         (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
                         })
-                    .SetName("FourGramTest");
+                    .SetName("FiveGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB },
                         new (Instruction[], int)[] {
                         (new Instruction[] {  Instruction.DIV, Instruction.SUB }, 1),
@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
                         (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
                         })
-                    .SetName("FiveGramTest");
+                    .SetName("SixGramTest");
                 yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT },
                         new (Instruction[], int)[] {
                         (new Instruction[] {  Instruction.SUB, Instruction.NOT }, 1),
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
                         (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
                         })
-                    .SetName("SixGramTest");
+                    .SetName("SevenGramTest");
             }
         }
 
@@ -75,25 +75,25 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             NGram ngram = new NGram(testcase);
 
 
-            foreach ((Instruction[] gram, int expectedCount) gram in ngrams)
-                counts[new NGram(gram.gram).ngram] = (ulong)gram.expectedCount;
+            foreach ((Instruction[] _ngram, int expectedCount) gram in ngrams)
+                counts[new NGram(gram._ngram).ngram] = (ulong)gram.expectedCount;
 
-            var grams = 0;
+            var ngramCount = 0;
 
-            foreach (ulong gram in ngram)
+            foreach (ulong _ngram in ngram)
             {
-                --counts[gram];
-                ++grams;
-                if (counts[gram] == 0) counts.Remove(gram);
+                --counts[_ngram];
+                ++ngramCount;
+                if (counts[_ngram] == 0) counts.Remove(_ngram);
             }
 
             if (testcase.Length > 1)
-                Assert.That(counts.Count == 0 && ngrams.Length == grams,
-                        $" {counts.Count} grams generated are different from the ones given");
+                Assert.That(counts.Count == 0 && ngrams.Length == ngramCount,
+                        $" {counts.Count} ngrams generated are different from the ones given");
 
             if (testcase.Length <= 1)
-                Assert.That(grams == 0,
-                        $" Expected 0 grams to be iterated on the given instruction array of length {testcase.Length}");
+                Assert.That(ngramCount == 0,
+                        $" Expected 0 ngrams to be iterated on the given instruction array of length {testcase.Length}");
         }
     }
 }
