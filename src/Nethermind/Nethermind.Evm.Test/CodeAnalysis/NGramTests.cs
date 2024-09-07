@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis

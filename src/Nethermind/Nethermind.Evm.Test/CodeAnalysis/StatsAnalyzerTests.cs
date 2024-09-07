@@ -4,15 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.Intrinsics;
-using System.Threading;
-using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.CodeAnalysis.IL;
-using Nethermind.State;
+using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis

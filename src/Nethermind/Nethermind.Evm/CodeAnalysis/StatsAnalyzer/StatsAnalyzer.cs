@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace Nethermind.Evm.CodeAnalysis
+namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
 
     public class StatsAnalyzer

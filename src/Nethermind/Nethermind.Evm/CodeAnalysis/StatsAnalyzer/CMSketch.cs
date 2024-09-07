@@ -3,7 +3,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace Nethermind.Evm.CodeAnalysis
+namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
 
     public class CMSketch

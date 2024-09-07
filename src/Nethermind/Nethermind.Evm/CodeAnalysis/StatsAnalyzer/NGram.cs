@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.Evm.CodeAnalysis
+namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
     public record NGram(ulong ngram) : IEnumerable<ulong>
     {
