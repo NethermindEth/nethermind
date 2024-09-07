@@ -15,8 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Nethermind.Verkle" />
+    <ProjectReference Include="..\Nethermind.Verkle\Nethermind.Verkle.csproj" />
   </ItemGroup>
 </Project>

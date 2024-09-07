@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis" Version="4.8.0"/>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0"/>
+    <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="runtimes/linux-arm/native/libc_verkle.so"  Pack="true" PackagePath="runtimes/linux-arm/native/libc_verkle.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes/linux-arm64/native/libc_verkle.so" Pack="true" PackagePath="runtimes/linux-arm64/native/libc_verkle.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes/linux-x64/native/libc_verkle.so" Pack="true" PackagePath="runtimes/linux-x64/native/libc_verkle.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes/osx-x64/native/libc_verkle.dylib" Pack="true" PackagePath="runtimes/osx-x64/native/libc_verkle.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes/osx-arm64/native/libc_verkle.dylib" Pack="true" PackagePath="runtimes/osx-arm64/native/libc_verkle.dylibb">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes/win-x64/native/c_verkle.dll" Pack="true" PackagePath="runtimes/win-x64/native/c_verkle.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
