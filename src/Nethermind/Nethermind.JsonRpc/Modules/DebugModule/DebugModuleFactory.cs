@@ -96,13 +96,13 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _receiptStorage,
             _specProvider,
             _blockTree,
-            _worldStateManager.GlobalStateReader,
+            _worldStateManager.WorldStateProvider.GetGlobalStateReader(),
             _logManager,
             transactionsExecutor);
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
-            txEnv.WorldStateManager,
+            txEnv.WorldStateProvider,
             _receiptStorage,
             _blockTree,
             _badBlockStore,

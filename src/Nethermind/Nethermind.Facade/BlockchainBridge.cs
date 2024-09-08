@@ -69,7 +69,7 @@ namespace Nethermind.Facade
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
             _blockTree = processingEnv.BlockTree;
-            _stateReader = processingEnv.StateReader;
+            _stateReader = processingEnv.WorldStateProvider.GetGlobalStateReader();
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -11,51 +9,53 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class OverlayWorldStateManager(
-    IReadOnlyDbProvider dbProvider,
-    OverlayTrieStore overlayTrieStore,
-    ILogManager logManager,
-    PreBlockCaches? caches = null)
-    : IWorldStateManager
+public class OverlayWorldStateManager : IWorldStateManager
 {
-    public PreBlockCaches? Caches { get; } = caches;
+    private OverlayTrieStore _overlayTrieStore;
+    private ILogManager? _logManager;
+    private readonly IDb _codeDb;
+    private IDbProvider _dbProvider;
 
-    private readonly IDb _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
+    public IWorldStateProvider WorldStateProvider { get; }
+    public PreBlockCaches? Caches { get; }
 
-    private readonly StateReader _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+    public OverlayWorldStateManager(
+        IReadOnlyDbProvider dbProvider,
+        OverlayTrieStore overlayTrieStore,
+        ILogManager? logManager,
+        PreBlockCaches? caches = null)
+    {
+        WorldState worldState = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+        _overlayTrieStore = overlayTrieStore;
+        _dbProvider = dbProvider;
+        WorldStateProvider = new OverlayWorldStateProvider(worldState, dbProvider, overlayTrieStore, logManager);
+        _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
 
-    private readonly WorldState _state = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+        _logManager = logManager;
+        Caches = caches;
+    }
 
-    public IWorldState GlobalWorldState => _state;
-
-    public IStateReader GlobalStateReader => _reader;
-
-    public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
-
-    public IScopedWorldStateManager CreateResettableWorldStateManager()
+    public IWorldStateProvider CreateResettableWorldStateProvider()
     {
         WorldState? worldState = Caches is not null
             ? new WorldState(
-                new PreCachedTrieStore(overlayTrieStore, Caches.RlpCache),
+                new PreCachedTrieStore(_overlayTrieStore, Caches.RlpCache),
                 _codeDb,
-                logManager,
+                _logManager,
                 Caches)
             : new WorldState(
-                overlayTrieStore,
+                _overlayTrieStore,
                 _codeDb,
-                logManager);
+                _logManager);
 
-        return new ScopedReadOnlyWorldStateManager(worldState, dbProvider, overlayTrieStore, logManager, Caches);
+        return new WorldStateProvider(worldState, _overlayTrieStore, _dbProvider, _logManager);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
-        add => overlayTrieStore.ReorgBoundaryReached += value;
-        remove => overlayTrieStore.ReorgBoundaryReached -= value;
+        add => _overlayTrieStore.ReorgBoundaryReached += value;
+        remove => _overlayTrieStore.ReorgBoundaryReached -= value;
     }
 
-    public IWorldState GetGlobalWorldState(BlockHeader blockHeader) => GlobalWorldState;
-    public bool ClearCache() => Caches.Clear();
-
-    public bool HasStateRoot(Hash256 root) => GlobalStateReader.HasStateForRoot(root);
+    public bool ClearCache() => Caches?.Clear() == true;
 }

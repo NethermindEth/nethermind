@@ -112,7 +112,7 @@ public class InitializeNetwork : IStep
         }
 
         // TODO: again either make the WorldStateManager a HealingWorldStateManager?
-        if (_api.WorldStateManager!.GlobalWorldState is HealingWorldState healingWorldState)
+        if (_api.WorldStateManager!.WorldStateProvider.GetWorldState() is HealingWorldState healingWorldState)
         {
             healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
         }

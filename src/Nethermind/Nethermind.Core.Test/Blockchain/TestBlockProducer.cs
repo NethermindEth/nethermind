@@ -22,7 +22,7 @@ namespace Nethermind.Core.Test.Blockchain
         public TestBlockProducer(
             ITxSource txSource,
             IBlockchainProcessor processor,
-            IWorldStateManager stateProvider,
+            IWorldStateProvider worldStateProvider,
             ISealer sealer,
             IBlockTree blockTree,
             ITimestamper timestamper,
@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test.Blockchain
                 processor,
                 sealer,
                 blockTree,
-                stateProvider,
+                worldStateProvider,
                 new FollowOtherMiners(specProvider),
                 timestamper,
                 specProvider,

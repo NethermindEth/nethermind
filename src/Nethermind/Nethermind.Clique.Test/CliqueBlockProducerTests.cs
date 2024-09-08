@@ -95,8 +95,8 @@ namespace Nethermind.Clique.Test
                 GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
-                var worldStateManager =
-                    new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+                var worldStateProvider =
+                    new WorldStateProvider(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
 
                 BlockTree blockTree = Build.A.BlockTree()
                     .WithSpecProvider(goerliSpecProvider)
@@ -138,7 +138,7 @@ namespace Nethermind.Clique.Test
                     Always.Valid,
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
-                    worldStateManager,
+                    worldStateProvider,
                     NullReceiptStorage.Instance,
                     new BlockhashStore(goerliSpecProvider),
                     nodeLogManager);
@@ -149,8 +149,8 @@ namespace Nethermind.Clique.Test
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
                 WorldState minerStateProvider = new(minerTrieStore, dbProvider.CodeDb, nodeLogManager);
-                var minerWorldStateManager = new WorldStateManager(minerStateProvider, minerTrieStore, dbProvider,
-                    LimboLogs.Instance);
+                var minerWorldStateProvider =
+                    new WorldStateProvider(minerStateProvider, minerTrieStore, dbProvider, LimboLogs.Instance);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
@@ -159,7 +159,7 @@ namespace Nethermind.Clique.Test
                     Always.Valid,
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, goerliSpecProvider, _logManager),
-                    minerWorldStateManager,
+                    minerWorldStateProvider,
                     NullReceiptStorage.Instance,
                     new BlockhashStore(goerliSpecProvider),
                     nodeLogManager);
@@ -179,7 +179,7 @@ namespace Nethermind.Clique.Test
                 CliqueBlockProducer blockProducer = new(
                     txPoolTxSource,
                     minerProcessor,
-                    minerWorldStateManager,
+                    minerWorldStateProvider,
                     _timestamper,
                     new CryptoRandom(),
                     snapshotManager,

@@ -161,19 +161,20 @@ public class InitializeStateDb : IStep
                 populatePreBlockCache: false);
 
         // This is probably the point where a different state implementation would switch.
+        var worldStateProvider = new WorldStateProvider(worldState, trieStore, getApi.DbProvider, getApi.LogManager);
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
-            worldState,
-            trieStore,
+            worldStateProvider,
             getApi.DbProvider,
-            getApi.LogManager, preBlockCaches);
+            trieStore,
+            getApi.LogManager);
 
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
         getApi.DisposeStack.Push(mainWorldTrieStore);
 
-        setApi.StateReader = stateManager.GlobalStateReader;
-        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
+        setApi.StateReader = worldStateProvider.GetGlobalStateReader();
+        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, worldStateProvider.GetGlobalStateReader());
 
         worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
@@ -185,7 +186,7 @@ public class InitializeStateDb : IStep
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
                     Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
+                    TrieStats stats = worldStateProvider.GetGlobalStateReader().CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                 }
                 catch (Exception ex)
@@ -201,7 +202,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore);
+        InitializeFullPruning(pruningConfig, initConfig, _api, worldStateProvider.GetGlobalStateReader(), mainNodeStorage, trieStore);
 
         return Task.CompletedTask;
     }

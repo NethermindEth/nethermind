@@ -13,17 +13,17 @@ namespace Nethermind.Consensus.Tracing
 {
     public class Tracer : ITracer
     {
-        private readonly IWorldStateManager _worldStateManager;
+        private readonly IWorldStateProvider _worldStateProvider;
         private readonly IBlockchainProcessor _traceProcessor;
         private readonly IBlockchainProcessor _executeProcessor;
         private readonly ProcessingOptions _processingOptions;
 
-        public Tracer(IWorldStateManager worldStateManager, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
+        public Tracer(IWorldStateProvider worldStateProvider, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
             ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _traceProcessor = traceProcessor;
             _executeProcessor = executeProcessor;
-            _worldStateManager = worldStateManager;
+            _worldStateProvider = worldStateProvider;
             _processingOptions = processingOptions;
         }
 
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Tracing
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
-            IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(block.Header);
+            IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(block.Header);
             try
             {
                 processor.Process(block, _processingOptions, blockTracer);
@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Tracing
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            _worldStateManager.Accept(visitor, stateRoot);
+            _worldStateProvider.GetGlobalStateReader().RunTreeVisitor(visitor, stateRoot);
         }
     }
 }

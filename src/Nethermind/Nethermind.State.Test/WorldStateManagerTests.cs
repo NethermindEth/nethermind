@@ -23,9 +23,10 @@ public class WorldStateManagerTests
         IWorldState worldState = Substitute.For<IWorldState>();
         ITrieStore trieStore = Substitute.For<ITrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateProvider worldStateProvider = new(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = new WorldStateManager(worldStateProvider, dbProvider, trieStore, LimboLogs.Instance);
 
-        worldStateManager.GlobalWorldState.Should().Be(worldState);
+        worldStateManager.WorldStateProvider.GetWorldState().Should().Be(worldState);
     }
 
     [Test]
@@ -34,7 +35,8 @@ public class WorldStateManagerTests
         IWorldState worldState = Substitute.For<IWorldState>();
         ITrieStore trieStore = Substitute.For<ITrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateProvider worldStateProvider = new(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = new WorldStateManager(worldStateProvider, dbProvider, trieStore, LimboLogs.Instance);
 
         bool gotEvent = false;
         worldStateManager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;

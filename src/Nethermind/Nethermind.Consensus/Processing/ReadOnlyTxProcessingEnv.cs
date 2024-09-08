@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Processing
         {
             // TODO: really bad idea - find a better way?
             IWorldState? worldStateToUse =
-                WorldStateManager.GetGlobalWorldState(header);
+                WorldStateProvider.GetGlobalWorldState(header);
             Hash256 originalStateRoot = worldStateToUse.StateRoot;
             worldStateToUse.StateRoot = stateRoot;
             return new ReadOnlyTxProcessingScope(TransactionProcessor, worldStateToUse, originalStateRoot);

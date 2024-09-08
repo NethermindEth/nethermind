@@ -54,6 +54,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
     public IWorldStateManager WorldStateManager { get; set; } = null!;
+    public WorldStateProvider WorldStateProvider { get; set; } = null!;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
@@ -159,7 +160,8 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
+        WorldStateProvider = new WorldStateProvider(State, TrieStore, DbProvider, LimboLogs.Instance);
+        WorldStateManager = new WorldStateManager(WorldStateProvider, DbProvider, TrieStore, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
@@ -293,7 +295,7 @@ public class TestBlockchain : IDisposable
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
-            env.ReadOnlyWorldStateManager,
+            env.ReadOnlyWorldStateProvider,
             sealer,
             BlockTree,
             Timestamper,
@@ -374,7 +376,7 @@ public class TestBlockchain : IDisposable
             BlockValidator,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
-            WorldStateManager,
+            WorldStateManager.WorldStateProvider,
             ReceiptStorage,
             new BlockhashStore(SpecProvider),
             LogManager);

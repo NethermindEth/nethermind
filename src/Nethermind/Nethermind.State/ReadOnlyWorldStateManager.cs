@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -21,30 +19,29 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     private readonly ReadOnlyDb _codeDb;
     private readonly IDbProvider _dbProvider;
 
+    public virtual IWorldStateProvider WorldStateProvider { get; }
     public PreBlockCaches? Caches { get; }
 
-    public ReadOnlyWorldStateManager(IDbProvider dbProvider,
+    public ReadOnlyWorldStateManager(
+        ReadOnlyWorldStateProvider worldStateProvider,
+        IDbProvider dbProvider,
         IReadOnlyTrieStore readOnlyTrieStore,
         ILogManager logManager,
-        PreBlockCaches? preBlockCaches = null)
+        PreBlockCaches? preBlockCaches = null
+    )
     {
+        WorldStateProvider = worldStateProvider;
         _readOnlyTrieStore = readOnlyTrieStore;
+        _dbProvider = dbProvider;
         _logManager = logManager;
+                Caches = preBlockCaches;
 
-        _dbProvider = dbProvider.AsReadOnly(false);
-        _codeDb = _dbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
-        GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
-        Caches = preBlockCaches;
+
+        IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
+        _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
     }
 
-    public virtual IWorldState GlobalWorldState =>
-        throw new InvalidOperationException("global world state not supported");
-
-    public IStateReader GlobalStateReader { get; }
-
-    public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
-
-    public IScopedWorldStateManager CreateResettableWorldStateManager()
+    public IWorldStateProvider CreateResettableWorldStateProvider()
     {
         WorldState? worldState = Caches is not null
             ? new WorldState(
@@ -57,7 +54,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
                 _codeDb,
                 _logManager);
 
-        return new ScopedReadOnlyWorldStateManager(worldState, _dbProvider, _readOnlyTrieStore, _logManager, Caches);
+        return new WorldStateProvider(worldState, _readOnlyTrieStore, _dbProvider, _logManager);
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
@@ -66,7 +63,5 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
         remove => throw new InvalidOperationException("Unsupported operation");
     }
 
-    public virtual IWorldState GetGlobalWorldState(BlockHeader blockHeader) => throw new InvalidOperationException("global world state not supported");
     public bool ClearCache() => Caches?.Clear() == true;
-    public bool HasStateRoot(Hash256 root) => GlobalStateReader.HasStateForRoot(root);
 }

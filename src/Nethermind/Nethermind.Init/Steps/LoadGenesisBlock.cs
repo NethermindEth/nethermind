@@ -39,7 +39,7 @@ namespace Nethermind.Init.Steps
             }
 
             // TODO: find a better way to handle this - maybe GetGenesisWorldState()
-            IWorldState worldState = _api.WorldStateManager!.GlobalWorldState!;
+            IWorldState worldState = _api.WorldStateManager!.WorldStateProvider.GetWorldState()!;
 
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)

@@ -63,8 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             WorldState stateProvider = new(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
             _stateReader = new StateReader(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
 
-            var worldStateManager =
-                new WorldStateManager(stateProvider, trieStore, _dbProvider, LimboLogs.Instance);
+            var worldStateProvider = new WorldStateProvider(stateProvider, trieStore, _dbProvider, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
@@ -77,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 Always.Valid,
                 new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
-                worldStateManager,
+                worldStateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(specProvider),
                 LimboLogs.Instance);
@@ -89,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
-            _tracer = new Tracer(worldStateManager, _processor, _processor);
+            _tracer = new Tracer(worldStateProvider, _processor, _processor);
         }
 
         [TearDown]

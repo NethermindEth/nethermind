@@ -48,6 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IDbProvider _dbProvider = null!;
         private TestSpecProvider _specProvider = null!;
         private WorldStateManager _worldStateManager = null!;
+        private WorldStateProvider _worldStateProvider = null!;
 
         public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
         {
@@ -72,7 +73,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .OfChainLength(10)
                 .TestObject;
 
-            _worldStateManager = new WorldStateManager(worldState, trieStore, _dbProvider, LimboLogs.Instance);
+            _worldStateProvider = new WorldStateProvider(worldState, trieStore, _dbProvider, LimboLogs.Instance);
+            _worldStateManager = new WorldStateManager(_worldStateProvider, _dbProvider, trieStore, LimboLogs.Instance);
             ProofModuleFactory moduleFactory = new(
                 _worldStateManager,
                 _blockTree,

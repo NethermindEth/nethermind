@@ -34,7 +34,7 @@ public partial class BlockProcessor : IBlockProcessor
 {
     private readonly ILogger _logger;
     private readonly ISpecProvider _specProvider;
-    protected readonly IWorldStateManager _worldStateManager;
+    protected readonly IWorldStateProvider _worldStateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
@@ -57,7 +57,7 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldStateManager? worldStateManager,
+        IWorldStateProvider? worldStateProvider,
         IReceiptStorage? receiptStorage,
         IBlockhashStore? blockHashStore,
         ILogManager? logManager,
@@ -68,7 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
+        _worldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
@@ -99,7 +99,7 @@ public partial class BlockProcessor : IBlockProcessor
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
-        Hash256 previousBranchStateRoot = CreateCheckpoint(_worldStateManager.GlobalWorldState);
+        Hash256 previousBranchStateRoot = _worldStateProvider.GetWorldState().StateRoot; // we will store previousBranchStateRoot for both verkle and merkle trees
         InitBranch(newBranchStateRoot, suggestedBlocks[0].Header);
         Hash256 preBlockStateRoot = newBranchStateRoot;
 
@@ -118,14 +118,14 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 using CancellationTokenSource cancellationTokenSource = new();
-                IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(suggestedBlock.Header);
+                IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(suggestedBlock.Header);
                 _logger.Info($"Found the worldState to use: {worldStateToUse.StateRoot}");
-                // Task? preWarmTask = suggestedBlock.Transactions.Length < 3
-                //     ? null
-                //     : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, worldStateToUse, cancellationTokenSource.Token);
+                Task? preWarmTask = suggestedBlock.Transactions.Length < 3
+                    ? null
+                    : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, worldStateToUse, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(worldStateToUse, suggestedBlock, options, blockTracer);
-                // cancellationTokenSource.Cancel();
-                // preWarmTask?.GetAwaiter().GetResult();
+                cancellationTokenSource.Cancel();
+                preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
@@ -149,12 +149,14 @@ public partial class BlockProcessor : IBlockProcessor
                 }
 
                 preBlockStateRoot = processedBlock.StateRoot;
+                // Make sure the prewarm task is finished before we reset the state
+                preWarmTask?.GetAwaiter().GetResult();
                 worldStateToUse.Reset(resizeCollections: true);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
             {
-                RestoreBranch(previousBranchStateRoot);
+                RestoreBranch(previousBranchStateRoot, _worldStateProvider.GetWorldState()); // we will restore for both merkle and verkle
             }
 
             return processedBlocks;
@@ -162,7 +164,7 @@ public partial class BlockProcessor : IBlockProcessor
         catch (Exception ex) // try to restore at all cost
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
-            RestoreBranch(previousBranchStateRoot);
+            RestoreBranch(previousBranchStateRoot, _worldStateProvider.GetWorldState());
             throw;
         }
         finally
@@ -191,7 +193,7 @@ public partial class BlockProcessor : IBlockProcessor
         // M0 -> M1B -> M2B -> V0B -> V1B -> V2B, this means we need to clear the verkle state as well.
         // so here we will ensure that if the block we are processing is the transition block,
         // we clean the new WorldState - this will be managed by the WorldStateManager
-        IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(blockHeader);
+        IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(blockHeader);
         if (worldStateToUse.StateRoot != branchStateRoot)
         {
             /* Discarding the other branch data - chain reorganization.
@@ -222,12 +224,12 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: how do we handle this in this new scenerio, because we dont know which type of stateProvider does this stateRoot
     // belong to. Should we keep track of that as well.
     // TODO: move to branch processor
-    private void RestoreBranch(Hash256 branchingPointStateRoot)
+    private void RestoreBranch(Hash256 branchingPointStateRoot, IWorldState worldStateToRestore)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _worldStateManager.GlobalWorldState.Reset();
-        _worldStateManager.GlobalWorldState.StateRoot = branchingPointStateRoot;
-        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_worldStateManager.GlobalWorldState.StateRoot}");
+        worldStateToRestore.Reset();
+        worldStateToRestore.StateRoot = branchingPointStateRoot;
+        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {worldStateToRestore.StateRoot}");
     }
 
     // TODO: block processor pipeline

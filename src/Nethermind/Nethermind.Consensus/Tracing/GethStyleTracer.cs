@@ -33,12 +33,12 @@ public class GethStyleTracer : IGethStyleTracer
     private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
     private readonly IBlockchainProcessor _processor;
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly IWorldStateProvider _worldStateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IFileSystem _fileSystem;
 
     public GethStyleTracer(IBlockchainProcessor processor,
-        IWorldStateManager worldStateManager,
+        IWorldStateProvider worldStateProvider,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
         IBlockStore badBlockStore,
@@ -47,7 +47,7 @@ public class GethStyleTracer : IGethStyleTracer
         IFileSystem fileSystem)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-        _worldStateManager = worldStateManager;
+        _worldStateProvider = worldStateProvider;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
@@ -210,7 +210,7 @@ public class GethStyleTracer : IGethStyleTracer
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options)
     {
         // TODO: have a good way to check which function to use - CreateResettableWorldState or GetGlobalWorldState
-        IWorldState? worldStateToUse = _worldStateManager.GetGlobalWorldState(block);
+        IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(block);
         return options switch
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(

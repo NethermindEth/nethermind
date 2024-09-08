@@ -61,12 +61,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 new InMemoryReceiptStorage(),
                 _specProvider,
                 _blockTree,
-                _worldStateManager.GlobalStateReader,
+                _worldStateManager.WorldStateProvider.GetGlobalStateReader(),
                 _logManager,
                 traceExecutor);
 
             Tracer tracer = new(
-                txProcessingEnv.WorldStateManager,
+                txProcessingEnv.WorldStateProvider,
                 chainProcessingEnv.ChainProcessor,
                 chainProcessingEnv.ChainProcessor);
 

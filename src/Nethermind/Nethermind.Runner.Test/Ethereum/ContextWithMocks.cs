@@ -121,7 +121,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 BadBlocksStore = Substitute.For<IBlockStore>()
             };
 
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+
+            api.WorldStateManager = new ReadOnlyWorldStateManager(Substitute.For<ReadOnlyWorldStateProvider>(), api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }

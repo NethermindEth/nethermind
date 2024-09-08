@@ -11,7 +11,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -88,7 +87,7 @@ namespace Nethermind.Consensus.Producers
                     readOnlyBlockTree,
                     blockProcessor,
                     _blockPreprocessorStep,
-                    txProcessingEnv.StateReader,
+                    txProcessingEnv.WorldStateProvider.GetGlobalStateReader(),
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 
@@ -96,7 +95,7 @@ namespace Nethermind.Consensus.Producers
 
             return new BlockProducerEnv
             {
-                ReadOnlyWorldStateManager = _worldStateManager,
+                ReadOnlyWorldStateProvider = _worldStateManager.WorldStateProvider,
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
@@ -143,7 +142,7 @@ namespace Nethermind.Consensus.Producers
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessor),
-                worldStateManager,
+                worldStateManager.WorldStateProvider,
                 receiptStorage,
                 new BlockhashStore(_specProvider),
                 logManager,

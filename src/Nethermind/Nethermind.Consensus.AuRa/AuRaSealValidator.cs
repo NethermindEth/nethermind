@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 long step = header.AuRaStep.Value;
 
-                IWorldState? worldState = _worldStateManager.GetGlobalWorldState(header);
+                IWorldState? worldState = _worldStateManager.WorldStateProvider.GetGlobalWorldState(header);
                 if (step == parent.AuRaStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");

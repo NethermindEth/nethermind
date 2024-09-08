@@ -35,7 +35,7 @@ namespace Nethermind.Clique.Test
             CliqueBlockProducer producer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
-                Substitute.For<IWorldStateManager>(),
+                Substitute.For<IWorldStateProvider>(),
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),

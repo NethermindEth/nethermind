@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa
 
         public AuRaBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
-            IWorldStateManager stateProvider,
+            IWorldStateProvider worldStateProvider,
             ISealer sealer,
             IBlockTree blockTree,
             ITimestamper timestamper,
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa
                 processor,
                 sealer,
                 blockTree,
-                stateProvider,
+                worldStateProvider,
                 gasLimitCalculator,
                 timestamper,
                 specProvider,

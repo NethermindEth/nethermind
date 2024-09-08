@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     processor,
                     sealer,
                     blockTree,
-                    stateProvider,
+                    stateProvider.WorldStateProvider,
                     gasLimitCalculator,
                     timestamper,
                     MainnetSpecProvider.Instance,
