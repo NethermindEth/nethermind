@@ -34,7 +34,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
         _readOnlyTrieStore = readOnlyTrieStore;
         _dbProvider = dbProvider;
         _logManager = logManager;
-                Caches = preBlockCaches;
+        Caches = preBlockCaches;
 
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);

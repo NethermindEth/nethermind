@@ -8,7 +8,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldStateProvider: ReadOnlyWorldStateProvider
+public class WorldStateProvider : ReadOnlyWorldStateProvider
 {
     private IWorldState _worldState { get; set; }
 
