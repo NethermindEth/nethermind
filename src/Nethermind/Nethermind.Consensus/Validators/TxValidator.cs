@@ -149,6 +149,7 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
         { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
         { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
         { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransaction,
+        _ => ValidationResult.Success
     };
 }
 
