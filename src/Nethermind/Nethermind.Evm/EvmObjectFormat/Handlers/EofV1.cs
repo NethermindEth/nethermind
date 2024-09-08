@@ -121,7 +121,7 @@ internal class Eof1 : IEofVersionHandler
     // EIP-3540 ties this to MAX_INIT_CODE_SIZE from EIP-3860, but we need a constant here
     internal const ushort MAXIMUM_SIZE = 0xc000;
 
-    public bool TryParseEofHeader(ReadOnlyMemory<byte> containerMemory, out EofHeader? header)
+    public bool TryParseEofHeader(ReadOnlyMemory<byte> containerMemory, ValidationStrategy validationStrategy, out EofHeader? header)
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static ushort GetUInt16(ReadOnlySpan<byte> container, int offset) =>
@@ -345,6 +345,12 @@ internal class Eof1 : IEofVersionHandler
             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Extra data after end of container, starting at {dataSectionSubHeader.EndOffset}");
             return false;
         }
+        if ((validationStrategy.HasFlag(ValidationStrategy.Validate) && !validationStrategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
+            && dataSectionSubHeader.EndOffset > container.Length)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container has truncated data where full data is required");
+            return false;
+        }
 
         header = new EofHeader
         {
@@ -360,7 +366,7 @@ internal class Eof1 : IEofVersionHandler
 
     public bool TryGetEofContainer(ReadOnlyMemory<byte> code, ValidationStrategy validationStrategy, [NotNullWhen(true)] out EofContainer? eofContainer)
     {
-        if (!TryParseEofHeader(code, out EofHeader? header))
+        if (!TryParseEofHeader(code, validationStrategy, out EofHeader? header))
         {
             eofContainer = null;
             return false;
@@ -411,7 +417,7 @@ internal class Eof1 : IEofVersionHandler
                         continue;
 
                     ReadOnlyMemory<byte> subsection = targetContainer.ContainerSections[worklet.Index - 1];
-                    if (!TryParseEofHeader(subsection, out EofHeader? header) ||
+                    if (!TryParseEofHeader(subsection, validationStrategy, out EofHeader? header) ||
                         !ValidateBody(subsection.Span, header.Value, validationStrategy))
                     {
                         return false;

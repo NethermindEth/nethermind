@@ -52,7 +52,7 @@ public static class EofValidator
     {
         if (IsEof(code, out byte version) && _eofVersionHandlers.TryGetValue(version, out IEofVersionHandler handler))
         {
-            return handler.TryParseEofHeader(code, out header);
+            return handler.TryParseEofHeader(code, ValidationStrategy.Validate, out header);
         }
 
         header = null;
