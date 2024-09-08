@@ -33,6 +33,20 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             ngram = value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NGrams ProcessOneInstruction(Instruction instruction, Action<ulong> action)
+        {
+            return ProcessOneInstruction(instruction, this, action);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static NGrams ProcessOneInstruction(Instruction instruction, NGrams ngrams, Action<ulong> action)
+        {
+            ngrams = ngrams.ShiftAdd(instruction);
+            foreach (ulong ngram in ngrams)
+                action(ngram);
+            return ngrams;
+        }
 
         public NGrams ShiftAdd(Instruction instruction)
         {

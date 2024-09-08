@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -34,14 +35,27 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         public void Add(IEnumerable<Instruction> instructions)
         {
             foreach (Instruction instruction in instructions)
-                Add(instruction);
+                _ngrams = _ngrams.ProcessOneInstruction(instruction, ProcessNGram);
+            RefreshQueue();
         }
 
         public void Add(Instruction instruction)
         {
-            _ngrams = _ngrams.ShiftAdd(instruction);
-            foreach (ulong ngram in _ngrams)
-                ProcessNGram(ngram);
+            _ngrams = _ngrams.ProcessOneInstruction(instruction, ProcessNGram);
+            RefreshQueue();
+        }
+
+
+        private void RefreshQueue()
+        {
+            int count = topNQueue.Count;
+            Span<ulong> topN = stackalloc ulong[count];
+
+            for (int i = 0; i < count; i++)
+                topN[i] = topNQueue.Dequeue();
+
+            for (int i = 0; i < count; i++)
+                topNQueue.Enqueue(topN[i], topNMap[topN[i]]);
         }
 
         private void ProcessNGram(ulong ngram)
