@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using System;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
+using Nethermind.TxPool;
 
 namespace Nethermind.Api
 {
@@ -14,5 +19,15 @@ namespace Nethermind.Api
         }
 
         (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
+    }
+
+    public static class NethermindApiExtensions
+    {
+        public static void RegisterTxType(this INethermindApi api, TxType type, ITxDecoder decoder, ITxValidator validator)
+        {
+            if (api.TxValidator is null) throw new ArgumentNullException(nameof(api.TxValidator));
+            api.TxValidator.RegisterValidator(type, validator);
+            TxDecoder.Instance.RegisterDecoder(decoder);
+        }
     }
 }

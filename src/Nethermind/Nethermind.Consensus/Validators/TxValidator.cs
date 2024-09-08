@@ -22,21 +22,21 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         _validators = new ITxValidator[byte.MaxValue + 1];
-        _validators[(byte)TxType.Legacy] = new CompositeTxValidator([
+        RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             IntrinsicGasTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
-        ]);
-        _validators[(byte)TxType.AccessList] = new CompositeTxValidator([
+        ]));
+        RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             new ExpectedChainIdTxValidator(chainId),
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
-        ]);
-        _validators[(byte)TxType.EIP1559] = new CompositeTxValidator([
+        ]));
+        RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
@@ -44,8 +44,8 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
-        ]);
-        _validators[(byte)TxType.Blob] = new CompositeTxValidator([
+        ]));
+        RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled && spec.IsEip1559Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
@@ -54,14 +54,10 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
             MempoolBlobTxValidator.Instance
-        ]);
+        ]));
     }
 
-    public TxValidator WithValidator(TxType type, ITxValidator validator)
-    {
-        _validators[(byte)type] = validator;
-        return this;
-    }
+    public void RegisterValidator(TxType type, ITxValidator validator) => _validators[(byte)type] = validator;
 
     /// <remarks>
     /// Full and correct validation is only possible in the context of a specific block

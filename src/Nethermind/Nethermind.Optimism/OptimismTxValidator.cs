@@ -11,5 +11,6 @@ namespace Nethermind.Optimism;
 
 public sealed class OptimismTxValidator : ITxValidator
 {
+    public static OptimismTxValidator Instance = new();
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => ValidationResult.Success;
 }
