@@ -5,14 +5,11 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Consensus.Validators;
 
 namespace Nethermind.Optimism;
 
 public sealed class OptimismTxValidator : ITxValidator
 {
-    public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error)
-    {
-        error = null;
-        return true;
-    }
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => ValidationResult.Success;
 }
