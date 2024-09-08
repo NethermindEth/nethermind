@@ -46,7 +46,7 @@ public sealed class TxValidator : ITxValidator
             NonBlobFieldsTxValidator.Instance,
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
-            new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled && spec.IsEip1559Enabled),
+            new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             new ExpectedChainIdTxValidator(chainId),
