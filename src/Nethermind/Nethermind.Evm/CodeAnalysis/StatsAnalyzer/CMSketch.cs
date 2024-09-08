@@ -9,11 +9,16 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
     public class CMSketch
     {
+
+        public double errorPerItem => _errorPerItem;
+
         public readonly double error;
         public readonly double probabilityOneMinusDelta;
 
+        private double _errorPerItem;
         private ulong[] _sketch;
         private Int64[] _seeds;
+
         public readonly int buckets;
         public readonly int hashFunctions;
 
@@ -67,6 +72,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ulong Increment(ulong item, int hasher)
         {
+            _errorPerItem += error;
             return Interlocked.Increment(ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)buckets)]);
         }
 
@@ -95,15 +101,6 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             return cms;
         }
 
-
-        public ulong OverEstimationMagnitude()
-        {
-            ulong overEstimationMagnitude = 0;
-            for (int i = 0; i < buckets; i++)
-                overEstimationMagnitude += _sketch[i];
-            overEstimationMagnitude = (ulong)Math.Round(error * (double)overEstimationMagnitude);
-            return overEstimationMagnitude;
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong ComputeHash(ulong value, int hasher)
