@@ -25,14 +25,18 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private ulong _minSupport;
         private ulong _max = 1;
 
-        public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, uint minSupport, int sketchBufferSize = 100, double sketchResetError = 0.001)
+        public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, uint minSupport, int sketchBufferSize = 100, double sketchResetError = 0.001) : this(topN, new CMSketch(numberOfHashFunctions, buckets), capacity, minSupport, sketchBufferSize, sketchResetError)
+        {
+        }
+
+        public StatsAnalyzer(int topN, CMSketch sketch, int capacity, uint minSupport, int sketchBufferSize, double sketchResetError)
         {
             _topN = topN;
-            _sketch = new CMSketch(numberOfHashFunctions, buckets);
+            _sketch = sketch;
             this.sketchResetError = sketchResetError;
             _sketchBuffer = new CMSketch[sketchBufferSize];
             topNQueue = new PriorityQueue<ulong, ulong>(_topN);
-            _topNMap = new Dictionary<ulong,ulong>(capacity);
+            _topNMap = new Dictionary<ulong, ulong>(capacity);
             _capacity = capacity;
             _minSupport = minSupport;
         }
@@ -80,9 +84,8 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         private void ProcessTopN()
         {
-            var count = 0UL;
             topNQueue.Clear();
-            foreach (KeyValuePair<ulong,ulong> kvp in _topNMap)
+            foreach (KeyValuePair<ulong, ulong> kvp in _topNMap)
             {
                 // if count is less than minSupport remove from topNMap and  continue;
                 if (kvp.Value < _minSupport)
@@ -91,7 +94,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
                     continue;
                 }
 
-                _max = Math.Max(_max, count);
+                _max = Math.Max(_max, kvp.Value);
 
                 if (topNQueue.Count < _topN)
                     topNQueue.Enqueue(kvp.Key, kvp.Value);
