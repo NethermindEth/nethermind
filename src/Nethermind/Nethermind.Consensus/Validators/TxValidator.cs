@@ -144,12 +144,12 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
     private NonBlobFieldsTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => transaction switch
-        {
-            // Execution-payload version verification
-            { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
-            { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
-            { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransaction,
-        };
+    {
+        // Execution-payload version verification
+        { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
+        { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
+        { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransaction,
+    };
 }
 
 public sealed class BlobFieldsTxValidator : ITxValidator
