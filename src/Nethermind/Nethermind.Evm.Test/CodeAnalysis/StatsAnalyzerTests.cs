@@ -147,17 +147,37 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void validate_ngram_generation_exhaustive(Instruction[] transaction, (Instruction[] ngram, int count)[] ngrams)
         {
             Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
-            StatsAnalyzer statsAnalyzer = new StatsAnalyzer(100, 600000, 2, 100000, 1);
+            StatsAnalyzer statsAnalyzer = new StatsAnalyzer(100, 600000, 20, 100000, 1);
             foreach (Instruction instruction in transaction)
             {
                 statsAnalyzer.Add(instruction);
             }
             Assert.That(statsAnalyzer.topNQueue.Count == ngrams.Count(), $" Total ngrams expected {ngrams.Count()}, found {statsAnalyzer.topNQueue.Count}");
-            foreach ((Instruction[] ngram, int expectedCount) ngramAndCount in ngrams)
+            foreach ((Instruction[] ngram, int expectedCount) _ngram in ngrams)
             {
-                ulong currentNGram = AsNGram(ngramAndCount.ngram);
-                Assert.That(statsAnalyzer.topNMap[currentNGram] == (ulong)ngramAndCount.expectedCount, $"{ngramAndCount.ngram} found count: {statsAnalyzer.topNMap[currentNGram]}, expected Count: {ngramAndCount.expectedCount}");
+                counts[new NGrams(_ngram.ngram).ngram] = (ulong)_ngram.expectedCount;
             }
+
+            while (statsAnalyzer.topNQueue.TryDequeue(out ulong ngram, out ulong count))
+            {
+                Assert.That(counts.ContainsKey(ngram),
+                        $"{new NGrams(ngram).ToString()} not present in testCase ");
+                if (counts[ngram] >= count) counts[ngram] -= count;
+                else counts[ngram] = 0; // we have over estimated
+                if (counts[ngram] == 0)
+                    counts.Remove(ngram);
+            }
+
+            if (counts.Count != 0)
+            {
+                foreach (KeyValuePair<ulong, ulong> kvp in counts)
+                {
+                    Console.WriteLine($"{new NGrams(kvp.Value).ToString()} was not found in TopN");
+                }
+            }
+
+            Assert.That(counts.Count == 0,
+                    $"{counts.Count} ngrams were missing in the TopN Queue");
 
         }
 

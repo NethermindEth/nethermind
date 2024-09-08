@@ -11,107 +11,82 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         public NGrams NGrams => _ngrams;
 
         public readonly PriorityQueue<ulong, ulong> topNQueue;
-        public readonly Dictionary<ulong, ulong> topNMap;
+        private HashSet<ulong> _unique;
 
         private CMSketch _sketch;
+        private CMSketch[] _previousSketches;
 
         private int _topN;
         private NGrams _ngrams = new NGrams(NGrams.NULL);
 
         private int _capacity;
         private ulong _minSupport;
-        private ulong _recentCount;
 
-        public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, uint minSupport)
+        public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, uint minSupport, int sketchBufferSize = 100)
         {
             _topN = topN;
             _sketch = new CMSketch(numberOfHashFunctions, buckets);
-            topNMap = new Dictionary<ulong, ulong>(capacity);
+            _previousSketches = new CMSketch[sketchBufferSize];
             topNQueue = new PriorityQueue<ulong, ulong>(_topN);
             _capacity = capacity;
+            _unique = new HashSet<ulong>(capacity);
             _minSupport = minSupport;
         }
 
+        public void CheckError()
+        {
+
+        }
         public void Add(IEnumerable<Instruction> instructions)
         {
             foreach (Instruction instruction in instructions)
                 _ngrams = _ngrams.ProcessOneInstruction(instruction, ProcessNGram);
-            RefreshQueue();
+            ProcessTopN();
         }
 
         public void Add(Instruction instruction)
         {
             _ngrams = _ngrams.ProcessOneInstruction(instruction, ProcessNGram);
-            RefreshQueue();
+            ProcessTopN();
         }
 
-
-        private void RefreshQueue()
-        {
-            int count = topNQueue.Count;
-            Span<ulong> topN = stackalloc ulong[count];
-
-            for (int i = 0; i < count; i++)
-                topN[i] = topNQueue.Dequeue();
-
-            for (int i = 0; i < count; i++)
-                topNQueue.Enqueue(topN[i], topNMap[topN[i]]);
-        }
 
         private void ProcessNGram(ulong ngram)
         {
-            _recentCount = _sketch.UpdateAndQuery(ngram);
+            var count = _sketch.UpdateAndQuery(ngram);
+            // if count is less than minSupport  return early;
+            if (count < _minSupport) return;
+            _unique.Add(ngram);
+        }
 
-            // if recentCount is less than minSupport  return early;
-            if (_recentCount < _minSupport) return;
-
-            // if recentCount is greater than minSupport  and enqueued, we update early and return
-            if (topNMap.ContainsKey(ngram))
-                topNMap[ngram] = _recentCount;
-
-            Debug.Assert(topNMap.Count <= _capacity,
-                    $"topNMap had count {topNMap.Count} that breached capacity of {_capacity}");
-
-            // if recentCount is greater than minSupport  and not enqueued, we add
-            if (topNQueue.Count >= _topN)
+        private void ProcessTopN()
+        {
+            var count = 0UL;
+            topNQueue.Clear();
+            foreach (ulong _ngram in _unique)
             {
-                while (topNQueue.TryDequeue(out ulong lowestQueuedNGram, out _))
+                count = _sketch.Query(_ngram);
+                // if count is less than minSupport  continue;
+                if (count < _minSupport)
                 {
-                    // if lowest is greater than this we break out of the loop;
-                    if (topNMap[lowestQueuedNGram] >= _recentCount) break;
-                    if (topNQueue.TryPeek(out ulong nextLowestQueuedNGram, out ulong nextLowestQueuedNGramCount))
-                    {
-                        //if the lowest is greater than next lowest, our queue is stale we refresh;
-                        if (topNMap[lowestQueuedNGram] > topNMap[nextLowestQueuedNGram])
-                        {
-                            topNQueue.TryDequeue(out nextLowestQueuedNGram, out nextLowestQueuedNGramCount);
-                            topNQueue.Enqueue(lowestQueuedNGram, topNMap[lowestQueuedNGram]);
-                            topNQueue.Enqueue(nextLowestQueuedNGram, topNMap[nextLowestQueuedNGram]);
-                        } // if lowest is stale we re-queue it with its recent count
-                        else if (topNMap[lowestQueuedNGram] >= _recentCount) topNQueue.DequeueEnqueue(lowestQueuedNGram, topNMap[lowestQueuedNGram]);
-                        else
-                        {
-                            // this ngram is greater than the lowest, we remove the lowest and add this ngram
-                            topNMap.Remove(lowestQueuedNGram);
-                            topNQueue.Enqueue(ngram, _recentCount);
-                            break;
-                        }
-
-                    }
+                    _unique.Remove(_ngram);
+                    continue;
                 }
 
-                //Queue has filled up, we update min support to filter out lower count updates
-                topNQueue.TryPeek(out _, out ulong lowestQueuedNGramCount);
-                _minSupport = lowestQueuedNGramCount;
+                if (topNQueue.Count < _topN)
+                    topNQueue.Enqueue(_ngram, count);
 
-            }
-            else
-            {
-                topNMap.TryAdd(ngram, _recentCount);
-                topNQueue.Enqueue(ngram, _recentCount); // we haven't seen it and we have capacity  so we enqueue
+                if (topNQueue.Count >= _topN)
+                {
+                    topNQueue.DequeueEnqueue(_ngram, count);
+                    //Queue has filled up, we update min support to filter out lower count updates
+                    topNQueue.TryPeek(out ulong _, out _minSupport);
+                }
             }
 
         }
+
+
     }
 
 }

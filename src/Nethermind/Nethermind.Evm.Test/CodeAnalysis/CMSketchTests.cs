@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using NUnit.Framework;
 
@@ -18,8 +17,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase(100, 2, 50)]
         [TestCase(10, 2, 10)]
         [TestCase(10, 1)]
-        [TestCase(3, 3)]
-        [TestCase(1, 1)]
+        [TestCase(3, 3, 20)]
+        [TestCase(1, 1, 20)]
         public void validate_count_min_sketch_bounds_single_update(int buckets, int hashFunctions, int numberOfItemsInStream = 1)
         {
 
