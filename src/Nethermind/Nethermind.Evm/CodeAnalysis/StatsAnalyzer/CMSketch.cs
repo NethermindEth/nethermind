@@ -1,5 +1,6 @@
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -22,6 +23,8 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         // To maximize accuracy minimize maxError and maximize oneMinusDelta
         public CMSketch(double maxError, double oneMinusDelta) : this((int)Math.Ceiling(Math.Log2(1.0d / (1.0d - oneMinusDelta))), (int)Math.Ceiling((2.0d / maxError)))
         {
+            Debug.Assert(error <= maxError, $" expected sketch error to be initialized to at most {maxError} found {error}");
+            Debug.Assert(probabilityOneMinusDelta >= oneMinusDelta, $" expected sketch probabilityOneMinusDelta to be at least {oneMinusDelta} found {probabilityOneMinusDelta}");
         }
 
 

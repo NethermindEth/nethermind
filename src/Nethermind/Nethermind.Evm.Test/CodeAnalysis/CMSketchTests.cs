@@ -47,8 +47,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
 
             CMSketch sketch = new CMSketch(e, oneMinusdelta);
-            Assert.That(sketch.error <= e, $" expected sketch error to be initialized to at most {e} found {sketch.error}");
-            Assert.That(sketch.probabilityOneMinusDelta >= oneMinusdelta, $" expected sketch probabilityOneMinusDelta to be at least {oneMinusdelta} found {sketch.probabilityOneMinusDelta}");
             Dictionary<ulong, ulong> actualCounts = new Dictionary<ulong, ulong>();
             ulong totalItems = 0;
 
