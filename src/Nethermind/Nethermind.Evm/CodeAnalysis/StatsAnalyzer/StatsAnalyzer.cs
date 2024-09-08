@@ -11,7 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         public NGrams NGrams => _ngrams;
 
         public readonly PriorityQueue<ulong, ulong> topNQueue;
-        private HashSet<ulong> _unique;
+        private Dictionary<ulong, ulong> _topNMap;
 
         private CMSketch _sketch;
         public readonly double sketchResetError;
@@ -32,14 +32,14 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             this.sketchResetError = sketchResetError;
             _sketchBuffer = new CMSketch[sketchBufferSize];
             topNQueue = new PriorityQueue<ulong, ulong>(_topN);
+            _topNMap = new Dictionary<ulong,ulong>(capacity);
             _capacity = capacity;
-            _unique = new HashSet<ulong>(capacity);
             _minSupport = minSupport;
         }
 
         private void ResetSketchAtError()
         {
-            if (_sketchBufferPos < (_sketchBuffer.Length - 1) && ((_sketch.errorPerItem / (double)_max) >= sketchResetError))
+            if (_max > _minSupport && _sketchBufferPos < (_sketchBuffer.Length - 1) && ((_sketch.errorPerItem / (double)_max) >= sketchResetError))
             {
                 ++_sketchBufferPos;
                 _sketchBuffer[_sketchBufferPos] = _sketch.Reset();
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             _sketch.Update(ngram);
             var count = QueryAllSketches(ngram);
             if (count < _minSupport) return;
-            _unique.Add(ngram);
+            _topNMap.Add(ngram, count);
         }
 
         private ulong QueryAllSketches(ulong ngram)
@@ -82,24 +82,23 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
             var count = 0UL;
             topNQueue.Clear();
-            foreach (ulong _ngram in _unique)
+            foreach (KeyValuePair<ulong,ulong> kvp in _topNMap)
             {
-                count = QueryAllSketches(_ngram);
-                // if count is less than minSupport remove from unique and  continue;
-                if (count < _minSupport)
+                // if count is less than minSupport remove from topNMap and  continue;
+                if (kvp.Value < _minSupport)
                 {
-                    _unique.Remove(_ngram);
+                    _topNMap.Remove(kvp.Key);
                     continue;
                 }
 
                 _max = Math.Max(_max, count);
 
                 if (topNQueue.Count < _topN)
-                    topNQueue.Enqueue(_ngram, count);
+                    topNQueue.Enqueue(kvp.Key, kvp.Value);
 
                 if (topNQueue.Count >= _topN)
                 {
-                    topNQueue.DequeueEnqueue(_ngram, count);
+                    topNQueue.DequeueEnqueue(kvp.Key, kvp.Value);
                     //Queue has filled up, we update min support to filter out lower count updates
                     topNQueue.TryPeek(out ulong _, out _minSupport);
                 }
