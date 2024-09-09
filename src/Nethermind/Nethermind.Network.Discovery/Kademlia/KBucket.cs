@@ -32,10 +32,15 @@ public class KBucket<TNode> where TNode : notnull
     public BucketAddResult TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh)
     {
         BucketAddResult addResult = _items.AddOrRefresh(hash, item);
+        if (addResult == BucketAddResult.Added)
+        {
+            _cachedArray = _items.GetAll();
+        }
+
+        // Either added or refreshed
         if (addResult != BucketAddResult.Full)
         {
             toRefresh = default;
-            _cachedArray = _items.GetAll();
             return addResult;
         }
 

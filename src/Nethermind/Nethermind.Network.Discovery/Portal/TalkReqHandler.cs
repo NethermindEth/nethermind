@@ -63,7 +63,6 @@ public class TalkReqHandler(
             {
                 return await HandleOffer(sender, offer);
             }
-
         }
         catch (Exception e)
         {
@@ -213,7 +212,7 @@ public class TalkReqHandler(
     private async Task RunOfferAccept(IEnr enr, Offer offer, BitArray accepted, ushort connectionId)
     {
         using CancellationTokenSource cts = new CancellationTokenSource();
-        // cts.CancelAfter(_offerAcceptTimeout);
+        cts.CancelAfter(_offerAcceptTimeout);
         var token =  cts.Token;
 
         var pipe = new Pipe();

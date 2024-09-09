@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.IO.Pipelines;
 using Lantern.Discv5.Enr;
 using Nethermind.Core.Caching;
@@ -134,7 +135,6 @@ public class ContentDistributor : IContentDistributor
         });
 
         var responseByte = await _transport.CallAndWaitForResponse(enr, _config.ProtocolId, message, token);
-
         Accept? accept = SlowSSZ.Deserialize<MessageUnion>(responseByte).Accept;
         if (accept == null) return;
         if (accept.AcceptedBits.Length == 0 || !accept.AcceptedBits[0]) return;
@@ -145,6 +145,8 @@ public class ContentDistributor : IContentDistributor
             Stream stream = pipe.Writer.AsStream();
             stream.WriteLEB128Unsigned((ulong)content.Length);
             stream.Write(content);
+            stream.Close();
+            pipe.Writer.Complete();
         }, cts.Token);
 
         Task readTask = _utpManager.WriteContentToUtp(enr, true, accept.ConnectionId, pipe.Reader.AsStream(), token);

@@ -60,10 +60,10 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
             {
                 _logger.Debug($"Reached leaf node at depth {depth}");
                 var resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
-                if (resp == BucketAddResult.Added)
+                if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
                 {
                     _logger.Info($"Successfully added/refreshed node {node} in bucket at depth {depth}");
-                    return BucketAddResult.Added;
+                    return resp;
                 }
 
                 if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
@@ -73,7 +73,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
                     continue;
                 }
 
-                _logger.Debug($"Failed to add node {node}. Bucket at depth {depth} is full");
+                _logger.Debug($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.GetAllWithHash().Count()}");
                 return resp;
             }
 

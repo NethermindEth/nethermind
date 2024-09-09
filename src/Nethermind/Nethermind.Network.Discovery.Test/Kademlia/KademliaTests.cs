@@ -32,6 +32,28 @@ public class KademliaTests
     }
 
     [Test]
+    public void TestNewNodeAdded()
+    {
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        {
+            CurrentNodeId = ValueKeccak.Zero,
+            KSize = 5,
+            Beta = 0,
+            RefreshInterval = TimeSpan.FromSeconds(10)
+        });
+
+        int nodeAddedTriggered = 0;
+        kad.OnNodeAdded += (sender, hash256) => nodeAddedTriggered++;
+
+        ValueHash256 testHash = new ValueHash256("0x1111111111111111111111111111111111111111111111111111111111111111");
+        kad.AddOrRefresh(testHash);
+        kad.AddOrRefresh(testHash);
+        kad.AddOrRefresh(testHash);
+
+        nodeAddedTriggered.Should().Be(1);
+    }
+
+    [Test]
     public async Task TestTooManyNode()
     {
         TaskCompletionSource pingSource = new TaskCompletionSource();

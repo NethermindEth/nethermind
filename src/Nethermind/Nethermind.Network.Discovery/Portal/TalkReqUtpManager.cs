@@ -82,7 +82,7 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
         connectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
 
-        if (_logger.IsDebug) _logger.Debug($"Listing to UTP upload request from {nodeId} with connection id {connectionId}");
+        if (_logger.IsDebug) _logger.Debug($"Listening to UTP upload request from {nodeId} with connection id {connectionId}. Is initiator {isInitiator}");
 
         ushort peerConnectionId = 0;
         ushort ourConnectionId = 0;
@@ -129,7 +129,7 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
         BinaryPrimitives.WriteUInt16LittleEndian(asByte, connectionId);
         connectionId = BinaryPrimitives.ReadUInt16BigEndian(asByte);
 
-        if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {connectionId}");
+        if (_logger.IsDebug) _logger.Debug($"Downloading UTP content from {nodeId} with connection id {connectionId}. Is initiator {isInitiator}.");
 
         ushort peerConnectionId = 0;
         ushort ourConnectionId = 0;

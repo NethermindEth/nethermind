@@ -213,7 +213,7 @@ public class ContentNetworkScenarioTests
             IEnrProvider enrProvider = new TestEnrProvider(newNodeEnr, _identityVerifier, _enrFactory);
             IRawTalkReqSender talkReqSender = CreateTalkReqSenderFor(newNodeEnr);
             IServiceCollection services = new ServiceCollection()
-                .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
+                .AddSingleton<ILogManager>(new TestLogManager())
                 .AddSingleton(enrProvider)
                 .AddSingleton(talkReqSender);
 
