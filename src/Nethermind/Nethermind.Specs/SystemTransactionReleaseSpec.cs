@@ -137,5 +137,7 @@ namespace Nethermind.Specs
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
 
         public bool IsEofEnabled => _spec.IsEofEnabled;
+
+        public object EvmInstructions { get => _spec.EvmInstructions; set => _spec.EvmInstructions = value; }
     }
 }

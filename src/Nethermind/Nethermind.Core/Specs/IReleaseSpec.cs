@@ -376,5 +376,7 @@ namespace Nethermind.Core.Specs
         public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+
+        public object? EvmInstructions { get; set; }
     }
 }

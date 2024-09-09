@@ -86,6 +86,8 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
+        TLOAD = 0x5c, // EIP-1153
+        TSTORE = 0x5d,
         MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
@@ -162,20 +164,10 @@ namespace Nethermind.Evm
         LOG3 = 0xa3,
         LOG4 = 0xa4,
 
-        // EIP-1153
-        TLOAD = 0x5c,
-        TSTORE = 0x5d,
-
-        CREATE = 0xf0,
-        CALL = 0xf1,
-        CALLCODE = 0xf2,
-        RETURN = 0xf3,
-        DELEGATECALL = 0xf4,
-        CREATE2 = 0xf5,
-        STATICCALL = 0xfa,
-        REVERT = 0xfd,
-        INVALID = 0xfe,
-        SELFDESTRUCT = 0xff,
+        DATALOAD = 0xd0,
+        DATALOADN = 0xd1,
+        DATASIZE = 0xd2,
+        DATACOPY = 0xd3,
 
         RJUMP = 0xe0,
         RJUMPI = 0xe1,
@@ -183,22 +175,30 @@ namespace Nethermind.Evm
         CALLF = 0xe3,
         RETF = 0xe4,
         JUMPF = 0xe5,
-        EOFCREATE = 0xec,
-        RETURNCONTRACT = 0xee,
-        DATALOAD = 0xd0,
-        DATALOADN = 0xd1,
-        DATASIZE = 0xd2,
-        DATACOPY = 0xd3,
-
         DUPN = 0xe6,
         SWAPN = 0xe7,
         EXCHANGE = 0xe8, // random value opcode spec has collision
-        RETURNDATALOAD = 0xf7,
 
+        EOFCREATE = 0xec,
+
+        RETURNCONTRACT = 0xee,
+
+
+        CREATE = 0xf0,
+        CALL = 0xf1,
+        CALLCODE = 0xf2,
+        RETURN = 0xf3,
+        DELEGATECALL = 0xf4,
+        CREATE2 = 0xf5,
+        RETURNDATALOAD = 0xf7,
         // opcode value not spec-ed 
         EXTCALL = 0xf8,
         EXTDELEGATECALL = 0xf9, // DelegateCallEnabled
+        STATICCALL = 0xfa,
         EXTSTATICCALL = 0xfb, // StaticCallEnabled
+        REVERT = 0xfd,
+        INVALID = 0xfe,
+        SELFDESTRUCT = 0xff,
 
     }
     public static class InstructionExtensions
@@ -376,9 +376,6 @@ namespace Nethermind.Evm
             spec ??= Frontier.Instance;
             return instruction switch
             {
-                Instruction.EXTCALL => "EXTCALL",
-                Instruction.EXTSTATICCALL => "EXTSTATICCALL", // StaticCallEnabled
-                Instruction.EXTDELEGATECALL => "EXTDELEGATECALL",
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
                 Instruction.JUMPDEST => spec.IsEofEnabled ? "NOP" : "JUMPDEST",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,

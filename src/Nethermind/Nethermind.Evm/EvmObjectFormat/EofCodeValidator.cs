@@ -34,10 +34,18 @@ public static class EofValidator
     /// <param name="container">Machine code to be checked</param>
     /// <returns></returns>
     public static bool IsEof(ReadOnlyMemory<byte> container, [NotNullWhen(true)] out byte version)
+        => IsEof(container.Span, out version);
+
+    /// <summary>
+    /// returns whether the code passed is supposed to be treated as Eof regardless of its validity.
+    /// </summary>
+    /// <param name="container">Machine code to be checked</param>
+    /// <returns></returns>
+    public static bool IsEof(ReadOnlySpan<byte> container, [NotNullWhen(true)] out byte version)
     {
         if (container.Length >= MAGIC.Length + 1)
         {
-            version = container.ByteAt(MAGIC.Length);
+            version = container[MAGIC.Length];
             return container.StartsWith(MAGIC);
         }
         else
@@ -45,7 +53,6 @@ public static class EofValidator
             version = 0;
             return false;
         }
-
     }
 
     public static bool IsValidEofHeader(ReadOnlyMemory<byte> code, [NotNullWhen(true)] out EofHeader? header)

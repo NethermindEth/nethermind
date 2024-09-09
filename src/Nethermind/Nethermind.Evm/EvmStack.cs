@@ -16,32 +16,32 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
-using static VirtualMachine;
 using Word = Vector256<byte>;
 
-public ref struct EvmStack<TTracing>
-    where TTracing : struct, IIsTracing
+public ref struct EvmStack
 {
-    public const int MaxStackSize = EvmStack.MaxStackSize;
-    public const int WordSize = EvmStack.WordSize;
-    public const int AddressSize = EvmStack.AddressSize;
+    public const int RegisterLength = 1;
+    public const int MaxStackSize = 1025;
+    public const int ReturnStackSize = 1025;
+    public const int WordSize = 32;
+    public const int AddressSize = 20;
 
     public EvmStack(scoped in Span<byte> bytes, scoped in int head, ITxTracer txTracer)
     {
         _bytes = bytes;
         Head = head;
-        _tracer = txTracer;
+        _tracer = txTracer.IsTracingInstructions ? txTracer : null;
     }
 
     public int Head;
 
     private readonly Span<byte> _bytes;
 
-    private readonly ITxTracer _tracer;
+    private readonly ITxTracer? _tracer;
 
     public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
+        _tracer?.ReportStackPush(value);
 
         if (value.Length != WordSize)
         {
@@ -61,7 +61,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushBytes(scoped in ZeroPaddedSpan value)
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
+        _tracer?.ReportStackPush(value);
 
         ReadOnlySpan<byte> valueSpan = value.Span;
         if (valueSpan.Length != WordSize)
@@ -95,7 +95,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushByte(byte value)
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
+        _tracer?.ReportStackPush(value);
 
         ClearWordAtHead();
         _bytes[Head * WordSize + WordSize - sizeof(byte)] = value;
@@ -110,7 +110,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushOne()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(OneStackItem());
+        _tracer?.ReportStackPush(OneStackItem());
 
         ClearWordAtHead();
         _bytes[Head * WordSize + WordSize - sizeof(byte)] = 1;
@@ -125,10 +125,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushZero()
     {
-        if (typeof(TTracing) == typeof(IsTracing))
-        {
-            _tracer.ReportStackPush(ZeroStackItem());
-        }
+        _tracer?.ReportStackPush(ZeroStackItem());
 
         ClearWordAtHead();
 
@@ -138,14 +135,14 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public void PushUInt32(in int value)
+    public void PushUInt32(int value)
     {
         ClearWordAtHead();
 
         Span<byte> intPlace = _bytes.Slice(Head * WordSize + WordSize - sizeof(uint), sizeof(uint));
         BinaryPrimitives.WriteInt32BigEndian(intPlace, value);
 
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(intPlace);
+        _tracer?.ReportStackPush(intPlace);
 
         if (++Head >= MaxStackSize)
         {
@@ -205,7 +202,7 @@ public ref struct EvmStack<TTracing>
             Unsafe.WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
         }
 
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(word);
+        _tracer?.ReportStackPush(word);
 
         if (++Head >= MaxStackSize)
         {
@@ -378,7 +375,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
+        _tracer?.ReportStackPush(value);
 
         if (value.Length != WordSize)
         {
@@ -407,10 +404,7 @@ public ref struct EvmStack<TTracing>
 
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
 
-        if (typeof(TTracing) == typeof(IsTracing))
-        {
-            Trace(depth);
-        }
+        if (_tracer is not null) Trace(depth);
 
         if (++Head >= MaxStackSize)
         {
@@ -443,10 +437,7 @@ public ref struct EvmStack<TTracing>
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
         Unsafe.WriteUnaligned(ref top, buffer);
 
-        if (typeof(TTracing) == typeof(IsTracing))
-        {
-            Trace(depth);
-        }
+        if (_tracer is not null) Trace(depth);
 
         return true;
     }
@@ -465,10 +456,7 @@ public ref struct EvmStack<TTracing>
         Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
         Unsafe.WriteUnaligned(ref second, buffer);
 
-        if (typeof(TTracing) == typeof(IsTracing))
-        {
-            Trace(maxDepth);
-        }
+        if (_tracer is not null) Trace(maxDepth);
 
         return true;
     }
@@ -483,19 +471,7 @@ public ref struct EvmStack<TTracing>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly void ClearWordAtHead()
-    {
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
-    }
-}
-
-public static class EvmStack
-{
-    public const int RegisterLength = 1;
-    public const int MaxStackSize = 1025;
-    public const int ReturnStackSize = 1025;
-    public const int WordSize = 32;
-    public const int AddressSize = 20;
-
+        => Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize)) = default;
 
     [StackTraceHidden]
     [DoesNotReturn]

@@ -12,7 +12,8 @@ namespace Nethermind.Evm
 
     public enum EvmExceptionType
     {
-        None,
+        Stop = -1,
+        None = 0,
         BadInstruction,
         StackOverflow,
         StackUnderflow,
