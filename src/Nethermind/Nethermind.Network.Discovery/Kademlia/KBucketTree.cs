@@ -3,11 +3,12 @@
 
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucketTree<TNode, TContentKey> where TNode : notnull
+public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode : notnull
 {
     private class TreeNode
     {
@@ -16,6 +17,7 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
         public TreeNode? Right { get; set; }
         public int Depth { get; }
         public ValueHash256 Prefix { get; }
+        public bool IsLeaf => Left == null && Right == null;
 
         public TreeNode(int depth, int k, ValueHash256 prefix)
         {
@@ -27,36 +29,41 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
 
     private readonly TreeNode _root;
     private readonly int _k;
-    private readonly ValueHash256 _currentNodeId;
+    private readonly ValueHash256 _currentNodeHash;
     private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
     private readonly ILogger _logger;
 
-    public KBucketTree(int k, ValueHash256 currentNodeId, INodeHashProvider<TNode, TContentKey> nodeHashProvider, ILogManager logManager)
+    // TODO: Double check and probably make lockless
+    private readonly McsLock _lock = new McsLock();
+
+    public KBucketTree(int k, ValueHash256 currentNodeHash, INodeHashProvider<TNode, TContentKey> nodeHashProvider, ILogManager logManager)
     {
         _k = k;
-        _currentNodeId = currentNodeId;
+        _currentNodeHash = currentNodeHash;
         _nodeHashProvider = nodeHashProvider;
         _root = new TreeNode(0, k, new ValueHash256());
         _logger = logManager.GetClassLogger();
-        _logger.Info($"Initialized KBucketTree with k={k}, currentNodeId={currentNodeId}");
+        _logger.Info($"Initialized KBucketTree with k={k}, currentNodeId={currentNodeHash}");
     }
 
-    public bool TryAddOrRefresh(TNode node, out TNode? toRefresh)
+    public BucketAddResult TryAddOrRefresh(in ValueHash256 nodeHash, TNode node, out TNode? toRefresh)
     {
-        ValueHash256 nodeHash = _nodeHashProvider.GetHash(node);
-        ValueHash256 distance = XorDistance(_currentNodeId, nodeHash);
+        using McsLock.Disposable _ = _lock.Acquire();
+
+        ValueHash256 distance = XorDistance(_currentNodeHash, nodeHash);
         _logger.Info($"Adding node {node} with XOR distance {distance}");
-        
+
         TreeNode current = _root;
         while (true)
         {
-            if (current.Left == null && current.Right == null)
+            if (current.IsLeaf)
             {
                 _logger.Debug($"Reached leaf node at depth {current.Depth}");
-                if (current.Bucket.TryAddOrRefresh(node, out toRefresh))
+                var resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
+                if (resp == BucketAddResult.Added)
                 {
                     _logger.Info($"Successfully added/refreshed node {node} in bucket at depth {current.Depth}");
-                    return true;
+                    return BucketAddResult.Added;
                 }
 
                 if (ShouldSplit(current, nodeHash))
@@ -67,7 +74,7 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
                 }
 
                 _logger.Debug($"Failed to add node {node}. Bucket at depth {current.Depth} is full");
-                return false;
+                return resp;
             }
 
             bool goRight = GetBit(nodeHash, current.Depth);
@@ -79,7 +86,7 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
 
     private bool ShouldSplit(TreeNode node, ValueHash256 nodeHash)
     {
-        bool shouldSplit = node.Bucket.Count >= _k && node.Depth < 256 && IsInRange(_currentNodeId, node.Prefix, node.Depth);
+        bool shouldSplit = node.Bucket.Count >= _k && node.Depth < 256 && IsInRange(_currentNodeHash, node.Prefix, node.Depth);
         _logger.Debug($"ShouldSplit at depth {node.Depth}: {shouldSplit}");
         return shouldSplit;
     }
@@ -96,8 +103,8 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
         foreach (var item in node.Bucket.GetAll())
         {
             ValueHash256 itemHash = _nodeHashProvider.GetHash(item);
-            var targetNode = GetBit(itemHash, node.Depth) ? node.Right : node.Left;
-            targetNode.Bucket.TryAddOrRefresh(item, out _);
+            TreeNode? targetNode = GetBit(itemHash, node.Depth) ? node.Right : node.Left;
+            targetNode.Bucket.TryAddOrRefresh(itemHash, item, out _);
             _logger.Debug($"Moved item {item} to {(GetBit(itemHash, node.Depth) ? "right" : "left")} child");
         }
 
@@ -105,29 +112,32 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
         _logger.Debug($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
     }
 
-    public void Remove(TNode node)
+    public void Remove(in ValueHash256 nodeHash)
     {
-        ValueHash256 nodeHash = _nodeHashProvider.GetHash(node);
-        _logger.Debug($"Attempting to remove node {node} with hash {nodeHash}");
-        RemoveRecursive(_root, node, nodeHash);
+        using McsLock.Disposable _ = _lock.Acquire();
+
+        _logger.Debug($"Attempting to remove node {nodeHash} with hash {nodeHash}");
+        RemoveRecursive(_root, nodeHash);
     }
 
-    private void RemoveRecursive(TreeNode node, TNode toRemove, ValueHash256 nodeHash)
+    private void RemoveRecursive(TreeNode node, ValueHash256 nodeHash)
     {
         if (node.Left == null && node.Right == null)
         {
-            _logger.Debug($"Removing node {toRemove} from bucket at depth {node.Depth}");
-            node.Bucket.Remove(toRemove);
+            _logger.Debug($"Removing node {nodeHash} from bucket at depth {node.Depth}");
+            node.Bucket.Remove(nodeHash);
             return;
         }
 
         bool goRight = GetBit(nodeHash, node.Depth);
         _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {node.Depth}");
-        RemoveRecursive(goRight ? node.Right! : node.Left!, toRemove, nodeHash);
+        RemoveRecursive(goRight ? node.Right! : node.Left!, nodeHash);
     }
 
     public TNode[] GetAllAtDistance(int distance)
     {
+        using McsLock.Disposable _ = _lock.Acquire();
+
         _logger.Debug($"Getting all nodes at distance {distance}");
         List<TNode> result = new List<TNode>();
         GetAllAtDistanceRecursive(_root, distance, result);
@@ -135,9 +145,85 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
         return result.ToArray();
     }
 
+    public IEnumerable<ValueHash256> IterateBucketRandomHashes()
+    {
+        return DoIterateBucketRandomHashes(_root, 0);
+    }
+
+    private IEnumerable<ValueHash256> DoIterateBucketRandomHashes(TreeNode node, int depth)
+    {
+        if (node.IsLeaf)
+        {
+            yield return Hash256XORUtils.GetRandomHashAtDistance(_currentNodeHash, depth);
+        }
+        else
+        {
+            foreach (ValueHash256 bucketHash in DoIterateBucketRandomHashes(node.Left!, depth + 1))
+            {
+                yield return bucketHash;
+            }
+
+            foreach (ValueHash256 bucketHash in DoIterateBucketRandomHashes(node.Right!, depth + 1))
+            {
+                yield return bucketHash;
+            }
+        }
+    }
+
+    public IEnumerable<TNode> IterateNeighbour(ValueHash256 hash)
+    {
+        foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(_root, 0, hash))
+        {
+            foreach (TNode node in treeNode.Bucket.GetAll())
+            {
+                yield return node;
+            }
+        }
+    }
+
+    private IEnumerable<TreeNode> IterateNodeFromClosestToTarget(TreeNode currentNode, int depth, ValueHash256 target)
+    {
+        if (currentNode.IsLeaf)
+        {
+            yield return currentNode;
+        }
+        else
+        {
+            if (GetBit(target, depth))
+            {
+                foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(currentNode.Right!, depth + 1, target))
+                {
+                    yield return treeNode;
+                }
+
+                foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(currentNode.Left!, depth + 1, target))
+                {
+                    yield return treeNode;
+                }
+            }
+            else
+            {
+                foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(currentNode.Left!, depth + 1, target))
+                {
+                    yield return treeNode;
+                }
+
+                foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(currentNode.Right!, depth + 1, target))
+                {
+                    yield return treeNode;
+                }
+            }
+        }
+    }
+
+    public TNode[] GetKNearestNeighbour(ValueHash256 hash)
+    {
+        return IterateNeighbour(hash).Take(_k).ToArray();
+    }
+
     private void GetAllAtDistanceRecursive(TreeNode node, int remainingDistance, List<TNode> result)
     {
-        if (node.Left == null && node.Right == null)
+        if (node.IsLeaf)
         {
             if (remainingDistance == 0)
             {
@@ -209,7 +295,6 @@ public class KBucketTree<TNode, TContentKey> where TNode : notnull
         }
         return new ValueHash256(xorBytes);
     }
-
 
     private void LogTreeStructureRecursive(TreeNode node, string indent, bool last, StringBuilder sb)
     {

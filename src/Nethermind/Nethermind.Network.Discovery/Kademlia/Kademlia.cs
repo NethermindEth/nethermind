@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
 using NonBlocking;
 
@@ -27,9 +28,6 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
     private readonly ConcurrentDictionary<ValueHash256, bool> _isRefreshing = new();
 
-    private readonly KBucket<TNode>[] _buckets;
-    private readonly KBucketTree<TNode, TContentKey> _bucketTree;
-
     private readonly TNode _currentNodeId;
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
@@ -41,7 +39,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
 
-    private bool _useTreeImplementation = true;
+    private readonly IRoutingTable<TNode> _routingTable;
 
     public Kademlia(
         INodeHashProvider<TNode, TContentKey> nodeHashProvider,
@@ -68,43 +66,15 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _refreshInterval = refreshInterval;
 
         _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
-        // Note: It does not have to be this much. In practice, only like 16 of these bucket get populated.
-        _buckets = new KBucket<TNode>[Hash256XORUtils.MaxDistance + 1];
-        for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
+        if (useNewLookup)
         {
-            _buckets[i] = new KBucket<TNode>(kSize);
-        }
-
-        _useNewLookup = useNewLookup;
-        _bucketTree = new KBucketTree<TNode, TContentKey>(kSize, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
-    }
-
-    public void UseTreeImplementation(bool useTree)
-    {
-        _useTreeImplementation = useTree;
-        _logger.Info($"Switched to {(useTree ? "tree-based" : "array-based")} implementation");
-        if (useTree)
-        {
-            // Initialize the tree-based implementation
-            for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
-            {
-                foreach (var node in _buckets[i].GetAll())
-                {
-                    _bucketTree.TryAddOrRefresh(node, out _);
-                }
-            }
+            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
         }
         else
         {
-            // Initialize the array-based implementation
-            for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
-            {
-                foreach (var node in _bucketTree.GetAllAtDistance(i))
-                {
-                    _buckets[i].TryAddOrRefresh(node, out _);
-                }
-            }
+            _routingTable = new BucketListRoutingTable<TNode>(_currentNodeIdAsHash, _kSize);
         }
+        _useNewLookup = useNewLookup;
     }
 
     public void AddOrRefresh(TNode node)
@@ -113,8 +83,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
         _isRefreshing.TryRemove(_nodeHashProvider.GetHash(node), out _);
 
-        var bucket = GetBucket(node);
-        var addResult = bucket.TryAddOrRefresh(_nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
+        var addResult = _routingTable.TryAddOrRefresh(_nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
         if (addResult == BucketAddResult.Added)
         {
             OnNodeAdded?.Invoke(this, node);
@@ -123,17 +92,6 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         {
             if (toRefresh != null) TryRefresh(toRefresh);
         }
-
-        /*
-        if (_useTreeImplementation)
-        {
-            _logger.Debug($"Adding/refreshing node {node} in tree-based implementation");
-            if (!_bucketTree.TryAddOrRefresh(node, out TNode? toRefresh))
-            {
-                if (toRefresh != null) TryRefresh(toRefresh);
-            }
-        }
-        */
     }
 
     private void TryRefresh(TNode toRefresh)
@@ -168,15 +126,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
                 // remove the entry.
                 if (_isRefreshing.TryRemove(nodeHash, out _))
                 {
-                    if (_useTreeImplementation)
-                    {
-                        _bucketTree.Remove(toRefresh);
-                    }
-                    else
-                    {
-                        // Well... basically its not responding.
-                        GetBucket(toRefresh).RemoveAndReplace(nodeHash);
-                    }
+                    _routingTable.Remove(nodeHash);
                 }
             });
         }
@@ -184,13 +134,12 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     public TNode[] GetAllAtDistance(int i)
     {
-        return _useTreeImplementation ? _bucketTree.GetAllAtDistance(i) : _buckets[i].GetAll();
+        return _routingTable.GetAllAtDistance(i);
     }
 
     private bool SameAsSelf(TNode node)
     {
-        // TODO: Put in distance calculator.. probably
-        return EqualityComparer<TNode>.Default.Equals(node, _currentNodeId);
+        return _nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
     }
 
 
@@ -662,31 +611,9 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
         // Refreshes all bucket. one by one. That is not empty.
         // A refresh means to do a k-nearest node lookup for a random hash for that particular bucket.
-        if (_useTreeImplementation)
+        foreach (ValueHash256 nodeToLookup in _routingTable.IterateBucketRandomHashes())
         {
-            for (var i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
-            {
-                token.ThrowIfCancellationRequested();
-
-                if (_bucketTree.GetAllAtDistance(i).Length > 0)
-                {
-                    ValueHash256 nodeToLookup = Hash256XORUtils.GetRandomHashAtDistance(_currentNodeIdAsHash, i);
-                    await LookupNodesClosest(nodeToLookup, _kSize, token);
-                }
-            }
-        }
-        else
-        {
-            for (var i = 0; i < _buckets.Length; i++)
-            {
-                token.ThrowIfCancellationRequested();
-
-                if (_buckets[i].Count > 0)
-                {
-                    ValueHash256 nodeToLookup = Hash256XORUtils.GetRandomHashAtDistance(_currentNodeIdAsHash, i);
-                    await LookupNodesClosest(nodeToLookup, _kSize, token);
-                }
-            }
+            await LookupNodesClosest(nodeToLookup, _kSize, token);
         }
 
         _logger.Info($"Bootstrap completed. Took {sw}. Bucket sizes (from 230) {string.Join(",", Enumerable.Range(200, 56).Select(i => GetAllAtDistance(i).Length))}");
@@ -694,49 +621,10 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     public IEnumerable<TNode> IterateNeighbour(ValueHash256 hash)
     {
-        int startingDistance = Hash256XORUtils.CalculateDistance(_currentNodeIdAsHash, hash);
-        foreach (var bucketToGet in EnumerateBucket(startingDistance))
-        {
-            foreach (TNode bucketContent in GetAllAtDistance(bucketToGet))
-            {
-                yield return bucketContent;
-            }
-        }
+        return _routingTable.IterateNeighbour(hash);
     }
 
     public event EventHandler<TNode>? OnNodeAdded;
-
-    private IEnumerable<int> EnumerateBucket(int startingDistance)
-    {
-        // Note, without a tree based routing table, we don't exactly know
-        // which way (left or right) is the right way to go. So this is all approximate.
-        // Well, even with a full tree, it would still be approximate, just that it would
-        // be a bit more accurate.
-        yield return startingDistance;
-        int left = startingDistance - 1;
-        int right = startingDistance + 1;
-        while (left > 0 || right <= Hash256XORUtils.MaxDistance)
-        {
-            if (left > 0)
-            {
-                yield return left;
-            }
-
-            if (right <= Hash256XORUtils.MaxDistance)
-            {
-                yield return right;
-            }
-
-            left -= 1;
-            right += 1;
-        }
-    }
-
-    private KBucket<TNode> GetBucket(TNode node)
-    {
-        int idx = Hash256XORUtils.CalculateDistance(_nodeHashProvider.GetHash(node), _currentNodeIdAsHash);
-        return _buckets[idx];
-    }
 
     private void OnIncomingMessageFrom(TNode sender)
     {
@@ -755,14 +643,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
         if (currentFailure >= 5)
         {
-            if (_useTreeImplementation)
-            {
-                _bucketTree.Remove(receiver);
-            }
-            else
-            {
-                GetBucket(receiver).Remove(hash);
-            }
+            _routingTable.Remove(hash);
             _peerFailures.Delete(hash);
         }
 
@@ -778,7 +659,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     public Task<TNode[]> FindNeighbours(TNode sender, ValueHash256 hash, CancellationToken token)
     {
         OnIncomingMessageFrom(sender);
-        return Task.FromResult(IterateNeighbour(hash).Take(_kSize).ToArray());
+        return Task.FromResult(_routingTable.GetKNearestNeighbour(hash));
     }
 
     public Task<FindValueResponse<TNode, TContent>> FindValue(TNode sender, TContentKey contentKey, CancellationToken token)
@@ -794,7 +675,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             new FindValueResponse<TNode, TContent>(
                 false,
                 default,
-                IterateNeighbour(_nodeHashProvider.GetHash(contentKey)).Take(_kSize).ToArray() // TODO: pass an n so that its possible to skip creating array
+                _routingTable.IterateNeighbour(_nodeHashProvider.GetHash(contentKey)).Take(_kSize).ToArray() // TODO: pass an n so that its possible to skip creating array
             ));
     }
 
