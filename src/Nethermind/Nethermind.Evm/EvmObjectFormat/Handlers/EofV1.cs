@@ -252,6 +252,12 @@ internal class Eof1 : IEofVersionHandler
                         return false;
                     }
 
+                    if (sectionSizes.DataSectionSize is not null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container section is out of order");
+                        return false;
+                    }
+
                     if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
