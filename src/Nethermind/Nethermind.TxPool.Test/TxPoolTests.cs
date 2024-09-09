@@ -1697,7 +1697,7 @@ namespace Nethermind.TxPool.Test
             yield return ([..Eip7702Constants.DelegationHeader, ..new byte[20]], AcceptTxResult.Accepted);
         }
         [TestCaseSource(nameof(CodeCases))]
-        public void SubmitTx_((byte[] code, AcceptTxResult expected) testCase)
+        public void SubmitTx_CodeIsNotDelegationAndDelegation_DelegationIsAccepted((byte[] code, AcceptTxResult expected) testCase)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
