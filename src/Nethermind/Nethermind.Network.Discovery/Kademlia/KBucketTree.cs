@@ -15,14 +15,12 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         public KBucket<TNode> Bucket { get; }
         public TreeNode? Left { get; set; }
         public TreeNode? Right { get; set; }
-        public int Depth { get; }
         public ValueHash256 Prefix { get; }
         public bool IsLeaf => Left == null && Right == null;
 
-        public TreeNode(int depth, int k, ValueHash256 prefix)
+        public TreeNode(int k, ValueHash256 prefix)
         {
             Bucket = new KBucket<TNode>(k);
-            Depth = depth;
             Prefix = prefix;
         }
     }
@@ -41,7 +39,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         _k = k;
         _currentNodeHash = currentNodeHash;
         _nodeHashProvider = nodeHashProvider;
-        _root = new TreeNode(0, k, new ValueHash256());
+        _root = new TreeNode(k, new ValueHash256());
         _logger = logManager.GetClassLogger();
         _logger.Info($"Initialized KBucketTree with k={k}, currentNodeId={currentNodeHash}");
     }
@@ -54,58 +52,60 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         _logger.Info($"Adding node {node} with XOR distance {distance}");
 
         TreeNode current = _root;
+        int depth = 0;
         while (true)
         {
             if (current.IsLeaf)
             {
-                _logger.Debug($"Reached leaf node at depth {current.Depth}");
+                _logger.Debug($"Reached leaf node at depth {depth}");
                 var resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
                 if (resp == BucketAddResult.Added)
                 {
-                    _logger.Info($"Successfully added/refreshed node {node} in bucket at depth {current.Depth}");
+                    _logger.Info($"Successfully added/refreshed node {node} in bucket at depth {depth}");
                     return BucketAddResult.Added;
                 }
 
-                if (ShouldSplit(current, nodeHash))
+                if (resp == BucketAddResult.Full && ShouldSplit(current, depth))
                 {
-                    _logger.Info($"Splitting bucket at depth {current.Depth}");
-                    SplitBucket(current);
+                    _logger.Info($"Splitting bucket at depth {depth}");
+                    SplitBucket(depth, current);
                     continue;
                 }
 
-                _logger.Debug($"Failed to add node {node}. Bucket at depth {current.Depth} is full");
+                _logger.Debug($"Failed to add node {node}. Bucket at depth {depth} is full");
                 return resp;
             }
 
-            bool goRight = GetBit(nodeHash, current.Depth);
-            _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {current.Depth}");
+            bool goRight = GetBit(nodeHash, depth);
+            _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
 
             current = goRight ? current.Right! : current.Left!;
+            depth++;
         }
     }
 
-    private bool ShouldSplit(TreeNode node, ValueHash256 nodeHash)
+    private bool ShouldSplit(TreeNode node, int depth)
     {
-        bool shouldSplit = node.Bucket.Count >= _k && node.Depth < 256 && IsInRange(_currentNodeHash, node.Prefix, node.Depth);
-        _logger.Debug($"ShouldSplit at depth {node.Depth}: {shouldSplit}");
+        bool shouldSplit = node.Bucket.Count >= _k && depth < 256 && IsInRange(_currentNodeHash, node.Prefix, depth);
+        _logger.Debug($"ShouldSplit at depth {depth}: {shouldSplit}");
         return shouldSplit;
     }
 
-    private void SplitBucket(TreeNode node)
+    private void SplitBucket(int depth, TreeNode node)
     {
-        node.Left = new TreeNode(node.Depth + 1, _k, node.Prefix);
+        node.Left = new TreeNode(_k, node.Prefix);
         var rightPrefixBytes = node.Prefix.Bytes.ToArray();
-        rightPrefixBytes[node.Depth / 8] |= (byte)(1 << (7 - (node.Depth % 8)));
-        node.Right = new TreeNode(node.Depth + 1, _k, new ValueHash256(rightPrefixBytes));
+        rightPrefixBytes[depth / 8] |= (byte)(1 << (7 - (depth % 8)));
+        node.Right = new TreeNode(_k, new ValueHash256(rightPrefixBytes));
 
-        _logger.Debug($"Created left child at depth {node.Left.Depth} and right child at depth {node.Right.Depth}");
+        _logger.Debug($"Created children at depth {depth + 1}");
 
         foreach (var item in node.Bucket.GetAll())
         {
             ValueHash256 itemHash = _nodeHashProvider.GetHash(item);
-            TreeNode? targetNode = GetBit(itemHash, node.Depth) ? node.Right : node.Left;
+            TreeNode? targetNode = GetBit(itemHash, depth) ? node.Right : node.Left;
             targetNode.Bucket.TryAddOrRefresh(itemHash, item, out _);
-            _logger.Debug($"Moved item {item} to {(GetBit(itemHash, node.Depth) ? "right" : "left")} child");
+            _logger.Debug($"Moved item {item} to {(GetBit(itemHash, depth) ? "right" : "left")} child");
         }
 
         node.Bucket.Clear();
@@ -117,21 +117,21 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         using McsLock.Disposable _ = _lock.Acquire();
 
         _logger.Debug($"Attempting to remove node {nodeHash} with hash {nodeHash}");
-        RemoveRecursive(_root, nodeHash);
+        RemoveRecursive(_root, 0, nodeHash);
     }
 
-    private void RemoveRecursive(TreeNode node, ValueHash256 nodeHash)
+    private void RemoveRecursive(TreeNode node, int depth, ValueHash256 nodeHash)
     {
         if (node.Left == null && node.Right == null)
         {
-            _logger.Debug($"Removing node {nodeHash} from bucket at depth {node.Depth}");
+            _logger.Debug($"Removing node {nodeHash} from bucket at depth {depth}");
             node.Bucket.Remove(nodeHash);
             return;
         }
 
-        bool goRight = GetBit(nodeHash, node.Depth);
-        _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {node.Depth}");
-        RemoveRecursive(goRight ? node.Right! : node.Left!, nodeHash);
+        bool goRight = GetBit(nodeHash, depth);
+        _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+        RemoveRecursive(goRight ? node.Right! : node.Left!, depth + 1, nodeHash);
     }
 
     public TNode[] GetAllAtDistance(int distance)
@@ -140,7 +140,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
         _logger.Debug($"Getting all nodes at distance {distance}");
         List<TNode> result = new List<TNode>();
-        GetAllAtDistanceRecursive(_root, distance, result);
+        GetAllAtDistanceRecursive(_root, 0, distance, result);
         _logger.Debug($"Found {result.Count} nodes at distance {distance}");
         return result.ToArray();
     }
@@ -221,13 +221,13 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         return IterateNeighbour(hash).Take(_k).ToArray();
     }
 
-    private void GetAllAtDistanceRecursive(TreeNode node, int remainingDistance, List<TNode> result)
+    private void GetAllAtDistanceRecursive(TreeNode node, int depth, int remainingDistance, List<TNode> result)
     {
         if (node.IsLeaf)
         {
             if (remainingDistance == 0)
             {
-                _logger.Debug($"Adding {node.Bucket.Count} nodes from bucket at depth {node.Depth}");
+                _logger.Debug($"Adding {node.Bucket.Count} nodes from bucket at depth {depth}");
                 result.AddRange(node.Bucket.GetAll());
             }
             return;
@@ -235,13 +235,13 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
         if (remainingDistance > 0)
         {
-            GetAllAtDistanceRecursive(node.Left!, remainingDistance - 1, result);
-            GetAllAtDistanceRecursive(node.Right!, remainingDistance - 1, result);
+            GetAllAtDistanceRecursive(node.Left!, depth + 1, remainingDistance - 1, result);
+            GetAllAtDistanceRecursive(node.Right!, depth + 1, remainingDistance - 1, result);
         }
         else
         {
-            GetAllAtDistanceRecursive(node.Left!, 0, result);
-            GetAllAtDistanceRecursive(node.Right!, 0, result);
+            GetAllAtDistanceRecursive(node.Left!, depth + 1, 0, result);
+            GetAllAtDistanceRecursive(node.Right!, depth + 1, 0, result);
         }
     }
 
@@ -249,22 +249,22 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
     {
         _logger.Debug("Getting all nodes in the tree");
         List<TNode> result = new List<TNode>();
-        GetAllNodesRecursive(_root, result);
+        GetAllNodesRecursive(_root, 0, result);
         _logger.Debug($"Found {result.Count} nodes in total");
         return result.ToArray();
     }
 
-    private void GetAllNodesRecursive(TreeNode node, List<TNode> result)
+    private void GetAllNodesRecursive(TreeNode node, int depth, List<TNode> result)
     {
         if (node.Left == null && node.Right == null)
         {
-            _logger.Debug($"Adding {node.Bucket.Count} nodes from bucket at depth {node.Depth}");
+            _logger.Debug($"Adding {node.Bucket.Count} nodes from bucket at depth {depth}");
             result.AddRange(node.Bucket.GetAll());
             return;
         }
 
-        GetAllNodesRecursive(node.Left!, result);
-        GetAllNodesRecursive(node.Right!, result);
+        GetAllNodesRecursive(node.Left!, depth+1, result);
+        GetAllNodesRecursive(node.Right!, depth+1, result);
     }
 
     private bool IsInRange(ValueHash256 hash, ValueHash256 prefix, int depth)
@@ -296,7 +296,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         return new ValueHash256(xorBytes);
     }
 
-    private void LogTreeStructureRecursive(TreeNode node, string indent, bool last, StringBuilder sb)
+    private void LogTreeStructureRecursive(TreeNode node, string indent, bool last, int depth, StringBuilder sb)
     {
         sb.Append(indent);
         if (last)
@@ -312,13 +312,13 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
         if (node.Left == null && node.Right == null)
         {
-            sb.AppendLine($"Bucket (Depth: {node.Depth}, Count: {node.Bucket.Count})");
+            sb.AppendLine($"Bucket (Depth: {depth}, Count: {node.Bucket.Count})");
             return;
         }
 
-        sb.AppendLine($"Node (Depth: {node.Depth})");
-        LogTreeStructureRecursive(node.Left!, indent, false, sb);
-        LogTreeStructureRecursive(node.Right!, indent, true, sb);
+        sb.AppendLine($"Node (Depth: {depth})");
+        LogTreeStructureRecursive(node.Left!, indent, false, depth+1, sb);
+        LogTreeStructureRecursive(node.Right!, indent, true, depth+1, sb);
     }
 
     public void LogTreeStatistics()
@@ -357,7 +357,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
     public void LogTreeStructure()
     {
         StringBuilder sb = new StringBuilder();
-        LogTreeStructureRecursive(_root, "", true, sb);
+        LogTreeStructureRecursive(_root, "", true, 0, sb);
         _logger.Info($"Current Tree Structure:\n{sb}");
     }
 }
