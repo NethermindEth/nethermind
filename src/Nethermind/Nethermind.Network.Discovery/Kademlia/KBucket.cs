@@ -13,6 +13,7 @@ public class KBucket<TNode> where TNode : notnull
     private DoubleEndedLru<TNode> _replacement;
 
     public int Count => _items.Count;
+    private TNode[] _cachedArray = Array.Empty<TNode>();
 
     public KBucket(int k)
     {
@@ -34,6 +35,7 @@ public class KBucket<TNode> where TNode : notnull
         if (addResult != BucketAddResult.Full)
         {
             toRefresh = default;
+            _cachedArray = _items.GetAll();
             return addResult;
         }
 
@@ -44,8 +46,7 @@ public class KBucket<TNode> where TNode : notnull
 
     public TNode[] GetAll()
     {
-        // TODO: Seems like a good candidate to cache
-        return _items.GetAll();
+        return _cachedArray;
     }
 
     public IEnumerable<(ValueHash256, TNode)> GetAllWithHash()
@@ -64,16 +65,11 @@ public class KBucket<TNode> where TNode : notnull
         }
     }
 
-    public void Remove(in ValueHash256 hash)
-    {
-        _items.Remove(hash);
-        _replacement.Remove(hash);
-    }
-
     public void Clear()
     {
         _items = new DoubleEndedLru<TNode>(_k);
         _replacement = new DoubleEndedLru<TNode>(_k);
+        _cachedArray = _items.GetAll();
     }
 
     public bool ContainsNode(in ValueHash256 hash)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 namespace Nethermind.Network.Discovery.Kademlia;
@@ -11,6 +12,9 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
     private readonly KBucket<TNode>[] _buckets;
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
+
+    // TODO: Double check and probably make lockless
+    private readonly McsLock _lock = new McsLock();
 
     public BucketListRoutingTable(ValueHash256 currentNodeIdAsHash, int kSize)
     {
@@ -33,16 +37,19 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
 
     public BucketAddResult TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh)
     {
+        using McsLock.Disposable _ = _lock.Acquire();
         return GetBucket(hash).TryAddOrRefresh(hash, item, out toRefresh);
     }
 
     public void Remove(in ValueHash256 hash)
     {
-        GetBucket(hash).Remove(hash);
+        using McsLock.Disposable _ = _lock.Acquire();
+        GetBucket(hash).RemoveAndReplace(hash);
     }
 
     public TNode[] GetAllAtDistance(int i)
     {
+        using McsLock.Disposable _ = _lock.Acquire();
         return _buckets[i].GetAll();
     }
 
@@ -58,7 +65,7 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
         }
     }
 
-    public IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
+    private IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
     {
         int startingDistance = Hash256XORUtils.CalculateDistance(_currentNodeIdAsHash, hash);
         foreach (var bucketToGet in EnumerateBucket(startingDistance))
@@ -72,6 +79,8 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
 
     public TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude)
     {
+        using McsLock.Disposable _ = _lock.Acquire();
+
         int startingDistance = Hash256XORUtils.CalculateDistance(_currentNodeIdAsHash, hash);
         KBucket<TNode> firstBucket = _buckets[startingDistance];
         if (exclude == null || !firstBucket.ContainsNode(exclude.Value))

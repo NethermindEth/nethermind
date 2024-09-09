@@ -26,6 +26,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
     }
 
     private readonly TreeNode _root;
+    private readonly int _b;
     private readonly int _k;
     private readonly ValueHash256 _currentNodeHash;
     private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
@@ -33,7 +34,6 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
-    private int _b;
 
     public KBucketTree(int k, int b, ValueHash256 currentNodeHash, INodeHashProvider<TNode, TContentKey> nodeHashProvider, ILogManager logManager)
     {
@@ -89,8 +89,6 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
     private KBucket<TNode> GetBucketForHash(ValueHash256 nodeHash)
     {
-        using McsLock.Disposable _ = _lock.Acquire();
-
         TreeNode current = _root;
         int depth = 0;
         while (true)
@@ -147,10 +145,10 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
     private void RemoveRecursive(TreeNode node, int depth, ValueHash256 nodeHash)
     {
-        if (node.Left == null && node.Right == null)
+        if (node.IsLeaf)
         {
             _logger.Debug($"Removing node {nodeHash} from bucket at depth {depth}");
-            node.Bucket.Remove(nodeHash);
+            node.Bucket.RemoveAndReplace(nodeHash);
             return;
         }
 
@@ -172,7 +170,10 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
     public IEnumerable<ValueHash256> IterateBucketRandomHashes()
     {
-        return DoIterateBucketRandomHashes(_root, 0);
+        using McsLock.Disposable _ = _lock.Acquire();
+
+        // Well, it need to ToArray, otherwise the lock does not really do anything.
+        return DoIterateBucketRandomHashes(_root, 0).ToArray();
     }
 
     private IEnumerable<ValueHash256> DoIterateBucketRandomHashes(TreeNode node, int depth)
@@ -195,7 +196,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         }
     }
 
-    public IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
+    private IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
     {
         foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(_root, 0, hash))
         {
@@ -243,6 +244,8 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
     public TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude)
     {
+        using McsLock.Disposable _ = _lock.Acquire();
+
         KBucket<TNode> firstBucket = GetBucketForHash(hash);
         if (exclude == null || !firstBucket.ContainsNode(exclude.Value))
         {
@@ -289,40 +292,6 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
             GetAllAtDistanceRecursive(node.Left!, depth + 1, 0, result);
             GetAllAtDistanceRecursive(node.Right!, depth + 1, 0, result);
         }
-    }
-
-    public TNode[] GetAllNodes()
-    {
-        _logger.Debug("Getting all nodes in the tree");
-        List<TNode> result = new List<TNode>();
-        GetAllNodesRecursive(_root, 0, result);
-        _logger.Debug($"Found {result.Count} nodes in total");
-        return result.ToArray();
-    }
-
-    private void GetAllNodesRecursive(TreeNode node, int depth, List<TNode> result)
-    {
-        if (node.Left == null && node.Right == null)
-        {
-            _logger.Debug($"Adding {node.Bucket.Count} nodes from bucket at depth {depth}");
-            result.AddRange(node.Bucket.GetAll());
-            return;
-        }
-
-        GetAllNodesRecursive(node.Left!, depth+1, result);
-        GetAllNodesRecursive(node.Right!, depth+1, result);
-    }
-
-    private bool IsInRange(ValueHash256 hash, ValueHash256 prefix, int depth)
-    {
-        for (int i = 0; i < depth; i++)
-        {
-            if (GetBit(hash, i) != GetBit(prefix, i))
-            {
-                return false;
-            }
-        }
-        return true;
     }
 
     private bool GetBit(ValueHash256 hash, int index)

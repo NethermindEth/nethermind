@@ -9,8 +9,7 @@ public interface IRoutingTable<TNode>
 {
     BucketAddResult TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh);
     void Remove(in ValueHash256 hash);
-    IEnumerable<ValueHash256> IterateBucketRandomHashes();
-    IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash);
     TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude);
     TNode[] GetAllAtDistance(int i);
+    IEnumerable<ValueHash256> IterateBucketRandomHashes();
 }
