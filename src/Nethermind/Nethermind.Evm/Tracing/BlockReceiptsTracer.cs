@@ -276,13 +276,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _currentTxTracer.Dispose();
     }
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
-        _currentTxTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
+        _currentTxTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
     }
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
     {
-        _currentTxTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
+        _currentTxTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
     }
 }

@@ -10,6 +10,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -357,12 +358,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
 
-            var accumulatedTraces = new List<ChunkTraceEntry>();
+            var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++)
             {
-                var tracer = new IlvmBlockTracer();
+                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
                 ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).Where(tr => !tr.IsPrecompiled).ToList();
+                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.Entries).Where(tr => tr.IsPrecompiled is not null && !tr.IsPrecompiled.Value).ToList();
                 accumulatedTraces.AddRange(traces);
             }
 
@@ -393,12 +394,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            var accumulatedTraces = new List<ChunkTraceEntry>();
+            var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
             {
-                var tracer = new IlvmBlockTracer();
+                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
                 ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).ToList();
+                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.Entries).Where(tr => tr.SegmentID is not null).ToList();
                 accumulatedTraces.AddRange(traces);
 
             }
@@ -435,23 +436,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            var accumulatedTraces = new List<ChunkTraceEntry>();
-            for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
+            var accumulatedTraces = new List<GethLikeTxTrace>();
+            var numberOfRuns = IlAnalyzer.IlCompilerThreshold * 1024;
+            for (int i = 0; i < numberOfRuns; i++)
             {
-                var tracer = new IlvmBlockTracer();
+                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
                 ExecuteBlock(tracer, bytecode, (1024, null));
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).ToList();
+                var traces = tracer.BuildResult().ToList();
                 accumulatedTraces.AddRange(traces);
             }
 
-
-            // check if these patterns occur in the traces
-            // segment 0
-            // pattern p1p1padd
-
-            // segment 0
-            // segment 1 
-            Assert.Greater(accumulatedTraces.GroupBy(tr => tr.IsPrecompiled).Count(), 0);
+            var failedTraces = accumulatedTraces.Where(tr => tr.Failed && tr.Entries.Any(subtr => subtr.Error == EvmExceptionType.BadInstruction.ToString())).ToList();
+           Assert.That(failedTraces.Count, Is.EqualTo(numberOfRuns));
         }
 
         [Test]
@@ -479,12 +475,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            var accumulatedTraces = new List<ChunkTraceEntry>();
+            var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
             {
-                var tracer = new IlvmBlockTracer();
+                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
                 ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.IlvmTrace.OfType<ChunkTraceEntry>()).Where(tr => tr.IsPrecompiled).ToList();
+                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.Entries).Where(tr => tr.IsPrecompiled is not null && tr.IsPrecompiled.Value).ToList();
                 accumulatedTraces.AddRange(traces);
             }
 

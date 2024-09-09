@@ -81,7 +81,7 @@ public class TxTracer : ITxTracer
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
     public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
-    public virtual void ReportPredefinedPatternExecution(long gas, int pc, string segmentID) { }
-    public virtual void ReportCompiledSegmentExecution(long gas, int pc, string segmentId) { }
+    public virtual void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env) { }
+    public virtual void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) { }
     public virtual void Dispose() { }
 }
