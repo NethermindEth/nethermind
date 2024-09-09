@@ -68,7 +68,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
         if (useNewLookup)
         {
-            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
+            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, 4, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
         }
         else
         {

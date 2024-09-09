@@ -33,10 +33,12 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
+    private int _b;
 
-    public KBucketTree(int k, ValueHash256 currentNodeHash, INodeHashProvider<TNode, TContentKey> nodeHashProvider, ILogManager logManager)
+    public KBucketTree(int k, int b, ValueHash256 currentNodeHash, INodeHashProvider<TNode, TContentKey> nodeHashProvider, ILogManager logManager)
     {
         _k = k;
+        _b = b;
         _currentNodeHash = currentNodeHash;
         _nodeHashProvider = nodeHashProvider;
         _root = new TreeNode(k, new ValueHash256());
@@ -48,10 +50,11 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        ValueHash256 distance = XorDistance(_currentNodeHash, nodeHash);
-        _logger.Info($"Adding node {node} with XOR distance {distance}");
+        _logger.Info($"Adding node {node} with XOR distance {Hash256XORUtils.XorDistance(_currentNodeHash, nodeHash)}");
 
         TreeNode current = _root;
+        // As in, what would be the depth of the node assuming all branch on the traversal is populated.
+        int logDistance = Hash256XORUtils.MaxDistance - Hash256XORUtils.CalculateDistance(_currentNodeHash, nodeHash);
         int depth = 0;
         while (true)
         {
@@ -65,7 +68,7 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
                     return BucketAddResult.Added;
                 }
 
-                if (resp == BucketAddResult.Full && ShouldSplit(current, depth))
+                if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
                 {
                     _logger.Info($"Splitting bucket at depth {depth}");
                     SplitBucket(depth, current);
@@ -84,9 +87,9 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         }
     }
 
-    private bool ShouldSplit(TreeNode node, int depth)
+    private bool ShouldSplit(int depth, int targetLogDistance)
     {
-        bool shouldSplit = node.Bucket.Count >= _k && depth < 256 && IsInRange(_currentNodeHash, node.Prefix, depth);
+        bool shouldSplit = depth < 256 && targetLogDistance + _b >= depth;
         _logger.Debug($"ShouldSplit at depth {depth}: {shouldSplit}");
         return shouldSplit;
     }
@@ -284,16 +287,6 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         int byteIndex = index / 8;
         int bitIndex = index % 8;
         return (hash.Bytes[byteIndex] & (1 << (7 - bitIndex))) != 0;
-    }
-
-    public static ValueHash256 XorDistance(ValueHash256 hash1, ValueHash256 hash2)
-    {
-        byte[] xorBytes = new byte[hash1.Bytes.Length];
-        for (int i = 0; i < xorBytes.Length; i++)
-        {
-            xorBytes[i] = (byte)(hash1.Bytes[i] ^ hash2.Bytes[i]);
-        }
-        return new ValueHash256(xorBytes);
     }
 
     private void LogTreeStructureRecursive(TreeNode node, string indent, bool last, int depth, StringBuilder sb)

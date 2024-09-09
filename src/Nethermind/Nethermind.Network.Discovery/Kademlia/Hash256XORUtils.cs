@@ -40,7 +40,7 @@ public static class Hash256XORUtils
 
     public static UInt256 CalculateDistanceUInt256(ValueHash256 h1, ValueHash256 h2)
     {
-        ValueHash256 xored = new ValueHash256();
+        ValueHash256 xored = XorDistance(h1, h2);
         // TODO: Make this more efficirent/simd it.
         for (int i = 0; i < 32; i++)
         {
@@ -111,4 +111,15 @@ public static class Hash256XORUtils
 
         return randomizedHash;
     }
+
+    public static ValueHash256 XorDistance(ValueHash256 hash1, ValueHash256 hash2)
+    {
+        byte[] xorBytes = new byte[hash1.Bytes.Length];
+        for (int i = 0; i < xorBytes.Length; i++)
+        {
+            xorBytes[i] = (byte)(hash1.Bytes[i] ^ hash2.Bytes[i]);
+        }
+        return new ValueHash256(xorBytes);
+    }
+
 }
