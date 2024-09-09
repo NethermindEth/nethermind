@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -19,6 +20,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -39,10 +41,11 @@ namespace Nethermind.Consensus.AuRa
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IWorldState stateProvider,
             IReceiptStorage receiptStorage,
+            IBeaconBlockRootHandler beaconBlockRootHandler,
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            IAuRaValidator? auRaValidator,
+            IAuRaValidator? auRaValidator = null,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
@@ -55,6 +58,7 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider, stateProvider),
+                beaconBlockRootHandler,
                 logManager,
                 withdrawalProcessor,
                 preWarmer: preWarmer)

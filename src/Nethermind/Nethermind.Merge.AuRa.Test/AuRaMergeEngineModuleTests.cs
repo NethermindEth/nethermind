@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -19,6 +20,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -99,6 +101,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             _additionalTxSource = additionalTxSource;
         }
 
+        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        {
+            if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
+            return base.Build(specProvider, initialValues, addBlockOnStart);
+        }
+
         protected override IBlockProcessor CreateBlockProcessor()
         {
             _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
@@ -134,6 +142,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 State,
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor),
                 LogManager,
                 WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());

@@ -56,6 +56,7 @@ public class GnosisSpecProvider : ISpecProvider
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
+    public string SealEngine => SealEngineType.AuRa;
     public ForkActivation[] TransitionActivations { get; }
 
     public static GnosisSpecProvider Instance { get; } = new();
