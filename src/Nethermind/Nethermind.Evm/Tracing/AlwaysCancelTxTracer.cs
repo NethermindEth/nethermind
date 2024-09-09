@@ -107,7 +107,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportChunkExecutionEnd(long gas, int pc, Type segmentID) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
 }

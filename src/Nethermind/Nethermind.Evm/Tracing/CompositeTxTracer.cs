@@ -520,26 +520,26 @@ public class CompositeTxTracer : ITxTracer
             _txTracers[index].Dispose();
         }
     }
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingPredefinedPatterns)
             {
-                innerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
+                innerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
             }
         }
     }
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingCompiledSegments)
             {
-                innerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
+                innerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
             }
         }
     }

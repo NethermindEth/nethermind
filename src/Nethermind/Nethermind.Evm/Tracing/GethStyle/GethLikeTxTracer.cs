@@ -82,6 +82,38 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         _gasCostAlreadySetForCurrentOp = false;
     }
 
+    public override void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+        if (IsTracingCompiledSegments)
+            return;
+
+        if (CurrentTraceEntry is not null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        CurrentTraceEntry = new();
+        CurrentTraceEntry.Gas = gas;
+        CurrentTraceEntry.ProgramCounter = pc;
+        CurrentTraceEntry.SegmentID = segmentID;
+        CurrentTraceEntry.IsPrecompiled = false;
+        CurrentTraceEntry.Depth = env.GetGethTraceDepth();
+    }
+
+    public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+        if(IsTracingCompiledSegments)
+            return;
+
+        if (CurrentTraceEntry is not null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        CurrentTraceEntry = new();
+        CurrentTraceEntry.Gas = gas;
+        CurrentTraceEntry.ProgramCounter = pc;
+        CurrentTraceEntry.SegmentID = segmentID;
+        CurrentTraceEntry.IsPrecompiled = true;
+        CurrentTraceEntry.Depth = env.GetGethTraceDepth();
+    }
+
     public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
 
     public override void ReportOperationRemainingGas(long gas)

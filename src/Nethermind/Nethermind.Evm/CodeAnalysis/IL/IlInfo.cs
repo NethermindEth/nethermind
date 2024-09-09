@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
+using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 /// <summary>
@@ -84,7 +85,8 @@ internal class IlInfo
         var executionResult = new ILChunkExecutionResult();
         if (Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
-            tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, ctx.Name);
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, ctx.Name, vmState.Env);
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
             ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
@@ -104,7 +106,8 @@ internal class IlInfo
         }
         else if (Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
-            tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, chunk.Name);
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, chunk.Name, vmState.Env);
             chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
         }
         else

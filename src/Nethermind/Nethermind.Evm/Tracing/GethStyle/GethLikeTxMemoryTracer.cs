@@ -62,4 +62,63 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
         }
     }
+
+
+    public override void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+        var previousTraceEntry = CurrentTraceEntry;
+        var previousDepth = CurrentTraceEntry?.Depth ?? 0;
+
+        base.ReportPredefinedPatternExecution(gas, pc, segmentID, env);
+
+        if (CurrentTraceEntry.Depth > previousDepth)
+        {
+            CurrentTraceEntry.Storage = new Dictionary<string, string>();
+
+            Trace.StoragesByDepth.Push(previousTraceEntry is null ? new() : previousTraceEntry.Storage);
+        }
+        else if (CurrentTraceEntry.Depth < previousDepth)
+        {
+            if (previousTraceEntry is null)
+                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
+
+            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
+        }
+        else
+        {
+            if (previousTraceEntry is null)
+                throw new InvalidOperationException("Missing the previous trace on continuation.");
+
+            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
+        }
+    }
+
+    public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+        var previousTraceEntry = CurrentTraceEntry;
+        var previousDepth = CurrentTraceEntry?.Depth ?? 0;
+
+        base.ReportCompiledSegmentExecution(gas, pc, segmentID, env);
+
+        if (CurrentTraceEntry.Depth > previousDepth)
+        {
+            CurrentTraceEntry.Storage = new Dictionary<string, string>();
+
+            Trace.StoragesByDepth.Push(previousTraceEntry is null ? new() : previousTraceEntry.Storage);
+        }
+        else if (CurrentTraceEntry.Depth < previousDepth)
+        {
+            if (previousTraceEntry is null)
+                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
+
+            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
+        }
+        else
+        {
+            if (previousTraceEntry is null)
+                throw new InvalidOperationException("Missing the previous trace on continuation.");
+
+            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
+        }
+    }
 }

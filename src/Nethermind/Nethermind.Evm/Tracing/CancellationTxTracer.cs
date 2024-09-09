@@ -469,21 +469,21 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         innerTracer.Dispose();
     }
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingFees)
         {
-            InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
+            InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
         }
     }
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingFees)
         {
-            InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
+            InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
         }
     }
 }
