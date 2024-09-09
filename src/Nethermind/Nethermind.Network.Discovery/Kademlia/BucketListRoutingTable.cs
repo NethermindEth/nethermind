@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -57,43 +58,64 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
         }
     }
 
-    public IEnumerable<TNode> IterateNeighbour(ValueHash256 hash)
+    public IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
     {
         int startingDistance = Hash256XORUtils.CalculateDistance(_currentNodeIdAsHash, hash);
         foreach (var bucketToGet in EnumerateBucket(startingDistance))
         {
-            foreach (TNode bucketContent in GetAllAtDistance(bucketToGet))
+            foreach (var entry in bucketToGet.GetAllWithHash())
             {
-                yield return bucketContent;
+                yield return entry;
+            }
+        }
+    }
+
+    public TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude)
+    {
+        int startingDistance = Hash256XORUtils.CalculateDistance(_currentNodeIdAsHash, hash);
+        KBucket<TNode> firstBucket = _buckets[startingDistance];
+        if (exclude == null || !firstBucket.ContainsNode(exclude.Value))
+        {
+            TNode[] nodes = firstBucket.GetAll();
+            if (nodes.Length == _kSize)
+            {
+                // Fast path. In theory, most of the time, this would be the taken path, where no array
+                // concatenation or creation is needed.
+                return nodes;
             }
         }
 
+        if (exclude == null)
+        {
+            return IterateNeighbour(hash)
+                .Select(kv => kv.Item2)
+                .ToArray();
+        }
+
+        return IterateNeighbour(hash)
+            .Where(kv => kv.Item1 != exclude.Value)
+            .Select(kv => kv.Item2).ToArray();
     }
 
-    public TNode[] GetKNearestNeighbour(ValueHash256 hash)
-    {
-        return IterateNeighbour(hash).Take(_kSize).ToArray();
-    }
-
-    private IEnumerable<int> EnumerateBucket(int startingDistance)
+    private IEnumerable<KBucket<TNode>> EnumerateBucket(int startingDistance)
     {
         // Note, without a tree based routing table, we don't exactly know
         // which way (left or right) is the right way to go. So this is all approximate.
         // Well, even with a full tree, it would still be approximate, just that it would
         // be a bit more accurate.
-        yield return startingDistance;
+        yield return _buckets[startingDistance];
         int left = startingDistance - 1;
         int right = startingDistance + 1;
         while (left > 0 || right <= Hash256XORUtils.MaxDistance)
         {
             if (left > 0)
             {
-                yield return left;
+                yield return _buckets[left];
             }
 
             if (right <= Hash256XORUtils.MaxDistance)
             {
-                yield return right;
+                yield return _buckets[right];
             }
 
             left -= 1;

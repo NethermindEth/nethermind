@@ -39,18 +39,18 @@ public class KademliaSimulation
         node1.AddOrRefresh(new TestNode(node2Hash));
         node2.AddOrRefresh(new TestNode(node3Hash));
 
-        node1.IterateNeighbour(Keccak.Zero).Select(n => n.Hash).ToArray().Should().BeEquivalentTo([node2Hash]);
-        node2.IterateNeighbour(Keccak.Zero).Select(n => n.Hash).ToArray().Should().BeEquivalentTo([node3Hash]);
-        node3.IterateNeighbour(Keccak.Zero).Select(n => n.Hash).ToArray().Should().BeEmpty();
+        node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray().Should().BeEquivalentTo([node2Hash]);
+        node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray().Should().BeEquivalentTo([node3Hash]);
+        node3.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray().Should().BeEmpty();
 
         await node2.Bootstrap(cts.Token);
-        node2.IterateNeighbour(Keccak.Zero).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node3Hash]);
+        node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node3Hash]);
 
         await node1.Bootstrap(cts.Token);
 
-        node1.IterateNeighbour(Keccak.Zero).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node2Hash, node3Hash]);
-        node2.IterateNeighbour(Keccak.Zero).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node1Hash, node3Hash]);
-        node3.IterateNeighbour(Keccak.Zero).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node1Hash, node2Hash]);
+        node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node2Hash, node3Hash]);
+        node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node1Hash, node3Hash]);
+        node3.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node1Hash, node2Hash]);
     }
 
     [Test]

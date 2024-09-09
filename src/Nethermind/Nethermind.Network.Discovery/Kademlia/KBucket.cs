@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
@@ -47,6 +48,11 @@ public class KBucket<TNode> where TNode : notnull
         return _items.GetAll();
     }
 
+    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash()
+    {
+        return _items.GetAllWithHash();
+    }
+
     public void RemoveAndReplace(in ValueHash256 hash)
     {
         if (_items.Remove(hash))
@@ -68,5 +74,10 @@ public class KBucket<TNode> where TNode : notnull
     {
         _items = new DoubleEndedLru<TNode>(_k);
         _replacement = new DoubleEndedLru<TNode>(_k);
+    }
+
+    public bool ContainsNode(in ValueHash256 hash)
+    {
+        return _items.Contains(hash);
     }
 }

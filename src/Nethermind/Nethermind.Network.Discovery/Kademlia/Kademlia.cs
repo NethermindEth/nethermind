@@ -293,7 +293,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         // Ordered by highest distance. Added on result. Get popped as result.
         PriorityQueue<(ValueHash256, TNode), ValueHash256> finalResult = new(comparerReverse);
 
-        foreach (TNode node in IterateNeighbour(targetHash).Take(_kSize))
+        foreach (TNode node in GetKNeighbour(targetHash, default))
         {
             ValueHash256 nodeHash = _nodeHashProvider.GetHash(node);
             seen.TryAdd(nodeHash, node);
@@ -487,7 +487,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         PriorityQueue<TNode, ValueHash256> bestSeenAllTime = new (comparer);
 
         ValueHash256 closestNodeHash = _nodeHashProvider.GetHash(_currentNodeId);
-        (ValueHash256 nodeHash, TNode node)[] roundQuery = IterateNeighbour(targetHash)
+        (ValueHash256 nodeHash, TNode node)[] roundQuery = GetKNeighbour(targetHash, default)
             .Take(_alpha)
             .Select((node) => (_nodeHashProvider.GetHash(node), node))
             .ToArray();
@@ -619,9 +619,9 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _logger.Info($"Bootstrap completed. Took {sw}. Bucket sizes (from 230) {string.Join(",", Enumerable.Range(200, 56).Select(i => GetAllAtDistance(i).Length))}");
     }
 
-    public IEnumerable<TNode> IterateNeighbour(ValueHash256 hash)
+    public TNode[] GetKNeighbour(ValueHash256 hash, TNode? excluding)
     {
-        return _routingTable.IterateNeighbour(hash);
+        return _routingTable.GetKNearestNeighbour(hash,  excluding != null ? _nodeHashProvider.GetHash(excluding) : null);
     }
 
     public event EventHandler<TNode>? OnNodeAdded;
@@ -659,7 +659,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     public Task<TNode[]> FindNeighbours(TNode sender, ValueHash256 hash, CancellationToken token)
     {
         OnIncomingMessageFrom(sender);
-        return Task.FromResult(_routingTable.GetKNearestNeighbour(hash));
+        return Task.FromResult(_routingTable.GetKNearestNeighbour(hash, _nodeHashProvider.GetHash(sender)));
     }
 
     public Task<FindValueResponse<TNode, TContent>> FindValue(TNode sender, TContentKey contentKey, CancellationToken token)
@@ -675,7 +675,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             new FindValueResponse<TNode, TContent>(
                 false,
                 default,
-                _routingTable.IterateNeighbour(_nodeHashProvider.GetHash(contentKey)).Take(_kSize).ToArray() // TODO: pass an n so that its possible to skip creating array
+                _routingTable.GetKNearestNeighbour(_nodeHashProvider.GetHash(contentKey), _nodeHashProvider.GetHash(sender))
             ));
     }
 

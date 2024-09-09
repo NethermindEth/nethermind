@@ -80,7 +80,7 @@ public class ContentDistributor : IContentDistributor
         // Get list of nodes within the radius
         int nodeToDistributeTo = 8;
         SpanDictionary<byte, IEnr> nearestNodes = new(Bytes.SpanEqualityComparer);
-        foreach (IEnr enr in _kad.IterateNeighbour(contentHash))
+        foreach (IEnr enr in _kad.GetKNeighbour(contentHash, null))
         {
             if (IsInRadius(enr, contentHash))
             {

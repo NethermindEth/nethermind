@@ -30,7 +30,7 @@ public interface IKademlia<TNode, TContentKey, TContent>: IMessageReceiver<TNode
 
     /// Enumerate nodes within the table starting from the node nearest to target hash.
     /// No guarentee is made that the nodes are of exact order.
-    IEnumerable<TNode> IterateNeighbour(ValueHash256 hash);
+    TNode[] GetKNeighbour(ValueHash256 hash, TNode? excluding);
 
     event EventHandler<TNode> OnNodeAdded;
 

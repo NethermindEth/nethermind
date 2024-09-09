@@ -93,4 +93,14 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
     {
         return _hashMapping.Select(kv => kv.Value.Value.Item2).ToArray();
     }
+
+    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash()
+    {
+        return _queue;
+    }
+
+    public bool Contains(in ValueHash256 hash)
+    {
+        return _hashMapping.ContainsKey(hash);
+    }
 }

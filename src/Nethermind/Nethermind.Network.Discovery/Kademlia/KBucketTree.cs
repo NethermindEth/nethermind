@@ -87,6 +87,28 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         }
     }
 
+    private KBucket<TNode> GetBucketForHash(ValueHash256 nodeHash)
+    {
+        using McsLock.Disposable _ = _lock.Acquire();
+
+        TreeNode current = _root;
+        int depth = 0;
+        while (true)
+        {
+            if (current.IsLeaf)
+            {
+                _logger.Debug($"Reached leaf node at depth {depth}");
+                return current.Bucket;
+            }
+
+            bool goRight = GetBit(nodeHash, depth);
+            _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+
+            current = goRight ? current.Right! : current.Left!;
+            depth++;
+        }
+    }
+
     private bool ShouldSplit(int depth, int targetLogDistance)
     {
         bool shouldSplit = depth < 256 && targetLogDistance + _b >= depth;
@@ -173,13 +195,13 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         }
     }
 
-    public IEnumerable<TNode> IterateNeighbour(ValueHash256 hash)
+    public IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
     {
         foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(_root, 0, hash))
         {
-            foreach (TNode node in treeNode.Bucket.GetAll())
+            foreach ((ValueHash256, TNode) entry in treeNode.Bucket.GetAllWithHash())
             {
-                yield return node;
+                yield return entry;
             }
         }
     }
@@ -219,9 +241,30 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         }
     }
 
-    public TNode[] GetKNearestNeighbour(ValueHash256 hash)
+    public TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude)
     {
-        return IterateNeighbour(hash).Take(_k).ToArray();
+        KBucket<TNode> firstBucket = GetBucketForHash(hash);
+        if (exclude == null || !firstBucket.ContainsNode(exclude.Value))
+        {
+            TNode[] nodes = firstBucket.GetAll();
+            if (nodes.Length == _k)
+            {
+                // Fast path. In theory, most of the time, this would be the taken path, where no array
+                // concatenation or creation is needed.
+                return nodes;
+            }
+        }
+
+        if (exclude == null)
+        {
+            return IterateNeighbour(hash)
+                .Select(kv => kv.Item2)
+                .ToArray();
+        }
+
+        return IterateNeighbour(hash)
+            .Where(kv => kv.Item1 != exclude.Value)
+            .Select(kv => kv.Item2).ToArray();
     }
 
     private void GetAllAtDistanceRecursive(TreeNode node, int depth, int remainingDistance, List<TNode> result)
