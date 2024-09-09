@@ -171,7 +171,6 @@ public class TxValidatorTests
     [TestCase(TxType.AccessList, true, false, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, true, false, ExpectedResult = false)]
     [TestCase(TxType.EIP1559, true, true, ExpectedResult = true)]
-    [TestCase((TxType)100, true, false, ExpectedResult = false)]
     public bool Before_eip_1559_has_to_be_legacy_or_access_list_tx(TxType txType, bool eip2930, bool eip1559)
     {
         byte[] sigData = new byte[65];
@@ -184,7 +183,7 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
             .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
-            .WithAccessList(txType == TxType.AccessList || txType == TxType.EIP1559
+            .WithAccessList(txType is TxType.AccessList or TxType.EIP1559
                 ? AccessList.Empty
                 : null)
             .WithSignature(signature).TestObject;

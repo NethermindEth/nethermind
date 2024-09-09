@@ -182,6 +182,11 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
+        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[]? proof)
+            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             try
@@ -773,16 +778,16 @@ namespace Nethermind.TxPool
         private sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
-            private readonly LruCacheLowObject<AddressAsKey, AccountStruct>[] _caches;
+            private readonly ClockCache<AddressAsKey, AccountStruct>[] _caches;
 
             public AccountCache(IAccountStateProvider provider)
             {
                 _provider = provider;
-                _caches = new LruCacheLowObject<AddressAsKey, AccountStruct>[16];
+                _caches = new ClockCache<AddressAsKey, AccountStruct>[16];
                 for (int i = 0; i < _caches.Length; i++)
                 {
                     // Cache per nibble to reduce contention as TxPool is very parallel
-                    _caches[i] = new LruCacheLowObject<AddressAsKey, AccountStruct>(1_024, "");
+                    _caches[i] = new ClockCache<AddressAsKey, AccountStruct>(1_024);
                 }
             }
 
@@ -811,7 +816,7 @@ namespace Nethermind.TxPool
                 Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
                     n =>
                     {
-                        LruCacheLowObject<AddressAsKey, AccountStruct> cache = _caches[n.Key];
+                        ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
                         foreach (AddressAsKey a in n)
                         {
                             cache.Delete(a);

@@ -51,7 +51,7 @@ namespace Nethermind.TxPool.Test
         {
             _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, _logManager);
@@ -96,7 +96,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_transactions_with_different_chain_id()
         {
             _txPool = CreatePool(null, new TestSpecProvider(Shanghai.Instance));
-            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia, _logManager); // default is mainnet, we're passing sepolia
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia); // default is mainnet, we're passing sepolia
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactionsCount().Should().Be(0);
@@ -183,7 +183,7 @@ namespace Nethermind.TxPool.Test
             if (eip1559Enabled)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
+                specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
             }
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
@@ -1743,7 +1743,6 @@ namespace Nethermind.TxPool.Test
         {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
-            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
             return specProvider;
         }
 
@@ -1751,7 +1750,6 @@ namespace Nethermind.TxPool.Test
         {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
-            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Cancun.Instance);
             return specProvider;
         }
 

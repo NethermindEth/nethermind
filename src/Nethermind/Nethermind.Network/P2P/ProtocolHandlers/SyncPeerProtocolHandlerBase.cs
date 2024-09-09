@@ -74,8 +74,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             initialRequestSize: 4
         );
 
-        protected LruKeyCacheLowObject<ValueHash256>? _notifiedTransactions;
-        protected LruKeyCacheLowObject<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        protected ClockKeyCache<ValueHash256>? _notifiedTransactions;
+        protected ClockKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
@@ -87,7 +87,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler)));
             _timestamper = Timestamper.Default;
-            _txDecoder = new TxDecoder();
+            _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
 

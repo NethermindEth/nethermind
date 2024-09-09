@@ -202,7 +202,7 @@ namespace Nethermind.Core.Specs
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
         /// <param name="address"></param>
         /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);
+        bool IsEip158IgnoredAccount(Address address) => false;
 
         /// <summary>
         /// BaseFee opcode
@@ -272,12 +272,22 @@ namespace Nethermind.Core.Specs
         /// Save historical block hashes in state
         /// </summary>
         bool IsEip2935Enabled { get; }
+
+        /// <summary>
+        /// Fetch blockHashes from the state for BLOCKHASH opCode
+        /// </summary>
+        bool IsEip7709Enabled { get; }
         Address Eip2935ContractAddress { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
+
+        /// <summary>
+        /// Secp256r1 precompile
+        /// </summary>
+        bool IsRip7212Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -358,7 +368,7 @@ namespace Nethermind.Core.Specs
         public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => IsEip2935Enabled;
+        public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }

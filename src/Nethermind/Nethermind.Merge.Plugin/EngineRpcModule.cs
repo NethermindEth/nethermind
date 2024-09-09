@@ -30,6 +30,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
+        IAsyncHandler<byte[][], GetBlobsV1Result> getBlobsHandler,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager)
@@ -43,6 +44,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
         _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
         _transitionConfigurationHandler = transitionConfigurationHandler;
+        _getBlobsHandler = getBlobsHandler;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;
         _logger = logManager.GetClassLogger();

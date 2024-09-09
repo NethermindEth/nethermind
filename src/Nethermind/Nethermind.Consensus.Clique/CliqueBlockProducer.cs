@@ -41,7 +41,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     private readonly System.Timers.Timer _timer = new();
     private DateTime _lastProducedBlock;
 
-    private CliqueBlockProducer _blockProducer;
+    private readonly CliqueBlockProducer _blockProducer;
 
     public CliqueBlockProducerRunner(
         IBlockTree blockTree,
@@ -188,6 +188,10 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
             {
                 ConsumeSignal().Wait();
                 if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
+            }
+            catch (TaskCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");
             }
             catch (OperationCanceledException)
             {

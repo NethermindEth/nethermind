@@ -177,6 +177,16 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.LogManager
         );
 
+        _ = new PivotUpdator(
+            _api.BlockTree,
+            _api.Synchronizer.SyncModeSelector,
+            _api.SyncPeerPool,
+            _syncConfig,
+            _blockCacheService,
+            _beaconSync,
+            _api.DbProvider.MetadataDb,
+            _api.LogManager);
+
         return Task.CompletedTask;
     }
 
@@ -192,6 +202,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.BlockValidator);
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
+        ArgumentNullException.ThrowIfNull(_api.TxPool);
 
         ArgumentNullException.ThrowIfNull(_beaconSync);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -258,6 +269,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
+            new GetBlobsHandler(_api.TxPool),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

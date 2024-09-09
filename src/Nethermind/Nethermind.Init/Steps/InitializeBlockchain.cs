@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -237,7 +238,8 @@ namespace Nethermind.Init.Steps
                 new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage,
-                new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
+                new BlockhashStore(_api.SpecProvider!, worldState),
+                new BeaconBlockRootHandler(_api.TransactionProcessor),
                 _api.LogManager,
                 preWarmer: preWarmer
             );
