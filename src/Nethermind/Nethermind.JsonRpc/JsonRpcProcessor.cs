@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -25,17 +26,19 @@ namespace Nethermind.JsonRpc;
 public class JsonRpcProcessor : IJsonRpcProcessor
 {
     private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly ISyncConfig? _syncConfig;
     private readonly ILogger _logger;
     private readonly IJsonRpcService _jsonRpcService;
     private readonly Recorder _recorder;
 
-    public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
+    public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, ISyncConfig? syncConfig = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         ArgumentNullException.ThrowIfNull(fileSystem);
 
         _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        _syncConfig = syncConfig;
 
         if (_jsonRpcConfig.RpcRecorderState != RpcRecorderState.None)
         {
@@ -343,7 +346,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = localErrorResponse is null;
         if (!isSuccess)
         {
-            if (localErrorResponse?.Error?.SuppressWarning == false)
+            if (localErrorResponse?.Error?.SuppressWarning == false &&
+                (!(_syncConfig?.NonValidatorNode ?? false) || request.Method != "eth_getLogs"))
             {
                 if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
             }
