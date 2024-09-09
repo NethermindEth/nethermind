@@ -5,12 +5,20 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucket<TNode>(int k) where TNode : notnull
+public class KBucket<TNode> where TNode : notnull
 {
-    private DoubleEndedLru<TNode> _items = new(k);
-    private DoubleEndedLru<TNode> _replacement = new(k); // Well, the replacement does not have to be k. Could be much lower.
+    private readonly int _k;
+    private DoubleEndedLru<TNode> _items;
+    private DoubleEndedLru<TNode> _replacement;
 
     public int Count => _items.Count;
+
+    public KBucket(int k)
+    {
+        _k = k;
+        _items = new DoubleEndedLru<TNode>(k);
+        _replacement = new DoubleEndedLru<TNode>(k);  // Well, the replacement does not have to be k. Could be much lower.
+    }
 
     /// <summary>
     /// Add or refresh a node entry.
@@ -54,5 +62,11 @@ public class KBucket<TNode>(int k) where TNode : notnull
     {
         _items.Remove(hash);
         _replacement.Remove(hash);
+    }
+
+    public void Clear()
+    {
+        _items = new DoubleEndedLru<TNode>(_k);
+        _replacement = new DoubleEndedLru<TNode>(_k);
     }
 }
