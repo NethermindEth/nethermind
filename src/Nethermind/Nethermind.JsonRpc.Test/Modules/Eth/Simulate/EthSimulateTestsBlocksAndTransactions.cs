@@ -19,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -279,42 +280,38 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
     }
 
-
-
     [Test]
     public async Task Test_eth_simulate_logs_on_selfdestructive_contract_sends_eth()
     {
         EthereumJsonSerializer serializer = new();
         string input = """
                        {
-                           "traceTransfers": true,
-                           "blockStateCalls": [
-                               {
-                                   "stateOverrides": {
-                                       "0xc200000000000000000000000000000000000000": {
-                                           "code": "0x6080604052348015600f57600080fd5b506004361060285760003560e01c806383197ef014602d575b600080fd5b60336035565b005b600073ffffffffffffffffffffffffffffffffffffffff16fffea26469706673582212208e566fde20a17fff9658b9b1db37e27876fd8934ccf9b2aa308cabd37698681f64736f6c63430008120033",
-                                           "balance": "0x1e8480"
-                                       }
-                                   },
-                                   "calls": [
-                                       {
-                                           "from": "0xc000000000000000000000000000000000000000",
-                                           "to": "0xc200000000000000000000000000000000000000",
-                                           "input": "0x83197ef0"
-                                       }
-                                   ]
+                         "blockStateCalls": [
+                           {
+                             "stateOverrides": {
+                               "0xc200000000000000000000000000000000000000": {
+                                 "code": "0x6080604052348015600e575f80fd5b50600436106026575f3560e01c806383197ef014602a575b5f80fd5b60306032565b005b7f38050d3b233a8bf04054497b223b1c3612ee1bca57db5c6b0f030c25b06159f047604051605f91906096565b60405180910390a13373ffffffffffffffffffffffffffffffffffffffff16ff5b5f819050919050565b6090816080565b82525050565b5f60208201905060a75f8301846089565b9291505056fea2646970667358221220b88011e718061f46682b92207452eed0b566bc847189fabea8c80f5a92c4080064736f6c634300081a0033",
+                                 "balance": "0x1e8480"
                                }
-                           ]
+                             },
+                             "calls": [
+                               {
+                                 "from": "0xc000000000000000000000000000000000000000",
+                                 "to": "0xc200000000000000000000000000000000000000",
+                                 "input": "0x83197ef0"
+                               }
+                             ]
+                           }
+                         ],
+                         "traceTransfers": true
                        }
                        """;
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine($"current test: {nameof(Test_eth_simulate_logs_on_selfdestructive_contract_sends_eth)}");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        var calls = result.Data.First().Calls;
-        var logs = calls.First().Logs.ToArray();
-        Assert.That(logs.Length > 0);
-
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Cancun.Instance);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+        List<SimulateCallResult> calls = result.Data.First().Calls;
+        Log[] logs = calls.First().Logs.ToArray();
+        logs.Length.Should().BePositive();
     }
 
 
