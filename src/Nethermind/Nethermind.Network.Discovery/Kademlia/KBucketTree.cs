@@ -29,18 +29,16 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
     private readonly int _b;
     private readonly int _k;
     private readonly ValueHash256 _currentNodeHash;
-    private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
     private readonly ILogger _logger;
 
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public KBucketTree(int k, int b, ValueHash256 currentNodeHash, INodeHashProvider<TNode, TContentKey> nodeHashProvider, ILogManager logManager)
+    public KBucketTree(int k, int b, ValueHash256 currentNodeHash, ILogManager logManager)
     {
         _k = k;
         _b = b;
         _currentNodeHash = currentNodeHash;
-        _nodeHashProvider = nodeHashProvider;
         _root = new TreeNode(k, new ValueHash256());
         _logger = logManager.GetClassLogger();
         _logger.Info($"Initialized KBucketTree with k={k}, currentNodeId={currentNodeHash}");
@@ -123,11 +121,13 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
 
         _logger.Debug($"Created children at depth {depth + 1}");
 
-        foreach (var item in node.Bucket.GetAll())
+        // The reverse is because the bucket is iterated from the most recent. Without it
+        // reading would have reversed this order.
+        foreach (var item in node.Bucket.GetAllWithHash().Reverse())
         {
-            ValueHash256 itemHash = _nodeHashProvider.GetHash(item);
+            ValueHash256 itemHash = item.Item1;
             TreeNode? targetNode = GetBit(itemHash, depth) ? node.Right : node.Left;
-            targetNode.Bucket.TryAddOrRefresh(itemHash, item, out _);
+            targetNode.Bucket.TryAddOrRefresh(itemHash, item.Item2, out _);
             _logger.Debug($"Moved item {item} to {(GetBit(itemHash, depth) ? "right" : "left")} child");
         }
 
@@ -166,6 +166,57 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         GetAllAtDistanceRecursive(_root, 0, distance, result);
         _logger.Debug($"Found {result.Count} nodes at distance {distance}");
         return result.ToArray();
+    }
+
+    private void GetAllAtDistanceRecursive(TreeNode node, int depth, int distance, List<TNode> result)
+    {
+        int targetDepth = Hash256XORUtils.MaxDistance - distance;
+        if (node.IsLeaf)
+        {
+            if (depth <= targetDepth)
+            {
+                result.AddRange(node.Bucket.GetAllWithHash()
+                    .Where(kv => Hash256XORUtils.CalculateDistance(kv.Item1, _currentNodeHash) == distance)
+                    .Select(kv => kv.Item2));
+            }
+            else
+            {
+                result.AddRange(node.Bucket.GetAll());
+            }
+        }
+        else
+        {
+            if (depth < targetDepth)
+            {
+                bool goRight = GetBit(_currentNodeHash, depth);
+                if (goRight)
+                {
+                    GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, result);
+                }
+                else
+                {
+                    GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, result);
+                }
+            }
+            else if (depth == targetDepth)
+            {
+                bool goRight = GetBit(_currentNodeHash, depth);
+                // Note: We go the opposite direction here, as the same direction would have a distance + 1
+                if (goRight)
+                {
+                    GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, result);
+                }
+                else
+                {
+                    GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, result);
+                }
+            }
+            else
+            {
+                GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, result);
+                GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, result);
+            }
+        }
     }
 
     public IEnumerable<ValueHash256> IterateBucketRandomHashes()
@@ -268,30 +319,6 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         return IterateNeighbour(hash)
             .Where(kv => kv.Item1 != exclude.Value)
             .Select(kv => kv.Item2).ToArray();
-    }
-
-    private void GetAllAtDistanceRecursive(TreeNode node, int depth, int remainingDistance, List<TNode> result)
-    {
-        if (node.IsLeaf)
-        {
-            if (remainingDistance == 0)
-            {
-                _logger.Debug($"Adding {node.Bucket.Count} nodes from bucket at depth {depth}");
-                result.AddRange(node.Bucket.GetAll());
-            }
-            return;
-        }
-
-        if (remainingDistance > 0)
-        {
-            GetAllAtDistanceRecursive(node.Left!, depth + 1, remainingDistance - 1, result);
-            GetAllAtDistanceRecursive(node.Right!, depth + 1, remainingDistance - 1, result);
-        }
-        else
-        {
-            GetAllAtDistanceRecursive(node.Left!, depth + 1, 0, result);
-            GetAllAtDistanceRecursive(node.Right!, depth + 1, 0, result);
-        }
     }
 
     private bool GetBit(ValueHash256 hash, int index)

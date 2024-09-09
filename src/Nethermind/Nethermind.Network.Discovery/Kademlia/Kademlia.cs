@@ -64,7 +64,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
         if (config.UseTreeBasedRoutingTable)
         {
-            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, config.Beta, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
+            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, config.Beta, _currentNodeIdAsHash, _logManager);
         }
         else
         {

@@ -62,6 +62,7 @@ public class KBucket<TNode> where TNode : notnull
             {
                 _items.AddOrRefresh(hash, replacement!);
             }
+            _cachedArray = _items.GetAll();
         }
     }
 
