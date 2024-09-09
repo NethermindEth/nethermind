@@ -4,8 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
-namespace Nethermind.Serialization.Rlp.TxDecoders;
+namespace Nethermind.Optimism;
 
 public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.DepositTx, transactionFactory) where T : Transaction, new()
