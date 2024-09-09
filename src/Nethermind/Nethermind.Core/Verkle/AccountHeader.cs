@@ -47,15 +47,15 @@ public readonly struct AccountHeader
         }
     }
 
-    public static byte[] GetTreeKeyPrefix(ReadOnlySpan<byte> address20, UInt256 treeIndex)
+    public static byte[] GetTreeKeyPrefix(byte[] address20, UInt256 treeIndex)
     {
-        if (_keyCache.TryGet((address20.ToArray(), treeIndex), out byte[] value)) return value;
+        if (_keyCache.TryGet((address20, treeIndex), out byte[] value)) return value;
         value = PedersenHash.ComputeHashBytes(address20, treeIndex);
-        _keyCache.Set((address20.ToArray(), treeIndex), value);
+        _keyCache.Set((address20, treeIndex), value);
         return value;
     }
 
-    public static Hash256 GetTreeKey(ReadOnlySpan<byte> address, UInt256 treeIndex, byte subIndexBytes)
+    public static Hash256 GetTreeKey(byte[] address, UInt256 treeIndex, byte subIndexBytes)
     {
         var treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
         treeKeyPrefix[31] = subIndexBytes;
@@ -70,7 +70,7 @@ public readonly struct AccountHeader
         return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
     }
 
-    public static Hash256 GetTreeKeyForStorageSlot(ReadOnlySpan<byte> address, UInt256 storageKey)
+    public static Hash256 GetTreeKeyForStorageSlot(byte[] address, UInt256 storageKey)
     {
         if (storageKey < (CodeOffset - HeaderStorageOffset))
             return GetTreeKey(address, UInt256.Zero, (HeaderStorageOffset + storageKey).ToBigEndian()[31]);

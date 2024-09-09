@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Int256;
+using Nethermind.Verkle;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Fields.FrEElement;
 
@@ -8,6 +9,7 @@ namespace Nethermind.Core.Verkle;
 
 public static class PedersenHash
 {
+    private static readonly IntPtr _rust = RustVerkleLib.VerkleContextNew();
     public static byte[] Hash(UInt256[] inputElements)
     {
         int inputLength = inputElements.Length;
@@ -35,8 +37,9 @@ public static class PedersenHash
         Hash(address20, treeIndex).CopyTo(output);
     }
 
-    public static byte[] ComputeHashBytes(ReadOnlySpan<byte> address20, UInt256 treeIndex) =>
-        Hash(address20, treeIndex);
+    public static byte[] ComputeHashBytes(byte[] address20, UInt256 treeIndex) =>
+        HashRust(address20, treeIndex);
+
 
     public static byte[] Hash(ReadOnlySpan<byte> address20, UInt256 treeIndex)
     {
@@ -69,5 +72,12 @@ public static class PedersenHash
                           + crs.BasisG[4] * FrE.SetElement(treeIndex.u2, treeIndex.u3);
 
         return res.MapToScalarField().ToBytes();
+    }
+
+    public static byte[] HashRust(byte[] address20, UInt256 treeIndex)
+    {
+        var hash = new byte[32];
+        RustVerkleLib.VerklePedersenhash(_rust, address20, treeIndex.ToBigEndian(), hash);
+        return hash;
     }
 }
