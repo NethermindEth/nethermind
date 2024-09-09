@@ -3,7 +3,6 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.Shutter</RootNamespace>
     <Nullable>enable</Nullable>
-     <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
 
   <ItemGroup>

@@ -117,9 +117,7 @@ public class MetricsTests
             typeof(Synchronization.Metrics),
             typeof(Trie.Metrics),
             typeof(Trie.Pruning.Metrics),
-#pragma warning disable CA2252 // This API requires opting into preview features
-            typeof(Shutter.Metrics),
-#pragma warning restore CA2252 // This API requires opting into preview features
+            typeof(Shutter.Metrics)
         };
         MetricsController metricsController = new(metricsConfig);
         MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
