@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.Validators;
 public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator
 {
     private readonly bool _result;
-    private ValidationResult _validationResult;
+    private readonly ValidationResult _validationResult;
 
     private Always(bool result)
     {

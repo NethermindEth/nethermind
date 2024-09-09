@@ -24,7 +24,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override Task InitBlockchain()
     {
-        api.RegisterTxType(TxType.DepositTx, new OptimismTxDecoder<Transaction>(), OptimismTxValidator.Instance);
+        api.RegisterTxType(TxType.DepositTx, new OptimismTxDecoder<Transaction>(), Always.Valid);
 
         api.SpecHelper = new(api.ChainSpec.Optimism);
         api.L1CostHelper = new(api.SpecHelper, api.ChainSpec.Optimism.L1BlockAddress);

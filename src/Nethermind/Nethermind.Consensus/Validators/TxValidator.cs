@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
@@ -17,11 +16,10 @@ namespace Nethermind.Consensus.Validators;
 
 public sealed class TxValidator : ITxValidator
 {
-    private readonly ITxValidator?[] _validators;
+    private readonly ITxValidator?[] _validators = new ITxValidator?[Transaction.MaxTxType + 1];
 
     public TxValidator(ulong chainId)
     {
-        _validators = new ITxValidator[byte.MaxValue + 1];
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             IntrinsicGasTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
