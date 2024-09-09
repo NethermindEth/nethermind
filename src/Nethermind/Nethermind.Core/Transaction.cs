@@ -46,6 +46,7 @@ namespace Nethermind.Core
         public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
         public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
         public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
+        public bool SupportsAuthorizationList => Type == TxType.SetCode && Type != TxType.DepositTx;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
