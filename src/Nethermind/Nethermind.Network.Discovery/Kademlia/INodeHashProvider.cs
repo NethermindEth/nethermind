@@ -8,6 +8,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <summary>
 /// Translate the node and/or the content key into a ValueHash256 which is finally used for implementing
 /// the distance calculation.
+/// Should this get replaced with an INode.GetHash where TNode need to implement INode? I can't decide.
 /// </summary>
 /// <typeparam name="TNode"></typeparam>
 /// <typeparam name="TContentKey"></typeparam>
