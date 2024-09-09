@@ -39,11 +39,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         RegisterDecoder(new BlobTxDecoder<T>(factory));
     }
 
-    public void RegisterDecoder(ITxDecoder decoder)
-    {
-        _decoders[(int)decoder.Type] = decoder;
-    }
-
+    public void RegisterDecoder(ITxDecoder decoder) => _decoders[(int)decoder.Type] = decoder;
 
     public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -83,7 +79,10 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         return (T)GetDecoder(txType).Decode(transactionSequence, rlpStream, rlpBehaviors);
     }
 
-    private ITxDecoder GetDecoder(TxType txType) => _decoders[(int)txType] ?? throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
+    private ITxDecoder GetDecoder(TxType txType) =>
+        _decoders.TryGetByTxType(txType, out ITxDecoder decoder)
+            ? decoder
+            : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
     public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

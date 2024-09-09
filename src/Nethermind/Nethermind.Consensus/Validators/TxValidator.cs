@@ -66,11 +66,10 @@ public sealed class TxValidator : ITxValidator
     /// As such, we can decide whether tx is well formed as long as we also validate nonce
     /// just before the execution of the block / tx.
     /// </remarks>
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        ITxValidator? validator = _validators[(byte)transaction.Type];
-        return validator?.IsWellFormed(transaction, releaseSpec) ?? TxErrorMessages.InvalidTxType(releaseSpec.Name);
-    }
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
+            ? validator.IsWellFormed(transaction, releaseSpec)
+            : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
 public sealed class CompositeTxValidator(List<ITxValidator> validators) : ITxValidator
