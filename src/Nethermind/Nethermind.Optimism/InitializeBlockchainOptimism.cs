@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -14,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 
 namespace Nethermind.Optimism;
@@ -71,25 +73,26 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
     {
+        ITransactionProcessor? transactionProcessor = api.TransactionProcessor;
         if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));
         if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
-        if (api.TransactionProcessor is null) throw new StepDependencyException(nameof(api.TransactionProcessor));
+        if (transactionProcessor is null) throw new StepDependencyException(nameof(transactionProcessor));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
         if (api.WorldState is null) throw new StepDependencyException(nameof(api.WorldState));
 
-        Create2DeployerContractRewriter contractRewriter =
-            new(api.SpecHelper, api.SpecProvider, api.BlockTree);
+        Create2DeployerContractRewriter contractRewriter = new(api.SpecHelper, api.SpecProvider, api.BlockTree);
 
         return new OptimismBlockProcessor(
             api.SpecProvider,
             api.BlockValidator,
-            api.RewardCalculatorSource.Get(api.TransactionProcessor!),
-            new BlockProcessor.BlockValidationTransactionsExecutor(api.TransactionProcessor, api.WorldState),
+            api.RewardCalculatorSource.Get(transactionProcessor),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, api.WorldState),
             api.WorldState,
             api.ReceiptStorage,
             new BlockhashStore(api.SpecProvider, api.WorldState),
+            new BeaconBlockRootHandler(transactionProcessor),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,

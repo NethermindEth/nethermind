@@ -13,7 +13,7 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public class OptimismTransactionProcessor(
+public sealed class OptimismTransactionProcessor(
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
@@ -21,7 +21,7 @@ public class OptimismTransactionProcessor(
     IL1CostHelper l1CostHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
-    ) : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 
@@ -60,14 +60,6 @@ public class OptimismTransactionProcessor(
             tracer.MarkAsFailed(tx.To!, tx.GasLimit, Array.Empty<byte>(), $"failed deposit: {result.Error}");
             result = TransactionResult.Ok;
         }
-
-        return result;
-    }
-
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        out long intrinsicGas)
-    {
-        TransactionResult result = base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
 
         return result;
     }

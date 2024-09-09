@@ -19,7 +19,7 @@ namespace Nethermind.Trie
             _builder.Clear();
         }
 
-        public bool IsFullDbScan => true;
+        public bool IsFullDbScan { get; init; } = true;
 
         public bool ShouldVisit(Hash256 nextNode)
         {
