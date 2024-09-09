@@ -26,7 +26,7 @@ namespace Nethermind.Api
         public static void RegisterTxType(this INethermindApi api, TxType type, ITxDecoder decoder, ITxValidator validator)
         {
             ArgumentNullException.ThrowIfNull(api.TxValidator);
-            
+
             api.TxValidator.RegisterValidator(type, validator);
             TxDecoder.Instance.RegisterDecoder(decoder);
         }
