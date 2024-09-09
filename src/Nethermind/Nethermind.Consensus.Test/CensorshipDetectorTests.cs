@@ -240,7 +240,7 @@ public class CensorshipDetectorTests
         if (eip1559Enabled)
         {
             _specProvider = Substitute.For<ISpecProvider>();
-            _specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
+            _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
         }
         else
         {
