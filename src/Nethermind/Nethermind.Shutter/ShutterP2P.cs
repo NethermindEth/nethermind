@@ -163,7 +163,7 @@ public class ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager) : 
         }
     }
 
-    private void ConnectToPeers(MyProto proto, IEnumerable<string> p2pAddresses)
+    private static void ConnectToPeers(MyProto proto, IEnumerable<string> p2pAddresses)
     {
         // shuffle peers to connect to random subset of keypers
         int seed = (int)(DateTimeOffset.Now.ToUnixTimeSeconds() % int.MaxValue);

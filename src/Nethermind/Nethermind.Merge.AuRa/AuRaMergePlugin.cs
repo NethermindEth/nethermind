@@ -29,15 +29,14 @@ namespace Nethermind.Merge.AuRa
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
         protected override bool MergeEnabled => ShouldRunSteps(_api);
 
-
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
-            _mergeConfig = _api.Config<IMergeConfig>();
+            _mergeConfig = nethermindApi.Config<IMergeConfig>();
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
-                _auraApi = (AuRaNethermindApi)_api;
+                _auraApi = (AuRaNethermindApi)nethermindApi;
                 _auraApi.PoSSwitcher = _poSSwitcher;
 
                 // this runs before all init steps that use tx filters
