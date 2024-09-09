@@ -29,17 +29,15 @@ public class PortalContentNetworkFactory(
             .AddSingleton<ITalkReqProtocolHandler, TalkReqHandler>()
             .AddSingleton<IContentDistributor, ContentDistributor>()
             .AddSingleton<IMessageSender<IEnr, byte[], LookupContentResult>, KademliaTalkReqMessageSender>()
+            .AddSingleton(new KademliaConfig<IEnr>()
+            {
+                CurrentNodeId = enrProvider.SelfEnr,
+                KSize = config.K,
+                Alpha = config.A,
+                RefreshInterval = config.RefreshInterval
+            })
             .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>.IStore, PortalContentStoreAdapter>()
-            .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>>((sp) => new Kademlia<IEnr, byte[], LookupContentResult>(
-                sp.GetRequiredService<INodeHashProvider<IEnr, byte[]>>(),
-                sp.GetRequiredService<IKademlia<IEnr, byte[], LookupContentResult>.IStore>(),
-                sp.GetRequiredService<IMessageSender<IEnr, byte[], LookupContentResult>>(),
-                logManager,
-                enrProvider.SelfEnr,
-                config.K,
-                config.A,
-                config.RefreshInterval
-            ))
+            .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>, Kademlia<IEnr, byte[], LookupContentResult>>()
             .AddSingleton<IPortalContentNetwork, PortalContentNetwork>();
 
         return services.BuildServiceProvider().GetRequiredService<IPortalContentNetwork>();

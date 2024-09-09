@@ -33,10 +33,12 @@ public class KademliaTests
                 store,
                 messageSender,
                 LimboLogs.Instance,
-                ValueKeccak.Zero,
-                5,
-                3,
-                TimeSpan.FromSeconds(10)
+                new KademliaConfig<ValueHash256>()
+                {
+                    CurrentNodeId = ValueKeccak.Zero,
+                    KSize = 5,
+                    RefreshInterval = TimeSpan.FromSeconds(10)
+                }
             );
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) =>

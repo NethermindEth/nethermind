@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Configuration.Internal;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Caching;
@@ -46,12 +47,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         IKademlia<TNode, TContentKey, TContent>.IStore store,
         IMessageSender<TNode, TContentKey, TContent> sender,
         ILogManager logManager,
-        TNode currentNodeId,
-        int kSize,
-        int alpha,
-        TimeSpan refreshInterval,
-        bool useNewLookup = true
-    )
+        KademliaConfig<TNode> config)
     {
         _nodeHashProvider = nodeHashProvider;
         _store = store;
@@ -59,22 +55,22 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _logManager = logManager;
         _logger = logManager.GetClassLogger<Kademlia<TNode, TContentKey, TContent>>();
 
-        _currentNodeId = currentNodeId;
+        _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
-        _kSize = kSize;
-        _alpha = alpha;
-        _refreshInterval = refreshInterval;
+        _kSize = config.KSize;
+        _alpha = config.Alpha;
+        _refreshInterval = config.RefreshInterval;
 
         _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
-        if (useNewLookup)
+        if (config.UseTreeBasedRoutingTable)
         {
-            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, 4, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
+            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, config.Beta, _currentNodeIdAsHash, _nodeHashProvider, _logManager);
         }
         else
         {
             _routingTable = new BucketListRoutingTable<TNode>(_currentNodeIdAsHash, _kSize);
         }
-        _useNewLookup = useNewLookup;
+        _useNewLookup = config.UseNewLookup;
     }
 
     public void AddOrRefresh(TNode node)

@@ -79,13 +79,15 @@ public class KademliaSimulation
         (await node1.LookupValue(node3Hash, cts.Token)).Should().BeEquivalentTo(node3Hash);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task SimulateLargeLookupValue(bool useNewLookup)
+    [TestCase(true, true, 0)]
+    [TestCase(false, true, 0)]
+    [TestCase(true, true, 4)]
+    [TestCase(true, false, 0)]
+    public async Task SimulateLargeLookupValue(bool useNewLookup, bool useTreeBasedTable, int beta)
     {
         int nodeCount = 500;
 
-        TestFabric fabric = new TestFabric(kSize: 20, alpha: 3, useNewLookup: useNewLookup);
+        TestFabric fabric = new TestFabric(kSize: 20, alpha: 3, beta: beta, useTreeBasedRoutingTable: useTreeBasedTable, useNewLookup: useNewLookup);
         Random rand = new Random(0);
         ValueHash256 mainNodeHash = RandomKeccak(rand);
         Kademlia<TestNode, ValueHash256, ValueHash256> mainNode = fabric.CreateNode(mainNodeHash);
@@ -158,7 +160,7 @@ public class KademliaSimulation
         }
     }
 
-    private class TestFabric(int kSize = 20, int alpha = 3, bool useNewLookup = true)
+    private class TestFabric(int kSize = 20, int alpha = 3, int beta = 0, bool useTreeBasedRoutingTable = true, bool useNewLookup = true)
     {
         internal long PingCount = 0;
         internal long FindValueCount = 0;
@@ -185,11 +187,16 @@ public class KademliaSimulation
                 new OnlySelfIStore(nodeID),
                 new SenderForNode(nodeIDTestNode, this),
                 new TestLogManager(LogLevel.Error),
-                nodeIDTestNode,
-                kSize,
-                alpha,
-                System.TimeSpan.FromHours(1),
-                useNewLookup: useNewLookup
+                new KademliaConfig<TestNode>()
+                {
+                    CurrentNodeId = nodeIDTestNode,
+                    KSize = kSize,
+                    Alpha = alpha,
+                    Beta = beta,
+                    RefreshInterval = TimeSpan.FromHours(1),
+                    UseTreeBasedRoutingTable = useTreeBasedRoutingTable,
+                    UseNewLookup = useNewLookup
+                }
             );
 
             _nodes[nodeID] = kad;
