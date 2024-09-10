@@ -26,10 +26,10 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
     {
         return item.NodeType switch
         {
-            TreeNodes.VerkleNodeType.BranchNode => 1 + 66, // NodeType + InternalCommitment
-            TreeNodes.VerkleNodeType.StemNode => 1 + 32 + 66
-                                                 + (item.C1 == null ? 1 : 66)
-                                                 + (item.C2 == null ? 1 : 66), // NodeType + Stem + InternalCommitment + C1? + C2?
+            VerkleNodeType.BranchNode => 1 + 66, // NodeType + InternalCommitment
+            VerkleNodeType.StemNode => 1 + 32 + 66
+                                       + (item.C1 == null ? 1 : 66)
+                                       + (item.C2 == null ? 1 : 66), // NodeType + Stem + InternalCommitment + C1? + C2?
             _ => throw new ArgumentOutOfRangeException()
         };
     }
@@ -39,11 +39,11 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
         var nodeType = (VerkleNodeType)rlpStream.ReadByte();
         switch (nodeType)
         {
-            case TreeNodes.VerkleNodeType.BranchNode:
-                InternalNode node = new(TreeNodes.VerkleNodeType.BranchNode);
+            case VerkleNodeType.BranchNode:
+                InternalNode node = new(VerkleNodeType.BranchNode);
                 node.UpdateCommitment(Banderwagon.FromBytesUncompressedUnchecked(rlpStream.DecodeByteArray(), isBigEndian: false));
                 return node;
-            case TreeNodes.VerkleNodeType.StemNode:
+            case VerkleNodeType.StemNode:
                 var stem = rlpStream.DecodeByteArray();
 
                 var c1Ser = rlpStream.DecodeByteArray();
@@ -58,7 +58,7 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
 
                 Commitment extCommit =
                     new(Banderwagon.FromBytesUncompressedUnchecked(rlpStream.DecodeByteArray(), isBigEndian: false));
-                return new InternalNode(TreeNodes.VerkleNodeType.StemNode, stem, c1, c2, extCommit);
+                return new InternalNode(VerkleNodeType.StemNode, stem, c1, c2, extCommit);
             default:
                 throw new ArgumentOutOfRangeException();
         }
@@ -68,12 +68,12 @@ public class InternalNodeSerializer : IRlpStreamDecoder<InternalNode>, IRlpObjec
     {
         switch (item.NodeType)
         {
-            case TreeNodes.VerkleNodeType.BranchNode:
-                stream.WriteByte((byte)TreeNodes.VerkleNodeType.BranchNode);
+            case VerkleNodeType.BranchNode:
+                stream.WriteByte((byte)VerkleNodeType.BranchNode);
                 stream.Encode(item.InternalCommitment.Point.ToBytesUncompressedLittleEndian());
                 break;
-            case TreeNodes.VerkleNodeType.StemNode:
-                stream.WriteByte((byte)TreeNodes.VerkleNodeType.StemNode);
+            case VerkleNodeType.StemNode:
+                stream.WriteByte((byte)VerkleNodeType.StemNode);
                 stream.Encode(item.Stem!.Bytes);
                 if (item.C1 is not null) stream.Encode(item.C1.Point.ToBytesUncompressedLittleEndian());
                 else stream.EncodeEmptyByteArray();
