@@ -14,9 +14,10 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private Dictionary<ulong, ulong> _topNMap;
 
         private CMSketch _sketch;
-        public readonly double sketchResetError;
+        public double sketchResetError;
         private CMSketch[] _sketchBuffer;
-        private int _sketchBufferPos = -1;
+        private int _sketchBufferPos = 0;
+        private int _currentSketch = 0;
 
         private int _topN;
         private NGrams _ngrams = new NGrams(NGrams.NULL);
@@ -35,6 +36,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             _sketch = sketch;
             this.sketchResetError = sketchResetError;
             _sketchBuffer = new CMSketch[sketchBufferSize];
+            _sketchBuffer[0] = sketch;
             topNQueue = new PriorityQueue<ulong, ulong>(_topN);
             _topNMap = new Dictionary<ulong, ulong>(capacity);
             _capacity = capacity;
@@ -43,10 +45,17 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         private void ResetSketchAtError()
         {
-            if (_max > _minSupport && _sketchBufferPos < (_sketchBuffer.Length - 1) && ((_sketch.errorPerItem / (double)_max) >= sketchResetError))
+            if (_max > _minSupport && ((_sketch.errorPerItem / (double)_max) >= sketchResetError))
             {
-                ++_sketchBufferPos;
-                _sketchBuffer[_sketchBufferPos] = _sketch.Reset();
+                if (_sketchBufferPos < (_sketchBuffer.Length - 1))
+                {
+                     ++_sketchBufferPos;
+                    _sketchBuffer[_sketchBufferPos] = _sketch.Reset();
+                } else {
+                    // buffer is full we reuse sketches
+                    _currentSketch = (_currentSketch + 1) % _sketchBuffer.Length;
+                    sketchResetError *= 2; // double the error
+                }
             }
         }
 
@@ -68,7 +77,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         private void ProcessNGram(ulong ngram)
         {
-            _sketch.Update(ngram);
+            _sketchBuffer[_currentSketch].Update(ngram);
             var count = QueryAllSketches(ngram);
             if (count < _minSupport) return;
             _topNMap.Add(ngram, count);
@@ -76,7 +85,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         private ulong QueryAllSketches(ulong ngram)
         {
-            var count = _sketch.Query(ngram);
+            var count = 0UL;
             for (int i = 0; i <= _sketchBufferPos; i++)
                 count += _sketchBuffer[i].Query(ngram);
             return count;
