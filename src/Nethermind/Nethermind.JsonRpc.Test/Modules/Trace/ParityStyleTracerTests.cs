@@ -60,10 +60,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             _dbProvider = await TestMemDbProvider.InitAsync();
             ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-            WorldState stateProvider = new(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
             _stateReader = new StateReader(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
 
-            var worldStateProvider = new WorldStateProvider(stateProvider, trieStore, _dbProvider, LimboLogs.Instance);
+            var worldStateProvider = new WorldStateProvider(trieStore, _dbProvider, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();

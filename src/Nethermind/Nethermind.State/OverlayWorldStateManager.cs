@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -35,11 +34,7 @@ public class OverlayWorldStateManager : IWorldStateManager
 
     public IWorldStateProvider CreateResettableWorldStateProvider()
     {
-        ITrieStore preCachedTrieStore = Caches is null
-            ? _overlayTrieStore
-            : new PreCachedTrieStore(_overlayTrieStore, Caches.RlpCache);
-
-        return new WorldStateProvider(preCachedTrieStore, _overlayTrieStore, _dbProvider, _logManager);
+        return new WorldStateProvider(_overlayTrieStore, _dbProvider, _logManager, Caches);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

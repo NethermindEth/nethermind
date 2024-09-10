@@ -52,11 +52,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
-            WorldState stateProvider = new(
-                trieStore,
-                dbProvider.RegisteredDbs[DbNames.Code],
-                LimboLogs.Instance);
-            var worldStateProvider = new WorldStateProvider(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
 
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, LimboLogs.Instance);

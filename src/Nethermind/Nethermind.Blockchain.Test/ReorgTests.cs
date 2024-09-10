@@ -36,9 +36,9 @@ public class ReorgTests
     {
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-        WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-        StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-        var worldStateProvider = new WorldStateProvider(stateProvider, trieStore, memDbProvider, LimboLogs.Instance);
+        var worldStateProvider = new WorldStateProvider(trieStore, memDbProvider, LimboLogs.Instance);
+        IWorldState stateProvider = worldStateProvider.GetWorldState();
+        IStateReader stateReader = worldStateProvider.GetGlobalStateReader();
 
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ecdsa = new(1);

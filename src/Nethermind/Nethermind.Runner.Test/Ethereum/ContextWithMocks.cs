@@ -124,7 +124,7 @@ namespace Nethermind.Runner.Test.Ethereum
 
             var worldStateProvider = new ReadOnlyWorldStateProvider(api.DbProvider,
                 Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            api.WorldStateManager = new ReadOnlyWorldStateManager(worldStateProvider, api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }

@@ -89,14 +89,13 @@ namespace Nethermind.Clique.Test
                 ISpecProvider specProvider = GoerliSpecProvider.Instance;
 
                 var trieStore = new TrieStore(dbProvider.StateDb, nodeLogManager);
-                StateReader stateReader = new(trieStore, dbProvider.CodeDb, nodeLogManager);
-                WorldState stateProvider = new(trieStore, dbProvider.CodeDb, nodeLogManager);
+                var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+                IStateReader stateReader = worldStateProvider.GetGlobalStateReader();
+                IWorldState stateProvider = worldStateProvider.GetWorldState();
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
-                var worldStateProvider =
-                    new WorldStateProvider(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
 
                 BlockTree blockTree = Build.A.BlockTree()
                     .WithSpecProvider(goerliSpecProvider)
@@ -148,9 +147,7 @@ namespace Nethermind.Clique.Test
 
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
-                WorldState minerStateProvider = new(minerTrieStore, dbProvider.CodeDb, nodeLogManager);
-                var minerWorldStateProvider =
-                    new WorldStateProvider(minerStateProvider, minerTrieStore, dbProvider, LimboLogs.Instance);
+                var minerWorldStateProvider = new WorldStateProvider(minerTrieStore, dbProvider, LimboLogs.Instance);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 

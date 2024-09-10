@@ -29,6 +29,19 @@ public class WorldStateProvider : ReadOnlyWorldStateProvider
             populatePreBlockCache: false);
     }
 
+    public WorldStateProvider(
+        ITrieStore trieStore,
+        IDbProvider dbProvider,
+        ILogManager logManager,
+        PreBlockCaches? preBlockCaches = null) : this(
+        preBlockCaches is null ? trieStore : new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache),
+        trieStore,
+        dbProvider,
+        logManager,
+        preBlockCaches)
+    {
+    }
+
     public override IWorldState GetGlobalWorldState(BlockHeader header)
     {
         // TODO: return corresponding worldState depending on header
