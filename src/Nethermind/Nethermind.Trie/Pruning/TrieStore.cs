@@ -929,7 +929,7 @@ namespace Nethermind.Trie.Pruning
             pruneAndRecalculateAction.Completion.Wait();
             trackNodesAction?.Completion.Wait();
 
-            if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory + _persistedLastSeen.Count * 48;
+            if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory + (_persistedLastSeen?.Count ?? 0) * 48;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
 
             stopwatch.Stop();
