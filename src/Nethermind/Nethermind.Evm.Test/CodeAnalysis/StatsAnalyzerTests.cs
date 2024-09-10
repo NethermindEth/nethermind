@@ -13,136 +13,117 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [TestFixture]
     public class StatsAnalyzerTests
     {
-        public static IEnumerable<TestCaseData> NgramTestCases
-        {
-            get
-            {
-                yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.ADD },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1)
-                        })
-                    .SetName("TwoInstructionsTest");
-                yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1)
-                        })
-                    .SetName("ThreeInstructionsTest");
-                yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }, 1)
-                        })
-                    .SetName("FourInstructionsTest");
-                yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] {  Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV}, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        })
-                    .SetName("FiveInstructionsTest");
-                yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] {  Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV}, 1),
-                        (new Instruction[] {  Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB}, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        })
-                    .SetName("SixInstructionsTest");
-                yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] {  Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] {  Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV}, 1),
-                        (new Instruction[] {  Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB}, 1),
-                        (new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT}, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        })
-                    .SetName("SevenInstructionsTest");
-                yield return new TestCaseData(new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT, Instruction.EQ },
-                        new (Instruction[], int)[] {
-                        (new Instruction[] { Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] {  Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] {  Instruction.NOT, Instruction.EQ }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] {  Instruction.SUB, Instruction.NOT, Instruction.EQ }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL }, 1),
-                        (new Instruction[] {  Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV}, 1),
-                        (new Instruction[] {  Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB}, 1),
-                        (new Instruction[] {  Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT}, 1),
-                        (new Instruction[] {  Instruction.DIV, Instruction.SUB, Instruction.NOT, Instruction.EQ}, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT, Instruction.EQ }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT, Instruction.EQ }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT }, 1),
-                        (new Instruction[] { Instruction.POP, Instruction.ADD, Instruction.MUL, Instruction.DIV, Instruction.SUB, Instruction.NOT, Instruction.EQ }, 1),
-                        })
-                    .SetName("EightInstructionsTest");
-            }
-        }
 
-        public static ulong AsNGram(Instruction[] instructions)
+        public static (List<Instruction>, Dictionary<ulong,ulong>) RandNGrams(int qty, bool resets, int maxRepetitions)
         {
-            ulong ngram = 0;
 
-            for (int i = 0; i < instructions.Length; i++)
+            List<Instruction>  instructionBuffer = new List<Instruction>();
+            Dictionary<ulong, ulong> parts = new Dictionary<ulong, ulong>();
+            Action<ulong> countNGrams = (ulong _ngram) =>
+                                         {
+                                             if (parts.ContainsKey(_ngram))
+                                             {
+                                                 parts[_ngram] += 1;
+                                             } else
+                                             {
+                                                 parts[_ngram] = 1;
+                                             }
+                                         };
+
+            Random random = new Random();
+            int randomNgramSize;
+            for (int totalNgrams = 0; totalNgrams < qty; totalNgrams++)
             {
-                ngram = (ngram << 8) | (byte)instructions[i];
+                randomNgramSize = random.Next(2, 7);
+                Instruction[] ngram = new Instruction[randomNgramSize];
+                for (int i=0; i<randomNgramSize; i++)
+                {
+                    ngram[i] = RandInsruction();
+                }
+
+                var repetitions = random.Next(1,maxRepetitions);
+                for (int j=0; j<repetitions; j++)
+                {
+                    for (int i=0; i<randomNgramSize; i++)
+                    {
+                        instructionBuffer.Add(ngram[i]);
+                    }
+                }
+                if (resets) instructionBuffer.Add(NGrams.RESET);
             }
 
-            return ngram;
+            NGrams ngrams = new NGrams();
+            ngrams = NGrams.ProcessInstructions(instructionBuffer, ngrams, countNGrams);
+            return  (instructionBuffer, parts);
         }
 
+        public void validate_top_n(int patternQty, int maxRepetitionsPerPattern)
+        {
+            (List<Instruction> instructionBuffer, Dictionary<ulong, ulong> observedCounts) =  RandNGrams(patternQty, false, maxRepetitionsPerPattern);
+            Dictionary<ulong, HashSet<ulong>> countToSequences = new Dictionary<ulong, HashSet<ulong>>();
+            StatsAnalyzer statsAnalyzer = new StatsAnalyzer(patternQty, 600000, 30, 100000, 1);
+            foreach (var kvp in observedCounts)
+            {
+                ulong seq = kvp.Key;
+                ulong count = kvp.Value;
+
+                if (!countToSequences.ContainsKey(count))
+                {
+                    countToSequences[count] = new HashSet<ulong>();
+                }
+                countToSequences[count].Add(seq);
+            }
+
+            List<ulong> sortedCounts = countToSequences.Keys.OrderByDescending(c => c).ToList();
+            Dictionary<ulong, HashSet<ulong>> topNExpected = new Dictionary<ulong, HashSet<ulong>>();
+
+            int remainingItems = patternQty;
+            ulong minCount = 0;
+
+            foreach (var count in sortedCounts)
+            {
+                if (remainingItems < 0) break;
+                topNExpected[count] = countToSequences[count];
+                remainingItems -= countToSequences[count].Count;
+                minCount = count;
+
+            }
+
+            statsAnalyzer.Add(instructionBuffer);
+
+            Assert.That(statsAnalyzer.topNQueue.Count == patternQty);
+            while (statsAnalyzer.topNQueue.TryDequeue(out ulong ngram, out ulong queueCount))
+            {
+                topNExpected[queueCount].Remove(ngram);
+                if (topNExpected[queueCount].Count == 0)
+                {
+                    topNExpected.Remove(queueCount);
+                }
+            }
+
+            Assert.That(topNExpected.Count <= 1);
+
+            if (topNExpected.Count == 1)
+                Assert.That(topNExpected.ContainsKey(minCount));
+
+        }
+
+
+        static Instruction  RandInsruction()
+        {
+            Random random = new Random();
+            byte randomByte = 0;
+            string str = "1";
+            while (char.IsDigit(str[0]) || str == "STOP" || str == "INVALID" || str == "NUMBER")
+            {
+                randomByte = (byte)random.Next(0, 256);
+                str = ((Instruction)randomByte).ToString();
+            }
+            return (Instruction)randomByte;
+        }
+
+
+        private static IEnumerable<TestCaseData> NgramTestCases = NGramsTests.NgramTestCases;
         [Test, TestCaseSource(nameof(NgramTestCases))]
         public void validate_ngram_generation_exhaustive(Instruction[] transaction, (Instruction[] ngram, int count)[] ngrams)
         {
@@ -180,7 +161,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     $"{counts.Count} ngrams were missing in the TopN Queue");
 
         }
-
 
     }
 }
