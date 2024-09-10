@@ -118,7 +118,10 @@ internal class Eof1 : IEofVersionHandler
                                         + MINIMUM_CODESECTION_SIZE // minimum code section body size
                                         + MINIMUM_DATASECTION_SIZE; // minimum data section body size
 
-    public bool TryParseEofHeader(ReadOnlyMemory<byte> containerMemory, out EofHeader? header)
+    // EIP-3540 ties this to MAX_INIT_CODE_SIZE from EIP-3860, but we need a constant here
+    internal const ushort MAXIMUM_SIZE = 0xc000;
+
+    public bool TryParseEofHeader(ReadOnlyMemory<byte> containerMemory, ValidationStrategy validationStrategy, out EofHeader? header)
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static ushort GetUInt16(ReadOnlySpan<byte> container, int offset) =>
@@ -131,6 +134,11 @@ internal class Eof1 : IEofVersionHandler
         if (container.Length < MINIMUM_SIZE)
         {
             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+        if (container.Length > MAXIMUM_SIZE)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is larger than allowed maximum size of {MAXIMUM_SIZE}");
             return false;
         }
 
@@ -159,6 +167,12 @@ internal class Eof1 : IEofVersionHandler
             switch (separator)
             {
                 case Separator.KIND_TYPE:
+                    if (sectionSizes.TypeSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple type sections");
+                        return false;
+                    }
+
                     if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
@@ -175,6 +189,12 @@ internal class Eof1 : IEofVersionHandler
                     pos += EofValidator.TWO_BYTE_LENGTH;
                     break;
                 case Separator.KIND_CODE:
+                    if (sectionSizes.CodeSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple code sections");
+                        return false;
+                    }
+
                     if (sectionSizes.TypeSectionSize is null)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
@@ -220,9 +240,21 @@ internal class Eof1 : IEofVersionHandler
                     pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfCodeSections;
                     break;
                 case Separator.KIND_CONTAINER:
+                    if (sectionSizes.ContainerSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple container sections");
+                        return false;
+                    }
+
                     if (sectionSizes.CodeSectionSize is null)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
+                        return false;
+                    }
+
+                    if (sectionSizes.DataSectionSize is not null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container section is out of order");
                         return false;
                     }
 
@@ -265,6 +297,12 @@ internal class Eof1 : IEofVersionHandler
                     pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfContainerSections;
                     break;
                 case Separator.KIND_DATA:
+                    if (sectionSizes.DataSectionSize != null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple data sections");
+                        return false;
+                    }
+
                     if (sectionSizes.CodeSectionSize is null)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
@@ -308,6 +346,18 @@ internal class Eof1 : IEofVersionHandler
             : new CompoundSectionHeader(codeSectionSubHeader.EndOffset, containerSections);
         var dataSectionSubHeader = new SectionHeader(containerSectionSubHeader?.EndOffset ?? codeSectionSubHeader.EndOffset, sectionSizes.DataSectionSize.Value);
 
+        if (dataSectionSubHeader.EndOffset < containerMemory.Length)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Extra data after end of container, starting at {dataSectionSubHeader.EndOffset}");
+            return false;
+        }
+        if ((validationStrategy.HasFlag(ValidationStrategy.Validate) && !validationStrategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
+            && dataSectionSubHeader.EndOffset > container.Length)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container has truncated data where full data is required");
+            return false;
+        }
+
         header = new EofHeader
         {
             Version = VERSION,
@@ -322,7 +372,7 @@ internal class Eof1 : IEofVersionHandler
 
     public bool TryGetEofContainer(ReadOnlyMemory<byte> code, ValidationStrategy validationStrategy, [NotNullWhen(true)] out EofContainer? eofContainer)
     {
-        if (!TryParseEofHeader(code, out EofHeader? header))
+        if (!TryParseEofHeader(code, validationStrategy, out EofHeader? header))
         {
             eofContainer = null;
             return false;
@@ -373,7 +423,7 @@ internal class Eof1 : IEofVersionHandler
                         continue;
 
                     ReadOnlyMemory<byte> subsection = targetContainer.ContainerSections[worklet.Index - 1];
-                    if (!TryParseEofHeader(subsection, out EofHeader? header) ||
+                    if (!TryParseEofHeader(subsection, validationStrategy, out EofHeader? header) ||
                         !ValidateBody(subsection.Span, header.Value, validationStrategy))
                     {
                         return false;
@@ -553,6 +603,12 @@ internal class Eof1 : IEofVersionHandler
     {
         ReadOnlySpan<byte> code = eofContainer.CodeSections[sectionId].Span;
 
+        if (code.Length < 1)
+        {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection {sectionId} is too short to be valid");
+            return false;
+        }
+
         var length = code.Length / BYTE_BIT_COUNT + 1;
         byte[] codeBitmapArray = ArrayPool<byte>.Shared.Rent(length);
         byte[] jumpDestsArray = ArrayPool<byte>.Shared.Rent(length);
@@ -570,9 +626,10 @@ internal class Eof1 : IEofVersionHandler
             var isCurrentSectionNonReturning = currentTypesection[OUTPUTS_OFFSET] == 0x80;
 
             int pos;
+            Instruction opcode = Instruction.STOP;
             for (pos = 0; pos < code.Length;)
             {
-                var opcode = (Instruction)code[pos];
+                opcode = (Instruction)code[pos];
                 var postInstructionByte = pos + 1;
 
                 if (opcode is Instruction.RETURN or Instruction.STOP)
@@ -810,7 +867,6 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     var initcodeSectionId = code[postInstructionByte];
-                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
                     if (eofContainer.Header.ContainerSections is null || initcodeSectionId >= eofContainer.Header.ContainerSections?.Count)
                     {
@@ -846,6 +902,12 @@ internal class Eof1 : IEofVersionHandler
             if (pos > code.Length)
             {
                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
+                return false;
+            }
+
+            if (!opcode.IsTerminating())
+            {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code section {sectionId} ends with a non-terminating opcode");
                 return false;
             }
 
@@ -1019,7 +1081,14 @@ internal class Eof1 : IEofVersionHandler
                 if (opcode.IsTerminating())
                 {
                     if (programCounter < code.Length)
+                    {
+                        if (recordedStackHeight[programCounter].Max < 0)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, opcode not forward referenced, section {sectionId} pc {programCounter}");
+                            return false;
+                        }
                         currentStackBounds = recordedStackHeight[programCounter];
+                    }
                 }
                 else
                 {

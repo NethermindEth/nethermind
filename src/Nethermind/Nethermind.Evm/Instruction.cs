@@ -195,7 +195,7 @@ namespace Nethermind.Evm
         EXCHANGE = 0xe8, // random value opcode spec has collision
         RETURNDATALOAD = 0xf7,
 
-        // opcode value not spec-ed 
+        // opcode value not spec-ed
         EXTCALL = 0xf8,
         EXTDELEGATECALL = 0xf9, // DelegateCallEnabled
         EXTSTATICCALL = 0xfb, // StaticCallEnabled
@@ -240,6 +240,7 @@ namespace Nethermind.Evm
                 Instruction.CALL => !IsEofContext,
                 Instruction.CALLCODE => !IsEofContext,
                 Instruction.DELEGATECALL => !IsEofContext,
+                Instruction.STATICCALL => !IsEofContext,
                 Instruction.SELFDESTRUCT => !IsEofContext,
                 Instruction.JUMP => !IsEofContext,
                 Instruction.JUMPI => !IsEofContext,
@@ -255,7 +256,7 @@ namespace Nethermind.Evm
             };
         }
 
-        //Note() : Extensively test this, refactor it, 
+        //Note() : Extensively test this, refactor it,
         public static (ushort? InputCount, ushort? OutputCount, ushort? immediates) StackRequirements(this Instruction instruction) => instruction switch
         {
             Instruction.STOP => (0, 0, 0),
