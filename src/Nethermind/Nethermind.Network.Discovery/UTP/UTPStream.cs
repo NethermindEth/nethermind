@@ -61,9 +61,7 @@ public partial class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManag
                 break;
 
             case UTPPacketType.StData:
-                OnStData(packetHeader, data);
-
-                break;
+                return OnStData(packetHeader, data, token);
 
             case UTPPacketType.StReset:
                 _state = ConnectionState.CsEnded;

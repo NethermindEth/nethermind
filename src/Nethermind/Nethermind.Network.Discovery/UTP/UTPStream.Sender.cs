@@ -170,11 +170,10 @@ public partial class UTPStream
                 }
             }
 
-            // The ackNumber+1 is always unacked when SelectiveAck is set.
-            // 0 here then refers to ack+2
-            if (UTPUtil.IsLess((ushort)(lastPacketFromPeer.AckNumber + 1), curUnackedWindowHead.Value.Header.SeqNumber)) throw new Exception("haha! I mess up!");
-            if (ackedAfterCumul[0] >= 3)
+            if (UTPUtil.WrappedAddOne(lastPacketFromPeer.AckNumber) == curUnackedWindowHead.Value.Header.SeqNumber)
             {
+                // The ackNumber+1 is always unacked when SelectiveAck is set.
+                // 0 here then refers to ack+2
                 MaybeRetransmit(curUnackedWindowHead.Value, ackedAfterCumul[0]);
             }
 
@@ -183,7 +182,11 @@ public partial class UTPStream
             {
                 ushort seqNum = (ushort)(lastPacketFromPeer.AckNumber + 2 + i);
 
-                if (UTPUtil.IsLess(seqNum, curUnackedWindowHead.Value.Header.SeqNumber)) continue;
+                if (UTPUtil.IsLess(seqNum, curUnackedWindowHead.Value.Header.SeqNumber))
+                {
+                    // This seq number is less. It could be that it was acked before.
+                    continue;
+                }
 
                 Debug.Assert(curUnackedWindowHead.Value.Header.SeqNumber == seqNum);
 

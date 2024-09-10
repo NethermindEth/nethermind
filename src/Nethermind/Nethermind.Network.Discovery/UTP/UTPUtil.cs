@@ -27,11 +27,15 @@ public class UTPUtil
     }
 
     public static byte[]? CompileSelectiveAckBitset(ushort curAck, ConcurrentDictionary<ushort, ArraySegment<byte>?> receiveBuffer) {
-        byte[] selectiveAck;
+        if (receiveBuffer.Count == 0)
+        {
+            return null;
+        }
+
         // Fixed 64 bit.
         // TODO: use long
         // TODO: no need to encode trailing zeros
-        selectiveAck = new byte[8];
+        byte[] selectiveAck = new byte[8];
 
         // Shortcut the loop if all buffer was iterated
         int counted = 0;

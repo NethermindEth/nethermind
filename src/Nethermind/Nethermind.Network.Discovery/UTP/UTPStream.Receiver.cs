@@ -15,57 +15,88 @@ public partial class UTPStream
 
     private TaskCompletionSource _dataTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    // Used to send data directly to stream without buffering in case where the data came in order.
+    private Stream? _directOutput = null;
+
     public async Task ReadStream(Stream output, CancellationToken token)
     {
+        Interlocked.Exchange(ref _directOutput, output);
+
         bool finished = false;
         while (!finished && _state != ConnectionState.CsEnded)
         {
             if (_logger.IsTrace) _logger.Trace($"R loop.");
             token.ThrowIfCancellationRequested();
 
-            ushort curAck = _receiverAck_nr.seq_nr;
-            long packetIngested = 0;
-
-            while (_receiveBuffer.TryRemove(UTPUtil.WrappedAddOne(curAck), out ArraySegment<byte>? packetData))
+            // Could be direct to output path is being used.
+            Stream? outputTaken = Interlocked.Exchange(ref _directOutput, null);
+            if (outputTaken != null)
             {
-                curAck++;
-                if (_logger.IsTrace) _logger.Trace($"R ingest {curAck}");
-
-                if (packetData == null)
+                finished = await IngestLoop(outputTaken, token);
+                if (finished)
                 {
-                    // Its unclear if this is a bidirectional stream should the sending get aborted also or not.
-                    finished = true;
-                    output.Close();
                     break;
                 }
 
-                // Periodically send out ack.
-                packetIngested++;
-                if (packetIngested > 4)
-                {
-                    _receiverAck_nr = new AckInfo(curAck, null);
-                    await SendStatePacket(token);
-                    packetIngested = 0;
-                }
-
-                await output.WriteAsync(packetData.Value, token);
-                Interlocked.Add(ref _incomingBufferSize, -packetData.Value.Count);
-
-                _arrayPool.Return(packetData.Value.Array!);
+                Interlocked.Exchange(ref _directOutput, outputTaken);
             }
-
-            // Assembling ack.
-            byte[]? selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
-
-            _receiverAck_nr = new AckInfo(curAck, selectiveAck);
-            if (_logger.IsTrace) _logger.Trace($"R ack set to {curAck}. Bufsixe is {_receiveBuffer.Count()}");
-
-            await SendStatePacket(token);
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"R output taken");
+            }
 
             if (_logger.IsTrace) _logger.Trace($"R wait");
             await Task.WhenAny(_dataTcs.Task, Task.Delay(100, token));
             _dataTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+    }
+
+    private async Task<bool> IngestLoop(Stream output, CancellationToken token)
+    {
+        ushort curAck = _receiverAck_nr.seq_nr;
+        long packetIngested = 0;
+        bool finished = false;
+
+        while (_receiveBuffer.TryRemove(UTPUtil.WrappedAddOne(curAck), out ArraySegment<byte>? packetData))
+        {
+            curAck++;
+            if (_logger.IsTrace) _logger.Trace($"R ingest {curAck}");
+
+            if (packetData == null)
+            {
+                if (_logger.IsTrace) _logger.Trace($"R final packet found {curAck}");
+
+                // Its unclear if this is a bidirectional stream should the sending get aborted also or not.
+                output.Close();
+
+                finished = true;
+                break;
+            }
+
+            // Periodically send out ack.
+            packetIngested++;
+            if (packetIngested > 4)
+            {
+                _receiverAck_nr = new AckInfo(curAck, null);
+                await SendStatePacket(token);
+                packetIngested = 0;
+            }
+
+            await output.WriteAsync(packetData.Value, token);
+            Interlocked.Add(ref _incomingBufferSize, -packetData.Value.Count);
+
+            _arrayPool.Return(packetData.Value.Array!);
+        }
+
+        // Assembling ack.
+        byte[]? selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
+
+        _receiverAck_nr = new AckInfo(curAck, selectiveAck);
+        if (_logger.IsTrace) _logger.Trace($"R ack set to {curAck}. Bufsixe is {_receiveBuffer.Count()}");
+
+        await SendStatePacket(token);
+
+        return finished;
     }
 
     private bool ShouldHandlePacket(UTPPacketHeader meta, ReadOnlySpan<byte> data)
@@ -127,20 +158,76 @@ public partial class UTPStream
         return true;
     }
 
-    private void OnStData(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data)
+    private Task OnStData(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
     {
         if (ShouldHandlePacket(packetHeader, data))
         {
-            // TODO: Fast path without going to receive buffer?
+            if (_incomingBufferSize == 0 && UTPUtil.WrappedAddOne(_receiverAck_nr.seq_nr) == packetHeader.SeqNumber)
+            {
+                // Directly send the data to stream without buffering
+                bool wasWritten = false;
+                wasWritten = SendDataToOutputDirectly(packetHeader, data, wasWritten);
+
+                if (wasWritten)
+                {
+                    if (_receiveBuffer.ContainsKey((ushort)(packetHeader.SeqNumber + 1)))
+                    {
+                        _dataTcs.TrySetResult();
+
+                        return Task.CompletedTask;
+                    }
+                    else
+                    {
+                        return SendStatePacket(token);
+                    }
+                }
+            }
+
             Interlocked.Add(ref _incomingBufferSize, data.Length);
 
             ArraySegment<byte> buffer = _arrayPool.Rent(data.Length);
             ArraySegment<byte> segment = buffer[..data.Length];
             data.CopyTo(segment);
 
-            _receiveBuffer[packetHeader.SeqNumber] = segment;
-            _dataTcs.TrySetResult();
+            if (_receiveBuffer.TryAdd(packetHeader.SeqNumber, segment))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Receive buffer set {packetHeader.SeqNumber}");
+
+                _dataTcs.TrySetResult();
+            }
+            else
+            {
+                _arrayPool.Return(segment.Array!);
+            }
         }
+
+        return Task.CompletedTask;
+    }
+
+    private bool SendDataToOutputDirectly(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, bool wasWritten)
+    {
+        Stream? outputTaken = Interlocked.Exchange(ref _directOutput, null);
+        if (outputTaken == null) return wasWritten;
+
+        ushort curAck = _receiverAck_nr.seq_nr;
+        if (UTPUtil.WrappedAddOne(curAck) == packetHeader.SeqNumber) // Check again
+        {
+            outputTaken.Write(data);
+            wasWritten = true;
+
+            if (_receiveBuffer.TryRemove(packetHeader.SeqNumber, out _))
+            {
+                _logger.Trace($"Seq number {packetHeader.SeqNumber} was in receive buffer");
+            }
+
+            curAck++;
+            byte[]? selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
+            _receiverAck_nr = new AckInfo(curAck, selectiveAck);
+            if (_logger.IsTrace) _logger.Trace($"R ack set to {curAck} in direct write.");
+        }
+
+        Interlocked.Exchange(ref _directOutput, outputTaken);
+        return wasWritten;
     }
 
     private void OnStFin(UTPPacketHeader packetHeader, CancellationToken token)
