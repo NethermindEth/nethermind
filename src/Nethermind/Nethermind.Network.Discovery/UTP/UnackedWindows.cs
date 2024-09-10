@@ -7,7 +7,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery;
 
-public class UnackedWindows (ILogger logger) {
+public class UnackedWindows(ILogger logger)
+{
     private long _inflightData = 0;
     private LinkedList<UnackedItem> unackedWindow = new LinkedList<UnackedItem>();
 

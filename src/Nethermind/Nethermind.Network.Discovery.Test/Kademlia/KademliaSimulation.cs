@@ -145,7 +145,7 @@ public class KademliaSimulation
         }
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<TestNode, ValueHash256>
+    private class ValueHashNodeHashProvider : INodeHashProvider<TestNode, ValueHash256>
     {
         public ValueHash256 GetHash(TestNode node)
         {

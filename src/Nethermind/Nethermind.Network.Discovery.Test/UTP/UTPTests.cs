@@ -240,7 +240,7 @@ public class UTPTests
                 if (baseDelayMs != 0)
                     await Task.Delay(baseDelayMs, token);
                 if (randomDelayMs != 0)
-                    await Task.Delay( _random.Next() % randomDelayMs, token);
+                    await Task.Delay(_random.Next() % randomDelayMs, token);
 
                 if (_logger.IsTrace) _logger.Trace($"T Send {meta}");
                 bool lockTaken = false;

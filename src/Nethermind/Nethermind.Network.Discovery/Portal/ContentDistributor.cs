@@ -32,7 +32,8 @@ public class ContentDistributor : IContentDistributor
         ContentNetworkConfig config,
         ITalkReqTransport transport,
         IUtpManager utpManager
-    ) {
+    )
+    {
         _kad = kad;
         _config = config;
         _enrProvider = enrProvider;
@@ -129,7 +130,7 @@ public class ContentDistributor : IContentDistributor
         {
             Offer = new Offer()
             {
-                ContentKeys = [contentKey]
+                ContentKeys = [new ContentKey { Data = contentKey }]
             }
         });
 

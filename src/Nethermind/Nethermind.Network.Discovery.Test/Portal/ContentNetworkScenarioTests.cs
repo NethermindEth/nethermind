@@ -239,11 +239,11 @@ public class ContentNetworkScenarioTests
             return new TestTalkReqSender(newNodeEnr, this);
         }
 
-        private class TestTalkReqSender(IEnr sender, Scenario scenario): IRawTalkReqSender
+        private class TestTalkReqSender(IEnr sender, Scenario scenario) : IRawTalkReqSender
         {
             public Task<TalkReqMessage> SentTalkReq(IEnr receiver, byte[] protocol, byte[] message, CancellationToken token)
             {
-                if(scenario._nodes.TryGetValue(EnrNodeHashProvider.Instance.GetHash(receiver), out Node? receiverNode))
+                if (scenario._nodes.TryGetValue(EnrNodeHashProvider.Instance.GetHash(receiver), out Node? receiverNode))
                 {
                     var talkReq = new TalkReqMessage(protocol, message);
 
@@ -305,7 +305,7 @@ public class ContentNetworkScenarioTests
             IEnr self,
             IIdentityVerifier identityVerifier,
             IEnrFactory enrFactory
-        ): IEnrProvider
+        ) : IEnrProvider
         {
             public IEnr Decode(byte[] enrBytes)
             {

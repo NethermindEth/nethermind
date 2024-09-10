@@ -11,7 +11,7 @@ public class LanternIEnrProvider(
     IDiscv5Protocol discv5,
     IIdentityVerifier identityVerifier,
     IEnrFactory enrFactory
-): IEnrProvider
+) : IEnrProvider
 {
     public IEnr Decode(byte[] enrBytes)
     {

@@ -3,7 +3,7 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
-public class ContentKey: IUnion
+public class ContentKey : IUnion
 {
     [Selector(0)]
     public ValueHash256? HeaderKey { get; set; }

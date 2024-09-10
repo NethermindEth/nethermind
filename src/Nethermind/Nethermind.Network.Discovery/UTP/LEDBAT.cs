@@ -12,7 +12,7 @@ public class LEDBAT
     private const uint MAX_WINDOW_SIZE = 1_000_000;
     private const uint MSS = 500;   //Sender's Maximum Segment Size
     private const uint INIT_CWND = 32;
-    private const uint MIN_CWND   = 32;
+    private const uint MIN_CWND = 32;
     private const uint ALLOWED_INCREASE = 2;
     private const uint GAIN = 1; //Determines the rate at which the cwnd responds to changes in queueing delay.
     private const uint TARGET = 100_000;   //Maximum queueing delay(in microseconds) that LEDBAT itself may introduce in the network.
@@ -44,7 +44,8 @@ public class LEDBAT
         _logger = logManager.GetClassLogger<LEDBAT>();
     }
 
-    public LEDBAT(ILogManager logManager) : this(true, INIT_CWND * MSS, logManager) {
+    public LEDBAT(ILogManager logManager) : this(true, INIT_CWND * MSS, logManager)
+    {
 
     }
 

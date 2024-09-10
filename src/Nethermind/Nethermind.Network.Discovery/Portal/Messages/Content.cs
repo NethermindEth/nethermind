@@ -10,13 +10,13 @@ public class Content
 {
     public ContentType Selector { get; set; }
 
-    public ushort? ConnectionId { get; set; }
+    public ushort ConnectionId { get; set; }
 
     [SszList(64000)] // TODO: Check limit
     public byte[]? Payload { get; set; }
 
     [SszList(64000)] // TODO: Check limit
-    public byte[][]? Enrs { get; set; }
+    public Enr[]? Enrs { get; set; }
 }
 
 public enum ContentType

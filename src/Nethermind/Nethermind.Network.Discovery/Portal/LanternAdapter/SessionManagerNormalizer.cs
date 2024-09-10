@@ -22,7 +22,7 @@ public class SessionManagerNormalizer(
     SessionOptions options,
     IAesCrypto aesCrypto,
     ISessionCrypto sessionCrypto,
-    ILoggerFactory loggerFactory): ISessionManager
+    ILoggerFactory loggerFactory) : ISessionManager
 {
     private ISessionManager _baseImplementation = new SessionManager(options, aesCrypto, sessionCrypto, loggerFactory);
     public ISessionMain? GetSession(byte[] nodeId, IPEndPoint endPoint)

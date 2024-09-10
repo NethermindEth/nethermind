@@ -14,13 +14,15 @@ public static class LEB128
     private const long SIGN_EXTEND_MASK = -1L;
     private const int INT64_BITSIZE = (sizeof(long) * 8);
 
-    public static void WriteLEB128Signed (this Stream stream, long value) => WriteLEB128Signed(stream, value, out _);
+    public static void WriteLEB128Signed(this Stream stream, long value) => WriteLEB128Signed(stream, value, out _);
 
-    public static void WriteLEB128Signed (this Stream stream, long value, out int bytes) {
+    public static void WriteLEB128Signed(this Stream stream, long value, out int bytes)
+    {
         bytes = 0;
         bool more = true;
 
-        while (more) {
+        while (more)
+        {
             byte chunk = (byte)(value & 0x7fL); // extract a 7-bit chunk
             value >>= 7;
 
@@ -33,13 +35,15 @@ public static class LEB128
         };
     }
 
-    public static void WriteLEB128Unsigned (this Stream stream, ulong value) => WriteLEB128Unsigned(stream, value, out _);
+    public static void WriteLEB128Unsigned(this Stream stream, ulong value) => WriteLEB128Unsigned(stream, value, out _);
 
-    public static void WriteLEB128Unsigned (this Stream stream, ulong value, out int bytes) {
+    public static void WriteLEB128Unsigned(this Stream stream, ulong value, out int bytes)
+    {
         bytes = 0;
         bool more = true;
 
-        while (more) {
+        while (more)
+        {
             byte chunk = (byte)(value & 0x7fUL); // extract a 7-bit chunk
             value >>= 7;
 
@@ -51,16 +55,18 @@ public static class LEB128
         };
     }
 
-    public static long ReadLEB128Signed (this Stream stream) => ReadLEB128Signed(stream, out _);
+    public static long ReadLEB128Signed(this Stream stream) => ReadLEB128Signed(stream, out _);
 
-    public static long ReadLEB128Signed (this Stream stream, out int bytes) {
+    public static long ReadLEB128Signed(this Stream stream, out int bytes)
+    {
         bytes = 0;
 
         long value = 0;
         int shift = 0;
         bool more = true, signBitSet = false;
 
-        while(more) {
+        while (more)
+        {
             var next = stream.ReadByte();
             if (next < 0) { throw new InvalidOperationException("Unexpected end of stream"); }
 
@@ -81,16 +87,18 @@ public static class LEB128
         return value;
     }
 
-    public static ulong ReadLEB128Unsigned (this Stream stream) => ReadLEB128Unsigned(stream, out _);
+    public static ulong ReadLEB128Unsigned(this Stream stream) => ReadLEB128Unsigned(stream, out _);
 
-    public static ulong ReadLEB128Unsigned (this Stream stream, out int bytes) {
+    public static ulong ReadLEB128Unsigned(this Stream stream, out int bytes)
+    {
         bytes = 0;
 
         ulong value = 0;
         int shift = 0;
         bool more = true;
 
-        while (more) {
+        while (more)
+        {
             var next = stream.ReadByte();
             if (next < 0) { throw new InvalidOperationException("Unexpected end of stream"); }
 

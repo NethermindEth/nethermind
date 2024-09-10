@@ -75,7 +75,8 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
 
         // TODO: When EOF was obtained from FIN, filter out sequence higher than that.
         _lastReceivedMicrosecond = packageHeader.TimestampMicros;
-        if (_lastPacketHeaderFromPeer == null ||  UTPUtil.IsLessOrEqual(_lastPacketHeaderFromPeer.AckNumber, packageHeader.AckNumber)) {
+        if (_lastPacketHeaderFromPeer == null || UTPUtil.IsLessOrEqual(_lastPacketHeaderFromPeer.AckNumber, packageHeader.AckNumber))
+        {
             _lastPacketHeaderFromPeer = packageHeader;
         }
 
@@ -250,7 +251,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
             if (_lastPacketHeaderFromPeer != null)
             {
                 ulong initialWindowSize = _unackedWindows.GetCurrentUInflightData();
-                ulong ackedBytes = (ulong) _unackedWindows.ProcessAck(_lastPacketHeaderFromPeer, now);
+                ulong ackedBytes = (ulong)_unackedWindows.ProcessAck(_lastPacketHeaderFromPeer, now);
                 _trafficControl.OnAck(ackedBytes, initialWindowSize, _lastPacketHeaderFromPeer.TimestampDeltaMicros, UTPUtil.GetTimestamp());
             }
 
@@ -272,11 +273,14 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
                 byte[] buffer = new byte[PayloadSize];
                 int readLength = await input.ReadAsync(buffer, token);
 
-                if (readLength != 0) {  // Note: We assume ReadAsync will return 0 multiple time.
+                if (readLength != 0)
+                {  // Note: We assume ReadAsync will return 0 multiple time.
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
                     _unackedWindows.trackPacket(buffer.AsMemory()[..readLength], header, UTPUtil.GetTimestamp());
                     _seq_nr++;
-                }else {
+                }
+                else
+                {
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
                     _unackedWindows.trackPacket(Memory<byte>.Empty, header, UTPUtil.GetTimestamp());
                     streamFinished = true;

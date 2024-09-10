@@ -8,5 +8,5 @@ namespace Nethermind.Network.Discovery.Portal.Messages;
 [SszSerializable]
 public class FindContent
 {
-    public byte[] ContentKey { get; set; } = Array.Empty<byte>();
+    public ContentKey ContentKey { get; set; } = null!;
 }

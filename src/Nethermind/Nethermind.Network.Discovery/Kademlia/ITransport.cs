@@ -10,13 +10,13 @@ public interface IPingMessageSender<TNode>
     Task Ping(TNode receiver, CancellationToken token);
 }
 
-public interface IMessageSender<TNode, TContentKey, TContent>: IPingMessageSender<TNode>
+public interface IMessageSender<TNode, TContentKey, TContent> : IPingMessageSender<TNode>
 {
     Task<TNode[]> FindNeighbours(TNode receiver, ValueHash256 hash, CancellationToken token);
     Task<FindValueResponse<TNode, TContent>> FindValue(TNode receiver, TContentKey contentKey, CancellationToken token);
 }
 
-public interface IMessageReceiver<TNode, TContentKey, TContent>: IMessageSender<TNode, TContentKey, TContent>
+public interface IMessageReceiver<TNode, TContentKey, TContent> : IMessageSender<TNode, TContentKey, TContent>
 {
 }
 

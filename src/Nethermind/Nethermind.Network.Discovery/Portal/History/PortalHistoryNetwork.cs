@@ -11,7 +11,7 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
-public class PortalHistoryNetwork: IPortalContentNetwork.Store
+public class PortalHistoryNetwork : IPortalContentNetwork.Store
 {
     private readonly IPortalContentNetwork _contentNetwork;
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
@@ -24,7 +24,8 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
         ILogManager logManager,
         byte[] protocolId,
         IEnr[] bootNodes
-    ) {
+    )
+    {
         _contentNetwork = portalContentNetworkFactory.Create(new ContentNetworkConfig()
         {
             ProtocolId = protocolId,

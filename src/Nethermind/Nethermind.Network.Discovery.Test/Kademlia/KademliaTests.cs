@@ -59,7 +59,7 @@ public class KademliaTests
     }
 
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, ValueHash256>
+    private class ValueHashNodeHashProvider : INodeHashProvider<ValueHash256, ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {

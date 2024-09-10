@@ -247,7 +247,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
-    ) {
+    )
+    {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -418,7 +419,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             using var _ = queueLock.Acquire();
 
             round = Interlocked.Increment(ref currentRound);
-            if (finalResult.Count >= k && round - closestNodeRound >= (_alpha*2))
+            if (finalResult.Count >= k && round - closestNodeRound >= (_alpha * 2))
             {
                 // No closer node for more than or equal to _alpha*2 round.
                 // Assume exit condition
@@ -446,7 +447,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
-    ) {
+    )
+    {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         Func<TNode, Task<(TNode target, TNode[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
@@ -478,10 +480,10 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             Hash256XORUtils.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<TNode, ValueHash256> bestSeen = new (comparer);
+        PriorityQueue<TNode, ValueHash256> bestSeen = new(comparer);
 
         // Ordered by lowest distance. Will not get popped for next round, but will at final collection.
-        PriorityQueue<TNode, ValueHash256> bestSeenAllTime = new (comparer);
+        PriorityQueue<TNode, ValueHash256> bestSeenAllTime = new(comparer);
 
         ValueHash256 closestNodeHash = _nodeHashProvider.GetHash(_currentNodeId);
         (ValueHash256 nodeHash, TNode node)[] roundQuery = IterateNeighbour(targetHash)

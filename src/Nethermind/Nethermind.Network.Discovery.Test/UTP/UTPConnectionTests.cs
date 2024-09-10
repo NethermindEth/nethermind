@@ -12,33 +12,35 @@ public class UTPConnectionTests
 {
 
     [Test]
-    public void  testSendingST_SYN_Packet(){
+    public void testSendingST_SYN_Packet()
+    {
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-        var sender = new UTPStream( new ValidateST_SYNPacket(), 0, LimboLogs.Instance);
+        var sender = new UTPStream(new ValidateST_SYNPacket(), 0, LimboLogs.Instance);
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await sender.InitiateHandshake(cts.Token));
     }
 
     [Test]
-    public async Task testAnsweringST_STATE_Packet(){
+    public async Task testAnsweringST_STATE_Packet()
+    {
         CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         var receiverPeer = new ReceiverPeer();
         var sender = new UTPStream(receiverPeer, 0, LimboLogs.Instance);
-        var receiver = new UTPStream(  new ValidateST_STATE_Packet(0), 0, LimboLogs.Instance);
+        var receiver = new UTPStream(new ValidateST_STATE_Packet(0), 0, LimboLogs.Instance);
         receiverPeer._implementation = receiver;
 
         MemoryStream output = new MemoryStream();
         CancellationToken token = cts.Token;
         Task senderTask = Task.Run(() =>
         {
-            Assert.ThrowsAsync<OperationCanceledException>(async () => await  sender.InitiateHandshake(token));
+            Assert.ThrowsAsync<OperationCanceledException>(async () => await sender.InitiateHandshake(token));
 
         }, cts.Token);
 
 
         Task receiverTask = Task.Run(() =>
         {
-            Assert.ThrowsAsync<OperationCanceledException>(async () => await  receiver.ReadStream(output, token));
+            Assert.ThrowsAsync<OperationCanceledException>(async () => await receiver.ReadStream(output, token));
 
         }, cts.Token);
         await Task.WhenAll(senderTask, receiverTask);

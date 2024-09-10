@@ -113,7 +113,7 @@ public class TalkReqHandler(
         {
             Nodes = new Nodes()
             {
-                Enrs = neighboursAsBytes
+                Enrs = neighboursAsBytes.Select(enr => new Messages.Enr { Data = enr }).ToArray()
             }
         };
 
@@ -123,7 +123,7 @@ public class TalkReqHandler(
     private async Task<byte[]?> HandleFindContent(IEnr sender, FindContent findContent)
     {
         if (_logger.IsDebug) _logger.Debug($"Handling find content from {sender.NodeId.ToHexString()}");
-        var findValueResult = await kad.FindValue(sender, findContent.ContentKey, CancellationToken.None);
+        var findValueResult = await kad.FindValue(sender, findContent.ContentKey.Data, CancellationToken.None);
         if (findValueResult.hasValue)
         {
             // From the POV of Kademlia, there is no such thing as UTP. So when calling local kad,
@@ -141,7 +141,7 @@ public class TalkReqHandler(
                 Content = new Content()
                 {
                     Payload = value.Payload,
-                    ConnectionId = value.ConnectionId
+                    ConnectionId = value.ConnectionId ?? default
                 }
             });
         }
@@ -151,7 +151,7 @@ public class TalkReqHandler(
         {
             Content = new Content()
             {
-                Enrs = neighboursAsBytes
+                Enrs = neighboursAsBytes.Select(enr => new Messages.Enr { Data = enr }).ToArray()
             }
         };
 
@@ -186,8 +186,8 @@ public class TalkReqHandler(
         bool hasAccept = false;
         for (var i = 0; i < toAccept.Count; i++)
         {
-            if (!contentDistributor.IsContentInRadius(offer.ContentKeys[i])) continue;
-            if (store.ShouldAcceptOffer(offer.ContentKeys[i]))
+            if (!contentDistributor.IsContentInRadius(offer.ContentKeys[i].Data)) continue;
+            if (store.ShouldAcceptOffer(offer.ContentKeys[i].Data))
             {
                 toAccept[i] = true;
                 hasAccept = true;
@@ -214,7 +214,7 @@ public class TalkReqHandler(
     {
         using CancellationTokenSource cts = new CancellationTokenSource();
         // cts.CancelAfter(_offerAcceptTimeout);
-        var token =  cts.Token;
+        var token = cts.Token;
 
         var pipe = new Pipe();
         var writeTask = utpManager.ReadContentFromUtp(enr, false, connectionId, pipe.Writer.AsStream(), token);
@@ -231,7 +231,7 @@ public class TalkReqHandler(
                 byte[] buffer = new byte[length];
                 await stream.ReadExactlyAsync(buffer, token);
 
-                store.Store(contentKey, buffer);
+                store.Store(contentKey.Data, buffer);
             }
         }, token);
 

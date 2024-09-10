@@ -39,7 +39,7 @@ public class KademliaTalkReqMessageSender(
                 // Note: This custom payload of type content radius is actually history network specific
                 CustomPayload = config.ContentRadius.ToBigEndian()
             }
-        });
+        }).ToArray();
 
         await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
     }
@@ -66,13 +66,13 @@ public class KademliaTalkReqMessageSender(
             if (nowUpper && upper < 255)
             {
                 upper++;
-                queryDistance[i+1] = upper;
+                queryDistance[i + 1] = upper;
                 nowUpper = false;
             }
             else if (lower > 0)
             {
                 lower--;
-                queryDistance[i+1] = lower;
+                queryDistance[i + 1] = lower;
                 nowUpper = true;
             }
         }
@@ -93,7 +93,7 @@ public class KademliaTalkReqMessageSender(
 
         for (var i = 0; i < message.Enrs.Length; i++)
         {
-            enrs[i] = enrProvider.Decode(message.Enrs[i]);
+            enrs[i] = enrProvider.Decode(message.Enrs[i].Data);
         }
 
         return enrs;
@@ -105,7 +105,7 @@ public class KademliaTalkReqMessageSender(
         {
             FindContent = new FindContent()
             {
-                ContentKey = contentKey
+                ContentKey = new ContentKey { Data = contentKey }
             }
         });
 
@@ -123,12 +123,12 @@ public class KademliaTalkReqMessageSender(
             throw;
         }
 
-        if (message.ConnectionId == null && message.Payload == null)
+        if (message.ConnectionId == default && message.Payload == null)
         {
             IEnr[] enrs = new IEnr[message.Enrs!.Length];
             for (var i = 0; i < message.Enrs.Length; i++)
             {
-                enrs[i] = enrProvider.Decode(message.Enrs[i]);
+                enrs[i] = enrProvider.Decode(message.Enrs[i].Data);
             }
 
             return new FindValueResponse<IEnr, LookupContentResult>(false, null, enrs);

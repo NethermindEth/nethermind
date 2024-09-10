@@ -14,7 +14,7 @@ public static class Hash256XORUtils
     public static int CalculateDistance(ValueHash256 h1, ValueHash256 h2)
     {
         int zeros = 0;
-        for (int i = 0; i < 32; i+=1)
+        for (int i = 0; i < 32; i += 1)
         {
             byte b1 = h1.Bytes[i];
             byte b2 = h2.Bytes[i];
@@ -86,7 +86,7 @@ public static class Hash256XORUtils
     {
         if (distance >= 256) return currentHash;
 
-        currentHash.Bytes[0..(distance/ 8)].CopyTo(randomizedHash.BytesAsSpan);
+        currentHash.Bytes[0..(distance / 8)].CopyTo(randomizedHash.BytesAsSpan);
 
         int remainingBit = distance % 8;
         int remainingBitByte = distance / 8;

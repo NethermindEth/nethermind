@@ -9,5 +9,12 @@ namespace Nethermind.Network.Discovery.Portal.Messages;
 public class Offer
 {
     [SszList(64000)] // TODO: Check limit
-    public byte[][] ContentKeys { get; set; } = Array.Empty<byte[]>();
+    public ContentKey[] ContentKeys { get; set; } = Array.Empty<ContentKey>();
+}
+
+[SszSerializable]
+public class ContentKey
+{
+    [SszVector(32)]
+    public byte[] Data { get; set; } = Array.Empty<byte>();
 }
