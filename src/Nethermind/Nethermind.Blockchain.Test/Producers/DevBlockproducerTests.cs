@@ -3,6 +3,7 @@
 
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -78,6 +79,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(txProcessor),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,
