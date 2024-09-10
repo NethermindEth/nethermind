@@ -7,19 +7,13 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
-using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
-public class RpcAccessListTransactionTests
+public static class RpcAccessListTransactionTests
 {
-    private readonly EthereumJsonSerializer _serializer = new();
-
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.AccessList);
-
     public static readonly Transaction[] Transactions =
     [
         Build.TestObject,
@@ -78,20 +72,8 @@ public class RpcAccessListTransactionTests
         Build.WithSignature(TestItem.RandomSignatureB).TestObject,
     ];
 
-    [SetUp]
-    public void SetUp()
+    public static void ValidateSchema(JsonElement json)
     {
-        RpcAccessListTransaction.DefaultChainId = BlockchainIds.Mainnet;
-    }
-
-    [TestCaseSource(nameof(Transactions))]
-    public void Always_satisfies_schema(Transaction transaction)
-    {
-        var rpcTx = RpcAccessListTransaction.FromTransaction(transaction);
-        string serialized = _serializer.Serialize(rpcTx);
-        using var jsonDocument = JsonDocument.Parse(serialized);
-        var json = jsonDocument.RootElement;
-
         json.GetProperty("type").GetString().Should().MatchRegex("^0x1$");
         json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");

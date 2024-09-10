@@ -5,19 +5,13 @@ using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
-using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
-public class RpcLegacyTransactionTests
+public static class RpcLegacyTransactionTests
 {
-    private readonly EthereumJsonSerializer _serializer = new();
-
     private static TransactionBuilder<Transaction> BuildALegacyTransaction => Build.A.Transaction.WithType(TxType.Legacy);
-
     public static readonly Transaction[] Transactions =
     [
         BuildALegacyTransaction.TestObject,
@@ -61,14 +55,8 @@ public class RpcLegacyTransactionTests
         BuildALegacyTransaction.WithSignature(TestItem.RandomSignatureB).TestObject,
     ];
 
-    [TestCaseSource(nameof(Transactions))]
-    public void Always_satisfies_schema(Transaction transaction)
+    public static void ValidateSchema(JsonElement json)
     {
-        var rpcTx = RpcLegacyTransaction.FromTransaction(transaction);
-        string serialized = _serializer.Serialize(rpcTx);
-        using var jsonDocument = JsonDocument.Parse(serialized);
-        var json = jsonDocument.RootElement;
-
         json.GetProperty("type").GetString().Should().MatchRegex("^0x0$");
         json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
