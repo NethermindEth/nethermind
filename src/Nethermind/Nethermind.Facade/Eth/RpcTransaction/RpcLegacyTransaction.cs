@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -9,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public sealed class RpcLegacyTransaction
+public class RpcLegacyTransaction : IRpcTransaction
 {
     public TxType Type { get; set; }
 
@@ -33,34 +32,26 @@ public sealed class RpcLegacyTransaction
     public UInt256 R { get; set; }
     public UInt256 S { get; set; }
 
-    private RpcLegacyTransaction() { }
-
-    public static RpcLegacyTransaction? FromTransaction(Transaction? transaction)
+    public RpcLegacyTransaction(Transaction transaction)
     {
-        if (transaction is null)
-        {
-            return null;
-        }
+        Type = transaction.Type;
+        Nonce = transaction.Nonce;
+        To = transaction.To;
+        Gas = transaction.GasLimit;
+        Value = transaction.Value;
+        Input = transaction.Data.AsArray() ?? [];
+        GasPrice = transaction.GasPrice;
+        ChainId = transaction.ChainId;
 
-        if (transaction.Type != TxType.Legacy)
-        {
-            throw new ArgumentException("Transaction type must be Legacy");
-        }
+        R = new UInt256(transaction.Signature?.R ?? [], true);
+        S = new UInt256(transaction.Signature?.S ?? [], true);
+        V = transaction.Signature?.V ?? 0;
+    }
 
-        return new RpcLegacyTransaction
-        {
-            Type = transaction.Type,
-            Nonce = transaction.Nonce,
-            To = transaction.To,
-            Gas = transaction.GasLimit,
-            Value = transaction.Value,
-            Input = transaction.Data.AsArray() ?? [],
-            GasPrice = transaction.GasPrice,
-            ChainId = transaction.ChainId,
+    public static readonly IRpcTransactionConverter Converter = new ConverterImpl();
 
-            R = new UInt256(transaction.Signature?.R ?? [], true),
-            S = new UInt256(transaction.Signature?.S ?? [], true),
-            V = transaction.Signature?.V ?? 0,
-        };
+    private class ConverterImpl : IRpcTransactionConverter
+    {
+        public IRpcTransaction FromTransaction(Transaction tx, TxReceipt receipt) => new RpcLegacyTransaction(tx);
     }
 }
