@@ -55,7 +55,12 @@ namespace Nethermind.Specs
         // used only in testing
         public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();
 
-        public bool IsEip1559Enabled { get; set; }
+        public bool IsEip1559Enabled
+        {
+            get => _isEip1559Enabled || IsEip4844Enabled;
+            set => _isEip1559Enabled = value;
+        }
+
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }
         public bool IsEip3607Enabled { get; set; }
@@ -92,6 +97,8 @@ namespace Nethermind.Specs
         public bool IsEip7709Enabled { get; set; }
 
         private Address _eip2935ContractAddress;
+        private bool _isEip1559Enabled;
+
         public Address Eip2935ContractAddress
         {
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
