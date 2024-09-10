@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using FluentAssertions;
+using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -533,7 +534,7 @@ public class TxValidatorTests
     }
 
     [Test]
-    public void IsWellFormed_AuthorizationListTxInCancunSpec_ReturnsFalse()
+    public void IsWellFormed_CreateTxInSetCodeFalse()
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -541,12 +542,17 @@ public class TxValidatorTests
             .WithMaxFeePerGas(100000)
             .WithGasLimit(1000000)
             .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved();
+            .SignedAndResolved()
+            .WithTo(null);
 
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out _), Is.False);
+        Assert.Multiple(() =>
+        {
+            Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
+        });
     }
 
     [Test]

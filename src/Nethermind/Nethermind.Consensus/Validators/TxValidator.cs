@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Validators
                    && ValidateWithError(Validate1559GasFields(transaction, releaseSpec), TxErrorMessages.InvalidMaxPriorityFeePerGas, ref error)
                    && ValidateWithError(Validate3860Rules(transaction, releaseSpec), TxErrorMessages.ContractSizeTooBig, ref error)
                    && Validate4844Fields(transaction, ref error)
-                   && ValidateAuthorityList(transaction, ref error);
+                   && Validate7702(transaction, ref error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -155,11 +155,6 @@ namespace Nethermind.Consensus.Validators
 
         private bool ValidateAuthoritySignature(Signature signature)
         {
-            if (signature is null)
-            {
-                return false;
-            }
-
             UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
 
             if (sValue >= Secp256K1Curve.HalfNPlusOne)
@@ -197,9 +192,9 @@ namespace Nethermind.Consensus.Validators
                 return true;
             }
 
-            if (transaction.To is null)
+            if (transaction.IsContractCreation)
             {
-                error = TxErrorMessages.TxMissingTo;
+                error = TxErrorMessages.NotAllowedCreateTransaction;
                 return false;
             }
 
@@ -313,22 +308,26 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateAuthorityList(Transaction tx, ref string error)
+        private bool Validate7702(Transaction tx, ref string error)
         {
             if (tx.Type != TxType.SetCode)
             {
-                if (tx.AuthorizationList is not null)
-                {
-                    error = TxErrorMessages.NotAllowedAuthorizationList;
-                    return false;
-                }
+                if (tx.AuthorizationList is null)
+                    return true;
+                error = TxErrorMessages.NotAllowedAuthorizationList;
+                return false;
             }
-            else if (tx.AuthorizationList is null || tx.AuthorizationList.Length == 0)
+            if (tx.IsContractCreation)
+            {
+                error = TxErrorMessages.NotAllowedCreateTransaction;
+                return false;
+            }
+            if (tx.AuthorizationList is null || tx.AuthorizationList.Length == 0)
             {
                 error = TxErrorMessages.MissingAuthorizationList;
                 return false;
             }
-            else if (tx.AuthorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)))
+            if (tx.AuthorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)))
             {
                 error = TxErrorMessages.InvalidAuthoritySignature;
                 return false;
