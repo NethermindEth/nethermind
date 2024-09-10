@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using NUnit.Framework;
 
@@ -14,52 +13,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     public class StatsAnalyzerTests
     {
 
-        public static (List<Instruction>, Dictionary<ulong,ulong>) RandNGrams(int qty, bool resets, int maxRepetitions)
-        {
-
-            List<Instruction>  instructionBuffer = new List<Instruction>();
-            Dictionary<ulong, ulong> parts = new Dictionary<ulong, ulong>();
-            Action<ulong> countNGrams = (ulong _ngram) =>
-                                         {
-                                             if (parts.ContainsKey(_ngram))
-                                             {
-                                                 parts[_ngram] += 1;
-                                             } else
-                                             {
-                                                 parts[_ngram] = 1;
-                                             }
-                                         };
-
-            Random random = new Random();
-            int randomNgramSize;
-            for (int totalNgrams = 0; totalNgrams < qty; totalNgrams++)
-            {
-                randomNgramSize = random.Next(2, 7);
-                Instruction[] ngram = new Instruction[randomNgramSize];
-                for (int i=0; i<randomNgramSize; i++)
-                {
-                    ngram[i] = RandInsruction();
-                }
-
-                var repetitions = random.Next(1,maxRepetitions);
-                for (int j=0; j<repetitions; j++)
-                {
-                    for (int i=0; i<randomNgramSize; i++)
-                    {
-                        instructionBuffer.Add(ngram[i]);
-                    }
-                }
-                if (resets) instructionBuffer.Add(NGrams.RESET);
-            }
-
-            NGrams ngrams = new NGrams();
-            ngrams = NGrams.ProcessInstructions(instructionBuffer, ngrams, countNGrams);
-            return  (instructionBuffer, parts);
-        }
-
+        [TestCase(8, 9)]
+        [TestCase(2, 2)]
         public void validate_top_n(int patternQty, int maxRepetitionsPerPattern)
         {
-            (List<Instruction> instructionBuffer, Dictionary<ulong, ulong> observedCounts) =  RandNGrams(patternQty, false, maxRepetitionsPerPattern);
+            (List<Instruction> instructionBuffer, Dictionary<ulong, ulong> observedCounts) = RandNGrams(patternQty, true, maxRepetitionsPerPattern);
             Dictionary<ulong, HashSet<ulong>> countToSequences = new Dictionary<ulong, HashSet<ulong>>();
             StatsAnalyzer statsAnalyzer = new StatsAnalyzer(patternQty, 600000, 30, 100000, 1);
             foreach (var kvp in observedCounts)
@@ -89,27 +47,78 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             }
 
+            List<ulong> sortedTopNCounts = topNExpected.Keys.ToList();
+            sortedTopNCounts.Sort();
+
             statsAnalyzer.Add(instructionBuffer);
 
-            Assert.That(statsAnalyzer.topNQueue.Count == patternQty);
-            while (statsAnalyzer.topNQueue.TryDequeue(out ulong ngram, out ulong queueCount))
+            Assert.That(statsAnalyzer.topNQueue.Count == patternQty, $"Exxpected {patternQty} in topNQueue found {statsAnalyzer.topNQueue.Count}");
+
+            while (statsAnalyzer.topNQueue.TryDequeue(out ulong ngram, out ulong itemCount))
             {
-                topNExpected[queueCount].Remove(ngram);
-                if (topNExpected[queueCount].Count == 0)
+                Assert.That(sortedTopNCounts[0] == itemCount, $"Expected count at level {sortedTopNCounts[0]} found {itemCount}");
+                topNExpected[itemCount].Remove(ngram);
+                if (topNExpected[itemCount].Count == 0)
                 {
-                    topNExpected.Remove(queueCount);
+                    topNExpected.Remove(itemCount);
+                    sortedTopNCounts.RemoveAt(0);
                 }
             }
 
-            Assert.That(topNExpected.Count <= 1);
+            Assert.That(topNExpected.Count <= 1, $"Expected at most one count level remaining in topN count map found {topNExpected.Count}");
 
             if (topNExpected.Count == 1)
-                Assert.That(topNExpected.ContainsKey(minCount));
+                Assert.That(topNExpected.ContainsKey(minCount), $"Highest Count items were not found in queue");
 
         }
 
+        public static (List<Instruction>, Dictionary<ulong, ulong>) RandNGrams(int qty, bool resets, int maxRepetitions)
+        {
 
-        static Instruction  RandInsruction()
+            List<Instruction> instructionBuffer = new List<Instruction>();
+            Dictionary<ulong, ulong> parts = new Dictionary<ulong, ulong>();
+            Action<ulong> countNGrams = (ulong _ngram) =>
+                                         {
+                                             if (parts.ContainsKey(_ngram))
+                                             {
+                                                 parts[_ngram] += 1;
+                                             }
+                                             else
+                                             {
+                                                 parts[_ngram] = 1;
+                                             }
+                                         };
+
+            Random random = new Random();
+            int randomNgramSize;
+            for (int totalNgrams = 0; totalNgrams < qty; totalNgrams++)
+            {
+                randomNgramSize = random.Next(2, 7);
+                Instruction[] ngram = new Instruction[randomNgramSize];
+                for (int i = 0; i < randomNgramSize; i++)
+                {
+                    ngram[i] = RandInsruction();
+                }
+
+                var repetitions = random.Next(1, maxRepetitions);
+                for (int j = 0; j < repetitions; j++)
+                {
+                    for (int i = 0; i < randomNgramSize; i++)
+                    {
+                        instructionBuffer.Add(ngram[i]);
+                    }
+                }
+                if (resets) instructionBuffer.Add(NGrams.RESET);
+            }
+
+            NGrams ngrams = new NGrams();
+            ngrams = NGrams.ProcessInstructions(instructionBuffer, ngrams, countNGrams);
+            return (instructionBuffer, parts);
+        }
+
+
+
+        static Instruction RandInsruction()
         {
             Random random = new Random();
             byte randomByte = 0;

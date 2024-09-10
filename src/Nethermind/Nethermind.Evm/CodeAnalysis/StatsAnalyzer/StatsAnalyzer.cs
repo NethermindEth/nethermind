@@ -49,9 +49,11 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             {
                 if (_sketchBufferPos < (_sketchBuffer.Length - 1))
                 {
-                     ++_sketchBufferPos;
+                    ++_sketchBufferPos;
                     _sketchBuffer[_sketchBufferPos] = _sketch.Reset();
-                } else {
+                }
+                else
+                {
                     // buffer is full we reuse sketches
                     _currentSketch = (_currentSketch + 1) % _sketchBuffer.Length;
                     sketchResetError *= 2; // double the error
@@ -63,7 +65,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
 
             ResetSketchAtError();
-            _ngrams = NGrams.ProcessInstructions(instructions,_ngrams,ProcessNGram).ShiftAdd(NGrams.RESET);
+            _ngrams = NGrams.ProcessInstructions(instructions, _ngrams, ProcessNGram).ShiftAdd(NGrams.RESET);
             ProcessTopN();
         }
 

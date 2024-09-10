@@ -267,7 +267,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
             Action<ulong> CountNGrams = (ulong ngram) =>
                                                    {
-                                                       counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts,ngram, out bool _);
+                                                       counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts, ngram, out bool _);
                                                    };
             NGrams ngrams = new NGrams();
             ngrams = NGrams.ProcessInstructions(executionOpCodes, ngrams, CountNGrams);
@@ -275,7 +275,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             foreach ((Instruction[] ngram, int expectedCount) expected in expectedNGrams)
             {
 
-                NGrams currentNGram =  new NGrams(expected.ngram);
+                NGrams currentNGram = new NGrams(expected.ngram);
                 Assert.That(counts.ContainsKey(currentNGram.ulong0),
                         $"{currentNGram.ToString()} not present in testCase ");
                 Assert.That(counts[currentNGram.ulong0] == (ulong)expected.expectedCount,
@@ -297,10 +297,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             Dictionary<ulong, ulong> countsP01P01RESETP01P01 = new Dictionary<ulong, ulong>();
             Dictionary<ulong, ulong> countsP01P01P01P01 = new Dictionary<ulong, ulong>();
-            Instruction[] P01P01 = new Instruction[] {Instruction.PUSH1, Instruction.PUSH1};
-            NGrams NGramsP01P01 = new  NGrams(P01P01);
-            Instruction[] P01P01RESETP01P01 = new Instruction[] {Instruction.PUSH1, Instruction.PUSH1, NGrams.RESET, Instruction.PUSH1, Instruction.PUSH1};
-            Instruction[] P01P01P01P01 = new Instruction[] {Instruction.PUSH1, Instruction.PUSH1,Instruction.PUSH1, Instruction.PUSH1};
+            Instruction[] P01P01 = new Instruction[] { Instruction.PUSH1, Instruction.PUSH1 };
+            NGrams NGramsP01P01 = new NGrams(P01P01);
+            Instruction[] P01P01RESETP01P01 = new Instruction[] { Instruction.PUSH1, Instruction.PUSH1, NGrams.RESET, Instruction.PUSH1, Instruction.PUSH1 };
+            Instruction[] P01P01P01P01 = new Instruction[] { Instruction.PUSH1, Instruction.PUSH1, Instruction.PUSH1, Instruction.PUSH1 };
             NGrams.GetCounts(P01P01P01P01, countsP01P01P01P01);
             NGrams.GetCounts(P01P01RESETP01P01, countsP01P01RESETP01P01);
             countsP01P01P01P01.TryGetValue(NGramsP01P01.ulong0, out ulong P01P01count);

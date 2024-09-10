@@ -35,11 +35,11 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static NGrams ProcessInstructions(IEnumerable<Instruction> instructions,NGrams ngrams, Action<ulong> action)
+        public static NGrams ProcessInstructions(IEnumerable<Instruction> instructions, NGrams ngrams, Action<ulong> action)
         {
             foreach (Instruction instruction in instructions)
             {
-                    ngrams = ProcessOneInstruction(instruction, ngrams,action);
+                ngrams = ProcessOneInstruction(instruction, ngrams, action);
             }
             return ngrams;
         }
@@ -73,9 +73,9 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static NGrams GetCounts(Instruction[] executionOpCodes, Dictionary<ulong,ulong> counts, NGrams ngrams = new NGrams() )
+        public static NGrams GetCounts(Instruction[] executionOpCodes, Dictionary<ulong, ulong> counts, NGrams ngrams = new NGrams())
         {
-            Action<ulong> CountNGrams = (ulong ngram) => {counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts,ngram, out bool _);};
+            Action<ulong> CountNGrams = (ulong ngram) => { counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts, ngram, out bool _); };
             return NGrams.ProcessInstructions(executionOpCodes, ngrams, CountNGrams);
         }
 
