@@ -279,6 +279,7 @@ public class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logMa
                 }else {
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
                     _unackedWindows.trackPacket(Memory<byte>.Empty, header, UTPUtil.GetTimestamp());
+                    if (_logger.IsTrace) _logger.Trace($"S stream finished. Fin sent. {_seq_nr}");
                     streamFinished = true;
                 }
             }
