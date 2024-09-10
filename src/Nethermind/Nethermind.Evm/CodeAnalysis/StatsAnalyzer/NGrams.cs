@@ -28,7 +28,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
         }
 
-        public NGrams(ulong value)
+        public NGrams(ulong value = NGrams.NULL)
         {
             ngram = value;
         }

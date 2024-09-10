@@ -20,7 +20,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private int _currentSketch = 0;
 
         private int _topN;
-        private NGrams _ngrams = new NGrams(NGrams.NULL);
+        private NGrams _ngrams = new NGrams();
 
         private int _capacity;
         private ulong _minSupport;
