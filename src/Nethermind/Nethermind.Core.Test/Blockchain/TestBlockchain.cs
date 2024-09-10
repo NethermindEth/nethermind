@@ -133,8 +133,8 @@ public class TestBlockchain : IDisposable
         TrieStore = new TrieStore(StateDb, LogManager);
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
         var preBlockCaches = new PreBlockCaches();
-        ITrieStore preCachedTrieStore = new PreCachedTrieStore(ReadOnlyTrieStore, preBlockCaches.RlpCache);
-        WorldStateProvider = new WorldStateProvider(preCachedTrieStore, TrieStore, DbProvider, LimboLogs.Instance);
+        ITrieStore preCachedTrieStore = new PreCachedTrieStore(TrieStore, preBlockCaches.RlpCache);
+        WorldStateProvider = new WorldStateProvider(preCachedTrieStore, TrieStore, DbProvider, LimboLogs.Instance, preBlockCaches);
         WorldStateManager = new WorldStateManager(WorldStateProvider, DbProvider, TrieStore, LimboLogs.Instance, preBlockCaches);
         StateReader = WorldStateProvider.GetGlobalStateReader();
         State = WorldStateManager.GlobalWorldStateProvider.GetWorldState();
