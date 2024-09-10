@@ -8,7 +8,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
     public class StatsAnalyzer
     {
 
-        public NGrams NGrams => _ngrams;
+        public NGrams ngrams => _ngrams;
 
         public readonly PriorityQueue<ulong, ulong> topNQueue;
         private Dictionary<ulong, ulong> _topNMap;
@@ -52,9 +52,9 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public void Add(IEnumerable<Instruction> instructions)
         {
+
             ResetSketchAtError();
-            foreach (Instruction instruction in instructions)
-                _ngrams = _ngrams.ProcessOneInstruction(instruction, ProcessNGram);
+            _ngrams = NGrams.ProcessInstructions(instructions,_ngrams,ProcessNGram).ShiftAdd(NGrams.RESET);
             ProcessTopN();
         }
 

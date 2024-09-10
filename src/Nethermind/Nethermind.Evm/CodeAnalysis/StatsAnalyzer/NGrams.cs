@@ -11,7 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         public readonly ulong ngram;
         public const uint MAX_SIZE = 7;
         public const ulong NULL = 0;
-        const byte STOP = (byte)Instruction.STOP;
+        public const Instruction RESET = Instruction.STOP;
 
         const ulong twogramBitMask = (255UL << 8) | 255UL;
         const ulong threegramBitMask = (255UL << 8 * 2) | twogramBitMask;
@@ -31,6 +31,16 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         public NGrams(ulong value)
         {
             ngram = value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static NGrams ProcessInstructions(IEnumerable<Instruction> instructions,NGrams ngrams, Action<ulong> action)
+        {
+            foreach (Instruction instruction in instructions)
+            {
+                    ngrams = ProcessOneInstruction(instruction, ngrams,action);
+            }
+            return ngrams;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -56,7 +66,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong ShiftAdd(ulong ngram, Instruction instruction)
         {
-            if (instruction == STOP) return 0;
+            if (instruction == (byte)RESET) return 0;
             return (ngram << 8) | (byte)instruction;
         }
 
@@ -68,7 +78,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             for (i = 0; i < instructions.Length; i++)
             {
                 instructions[instructions.Length - 1 - i] = (byte)((ngram & byteIndexes[i]) >> (i * 8));
-                if (instructions[instructions.Length - 1 - i] == STOP)
+                if (instructions[instructions.Length - 1 - i] == (byte)RESET)
                 {
                     break;
                 }
