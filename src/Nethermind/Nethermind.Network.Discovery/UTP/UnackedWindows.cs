@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.UTP;
 
 namespace Nethermind.Network.Discovery;
 

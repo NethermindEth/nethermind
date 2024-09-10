@@ -179,9 +179,9 @@ public class TalkReqUtpManager: IUtpManager, ITalkReqProtocolHandler
 
     private class UTPToMsgReqAdapter(IEnr node, TalkReqUtpManager manager): IUTPTransfer
     {
-        public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
+        public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            return manager.SendUtpPacket(node, meta, data, token);
+            return manager.SendUtpPacket(node, packetHeader, data, token);
         }
     }
 }

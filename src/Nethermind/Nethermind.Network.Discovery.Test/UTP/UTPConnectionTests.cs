@@ -48,24 +48,24 @@ public class UTPConnectionTests
     {
         internal IUTPTransfer? _implementation;
 
-        public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
+        public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            return _implementation!.ReceiveMessage(meta, data, token);
+            return _implementation!.ReceiveMessage(packetHeader, data, token);
         }
     }
 
     internal class ValidateST_SYNPacket : IUTPTransfer
     {
 
-        public Task ReceiveMessage(UTPPacketHeader header, ReadOnlySpan<byte> data, CancellationToken token)
+        public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            Assert.NotNull(header);
-            Assert.NotNull(header.SeqNumber);
-            Assert.NotNull(header.ConnectionId);
-            Assert.NotNull(header.PacketType);
-            Assert.That(header.Version, Is.EqualTo(1));
-            Assert.That(header.SeqNumber, Is.EqualTo(1));
-            Assert.That(header.PacketType, Is.EqualTo(UTPPacketType.StSyn));
+            Assert.NotNull(packetHeader);
+            Assert.NotNull(packetHeader.SeqNumber);
+            Assert.NotNull(packetHeader.ConnectionId);
+            Assert.NotNull(packetHeader.PacketType);
+            Assert.That(packetHeader.Version, Is.EqualTo(1));
+            Assert.That(packetHeader.SeqNumber, Is.EqualTo(1));
+            Assert.That(packetHeader.PacketType, Is.EqualTo(UTPPacketType.StSyn));
             return Task.CompletedTask;
         }
     }
@@ -73,16 +73,16 @@ public class UTPConnectionTests
     internal class ValidateST_STATE_Packet(ushort connectionId) : IUTPTransfer
     {
 
-        public Task ReceiveMessage(UTPPacketHeader header, ReadOnlySpan<byte> data, CancellationToken token)
+        public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            Assert.NotNull(header);
-            Assert.NotNull(header.SeqNumber);
-            Assert.NotNull(header.AckNumber);
-            Assert.NotNull(header.ConnectionId);
-            Assert.NotNull(header.PacketType);
-            Assert.That(header.Version, Is.EqualTo(1));
-            Assert.That(header.PacketType, Is.EqualTo(UTPPacketType.StState));
-            Assert.That(header.ConnectionId, Is.EqualTo(connectionId));
+            Assert.NotNull(packetHeader);
+            Assert.NotNull(packetHeader.SeqNumber);
+            Assert.NotNull(packetHeader.AckNumber);
+            Assert.NotNull(packetHeader.ConnectionId);
+            Assert.NotNull(packetHeader.PacketType);
+            Assert.That(packetHeader.Version, Is.EqualTo(1));
+            Assert.That(packetHeader.PacketType, Is.EqualTo(UTPPacketType.StState));
+            Assert.That(packetHeader.ConnectionId, Is.EqualTo(connectionId));
             //Assert.That(header.AckNumber, Is.EqualTo(connectionId));
 
             return Task.CompletedTask;

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
+using NonBlocking;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network.Discovery.UTP;
 
 public class UTPUtil
 {

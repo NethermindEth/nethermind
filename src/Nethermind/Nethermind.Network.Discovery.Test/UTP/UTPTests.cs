@@ -6,12 +6,11 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.UTP;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Discovery.Tests;
+namespace Nethermind.Network.Discovery.Test.UTP;
 
 public class UTPTests
 {
@@ -138,7 +137,7 @@ public class UTPTests
     [TestCase("1000000010000000001000000010000000100000001000000010000000100000", new ushort[] { 10, 18, 24, 32, 40, 48, 56, 64 })]
     public void TestCompileSelectiveAck(string stringRep, ushort[] pendingSequenceNums)
     {
-        ConcurrentDictionary<ushort, Memory<byte>?> pendingSequence = new ConcurrentDictionary<ushort, Memory<byte>?>();
+        NonBlocking.ConcurrentDictionary<ushort, Memory<byte>?> pendingSequence = new NonBlocking.ConcurrentDictionary<ushort, Memory<byte>?>();
         foreach (var pendingSequenceNum in pendingSequenceNums)
         {
             pendingSequence[pendingSequenceNum] = Memory<byte>.Empty;
@@ -168,7 +167,7 @@ public class UTPTests
     {
         (string _, Func<IUTPTransfer, IUTPTransfer> transferMutator) = test;
 
-        int payloadSize = 1000000;
+        int payloadSize = 3_000_000;
         byte[] data = new byte[payloadSize];
         new Random(0).NextBytes(data);
 
@@ -210,10 +209,10 @@ public class UTPTests
         internal IUTPTransfer? _implementation;
         internal int _totalBytesSent = 0;
 
-        public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
+        public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
             _totalBytesSent += data.Length;
-            return _implementation!.ReceiveMessage(meta, data, token);
+            return _implementation!.ReceiveMessage(packetHeader, data, token);
         }
     }
 
@@ -223,7 +222,7 @@ public class UTPTests
         private Random _random = new Random(seed);
         private SpinLock _lock = new SpinLock();
 
-        public Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token)
+        public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
             byte[] dataArr = data.ToArray();
 
@@ -233,7 +232,7 @@ public class UTPTests
                 // skipped
                 if (_random.NextDouble() < dropPercentage)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"T Drop {meta}");
+                    if (_logger.IsTrace) _logger.Trace($"T Drop {packetHeader}");
                     return;
                 }
 
@@ -242,12 +241,12 @@ public class UTPTests
                 if (randomDelayMs != 0)
                     await Task.Delay( _random.Next() % randomDelayMs, token);
 
-                if (_logger.IsTrace) _logger.Trace($"T Send {meta}");
+                if (_logger.IsTrace) _logger.Trace($"T Send {packetHeader}");
                 bool lockTaken = false;
                 try
                 {
                     _lock.Enter(ref lockTaken);
-                    await actual.ReceiveMessage(meta, dataArr, token);
+                    await actual.ReceiveMessage(packetHeader, dataArr, token);
                 }
                 finally
                 {

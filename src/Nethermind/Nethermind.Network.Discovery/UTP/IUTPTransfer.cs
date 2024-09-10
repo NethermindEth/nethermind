@@ -5,5 +5,5 @@ namespace Nethermind.Network.Discovery.UTP;
 
 public interface IUTPTransfer
 {
-    Task ReceiveMessage(UTPPacketHeader meta, ReadOnlySpan<byte> data, CancellationToken token);
+    Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token);
 }
