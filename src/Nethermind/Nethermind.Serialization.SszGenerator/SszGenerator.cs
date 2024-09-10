@@ -97,7 +97,7 @@ public partial class SszGenerator : IIncrementalGenerator
             string result = FixWhitespace(decl.Kind == Kind.Container ? $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
 using System.Linq;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -105,18 +105,18 @@ namespace Nethermind.Serialization;
 {Whitespace}
 public partial class SszEncoding
 {{
-    public static int GetLength({decl.Name} container)
+    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
-        {{
+        {
             return 0;
-        }}")}
+        }")}
 {Whitespace}
         return {decl.StaticLength}{(variables.Any() ? "" : ";")}
 {Shift(4, variables.Select(m => $"+ {DynamicLength(decl, m)}"), ";")}
     }}
 {Whitespace}
-    public static int GetLength(ICollection<{decl.Name}> container)
+    public static int GetLength(ICollection<{decl.Name}>? container)
     {{
         if(container is null)
         {{
@@ -132,16 +132,23 @@ public partial class SszEncoding
         return length;" : $"return container.Count * {(decl.StaticLength)};")}
     }}
 {Whitespace}
-    public static ReadOnlySpan<byte> Encode({decl.Name} container)
+    public static ReadOnlySpan<byte> Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return [];
+        }")}
         Span<byte> buf = new byte[GetLength(container)];
         Encode(buf, container);
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.Name} container)
+    public static void Encode(Span<byte> data, {decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
-        {(decl.IsStruct ? "" : "if(container is null) return;")}
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return;
+        }")}
 {Whitespace}
 {Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, variables[i - 1])}")};"))}
 {Whitespace}
@@ -228,8 +235,13 @@ public partial class SszEncoding
         }}")}
     }}
 {Whitespace}
-    public static void Merkleize({decl.Name} container, out UInt256 root)
+    public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
     {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            root = 0;
+            return;
+        }")}
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
 {Shift(2, decl.Members.Select(m =>
 {
@@ -244,8 +256,14 @@ public partial class SszEncoding
         merkleizer.CalculateRoot(out root);
     }}
 {Whitespace}
-    public static void MerkleizeVector(IList<{decl.Name}> container, out UInt256 root)
+    public static void MerkleizeVector(IList<{decl.Name}>? container, out UInt256 root)
     {{
+        if(container is null)
+        {{
+            root = 0;
+            return;
+        }}
+{Whitespace}
         UInt256[] subRoots = new UInt256[container.Count];
         for(int i = 0; i < container.Count; i++)
         {{
@@ -255,7 +273,7 @@ public partial class SszEncoding
         Merkle.Ize(out root, subRoots);
     }}
 {Whitespace}
-    public static void MerkleizeList(IList<{decl.Name}> container, ulong limit, out UInt256 root)
+    public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
     {{
         if(container is null || container.Count is 0)
         {{
@@ -269,10 +287,11 @@ public partial class SszEncoding
     }}
 }}
 " :
+// Unions
 $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
 using System.Linq;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -280,8 +299,12 @@ namespace Nethermind.Serialization;
 {Whitespace}
 public partial class SszEncoding
 {{
-    public static int GetLength({decl.Name} container)
+    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return 0;
+        }")}
         return 1 + container.Selector switch {{
 {Shift(3, decl.UnionMembers.Select(m => $"{decl.Selector!.Type.Name}.{m.Name} => {(m.IsVariable ? DynamicLength(decl, m) : m.StaticLength.ToString())},"))}
             _ => 0,
@@ -304,15 +327,23 @@ public partial class SszEncoding
         return length;
     }}
 {Whitespace}
-    public static ReadOnlySpan<byte> Encode({decl.Name} container)
+    public static ReadOnlySpan<byte> Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return [];
+        }")}
         Span<byte> buf = new byte[GetLength(container)];
         Encode(buf, container);
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.Name} container)
+    public static void Encode(Span<byte> data, {decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return;
+        }")}
         SszLib.Encode(data.Slice(0, 1), (byte)container.Selector);
         if(data.Length is 1)
         {{
@@ -376,8 +407,13 @@ public partial class SszEncoding
         }};
     }}
 {Whitespace}
-    public static void Merkleize({decl.Name} container, out UInt256 root)
+    public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
     {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            root = 0;
+            return;
+        }")}
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
         switch(container.Selector) {{
 {Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.HandledByStd ? $"merkleizer.Feed(container.{m.Name}{(m.Kind == Kind.List || m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
@@ -392,7 +428,12 @@ public partial class SszEncoding
 {Whitespace}
     public static void MerkleizeVector(IList<{decl.Name}>? container, out UInt256 root)
     {{
-        if(container is null){{ root = 0; return; }}
+        if(container is null)
+        {{
+            root = 0;
+            return;
+        }}
+{Whitespace}
         UInt256[] subRoots = new UInt256[container.Count];
         for(int i = 0; i < container.Count; i++)
         {{
