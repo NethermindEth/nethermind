@@ -135,8 +135,8 @@ namespace Ethereum.Test.Base
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             TrieStore trieStore = new(stateDb, _logManager);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
-            var worldStateProvider = new WorldStateProvider(stateProvider, trieStore, dbProvider, _logManager);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, _logManager);
+            IWorldState stateProvider = worldStateProvider.GetWorldState();
             IBlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(specProvider)
                 .WithoutSettingHead
