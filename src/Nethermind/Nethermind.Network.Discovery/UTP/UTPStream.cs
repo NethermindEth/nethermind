@@ -31,30 +31,6 @@ public partial class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManag
 
     private uint _lastReceivedMicrosecond = 0;
     private ConnectionState _state = ConnectionState.CsUnInitialized;
-    private TaskCompletionSource _messageTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    private ValueTask WaitForNewMessage(int delayMs = 1000)
-    {
-        // Fast path
-        if (_messageTcs.Task.IsCompleted)
-        {
-            _messageTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            return ValueTask.CompletedTask;
-        }
-
-        return WaitForNewMessageSlowPath(delayMs);
-    }
-
-    private async ValueTask WaitForNewMessageSlowPath(int delayMs)
-    {
-        var delay = Task.Delay(delayMs);
-        if (await Task.WhenAny(_messageTcs.Task, delay) == delay)
-        {
-            return;
-        }
-
-        _messageTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
 
     // Put things in a buffer and signal ReadStream to process those buffer
     public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
@@ -91,9 +67,6 @@ public partial class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManag
                 _state = ConnectionState.CsEnded;
                 break;
         }
-
-        // Used to unblock task that are waiting for new message.
-        _messageTcs.TrySetResult();
 
         return Task.CompletedTask;
     }

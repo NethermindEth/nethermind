@@ -11,8 +11,9 @@ public partial class UTPStream
 
     // TODO: Use LRU instead. Need a special expiry handling so that the _incomingBufferSize is correct.
     private readonly ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
-
     private int _incomingBufferSize = 0;
+
+    private TaskCompletionSource _dataTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async Task ReadStream(Stream output, CancellationToken token)
     {
@@ -60,31 +61,32 @@ public partial class UTPStream
             await SendStatePacket(token);
 
             if (_logger.IsTrace) _logger.Trace($"R wait");
-            await WaitForNewMessage(100);
+            await Task.WhenAny(_dataTcs.Task, Task.Delay(100, token));
+            _dataTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 
-    private bool ShouldNotHandleSequence(UTPPacketHeader meta, ReadOnlySpan<byte> data)
+    private bool ShouldHandlePacket(UTPPacketHeader meta, ReadOnlySpan<byte> data)
     {
         ushort receiverAck = _receiverAck_nr.seq_nr;
 
         if (data.Length > MAX_PAYLOAD_SIZE)
         {
-            return true;
+            return false;
         }
 
         // Got previous resend data probably
         if (UTPUtil.IsLess(meta.SeqNumber, receiverAck))
         {
             if (_logger.IsTrace) _logger.Trace($"less than ack {meta.SeqNumber}");
-            return true;
+            return false;
         }
 
         // What if the sequence number is way too high. The threshold is estimated based on the window size
         // and the payload size
         if (!UTPUtil.IsLess(meta.SeqNumber, (ushort)(receiverAck + RECEIVE_WINDOW_SIZE / PayloadSize)))
         {
-            return true;
+            return false;
         }
 
         // No space in buffer UNLESS its the next needed sequence, in which case, we still process it, otherwise
@@ -116,28 +118,30 @@ public partial class UTPStream
                     _logger.Trace("The nums " + string.Join(", ", it));
                 }
 
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
 
-    private void OnStData(UTPPacketHeader packageHeader, ReadOnlySpan<byte> data)
+    private void OnStData(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data)
     {
-        if (!ShouldNotHandleSequence(packageHeader, data))
+        if (ShouldHandlePacket(packetHeader, data))
         {
             // TODO: Fast path without going to receive buffer?
             Interlocked.Add(ref _incomingBufferSize, data.Length);
-            _receiveBuffer[packageHeader.SeqNumber] = data.ToArray();
+            _receiveBuffer[packetHeader.SeqNumber] = data.ToArray();
+            _dataTcs.TrySetResult();
         }
     }
 
-    private void OnStFin(UTPPacketHeader packageHeader, CancellationToken token)
+    private void OnStFin(UTPPacketHeader packetHeader, CancellationToken token)
     {
-        if (!ShouldNotHandleSequence(packageHeader, ReadOnlySpan<byte>.Empty))
+        if (ShouldHandlePacket(packetHeader, ReadOnlySpan<byte>.Empty))
         {
-            _receiveBuffer[packageHeader.SeqNumber] = null;
+            _receiveBuffer[packetHeader.SeqNumber] = null;
+            _dataTcs.TrySetResult();
         }
 
         if (_state == ConnectionState.CsEnded)

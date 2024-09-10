@@ -14,6 +14,8 @@ public partial class UTPStream
 
     private readonly UnackedWindows _unackedWindows = new UnackedWindows(logManager.GetClassLogger<UTPStream>());
     private readonly LEDBAT _trafficControl = new LEDBAT(logManager);
+
+    private TaskCompletionSource _ackTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     public async Task WriteStream(Stream input, CancellationToken token)
     {
         bool streamFinished = false;
@@ -62,7 +64,9 @@ public partial class UTPStream
 
             await FlushPackets(token);
             if (streamFinished && _unackedWindows.isUnackedWindowEmpty()) break;
-            await WaitForNewMessage();
+
+            await Task.WhenAny(_ackTcs.Task, Task.Delay(100, token));
+            _ackTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 
@@ -88,6 +92,8 @@ public partial class UTPStream
     {
         if (_peerAck == null ||  UTPUtil.IsLessOrEqual(_peerAck.AckNumber, packageHeader.AckNumber)) {
             _peerAck = packageHeader;
+
+            _ackTcs.TrySetResult();
         }
     }
 
