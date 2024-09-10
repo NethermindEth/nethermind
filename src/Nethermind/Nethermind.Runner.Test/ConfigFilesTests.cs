@@ -371,7 +371,7 @@ namespace Nethermind.Runner.Test
         {
             Test<IBlocksConfig, long?>(configWildcard, c => c.TargetBlockGasLimit, targetBlockGasLimit);
             Test<IBlocksConfig, ulong>(configWildcard, c => c.SecondsPerSlot, secondsPerSlot);
-            Test<IBlocksConfig, int>(configWildcard, c => c.BlockProductionTimeout, blockProductionTimeout);
+            Test<IBlocksConfig, int>(configWildcard, c => c.BlockProductionTimeoutMs, blockProductionTimeout);
 
         }
 

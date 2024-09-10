@@ -38,7 +38,7 @@ public interface IBlocksConfig : IConfig
     bool PreWarmStateOnBlockProcessing { get; set; }
 
     [ConfigItem(Description = "Block Production timeout, in milliseconds.", DefaultValue = "4000")]
-    int BlockProductionTimeout { get; set; }
+    int BlockProductionTimeoutMs { get; set; }
 
     byte[] GetExtraDataBytes();
 }
