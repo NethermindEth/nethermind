@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
@@ -70,6 +71,13 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             return (ngram << 8) | (byte)instruction;
         }
 
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static NGrams GetCounts(Instruction[] executionOpCodes, Dictionary<ulong,ulong> counts, NGrams ngrams = new NGrams() )
+        {
+            Action<ulong> CountNGrams = (ulong ngram) => {counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts,ngram, out bool _);};
+            return NGrams.ProcessInstructions(executionOpCodes, ngrams, CountNGrams);
+        }
 
         public static byte[] ToBytes(ulong ngram)
         {

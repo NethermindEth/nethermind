@@ -264,18 +264,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void validate_ngrams_process_instructions(Instruction[] executionOpCodes, (Instruction[] ngram, int count)[] expectedNGrams)
         {
             Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
-            Action<ulong> countNGrams = (ulong _ngram) =>
-                                         {
-                                             if (counts.ContainsKey(_ngram))
-                                             {
-                                                 counts[_ngram] += 1;
-                                             } else
-                                             {
-                                                 counts[_ngram] = 1;
-                                             }
-                                         };
-            NGrams ngrams = new NGrams();
-            ngrams = NGrams.ProcessInstructions(executionOpCodes, ngrams, countNGrams);
+            NGrams.GetCounts(executionOpCodes, counts);
 
             foreach ((Instruction[] ngram, int expectedCount) expected in expectedNGrams)
             {
