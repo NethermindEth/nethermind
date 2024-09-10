@@ -171,6 +171,8 @@ public class SlowSSZTests
     {
         (string Encoding, object Object) = test;
 
+        SszEncoding.Encode(Object);
+
         var serializedValue = SlowSSZ.Serialize(Object);
         serializedValue.ToHexString().Should().BeEquivalentTo(Encoding);
     }

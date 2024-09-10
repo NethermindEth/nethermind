@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -30,16 +31,15 @@ public class KademliaTalkReqMessageSender(
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
-        byte[] pingBytes =
-            SlowSSZ.Serialize(new MessageUnion()
+        byte[] pingBytes = SszEncoding.Encode(new MessageUnion()
+        {
+            Ping = new Ping()
             {
-                Ping = new Ping()
-                {
-                    EnrSeq = enrProvider.SelfEnr.SequenceNumber,
-                    // Note: This custom payload of type content radius is actually history network specific
-                    CustomPayload = config.ContentRadius.ToBigEndian()
-                }
-            });
+                EnrSeq = enrProvider.SelfEnr.SequenceNumber,
+                // Note: This custom payload of type content radius is actually history network specific
+                CustomPayload = config.ContentRadius.ToBigEndian()
+            }
+        });
 
         await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
     }

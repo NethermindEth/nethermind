@@ -1,16 +1,27 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.Ssz;
+
 namespace Nethermind.Network.Discovery.Portal.Messages;
 
-public class Content: IUnion
+[SszSerializable]
+public class Content
 {
-    [Selector(0)]
+    public ContentType Selector { get; set; }
+
     public ushort? ConnectionId { get; set; }
 
-    [Selector(1)]
+    [SszList(64000)] // TODO: Check limit
     public byte[]? Payload { get; set; }
 
-    [Selector(2)]
+    [SszList(64000)] // TODO: Check limit
     public byte[][]? Enrs { get; set; }
+}
+
+public enum ContentType
+{
+    ConnectionId = 0,
+    Payload = 1,
+    Enrs = 2,
 }
