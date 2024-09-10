@@ -1,6 +1,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using NUnit.Framework;
@@ -264,7 +265,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void validate_ngrams_process_instructions(Instruction[] executionOpCodes, (Instruction[] ngram, int count)[] expectedNGrams)
         {
             Dictionary<ulong, ulong> counts = new Dictionary<ulong, ulong>();
-            NGrams.GetCounts(executionOpCodes, counts);
+            Action<ulong> CountNGrams = (ulong ngram) =>
+                                                   {
+                                                       counts[ngram] = 1 + CollectionsMarshal.GetValueRefOrAddDefault(counts,ngram, out bool _);
+                                                   };
+            NGrams ngrams = new NGrams();
+            ngrams = NGrams.ProcessInstructions(executionOpCodes, ngrams, CountNGrams);
 
             foreach ((Instruction[] ngram, int expectedCount) expected in expectedNGrams)
             {
@@ -276,6 +282,33 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                                                $"Counts mismatch for {currentNGram.ToString()} expected {expected.expectedCount} found {counts[currentNGram.ulong0]}");
             }
 
+        }
+
+
+        [Test]
+        public void validate_ngrams_reset()
+        {
+            NGrams ngrams = new NGrams();
+            ngrams = ngrams.ShiftAdd(Instruction.PUSH1);
+            ngrams = ngrams.ShiftAdd(Instruction.PUSH1);
+            Assert.That(ngrams.ulong0 != NGrams.NULL);
+            ngrams = ngrams.ShiftAdd(NGrams.RESET);
+            Assert.That(ngrams.ulong0 == NGrams.NULL, $"Failed Reset Test found value {ngrams.ulong0} expected {NGrams.NULL}");
+
+            Dictionary<ulong, ulong> countsP01P01RESETP01P01 = new Dictionary<ulong, ulong>();
+            Dictionary<ulong, ulong> countsP01P01P01P01 = new Dictionary<ulong, ulong>();
+            Instruction[] P01P01 = new Instruction[] {Instruction.PUSH1, Instruction.PUSH1};
+            NGrams NGramsP01P01 = new  NGrams(P01P01);
+            Instruction[] P01P01RESETP01P01 = new Instruction[] {Instruction.PUSH1, Instruction.PUSH1, NGrams.RESET, Instruction.PUSH1, Instruction.PUSH1};
+            Instruction[] P01P01P01P01 = new Instruction[] {Instruction.PUSH1, Instruction.PUSH1,Instruction.PUSH1, Instruction.PUSH1};
+            NGrams.GetCounts(P01P01P01P01, countsP01P01P01P01);
+            NGrams.GetCounts(P01P01RESETP01P01, countsP01P01RESETP01P01);
+            countsP01P01P01P01.TryGetValue(NGramsP01P01.ulong0, out ulong P01P01count);
+            Assert.That(P01P01count == 3,
+                                $"expected {NGramsP01P01.ToString()} to have count 3 found {P01P01count} ");
+            countsP01P01RESETP01P01.TryGetValue(NGramsP01P01.ulong0, out P01P01count);
+            Assert.That(P01P01count == 2,
+                                $"expected {NGramsP01P01.ToString()} to have count 3 found {P01P01count} ");
         }
     }
 }
