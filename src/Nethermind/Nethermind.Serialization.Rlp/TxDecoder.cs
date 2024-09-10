@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
@@ -30,19 +28,18 @@ public sealed class GeneratedTxDecoder : TxDecoder<GeneratedTransaction>;
 
 public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : Transaction, new()
 {
-    private readonly Dictionary<TxType, ITxDecoder> _decoders;
+    private readonly ITxDecoder?[] _decoders = new ITxDecoder?[Transaction.MaxTxType + 1];
 
     protected TxDecoder(Func<T>? transactionFactory = null)
     {
         Func<T> factory = transactionFactory ?? (() => new T());
-        _decoders = new() {
-            { TxType.Legacy, new LegacyTxDecoder<T>(factory) },
-            { TxType.AccessList, new AccessListTxDecoder<T>(factory) },
-            { TxType.EIP1559, new EIP1559TxDecoder<T>(factory) },
-            { TxType.Blob, new BlobTxDecoder<T>(factory) },
-            { TxType.DepositTx, new OptimismTxDecoder<T>(factory) }
-        };
+        RegisterDecoder(new LegacyTxDecoder<T>(factory));
+        RegisterDecoder(new AccessListTxDecoder<T>(factory));
+        RegisterDecoder(new EIP1559TxDecoder<T>(factory));
+        RegisterDecoder(new BlobTxDecoder<T>(factory));
     }
+
+    public void RegisterDecoder(ITxDecoder decoder) => _decoders[(int)decoder.Type] = decoder;
 
     public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -83,7 +80,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
     }
 
     private ITxDecoder GetDecoder(TxType txType) =>
-        _decoders.TryGetValue(txType, out ITxDecoder decoder)
+        _decoders.TryGetByTxType(txType, out ITxDecoder decoder)
             ? decoder
             : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 

@@ -20,9 +20,7 @@ namespace Nethermind.Init.Steps
 
         public static void ThrowIfNull([NotNull] object? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
         {
-            if (argument is not null)
-                return;
-            throw new StepDependencyException(paramName ?? "");
+            if (argument is null) throw new StepDependencyException(paramName ?? "");
         }
     }
 }
