@@ -37,8 +37,8 @@ public static class TxErrorMessages
     public const string InvalidTransaction =
         $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
 
-    public const string TxMissingTo =
-        "TxMissingTo: Must be set.";
+    public const string NotAllowedCreateTransaction =
+        "NotAllowedCreateTransaction: To must be set.";
 
     public const string BlobTxMissingMaxFeePerBlobGas =
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
