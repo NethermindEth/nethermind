@@ -102,6 +102,11 @@ public partial class BlockProcessor(
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
                 }
 
+                if (notReadOnly)
+                {
+                    BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                }
+
                 using CancellationTokenSource cancellationTokenSource = new();
                 Task? preWarmTask = suggestedBlock.Transactions.Length < 3
                     ? null
@@ -161,6 +166,8 @@ public partial class BlockProcessor(
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
+    public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     // TODO: move to branch processor
     private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
