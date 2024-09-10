@@ -26,7 +26,7 @@ public class WorldStateManagerTests
         WorldStateProvider worldStateProvider = new(worldState, trieStore, dbProvider, LimboLogs.Instance);
         WorldStateManager worldStateManager = new WorldStateManager(worldStateProvider, dbProvider, trieStore, LimboLogs.Instance);
 
-        worldStateManager.WorldStateProvider.GetWorldState().Should().Be(worldState);
+        worldStateManager.GlobalWorldStateProvider.GetWorldState().Should().Be(worldState);
     }
 
     [Test]

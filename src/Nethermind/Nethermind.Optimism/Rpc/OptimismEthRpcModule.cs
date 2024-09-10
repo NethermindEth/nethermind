@@ -121,7 +121,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             // here we want to get the data technically for the head, but getting head from blockTree and then using
             // that for the result seems like overkill? though it is the correct way of doing it?
             // Can we solve this with OverlayWorldState?
-            tx.Nonce = _worldStateManager.WorldStateProvider.GetWorldState().GetNonce(tx.SenderAddress);
+            tx.Nonce = _worldStateManager.GlobalWorldStateProvider.GetWorldState().GetNonce(tx.SenderAddress);
         }
 
         await _sealer.Seal(tx, TxHandlingOptions.None);

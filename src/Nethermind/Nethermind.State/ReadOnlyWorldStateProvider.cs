@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -35,8 +34,4 @@ public class ReadOnlyWorldStateProvider : IWorldStateProvider
     }
 
     public virtual IWorldState GetWorldState() => throw new InvalidOperationException("world state is not supported");
-
-    public virtual void InitBranch(Hash256? branchStateRoot, BlockHeader blockHeader, bool incrementReorgMetric = true) => throw new InvalidOperationException("world state is not supported");
-
-    public virtual void RestoreBranch(Hash256 branchingPointStateRoot) => throw new InvalidOperationException("world state is not supported");
 }

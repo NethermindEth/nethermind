@@ -40,6 +40,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using NSubstitute;
 
 namespace Nethermind.Core.Test.Blockchain;
 
@@ -130,7 +131,13 @@ public class TestBlockchain : IDisposable
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
-        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, new PreBlockCaches());
+        ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
+        var preBlockCaches = new PreBlockCaches();
+        ITrieStore preCachedTrieStore = new PreCachedTrieStore(ReadOnlyTrieStore, preBlockCaches.RlpCache);
+        WorldStateProvider = new WorldStateProvider(preCachedTrieStore, TrieStore, DbProvider, LimboLogs.Instance);
+        WorldStateManager = new WorldStateManager(WorldStateProvider, DbProvider, TrieStore, LimboLogs.Instance, preBlockCaches);
+        StateReader = WorldStateProvider.GetGlobalStateReader();
+        State = WorldStateManager.GlobalWorldStateProvider.GetWorldState();
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
@@ -158,11 +165,6 @@ public class TestBlockchain : IDisposable
 
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
-
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateProvider = new WorldStateProvider(State, TrieStore, DbProvider, LimboLogs.Instance);
-        WorldStateManager = new WorldStateManager(WorldStateProvider, DbProvider, TrieStore, LimboLogs.Instance);
-        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
         BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
@@ -359,7 +361,7 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
 
-        genesisBlockBuilder.WithStateRoot(State.StateRoot);
+        genesisBlockBuilder.WithStateRoot(WorldStateManager.GlobalWorldStateProvider.GetWorldState().StateRoot);
         return genesisBlockBuilder.TestObject;
     }
 
@@ -376,7 +378,7 @@ public class TestBlockchain : IDisposable
             BlockValidator,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
-            WorldStateManager.WorldStateProvider,
+            WorldStateManager.GlobalWorldStateProvider,
             ReceiptStorage,
             new BlockhashStore(SpecProvider),
             LogManager);

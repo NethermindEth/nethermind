@@ -108,7 +108,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(producerEnv.TransactionProcessor),
-                getFromApi.WorldStateManager?.WorldStateProvider,
+                getFromApi.WorldStateManager?.GlobalWorldStateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.SpecProvider),
                 getFromApi.LogManager,

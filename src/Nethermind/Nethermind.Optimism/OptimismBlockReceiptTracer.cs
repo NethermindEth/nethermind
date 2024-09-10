@@ -26,7 +26,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
 
         ulong? depositNonce = null;
         ulong? version = null;
-        IWorldState worldStateToUse = _worldStateManager.WorldStateProvider.GetGlobalWorldState(header);
+        IWorldState worldStateToUse = _worldStateManager.GlobalWorldStateProvider.GetGlobalWorldState(header);
         if (CurrentTx.IsDeposit())
         {
             depositNonce = worldStateToUse.GetNonce(CurrentTx.SenderAddress!).ToUInt64(null);

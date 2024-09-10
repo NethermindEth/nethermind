@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Ethash
                 processor,
                 sealer,
                 blockTree,
-                stateManager.WorldStateProvider,
+                stateManager.GlobalWorldStateProvider,
                 gasLimitCalculator,
                 timestamper,
                 specProvider,

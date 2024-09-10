@@ -4,23 +4,24 @@
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.State;
+namespace Nethermind.Synchronization.Trie;
 
-public class WorldStateProvider : ReadOnlyWorldStateProvider
+public class HealingWorldStateProvider : ReadOnlyWorldStateProvider
 {
-    private IWorldState _worldState { get; set; }
+    private IWorldState _worldState { get; }
 
-    public WorldStateProvider(
+    public HealingWorldStateProvider(
         ITrieStore preCachedTrieStore,
         ITrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
         PreBlockCaches? preBlockCaches = null) : base(dbProvider, trieStore.AsReadOnly(), logManager)
     {
-        _worldState = new WorldState(
+        _worldState = new HealingWorldState(
             preCachedTrieStore,
             dbProvider.CodeDb,
             logManager,

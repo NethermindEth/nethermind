@@ -232,7 +232,7 @@ public partial class EngineModuleTests
                 BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
-                WorldStateManager.WorldStateProvider,
+                WorldStateManager.GlobalWorldStateProvider,
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider),
                 LogManager,

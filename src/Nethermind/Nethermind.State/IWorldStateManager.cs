@@ -8,7 +8,7 @@ namespace Nethermind.State;
 
 public interface IWorldStateManager : IPreBlockCaches
 {
-    IWorldStateProvider WorldStateProvider { get; }
+    IWorldStateProvider GlobalWorldStateProvider { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.

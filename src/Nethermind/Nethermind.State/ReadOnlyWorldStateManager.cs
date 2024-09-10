@@ -12,49 +12,23 @@ namespace Nethermind.State;
 /// <summary>
 /// Mainly to make it easier for test
 /// </summary>
-public class ReadOnlyWorldStateManager : IWorldStateManager
+public class ReadOnlyWorldStateManager(
+    ReadOnlyWorldStateProvider globalWorldStateProvider,
+    IDbProvider dbProvider,
+    IReadOnlyTrieStore readOnlyTrieStore,
+    ILogManager logManager,
+    PreBlockCaches? preBlockCaches = null) : IWorldStateManager
 {
-    private readonly IReadOnlyTrieStore _readOnlyTrieStore;
-    private readonly ILogManager _logManager;
-    private readonly ReadOnlyDb _codeDb;
-    private readonly IDbProvider _dbProvider;
-
-    public virtual IWorldStateProvider WorldStateProvider { get; }
-    public PreBlockCaches? Caches { get; }
-
-    public ReadOnlyWorldStateManager(
-        ReadOnlyWorldStateProvider worldStateProvider,
-        IDbProvider dbProvider,
-        IReadOnlyTrieStore readOnlyTrieStore,
-        ILogManager logManager,
-        PreBlockCaches? preBlockCaches = null
-    )
-    {
-        WorldStateProvider = worldStateProvider;
-        _readOnlyTrieStore = readOnlyTrieStore;
-        _dbProvider = dbProvider;
-        _logManager = logManager;
-        Caches = preBlockCaches;
-
-
-        IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
-        _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
-    }
+    public virtual IWorldStateProvider GlobalWorldStateProvider => globalWorldStateProvider;
+    public PreBlockCaches? Caches => preBlockCaches;
 
     public IWorldStateProvider CreateResettableWorldStateProvider()
     {
-        WorldState? worldState = Caches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, Caches.RlpCache),
-                _codeDb,
-                _logManager,
-                Caches)
-            : new WorldState(
-                _readOnlyTrieStore,
-                _codeDb,
-                _logManager);
+        ITrieStore preCachedTrieStore = Caches is null
+            ? readOnlyTrieStore
+            : new PreCachedTrieStore(readOnlyTrieStore, Caches.RlpCache);
 
-        return new WorldStateProvider(worldState, _readOnlyTrieStore, _dbProvider, _logManager);
+        return new WorldStateProvider(preCachedTrieStore, readOnlyTrieStore, dbProvider, logManager, Caches);
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

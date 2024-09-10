@@ -144,39 +144,33 @@ public class InitializeStateDb : IStep
             mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
         }
 
-        IWorldState worldState = syncConfig.TrieHealing
-            ? new HealingWorldState(
-                mainWorldTrieStore,
-                codeDb,
-                getApi.LogManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false)
-            : new WorldState(
-                mainWorldTrieStore,
-                codeDb,
-                getApi.LogManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false);
-
-        // This is probably the point where a different state implementation would switch.
-        var worldStateProvider = new WorldStateProvider(worldState, trieStore, getApi.DbProvider, getApi.LogManager);
-        IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
-            worldStateProvider,
-            getApi.DbProvider,
-            trieStore,
-            getApi.LogManager);
+        IWorldStateManager stateManager;
+        if (syncConfig.TrieHealing)
+        {
+            stateManager = setApi.WorldStateManager = new HealingWorldStateManager(
+                new HealingWorldStateProvider(mainWorldTrieStore, trieStore, getApi.DbProvider, getApi.LogManager, preBlockCaches),
+                getApi.DbProvider,
+                trieStore,
+                getApi.LogManager);
+        }
+        else
+        {
+            stateManager = setApi.WorldStateManager = new WorldStateManager(
+                new WorldStateProvider(mainWorldTrieStore, trieStore, getApi.DbProvider, getApi.LogManager, preBlockCaches),
+                getApi.DbProvider,
+                trieStore,
+                getApi.LogManager);
+        }
 
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
         getApi.DisposeStack.Push(mainWorldTrieStore);
 
-        setApi.StateReader = worldStateProvider.GetGlobalStateReader();
-        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, worldStateProvider.GetGlobalStateReader());
+        setApi.StateReader = stateManager.GlobalWorldStateProvider.GetGlobalStateReader();
+        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, setApi.StateReader);
 
-        worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+        stateManager.GlobalWorldStateProvider.GetWorldState().StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
         if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
@@ -186,7 +180,7 @@ public class InitializeStateDb : IStep
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
                     Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = worldStateProvider.GetGlobalStateReader().CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
+                    TrieStats stats = setApi.StateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                 }
                 catch (Exception ex)
@@ -199,10 +193,10 @@ public class InitializeStateDb : IStep
         // Init state if we need system calls before actual processing starts
         if (getApi.BlockTree!.Head?.StateRoot is not null)
         {
-            worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
+            stateManager.GlobalWorldStateProvider.GetWorldState().StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, worldStateProvider.GetGlobalStateReader(), mainNodeStorage, trieStore);
+        InitializeFullPruning(pruningConfig, initConfig, _api, setApi.StateReader, mainNodeStorage, trieStore);
 
         return Task.CompletedTask;
     }

@@ -75,8 +75,8 @@ namespace Nethermind.AuRa.Test
                     return block;
                 });
                 StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
-                WorldStateManager.WorldStateProvider.GetGlobalStateReader().HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
-                WorldStateManager.WorldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(StateProvider);
+                WorldStateManager.GlobalWorldStateProvider.GetGlobalStateReader().HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+                WorldStateManager.GlobalWorldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(StateProvider);
                 InitProducer();
             }
 
@@ -102,7 +102,7 @@ namespace Nethermind.AuRa.Test
                 AuRaBlockProducer = new AuRaBlockProducer(
                     TransactionSource,
                     BlockchainProcessor,
-                    WorldStateManager.WorldStateProvider,
+                    WorldStateManager.GlobalWorldStateProvider,
                     Sealer,
                     BlockTree,
                     Timestamper,

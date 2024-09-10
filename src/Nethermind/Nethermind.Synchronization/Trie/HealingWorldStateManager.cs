@@ -1,15 +1,16 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.State;
+namespace Nethermind.Synchronization.Trie;
 
-public class WorldStateManager(
-    WorldStateProvider worldStateProvider,
+public class HealingWorldStateManager(
+    HealingWorldStateProvider worldStateProvider,
     IDbProvider dbProvider,
     ITrieStore trieStore,
     ILogManager logManager,
