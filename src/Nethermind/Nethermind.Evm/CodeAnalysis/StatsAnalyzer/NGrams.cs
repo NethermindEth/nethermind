@@ -8,7 +8,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
     public readonly struct NGrams : IEnumerable<ulong>
     {
-        public readonly ulong ngram;
+        public readonly ulong ulong0;
         public const uint MAX_SIZE = 7;
         public const ulong NULL = 0;
         public const Instruction RESET = Instruction.STOP;
@@ -30,7 +30,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public NGrams(ulong value = NGrams.NULL)
         {
-            ngram = value;
+            ulong0 = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -60,7 +60,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public NGrams ShiftAdd(Instruction instruction)
         {
-            return new NGrams(ShiftAdd(ngram, instruction));
+            return new NGrams(ShiftAdd(ulong0, instruction));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public byte[] ToBytes()
         {
-            return ToBytes(ngram);
+            return ToBytes(ulong0);
         }
 
         public static Instruction[] ToInstructions(ulong ngram)
@@ -98,7 +98,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public Instruction[] ToInstructions()
         {
-            return ToInstructions(ngram);
+            return ToInstructions(ulong0);
         }
 
         public static string ToString(ulong ngram)
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public override string ToString()
         {
-            return ToString(ngram);
+            return ToString(ulong0);
         }
 
         private static ulong FromInstructions(Instruction[] instructions)
@@ -136,9 +136,9 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
             for (int i = 1; i < MAX_SIZE; i++)
             {
-                if (NGrams.byteIndexes[i - 1] < ngram)
+                if (NGrams.byteIndexes[i - 1] < ulong0)
                 {
-                    yield return this.ngram & NGrams.bitMasks[i];
+                    yield return this.ulong0 & NGrams.bitMasks[i];
                 }
             }
         }

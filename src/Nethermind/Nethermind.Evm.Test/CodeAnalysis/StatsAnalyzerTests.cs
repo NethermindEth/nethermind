@@ -155,7 +155,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(statsAnalyzer.topNQueue.Count == ngrams.Count(), $" Total ngrams expected {ngrams.Count()}, found {statsAnalyzer.topNQueue.Count}");
             foreach ((Instruction[] ngram, int expectedCount) _ngram in ngrams)
             {
-                counts[new NGrams(_ngram.ngram).ngram] = (ulong)_ngram.expectedCount;
+                counts[new NGrams(_ngram.ngram).ulong0] = (ulong)_ngram.expectedCount;
             }
 
             while (statsAnalyzer.topNQueue.TryDequeue(out ulong ngram, out ulong count))

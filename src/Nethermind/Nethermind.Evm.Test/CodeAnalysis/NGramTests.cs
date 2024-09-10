@@ -121,7 +121,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
 
             foreach (Instruction[] _ngram in expectedNGrams)
-                counts[new NGrams(_ngram).ngram] = 1;
+                counts[new NGrams(_ngram).ulong0] = 1;
 
             var ngramCount = 0;
 
