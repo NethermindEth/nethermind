@@ -80,7 +80,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             _sketchBuffer[_currentSketch].Update(ngram);
             var count = QueryAllSketches(ngram);
             if (count < _minSupport) return;
-            _topNMap.Add(ngram, count);
+            _topNMap[ngram] = count;
         }
 
         private ulong QueryAllSketches(ulong ngram)
