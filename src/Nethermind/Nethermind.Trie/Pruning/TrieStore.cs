@@ -286,7 +286,7 @@ namespace Nethermind.Trie.Pruning
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
-        private readonly ConcurrentDictionary<HashAndTinyPathAndHash, long> _persistedLastSeen = new(CollectionExtensions.LockPartitions, 4 * 4096);
+        private readonly ConcurrentDictionary<HashAndTinyPathAndHash, long>? _persistedLastSeen;
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -323,6 +323,10 @@ namespace Nethermind.Trie.Pruning
             _dirtyNodes = new DirtyNodesCache(this);
             _publicStore = new TrieKeyValueStore(this);
 
+            if (pruningStrategy.PruningEnabled)
+            {
+                _persistedLastSeen = new(CollectionExtensions.LockPartitions, 4 * 4096);
+            }
             if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath)
             {
                 _pastPathHash = new(pruningStrategy.TrackedPastKeyCount);
