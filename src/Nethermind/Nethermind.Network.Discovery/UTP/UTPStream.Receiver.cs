@@ -10,10 +10,9 @@ public partial class UTPStream
 {
     private AckInfo _receiverAck_nr = new AckInfo(0, null); // Mutated by receiver only // From spec: c.ack_nr
     // TODO: Use LRU instead. Need a special expiry handling so that the _incomingBufferSize is correct.
-    private readonly ConcurrentDictionary<ushort, ArraySegment<byte>?> _receiveBuffer = new();
-    private int _incomingBufferSize = 0;
 
     private TaskCompletionSource _dataTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    private ReceiveBuffer _receiveBuffer = new ReceiveBuffer();
 
     // Used to send data directly to stream without buffering in case where the data came in order.
     private Stream? _directOutput = null;
@@ -83,16 +82,14 @@ public partial class UTPStream
             }
 
             await output.WriteAsync(packetData.Value, token);
-            Interlocked.Add(ref _incomingBufferSize, -packetData.Value.Count);
-
             _arrayPool.Return(packetData.Value.Array!);
         }
 
         // Assembling ack.
-        byte[]? selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
+        byte[]? selectiveAck = _receiveBuffer.CompileSelectiveAckBitset(curAck);
 
         _receiverAck_nr = new AckInfo(curAck, selectiveAck);
-        if (_logger.IsTrace) _logger.Trace($"R ack set to {curAck}. Bufsixe is {_receiveBuffer.Count()}");
+        if (_logger.IsTrace) _logger.Trace($"R ack set to {curAck}. Bufsixe is {_receiveBuffer.Size}");
 
         await SendStatePacket(token);
 
@@ -123,13 +120,12 @@ public partial class UTPStream
         }
 
         // No space in buffer UNLESS its the next needed sequence, in which case, we still process it, otherwise
-        if (_incomingBufferSize + data.Length > RECEIVE_WINDOW_SIZE &&
+        if (_receiveBuffer.Size + data.Length > RECEIVE_WINDOW_SIZE &&
             meta.SeqNumber != UTPUtil.WrappedAddOne(receiverAck))
         {
             // Attempt to clean incoming buffer.
             // Ideally, it just use an LRU instead.
-            List<ushort> keptBuffers = _receiveBuffer.Select(kv => kv.Key).ToList();
-            foreach (var keptBuffer in keptBuffers)
+            foreach (var keptBuffer in _receiveBuffer.GetKeys())
             {
                 // Can happen sometime, the buffer is written at the same time as it is being processed so the ack
                 // is not updated yet at that point.
@@ -137,18 +133,16 @@ public partial class UTPStream
                 {
                     if (_receiveBuffer.TryRemove(keptBuffer, out ArraySegment<byte>? mem))
                     {
-                        if (mem != null) _incomingBufferSize -= mem.Value.Count;
                     }
                 }
             }
 
-            if (_incomingBufferSize + data.Length > RECEIVE_WINDOW_SIZE)
+            if (_receiveBuffer.Size + data.Length > RECEIVE_WINDOW_SIZE)
             {
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Receive buffer full for seq {meta.SeqNumber}");
-                    var it = _receiveBuffer.Select(kv => kv.Key).ToList();
-                    _logger.Trace("The nums " + string.Join(", ", it));
+                    _logger.Trace("The nums " + string.Join(", ", _receiveBuffer.GetKeys()));
                 }
 
                 return false;
@@ -162,7 +156,7 @@ public partial class UTPStream
     {
         if (ShouldHandlePacket(packetHeader, data))
         {
-            if (_incomingBufferSize == 0 && UTPUtil.WrappedAddOne(_receiverAck_nr.seq_nr) == packetHeader.SeqNumber)
+            if (UTPUtil.WrappedAddOne(_receiverAck_nr.seq_nr) == packetHeader.SeqNumber)
             {
                 // Directly send the data to stream without buffering
                 bool wasWritten = false;
@@ -183,7 +177,6 @@ public partial class UTPStream
                 }
             }
 
-            Interlocked.Add(ref _incomingBufferSize, data.Length);
 
             ArraySegment<byte> buffer = _arrayPool.Rent(data.Length);
             ArraySegment<byte> segment = buffer[..data.Length];
@@ -191,7 +184,7 @@ public partial class UTPStream
 
             if (_receiveBuffer.TryAdd(packetHeader.SeqNumber, segment))
             {
-                if (_logger.IsTrace) _logger.Trace($"Receive buffer set {packetHeader.SeqNumber}");
+                if (_logger.IsTrace) _logger.Trace($"R Receive buffer set {packetHeader.SeqNumber}");
 
                 _dataTcs.TrySetResult();
             }
@@ -215,13 +208,13 @@ public partial class UTPStream
             outputTaken.Write(data);
             wasWritten = true;
 
-            if (_receiveBuffer.TryRemove(packetHeader.SeqNumber, out _))
+            if (_receiveBuffer.TryRemove(packetHeader.SeqNumber, out var bufferSegment))
             {
                 _logger.Trace($"Seq number {packetHeader.SeqNumber} was in receive buffer");
             }
 
             curAck++;
-            byte[]? selectiveAck = UTPUtil.CompileSelectiveAckBitset(curAck, _receiveBuffer);
+            byte[]? selectiveAck = _receiveBuffer.CompileSelectiveAckBitset(curAck);
             _receiverAck_nr = new AckInfo(curAck, selectiveAck);
             if (_logger.IsTrace) _logger.Trace($"R ack set to {curAck} in direct write.");
         }
@@ -234,7 +227,7 @@ public partial class UTPStream
     {
         if (ShouldHandlePacket(packetHeader, ReadOnlySpan<byte>.Empty))
         {
-            _receiveBuffer[packetHeader.SeqNumber] = null;
+            _receiveBuffer.TryAdd(packetHeader.SeqNumber, null);
             _dataTcs.TrySetResult();
         }
 

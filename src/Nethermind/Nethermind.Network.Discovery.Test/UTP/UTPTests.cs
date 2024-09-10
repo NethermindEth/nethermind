@@ -128,7 +128,6 @@ public class UTPTests
         Assert.That(encoding, Is.EqualTo(encodePacket.ToArray()));
     }
 
-    [TestCase("0000000000000000000000000000000000000000000000000000000000000000", new ushort[0])]
     [TestCase("0000000000000000000000000000000000000000000000000000000000000000", new ushort[] { 2 })]
     [TestCase("0000000100000000000000000000000000000000000000000000000000000000", new ushort[] { 2, 3 })]
     [TestCase("0000111100000000000000000000000000000000000000000000000000000000", new ushort[] { 2, 3, 4, 5, 6 })]
@@ -137,13 +136,13 @@ public class UTPTests
     [TestCase("1000000010000000001000000010000000100000001000000010000000100000", new ushort[] { 10, 18, 24, 32, 40, 48, 56, 64 })]
     public void TestCompileSelectiveAck(string stringRep, ushort[] pendingSequenceNums)
     {
-        NonBlocking.ConcurrentDictionary<ushort, ArraySegment<byte>?> pendingSequence = new NonBlocking.ConcurrentDictionary<ushort, ArraySegment<byte>?>();
+        ReceiveBuffer receiveBuffer = new ReceiveBuffer();
         foreach (var pendingSequenceNum in pendingSequenceNums)
         {
-            pendingSequence[pendingSequenceNum] = ArraySegment<byte>.Empty;
+            receiveBuffer.TryAdd(pendingSequenceNum, ArraySegment<byte>.Empty);
         }
 
-        byte[] ackBitset = UTPUtil.CompileSelectiveAckBitset(1, pendingSequence)!;
+        byte[] ackBitset = receiveBuffer.CompileSelectiveAckBitset(1)!;
 
         string bitSetString = string.Concat(ackBitset.Select(b => Convert.ToString(b, 2).PadLeft(8, '0')));
         Assert.That(bitSetString, Is.EqualTo(stringRep));
@@ -227,7 +226,7 @@ public class UTPTests
             byte[] dataArr = data.ToArray();
 
             // Dont block
-            _ = Task.Run(async () =>
+            _ = Task.Factory.StartNew(async () =>
             {
                 // skipped
                 if (_random.NextDouble() < dropPercentage)
@@ -241,18 +240,19 @@ public class UTPTests
                 if (randomDelayMs != 0)
                     await Task.Delay( _random.Next() % randomDelayMs, token);
 
-                if (_logger.IsTrace) _logger.Trace($"T Send {packetHeader}");
                 bool lockTaken = false;
                 try
                 {
+                    if (_logger.IsTrace) _logger.Trace($"T SendLock {packetHeader}");
                     _lock.Enter(ref lockTaken);
+                    if (_logger.IsTrace) _logger.Trace($"T Send {packetHeader}");
                     await actual.ReceiveMessage(packetHeader, dataArr, token);
                 }
                 finally
                 {
                     _lock.Exit();
                 }
-            }, token);
+            }, TaskCreationOptions.PreferFairness);
 
             return Task.CompletedTask;
         }

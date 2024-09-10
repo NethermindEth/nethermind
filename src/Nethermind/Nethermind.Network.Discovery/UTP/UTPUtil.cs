@@ -26,33 +26,4 @@ public class UTPUtil
         return (uint)microseconds;
     }
 
-    public static byte[]? CompileSelectiveAckBitset(ushort curAck, ConcurrentDictionary<ushort, ArraySegment<byte>?> receiveBuffer) {
-        if (receiveBuffer.Count == 0)
-        {
-            return null;
-        }
-
-        // Fixed 64 bit.
-        // TODO: use long
-        // TODO: no need to encode trailing zeros
-        byte[] selectiveAck = new byte[8];
-
-        // Shortcut the loop if all buffer was iterated
-        int counted = 0;
-        int maxCounted = receiveBuffer.Count;
-
-        for (int i = 0; i < 64 && counted < maxCounted; i++)
-        {
-            ushort theAck = (ushort)(curAck + 2 + i);
-            if (receiveBuffer.ContainsKey(theAck))
-            {
-                int iIdx = i / 8;
-                int iOffset = i % 8;
-                selectiveAck[iIdx] = (byte)(selectiveAck[iIdx] | 1 << iOffset);
-                counted++;
-            }
-        }
-
-        return selectiveAck;
-    }
 }

@@ -108,7 +108,7 @@ public partial class UTPStream
 
     private void Retransmit(LinkedList<UnackedItem> unackedWindow)
     {
-        if (_logger.IsTrace) _logger.Trace($"S Retransmit");
+        // if (_logger.IsTrace) _logger.Trace($"S Retransmit");
         UTPPacketHeader? lastPacketFromPeer = _peerAck;
         if (lastPacketFromPeer == null)
         {
