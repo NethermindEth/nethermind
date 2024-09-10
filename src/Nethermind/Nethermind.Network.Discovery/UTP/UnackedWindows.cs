@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Nethermind.Logging;
@@ -9,14 +10,16 @@ using Nethermind.Network.Discovery.UTP;
 namespace Nethermind.Network.Discovery;
 
 public class UnackedWindows (ILogger logger) {
+
+    private ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
     private long _inflightData = 0;
-    private LinkedList<UnackedItem> unackedWindow = new LinkedList<UnackedItem>();
+    private readonly LinkedList<UnackedItem> _unackedWindow = new LinkedList<UnackedItem>();
 
     public int ProcessAck(UTPPacketHeader lastPacketHeaderSent, uint now)
     {
         int ackedBytes = 0;
         ushort ackNumberPlus1 = UTPUtil.WrappedAddOne(lastPacketHeaderSent.AckNumber);
-        LinkedListNode<UnackedItem>? unackedHead = unackedWindow.First;
+        LinkedListNode<UnackedItem>? unackedHead = _unackedWindow.First;
         while (true)
         {
             if (unackedHead == null) return ackedBytes;
@@ -24,13 +27,9 @@ public class UnackedWindows (ILogger logger) {
             // there are packages on the list that are sent but not acked so they are still in transit.
             if (!UTPUtil.IsLess(unackedHead.Value.Header.SeqNumber, ackNumberPlus1)) break;
 
-            _inflightData -= unackedHead.Value.Buffer.Length;
-            var toRemove = unackedHead;
             if (logger.IsTrace) logger.Trace($"S acked {unackedHead.Value.Header.SeqNumber}");
-            ackedBytes += toRemove.Value.Buffer.Length;
-            OnAck(toRemove.Value, now);
-            unackedHead = unackedHead.Next;
-            unackedWindow.Remove(toRemove);
+
+            unackedHead = RemodeUnackedEntry(unackedHead, now, ref ackedBytes);
         }
 
         if (lastPacketHeaderSent.SelectiveAck == null) return ackedBytes;
@@ -77,13 +76,9 @@ public class UnackedWindows (ILogger logger) {
                 {
                     if ((ackByte & 1) != 0)
                     {
-                        _inflightData -= unackedHead.Value.Buffer.Length;
-                        var toRemove = unackedHead;
-                        ackedBytes += toRemove.Value.Buffer.Length;
-                        OnAck(toRemove.Value, now);
-                        if (logger.IsTrace) logger.Trace($"S sel acked {toRemove.Value.Header.SeqNumber}");
-                        unackedHead = unackedHead.Next;
-                        unackedWindow.Remove(toRemove);
+                        if (logger.IsTrace) logger.Trace($"S sel acked {unackedHead.Value.Header.SeqNumber}");
+
+                        unackedHead = RemodeUnackedEntry(unackedHead, now, ref ackedBytes);
                     }
                     else
                     {
@@ -97,6 +92,18 @@ public class UnackedWindows (ILogger logger) {
         }
 
         return ackedBytes;
+    }
+
+    private LinkedListNode<UnackedItem>? RemodeUnackedEntry(LinkedListNode<UnackedItem> unackedHead, uint now, ref int ackedBytes)
+    {
+        _inflightData -= unackedHead!.Value.Buffer.Count;
+        var toRemove = unackedHead;
+        ackedBytes += toRemove.Value.Buffer.Count;
+        OnAck(toRemove.Value, now);
+        var next = unackedHead.Next;
+        _unackedWindow.Remove(toRemove);
+
+        return next;
     }
 
     private uint rtt = 0;
@@ -150,18 +157,18 @@ public class UnackedWindows (ILogger logger) {
 
     public bool isUnackedWindowEmpty()
     {
-        return unackedWindow.Count == 0;
+        return _unackedWindow.Count == 0;
     }
 
-    public void trackPacket(Memory<byte> asMemory, UTPPacketHeader header, uint now)
+    public void TrackPacket(ArraySegment<byte> asMemory, UTPPacketHeader header, uint now)
     {
-        unackedWindow.AddLast(new UnackedItem(header, asMemory, now));
-        IncrementInflightData(asMemory.Length);
+        _unackedWindow.AddLast(new UnackedItem(header, asMemory, now));
+        IncrementInflightData(asMemory.Count);
     }
 
     public LinkedList<UnackedItem> getUnAckedWindow()
     {
-        return unackedWindow;
+        return _unackedWindow;
     }
 
     public enum OnUnackResult
@@ -183,11 +190,11 @@ public class UnackedWindows (ILogger logger) {
         if (!unackedItem.AssumedLoss)
         {
             // So once its assumed loss, we mark it so that we don't subtract inflight data twice
-            DecrementInflightData(unackedItem.Buffer.Length);
+            DecrementInflightData(unackedItem.Buffer.Count);
             unackedItem.AssumedLoss = true;
         }
 
-        if (GetCurrentInflightData() + unackedItem.Buffer.Length > currentWindowSize)
+        if (GetCurrentInflightData() + unackedItem.Buffer.Count > currentWindowSize)
         {
             // So we have determined to retransmit, but not enough window
             // this could happen for example, when the window size goes down.
@@ -195,7 +202,7 @@ public class UnackedWindows (ILogger logger) {
         }
 
         // Retransmit, so we
-        IncrementInflightData(unackedItem.Buffer.Length);
+        IncrementInflightData(unackedItem.Buffer.Count);
         unackedItem.AssumedLoss = false;
         unackedItem.NeedResent = true;
         unackedItem.UnackedCounter = 0;
@@ -204,7 +211,7 @@ public class UnackedWindows (ILogger logger) {
 
     public void OnRtoTimeout()
     {
-        var linkedListNode = unackedWindow.First;
+        var linkedListNode = _unackedWindow.First;
         while (linkedListNode != null)
         {
             var entry = linkedListNode.Value;

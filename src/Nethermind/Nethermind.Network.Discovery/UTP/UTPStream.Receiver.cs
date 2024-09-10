@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.UTP;
@@ -8,9 +9,8 @@ namespace Nethermind.Network.Discovery.UTP;
 public partial class UTPStream
 {
     private AckInfo _receiverAck_nr = new AckInfo(0, null); // Mutated by receiver only // From spec: c.ack_nr
-
     // TODO: Use LRU instead. Need a special expiry handling so that the _incomingBufferSize is correct.
-    private readonly ConcurrentDictionary<ushort, Memory<byte>?> _receiveBuffer = new();
+    private readonly ConcurrentDictionary<ushort, ArraySegment<byte>?> _receiveBuffer = new();
     private int _incomingBufferSize = 0;
 
     private TaskCompletionSource _dataTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -26,7 +26,7 @@ public partial class UTPStream
             ushort curAck = _receiverAck_nr.seq_nr;
             long packetIngested = 0;
 
-            while (_receiveBuffer.TryRemove(UTPUtil.WrappedAddOne(curAck), out Memory<byte>? packetData))
+            while (_receiveBuffer.TryRemove(UTPUtil.WrappedAddOne(curAck), out ArraySegment<byte>? packetData))
             {
                 curAck++;
                 if (_logger.IsTrace) _logger.Trace($"R ingest {curAck}");
@@ -49,7 +49,9 @@ public partial class UTPStream
                 }
 
                 await output.WriteAsync(packetData.Value, token);
-                Interlocked.Add(ref _incomingBufferSize, -packetData.Value.Length);
+                Interlocked.Add(ref _incomingBufferSize, -packetData.Value.Count);
+
+                _arrayPool.Return(packetData.Value.Array!);
             }
 
             // Assembling ack.
@@ -102,9 +104,9 @@ public partial class UTPStream
                 // is not updated yet at that point.
                 if (UTPUtil.IsLess(keptBuffer, receiverAck))
                 {
-                    if (_receiveBuffer.TryRemove(keptBuffer, out Memory<byte>? mem))
+                    if (_receiveBuffer.TryRemove(keptBuffer, out ArraySegment<byte>? mem))
                     {
-                        if (mem != null) _incomingBufferSize -= mem.Value.Length;
+                        if (mem != null) _incomingBufferSize -= mem.Value.Count;
                     }
                 }
             }
@@ -131,7 +133,12 @@ public partial class UTPStream
         {
             // TODO: Fast path without going to receive buffer?
             Interlocked.Add(ref _incomingBufferSize, data.Length);
-            _receiveBuffer[packetHeader.SeqNumber] = data.ToArray();
+
+            ArraySegment<byte> buffer = _arrayPool.Rent(data.Length);
+            ArraySegment<byte> segment = buffer[..data.Length];
+            data.CopyTo(segment);
+
+            _receiveBuffer[packetHeader.SeqNumber] = segment;
             _dataTcs.TrySetResult();
         }
     }

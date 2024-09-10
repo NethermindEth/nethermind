@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using MathNet.Numerics.Random;
@@ -22,8 +23,9 @@ namespace Nethermind.Network.Discovery.UTP;
 public partial class UTPStream(IUTPTransfer peer, ushort connectionId, ILogManager logManager) : IUTPTransfer
 {
     private readonly ILogger _logger = logManager.GetClassLogger<UTPStream>();
+    private ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
 
-    private const uint PayloadSize = 508;
+    private const int PayloadSize = 508;
     private const int MAX_PAYLOAD_SIZE = 64000;
     private readonly uint RECEIVE_WINDOW_SIZE = (uint)500.KiB();
     private const int SELACK_MAX_RESEND = 4;

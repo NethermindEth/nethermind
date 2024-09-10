@@ -16,6 +16,7 @@ public partial class UTPStream
     private readonly LEDBAT _trafficControl = new LEDBAT(logManager);
 
     private TaskCompletionSource _ackTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public async Task WriteStream(Stream input, CancellationToken token)
     {
         bool streamFinished = false;
@@ -47,16 +48,19 @@ public partial class UTPStream
             while (!streamFinished && isSpaceAvailableOnStream())
             {
                 if (_logger.IsTrace) _logger.Trace($"S send {_seq_nr}");
-                byte[] buffer = new byte[PayloadSize];
+                ArraySegment<byte> buffer = new ArraySegment<byte>(_arrayPool.Rent(PayloadSize), 0, PayloadSize);
                 int readLength = await input.ReadAsync(buffer, token);
+                buffer = buffer[..readLength];
 
                 if (readLength != 0) {  // Note: We assume ReadAsync will return 0 multiple time.
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StData);
-                    _unackedWindows.trackPacket(buffer.AsMemory()[..readLength], header, UTPUtil.GetTimestamp());
+                    _unackedWindows.TrackPacket(buffer, header, UTPUtil.GetTimestamp());
                     _seq_nr++;
                 }else {
+                    _arrayPool.Return(buffer.Array!);
+
                     UTPPacketHeader header = CreateBaseHeader(UTPPacketType.StFin);
-                    _unackedWindows.trackPacket(Memory<byte>.Empty, header, UTPUtil.GetTimestamp());
+                    _unackedWindows.TrackPacket(ArraySegment<byte>.Empty, header, UTPUtil.GetTimestamp());
                     if (_logger.IsTrace) _logger.Trace($"S stream finished. Fin sent. {_seq_nr}");
                     streamFinished = true;
                 }
@@ -82,7 +86,7 @@ public partial class UTPStream
 
                 var header = entry.Header;
                 RefreshHeader(header);
-                await peer.ReceiveMessage(header, entry.Buffer.Span, token);
+                await peer.ReceiveMessage(header, entry.Buffer.AsSpan(), token);
             }
             linkedListNode = linkedListNode.Next;
         }

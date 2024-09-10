@@ -137,10 +137,10 @@ public class UTPTests
     [TestCase("1000000010000000001000000010000000100000001000000010000000100000", new ushort[] { 10, 18, 24, 32, 40, 48, 56, 64 })]
     public void TestCompileSelectiveAck(string stringRep, ushort[] pendingSequenceNums)
     {
-        NonBlocking.ConcurrentDictionary<ushort, Memory<byte>?> pendingSequence = new NonBlocking.ConcurrentDictionary<ushort, Memory<byte>?>();
+        NonBlocking.ConcurrentDictionary<ushort, ArraySegment<byte>?> pendingSequence = new NonBlocking.ConcurrentDictionary<ushort, ArraySegment<byte>?>();
         foreach (var pendingSequenceNum in pendingSequenceNums)
         {
-            pendingSequence[pendingSequenceNum] = Memory<byte>.Empty;
+            pendingSequence[pendingSequenceNum] = ArraySegment<byte>.Empty;
         }
 
         byte[] ackBitset = UTPUtil.CompileSelectiveAckBitset(1, pendingSequence)!;

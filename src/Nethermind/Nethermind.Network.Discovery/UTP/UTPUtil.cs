@@ -26,7 +26,7 @@ public class UTPUtil
         return (uint)microseconds;
     }
 
-    public static byte[]? CompileSelectiveAckBitset(ushort curAck, ConcurrentDictionary<ushort, Memory<byte>?> receiveBuffer) {
+    public static byte[]? CompileSelectiveAckBitset(ushort curAck, ConcurrentDictionary<ushort, ArraySegment<byte>?> receiveBuffer) {
         byte[] selectiveAck;
         // Fixed 64 bit.
         // TODO: use long
