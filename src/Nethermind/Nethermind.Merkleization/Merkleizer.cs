@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -57,9 +58,116 @@ public ref struct Merkleizer
         FeedAtLevel(chunk, 0);
     }
 
-    public void Feed(Span<byte> bytes)
+    public void Feed(long value)
     {
-        FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
+        Merkle.Ize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(Span<byte> bytes, int? limit = null)
+    {
+        if (bytes.Length is not 0)
+        {
+            FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
+        }
+        else
+        {
+            FeedAtLevel(UInt256.Zero, 0);
+        }
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
+    }
+    public void Feed(Span<short> bytes, int? limit = null)
+    {
+        if (bytes.Length is not 0)
+        {
+            FeedAtLevel(MemoryMarshal.Cast<short, UInt256>(bytes)[0], 0);
+        }
+        else
+        {
+            FeedAtLevel(UInt256.Zero, 0);
+        }
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
+    }
+    public void Feed(Span<ushort> bytes, int? limit = null)
+    {
+        if (bytes.Length is not 0)
+        {
+            FeedAtLevel(MemoryMarshal.Cast<ushort, UInt256>(bytes)[0], 0);
+        }
+        else
+        {
+            FeedAtLevel(UInt256.Zero, 0);
+        }
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
+    }
+    public void Feed(Span<int> bytes, int? limit = null)
+    {
+        if (bytes.Length is not 0)
+        {
+            FeedAtLevel(MemoryMarshal.Cast<int, UInt256>(bytes)[0], 0);
+        }
+        else
+        {
+            FeedAtLevel(UInt256.Zero, 0);
+        }
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
+    }
+    public void Feed(Span<uint> bytes, int? limit = null)
+    {
+        if (bytes.Length is not 0)
+        {
+            FeedAtLevel(MemoryMarshal.Cast<uint, UInt256>(bytes)[0], 0);
+        }
+        else
+        {
+            FeedAtLevel(UInt256.Zero, 0);
+        }
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
+    }
+    public void Feed(Span<long> bytes, int? limit = null)
+    {
+        if (bytes.Length is not 0)
+        {
+            FeedAtLevel(MemoryMarshal.Cast<long, UInt256>(bytes)[0], 0);
+        }
+        else
+        {
+            FeedAtLevel(UInt256.Zero, 0);
+        }
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
+    }
+    public void Feed(Span<ulong> bytes, int? limit = null)
+    {
+        if (bytes.Length is not 0)
+        {
+            FeedAtLevel(MemoryMarshal.Cast<ulong, UInt256>(bytes)[0], 0);
+        }
+        else
+        {
+            FeedAtLevel(UInt256.Zero, 0);
+        }
+        if (limit is not null)
+        {
+            Merkle.MixIn(ref _chunks[^1], limit.Value);
+        }
     }
 
     public void Feed(bool value)
@@ -71,6 +179,20 @@ public ref struct Merkleizer
     public void Feed(uint value)
     {
         Merkle.Ize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+    public void Feed(int value)
+    {
+        Merkle.Ize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+    public void Feed(int? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+        Merkle.Ize(out _chunks[^1], value.Value);
         Feed(_chunks[^1]);
     }
 
@@ -102,27 +224,30 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void FeedBitvector(BitArray bitArray)
+    public void Feed(BitArray? vector)
     {
+        if (vector is null) return;
         // bitfield_bytes
-        byte[] bytes = new byte[(bitArray.Length + 7) / 8];
-        bitArray.CopyTo(bytes, 0);
+        byte[] bytes = new byte[(vector.Length + 7) / 8];
+        vector.CopyTo(bytes, 0);
 
         Merkle.Ize(out _chunks[^1], bytes);
         Feed(_chunks[^1]);
     }
 
-    public void FeedBitlist(BitArray bitArray, ulong maximumBitlistLength)
+    public void Feed(BitArray? list, ulong maximumBitlistLength)
     {
+        if (list is null) return;
+
         // chunk count
         ulong chunkCount = (maximumBitlistLength + 255) / 256;
 
         // bitfield_bytes
-        byte[] bytes = new byte[(bitArray.Length + 7) / 8];
-        bitArray.CopyTo(bytes, 0);
+        byte[] bytes = new byte[(list.Length + 7) / 8];
+        list.CopyTo(bytes, 0);
 
         Merkle.Ize(out _chunks[^1], bytes, chunkCount);
-        Merkle.MixIn(ref _chunks[^1], bitArray.Length);
+        Merkle.MixIn(ref _chunks[^1], list.Length);
         Feed(_chunks[^1]);
     }
 
@@ -541,6 +666,20 @@ public ref struct Merkleizer
     }
 
     public void Feed(IReadOnlyList<Bytes32> value, ulong maxLength)
+    {
+        // TODO: If UInt256 is the correct memory layout
+        UInt256[] subRoots = new UInt256[value.Count];
+        for (int i = 0; i < value.Count; i++)
+        {
+            Merkle.Ize(out subRoots[i], value[i]);
+        }
+
+        Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+        Merkle.MixIn(ref _chunks[^1], value.Count);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(IReadOnlyList<ulong> value, ulong maxLength)
     {
         // TODO: If UInt256 is the correct memory layout
         UInt256[] subRoots = new UInt256[value.Count];
