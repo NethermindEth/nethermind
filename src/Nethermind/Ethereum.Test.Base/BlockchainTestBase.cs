@@ -135,8 +135,8 @@ namespace Ethereum.Test.Base
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             TrieStore trieStore = new(stateDb, _logManager);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
-            var worldStateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, _logManager);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, _logManager);
+            IWorldState stateProvider = worldStateProvider.GetWorldState();
             IBlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(specProvider)
                 .WithoutSettingHead
@@ -145,7 +145,7 @@ namespace Ethereum.Test.Base
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, worldStateManager, _logManager);
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, _logManager);
             ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
@@ -167,7 +167,7 @@ namespace Ethereum.Test.Base
                         virtualMachine,
                         codeInfoRepository,
                         _logManager)),
-                worldStateManager,
+                worldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
                 _logManager);

@@ -51,7 +51,7 @@ public class TraceModuleFactory(
                 _receiptStorage,
                 _specProvider,
                 _blockTree,
-                _worldStateManager.GlobalStateReader,
+                _worldStateManager.GlobalWorldStateProvider.GetGlobalStateReader(),
                 _logManager,
                 transactionsExecutor);
 
@@ -69,9 +69,9 @@ public class TraceModuleFactory(
         ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor, txProcessingEnv, rewardCalculator);
         ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor, txProcessingEnv, rewardCalculator);
 
-        Tracer tracer = new(txProcessingEnv.WorldStateManager, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
+        Tracer tracer = new(txProcessingEnv.WorldStateProvider, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.StateReader);
+        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.WorldStateProvider.GetGlobalStateReader());
     }
 
 }

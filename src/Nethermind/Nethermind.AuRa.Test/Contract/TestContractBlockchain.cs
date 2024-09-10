@@ -42,7 +42,6 @@ namespace Nethermind.AuRa.Test.Contract
             new GenesisLoader(
                     ChainSpec,
                     SpecProvider,
-                    State,
                     TxProcessor)
                 .Load(State);
     }

@@ -28,7 +28,6 @@ namespace Nethermind.Blockchain
         public GenesisLoader(
             ChainSpec chainSpec,
             ISpecProvider specProvider,
-            IWorldState stateProvider,
             ITransactionProcessor transactionProcessor)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));

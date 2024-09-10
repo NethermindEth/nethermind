@@ -52,12 +52,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
-            WorldState stateProvider = new(
-                trieStore,
-                dbProvider.RegisteredDbs[DbNames.Code],
-                LimboLogs.Instance);
-            var worldStateManager =
-                new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
@@ -76,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Always.Valid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor),
-                worldStateManager,
+                worldStateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(specProvider),
                 LimboLogs.Instance);
@@ -92,7 +88,7 @@ namespace Nethermind.Blockchain.Test.Producers
             DevBlockProducer devBlockProducer = new(
                 EmptyTxSource.Instance,
                 blockchainProcessor,
-                worldStateManager,
+                worldStateProvider,
                 blockTree,
                 timestamper,
                 specProvider,

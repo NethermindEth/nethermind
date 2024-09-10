@@ -39,9 +39,7 @@ namespace Nethermind.Blockchain.Test
         {
             var dbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new(dbProvider.StateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
-            var worldStateManger =
-                new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
 
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
@@ -49,7 +47,7 @@ namespace Nethermind.Blockchain.Test
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
-                worldStateManger,
+                worldStateProvider,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);
@@ -70,16 +68,14 @@ namespace Nethermind.Blockchain.Test
         {
             var dbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new(dbProvider.StateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
-            var worldStateManger =
-                new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
                 HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
-                worldStateManger,
+                worldStateProvider,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);

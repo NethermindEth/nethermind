@@ -34,7 +34,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IWithdrawalProcessor? withdrawalProcessor = null,
         IBlockCachePreWarmer? preWarmer = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            worldStateManager, receiptStorage, blockhashStore, logManager, withdrawalProcessor,
+             worldStateManager?.GlobalWorldStateProvider, receiptStorage, blockhashStore, logManager, withdrawalProcessor,
             ReceiptsRootCalculator.Instance, preWarmer)
     {
         ArgumentNullException.ThrowIfNull(worldStateManager);

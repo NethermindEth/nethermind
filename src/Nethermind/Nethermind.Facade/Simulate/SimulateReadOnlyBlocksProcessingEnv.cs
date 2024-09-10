@@ -65,7 +65,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
         BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, logManager), BlockTree);
-        StateReader = WorldStateManager.GlobalStateReader;
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
         VirtualMachine = new SimulateVirtualMachine(new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager));
         _transactionProcessor = new SimulateTransactionProcessor(SpecProvider, VirtualMachine, CodeInfoRepository, _logManager, validate);
@@ -107,7 +106,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             _blockValidator,
             NoBlockRewards.Instance,
             new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, validate, blobBaseFeeOverride),
-            WorldStateManager,
+            WorldStateProvider,
             NullReceiptStorage.Instance,
             new BlockhashStore(SpecProvider),
             _logManager);

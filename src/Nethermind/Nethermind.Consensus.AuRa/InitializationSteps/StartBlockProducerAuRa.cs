@@ -88,7 +88,7 @@ public class StartBlockProducerAuRa
         IBlockProducer blockProducer = new AuRaBlockProducer(
             producerEnv.TxSource,
             producerEnv.ChainProcessor,
-            producerEnv.ReadOnlyWorldStateManager,
+            producerEnv.ReadOnlyWorldStateProvider,
             _api.Sealer,
             _api.BlockTree,
             _api.Timestamper,
@@ -243,7 +243,7 @@ public class StartBlockProducerAuRa
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyWorldStateManager = txProcessingEnv.WorldStateManager,
+                ReadOnlyWorldStateProvider = txProcessingEnv.WorldStateProvider,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
                 ReadOnlyTxProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource(),
             };

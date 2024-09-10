@@ -36,10 +36,10 @@ public class ReorgTests
     {
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-        WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-        StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-        var worldStateManager =
-            new WorldStateManager(stateProvider, trieStore, memDbProvider, LimboLogs.Instance);
+        var worldStateProvider = new WorldStateProvider(trieStore, memDbProvider, LimboLogs.Instance);
+        IWorldState stateProvider = worldStateProvider.GetWorldState();
+        IStateReader stateReader = worldStateProvider.GetGlobalStateReader();
+
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
@@ -76,7 +76,7 @@ public class ReorgTests
             Always.Valid,
             new RewardCalculator(specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
-            worldStateManager,
+            worldStateProvider,
             NullReceiptStorage.Instance,
             new BlockhashStore(MainnetSpecProvider.Instance),
             LimboLogs.Instance);

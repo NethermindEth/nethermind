@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Producers
         private ITimestamper Timestamper { get; }
 
         private ISealer Sealer { get; }
-        private IWorldStateManager WorldStateManager { get; }
+        private IWorldStateProvider WorldStateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Producers
             IBlockchainProcessor? processor,
             ISealer? sealer,
             IBlockTree? blockTree,
-            IWorldStateManager? worldStateManager,
+            IWorldStateProvider worldStateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Producers
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            WorldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
+            WorldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -128,7 +128,7 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
-            IWorldState? worldStateToUse = WorldStateManager.GetGlobalWorldState(parent);
+            IWorldState? worldStateToUse = WorldStateProvider.GetGlobalWorldState(parent);
             if (TrySetState(parent))
             {
                 Block block = PrepareBlock(parent, payloadAttributes);
@@ -189,9 +189,9 @@ namespace Nethermind.Consensus.Producers
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
         protected bool TrySetState(BlockHeader? parent)
         {
-            if (parent is not null && WorldStateManager.HasStateRoot(parent.StateRoot!))
+            if (parent is not null && WorldStateProvider.GetGlobalStateReader().HasStateForRoot(parent.StateRoot!))
             {
-                var worldStateToUse = WorldStateManager.GetGlobalWorldState(parent);
+                var worldStateToUse = WorldStateProvider.GetGlobalWorldState(parent);
                 worldStateToUse.StateRoot = parent.StateRoot;
                 return true;
             }

@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.Producers
         public DevBlockProducer(
             ITxSource? txSource,
             IBlockchainProcessor? processor,
-            IWorldStateManager? worldStateManager,
+            IWorldStateProvider? worldStateProvider,
             IBlockTree? blockTree,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Producers
                 processor,
                 new NethDevSealEngine(),
                 blockTree,
-                worldStateManager,
+                worldStateProvider,
                 new FollowOtherMiners(specProvider!),
                 timestamper,
                 specProvider,

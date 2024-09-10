@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa
                 blockValidator,
                 rewardCalculator,
                 blockTransactionsExecutor,
-                worldStateManager,
+                worldStateManager.GlobalWorldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
                 logManager,

@@ -12,7 +12,7 @@ namespace Nethermind.Consensus
     {
         public IBlockTree BlockTree { get; set; }
         public IBlockchainProcessor ChainProcessor { get; set; }
-        public IWorldStateManager ReadOnlyWorldStateManager { get; set; }
+        public IWorldStateProvider ReadOnlyWorldStateProvider { get; set; }
         public ITxSource TxSource { get; set; }
         public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
     }

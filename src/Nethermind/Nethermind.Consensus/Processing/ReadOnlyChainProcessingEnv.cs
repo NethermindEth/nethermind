@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Processing
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,
-                scope.WorldStateManager,
+                scope.WorldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
                 logManager);

@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Producers
             DevBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
-                testRpc.WorldStateManager,
+                testRpc.WorldStateManager.GlobalWorldStateProvider,
                 testRpc.BlockTree,
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Producers
             TestBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
-                testRpc.WorldStateManager,
+                testRpc.WorldStateManager.GlobalWorldStateProvider,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
                 testRpc.Timestamper,
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Test.Producers
             AuRaBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
-                Substitute.For<IWorldStateManager>(),
+                Substitute.For<IWorldStateProvider>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<ITimestamper>(),
@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Producers
             CliqueBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
-                testRpc.WorldStateManager,
+                testRpc.WorldStateManager.GlobalWorldStateProvider,
                 testRpc.Timestamper,
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),

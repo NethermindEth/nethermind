@@ -254,14 +254,13 @@ namespace Nethermind.Synchronization.Test
             IDb stateDb = dbProvider.StateDb;
 
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, logManager);
-            WorldState stateProvider = new(trieStore, codeDb, logManager);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+            IStateReader stateReader = worldStateProvider.GetGlobalStateReader();
+            IWorldState stateProvider = worldStateProvider.GetWorldState();
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
-            var worldStateManager =
-                new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
 
             InMemoryReceiptStorage receiptStorage = new();
 
@@ -301,7 +300,7 @@ namespace Nethermind.Synchronization.Test
                 blockValidator,
                 rewardCalculator,
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor),
-                worldStateManager,
+                worldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
                 logManager);
@@ -314,8 +313,8 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
-            WorldState devState = new(trieStore, codeDb, logManager);
-            var devWorldStateManager = new WorldStateManager(devState, trieStore, dbProvider, LimboLogs.Instance);
+            var devWorldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+            IWorldState devState = devWorldStateProvider.GetWorldState();
             VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devEvm, codeInfoRepository, logManager);
 
@@ -324,7 +323,7 @@ namespace Nethermind.Synchronization.Test
                 blockValidator,
                 rewardCalculator,
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, specProvider, logManager),
-                devWorldStateManager,
+                devWorldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
                 logManager);
@@ -340,7 +339,7 @@ namespace Nethermind.Synchronization.Test
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
-                worldStateManager,
+                worldStateProvider,
                 tree,
                 Timestamper.Default,
                 specProvider,

@@ -39,7 +39,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     receiptStorage,
     specProvider,
     blockTree,
-    worldStateManager.GlobalStateReader,
+    worldStateManager.GlobalWorldStateProvider.GetGlobalStateReader(),
     logManager,
     blockTransactionsExecutor)
 {

@@ -120,7 +120,8 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             // TODO: this kind of defeats the purpose of the refactor - but how do we deal with these situations?
             // here we want to get the data technically for the head, but getting head from blockTree and then using
             // that for the result seems like overkill? though it is the correct way of doing it?
-            tx.Nonce = _worldStateManager.GlobalWorldState.GetNonce(tx.SenderAddress);
+            // Can we solve this with OverlayWorldState?
+            tx.Nonce = _worldStateManager.GlobalWorldStateProvider.GetWorldState().GetNonce(tx.SenderAddress);
         }
 
         await _sealer.Seal(tx, TxHandlingOptions.None);
