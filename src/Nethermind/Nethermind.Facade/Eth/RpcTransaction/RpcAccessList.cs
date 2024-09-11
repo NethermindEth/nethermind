@@ -13,6 +13,7 @@ using System;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[JsonConverter(typeof(JsonConverterImpl))]
 public record RpcAccessList
 {
     private readonly List<Item> _items;
