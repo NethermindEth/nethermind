@@ -353,3 +353,10 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 }
 
+public static class CodeInfoRepositoryExtensions
+{
+    public static bool IsInvalidContractSender(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address address, IReleaseSpec spec) =>
+     spec.IsEip3607Enabled && worldState.HasCode(address) && (!spec.IsEip7702Enabled || !codeInfoRepository.IsDelegation(worldState, address, out _));
+
+}
+
