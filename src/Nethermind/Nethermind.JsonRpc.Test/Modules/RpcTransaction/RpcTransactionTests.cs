@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
-public class PlaygroundTests
+public class RpcTransactionTests
 {
     private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([IRpcTransaction.JsonConverter]);
 
