@@ -292,5 +292,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.IsServiceTransaction = isServiceTransaction;
             return this;
         }
+
+        public TransactionBuilder<T> WithSourceHash(Hash256? sourceHash)
+        {
+            TestObjectInternal.SourceHash = sourceHash;
+            return this;
+        }
     }
 }
