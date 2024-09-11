@@ -125,7 +125,9 @@ public readonly struct AccountHeader
 
         // we know that codeSize is just 3 bytes - this is just a hack to avoid allocations
         // treat code size as 4 bytes and start writing from CodeSizeOffset - 1 and write for CodeSizeBytesLength + 1
-        // we can add another check here that codeSize is not greater than 2^24
+        // but this was the reason why we change the encoding from little endian to big endian, so that if it ever
+        // becomes the case that codeSize exceeds 3 bytes, it can automatically take up the fourth byte without
+        // the need to change codeSize representation for all the other contracts
         uint codeSize = (uint)account.CodeSize.u0;
         if (codeSize >= Math.Pow(2, CodeSizeBytesLength * 8)) throw new NotSupportedException("Code Size too big");
         BinaryPrimitives.WriteUInt32BigEndian(basicDataSpan.Slice(CodeSizeOffset - 1, CodeSizeBytesLength + 1), codeSize);
