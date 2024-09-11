@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -18,6 +19,7 @@ namespace Nethermind.Core
 {
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
+    [DebuggerDisplay("{ToString()}")]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
