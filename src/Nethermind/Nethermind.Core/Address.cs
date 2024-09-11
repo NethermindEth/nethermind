@@ -234,14 +234,14 @@ namespace Nethermind.Core
                 destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
         }
 
-        public Hash256 ToAccountPath => Keccak.Compute(Bytes);
+        public ValueHash256 ToAccountPath => ValueKeccak.Compute(Bytes);
 
         [SkipLocalsInit]
-        public ValueHash256 ToHash()
+        public Hash256 ToHash()
         {
             Span<byte> addressBytes = stackalloc byte[Hash256.Size];
             Bytes.CopyTo(addressBytes.Slice(Hash256.Size - Address.Size));
-            return new ValueHash256(addressBytes);
+            return new Hash256(addressBytes);
         }
     }
 

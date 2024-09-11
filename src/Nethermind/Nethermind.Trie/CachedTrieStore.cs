@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.Metrics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -18,24 +17,24 @@ namespace Nethermind.Trie;
 /// <param name="base"></param>
 public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 {
-    private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
+    private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode = new();
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
     {
         return _cachedNode.GetOrAdd((path, hash), (key) => @base.FindCachedOrUnknown(key.path, key.hash));
     }
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         return @base.LoadRlp(in path, hash, flags);
     }
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         return @base.TryLoadRlp(in path, hash, flags);
     }
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
+    public ITrieNodeResolver GetStorageTrieNodeResolver(in ValueHash256 address)
     {
         throw new InvalidOperationException("unsupported");
     }

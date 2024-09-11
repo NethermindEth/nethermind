@@ -18,14 +18,14 @@ public interface INodeStorage
     /// </summary>
     public bool RequirePath { get; }
 
-    byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None);
-    void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None);
+    byte[]? Get(in ValueHash256 address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None);
+    void Set(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None);
     WriteBatch StartWriteBatch();
 
     /// <summary>
     /// Used by StateSync
     /// </summary>
-    bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 hash);
+    bool KeyExists(in ValueHash256 address, in TreePath path, in ValueHash256 hash);
 
     /// <summary>
     /// Used by StateSync to make sure values are flushed.
@@ -44,7 +44,7 @@ public interface INodeStorage
 
     public interface WriteBatch : IDisposable
     {
-        void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags);
-        void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak);
+        void Set(in ValueHash256 address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags);
+        void Remove(in ValueHash256 address, in TreePath path, in ValueHash256 currentNodeKeccak);
     }
 }

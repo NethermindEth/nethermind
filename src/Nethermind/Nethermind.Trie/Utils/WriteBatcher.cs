@@ -33,14 +33,14 @@ public class ConcurrentNodeWriteBatcher : INodeStorage.WriteBatch
         }
     }
 
-    public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
+    public void Set(in ValueHash256 address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
     {
         INodeStorage.WriteBatch? currentBatch = RentBatch();
         currentBatch.Set(address, path, currentNodeKeccak, data, writeFlags);
         ReturnBatch(currentBatch);
     }
 
-    public void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak)
+    public void Remove(in ValueHash256 address, in TreePath path, in ValueHash256 currentNodeKeccak)
     {
         INodeStorage.WriteBatch? currentBatch = RentBatch();
         currentBatch.Remove(address, path, currentNodeKeccak);

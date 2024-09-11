@@ -90,9 +90,10 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     // we returning a copy to avoid multithreaded access
-                    trieNode = new TrieNode(NodeType.Unknown, key.Keccak, trieNode.FullRlp);
-                    trieNode.ResolveNode(_trieStore.GetTrieStore(key.AddressAsHash256), key.Path);
-                    trieNode.Keccak = key.Keccak;
+                    Hash256? hash = key.Keccak == default ? null : new(key.Keccak);
+                    trieNode = new TrieNode(NodeType.Unknown, hash, trieNode.FullRlp);
+                    trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
+                    trieNode.Keccak = hash;
 
                     Metrics.LoadedFromCacheNodesCount++;
                 }
@@ -114,7 +115,7 @@ namespace Nethermind.Trie.Pruning
             private static readonly int _initialBuckets = HashHelpers.GetPrime(Math.Max(31, Environment.ProcessorCount * 16));
 
             private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new(CollectionExtensions.LockPartitions, _initialBuckets);
-            private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache = new(CollectionExtensions.LockPartitions, _initialBuckets);
+            private readonly ConcurrentDictionary<ValueHash256, TrieNode> _byHashObjectCache = new(CollectionExtensions.LockPartitions, _initialBuckets);
 
             public bool IsNodeCached(in Key key)
             {
@@ -129,7 +130,7 @@ namespace Nethermind.Trie.Pruning
                     if (_storeByHash)
                     {
                         return _byHashObjectCache.Select(
-                            pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
+                            pair => new KeyValuePair<Key, TrieNode>(new Key(in ValueHash256.Empty, TreePath.Empty, pair.Key), pair.Value));
                     }
 
                     return _byKeyObjectCache;
@@ -215,21 +216,14 @@ namespace Nethermind.Trie.Pruning
 
             internal readonly struct Key : IEquatable<Key>
             {
-                internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
+                internal const long MemoryUsage = 32 + 36 + 32; // (keccak, path, keccak)
                 public readonly ValueHash256 Address;
-                public Hash256? AddressAsHash256 => Address == default ? null : Address.ToCommitment();
                 // Direct member rather than property for large struct, so members are called directly,
                 // rather than struct copy through the property. Could also return a ref through property.
                 public readonly TreePath Path;
-                public Hash256 Keccak { get; }
+                public readonly ValueHash256 Keccak;
 
-                public Key(Hash256? address, in TreePath path, Hash256 keccak)
-                {
-                    Address = address ?? default;
-                    Path = path;
-                    Keccak = keccak;
-                }
-                public Key(in ValueHash256 address, in TreePath path, Hash256 keccak)
+                public Key(in ValueHash256 address, in TreePath path, in ValueHash256 keccak)
                 {
                     Address = address;
                     Path = path;
@@ -240,7 +234,7 @@ namespace Nethermind.Trie.Pruning
                 public override int GetHashCode()
                 {
                     var addressHash = Address != default ? Address.GetHashCode() : 1;
-                    return Keccak.ValueHash256.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
+                    return Keccak.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
                 }
 
                 public bool Equals(Key other)
@@ -257,7 +251,7 @@ namespace Nethermind.Trie.Pruning
             internal ref struct MapLock
             {
                 public bool _storeByHash;
-                public ConcurrentDictionaryLock<Hash256AsKey, TrieNode>.Lock _byHashLock;
+                public ConcurrentDictionaryLock<ValueHash256, TrieNode>.Lock _byHashLock;
                 public ConcurrentDictionaryLock<Key, TrieNode>.Lock _byKeyLock;
 
                 public readonly void Dispose()
@@ -333,7 +327,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public IScopedTrieStore GetTrieStore(Hash256? address)
+        public IScopedTrieStore GetTrieStore(in ValueHash256 address)
         {
             return new ScopedTrieStore(this, address);
         }
@@ -391,7 +385,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        public void CommitNode(long blockNumber, in ValueHash256 address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
@@ -455,7 +449,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, NodeCommitInfo nodeCommitInfo, TrieNode node)
+        private TrieNode SaveOrReplaceInDirtyNodesCache(in ValueHash256 address, NodeCommitInfo nodeCommitInfo, TrieNode node)
         {
             if (_pruningStrategy.PruningEnabled)
             {
@@ -505,7 +499,7 @@ namespace Nethermind.Trie.Pruning
 
         }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, in ValueHash256 address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
@@ -562,7 +556,7 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
+        public byte[]? TryLoadRlp(in ValueHash256 address, in TreePath path, in ValueHash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
         {
             nodeStorage ??= _nodeStorage;
             byte[]? rlp = nodeStorage.Get(address, path, keccak, readFlags);
@@ -576,7 +570,7 @@ namespace Nethermind.Trie.Pruning
         }
 
 
-        public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
+        public byte[] LoadRlp(in ValueHash256 address, in TreePath path, in ValueHash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
         {
             byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
             if (rlp is null)
@@ -588,16 +582,16 @@ namespace Nethermind.Trie.Pruning
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static void ThrowMissingNode(Hash256 keccak)
+            static void ThrowMissingNode(in ValueHash256 keccak)
             {
                 throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
             }
         }
 
-        public virtual byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => LoadRlp(address, path, hash, null, flags);
-        public virtual byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => TryLoadRlp(address, path, hash, null, flags);
+        public virtual byte[]? LoadRlp(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => LoadRlp(address, path, hash, null, flags);
+        public virtual byte[]? TryLoadRlp(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => TryLoadRlp(address, path, hash, null, flags);
 
-        public virtual bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
+        public virtual bool IsPersisted(in ValueHash256 address, in TreePath path, in ValueHash256 keccak)
         {
             byte[]? rlp = _nodeStorage.Get(address, path, keccak, ReadFlags.None);
 
@@ -614,21 +608,19 @@ namespace Nethermind.Trie.Pruning
         public IReadOnlyTrieStore AsReadOnly(INodeStorage? store) =>
             new ReadOnlyTrieStore(this, store);
 
-        public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => _dirtyNodes.IsNodeCached(new DirtyNodesCache.Key(address, path, hash));
+        public bool IsNodeCached(in ValueHash256 address, in TreePath path, Hash256 hash) => _dirtyNodes.IsNodeCached(new DirtyNodesCache.Key(in address, path, hash));
 
-        public virtual TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
+        public virtual TrieNode FindCachedOrUnknown(in ValueHash256 address, in TreePath path, in ValueHash256 hash) =>
             FindCachedOrUnknown(address, path, hash, false);
 
-        internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
+        internal TrieNode FindCachedOrUnknown(in ValueHash256 address, in TreePath path, in ValueHash256 hash, bool isReadOnly)
         {
-            ArgumentNullException.ThrowIfNull(hash);
-
             if (!_pruningStrategy.PruningEnabled)
             {
                 return new TrieNode(NodeType.Unknown, hash);
             }
 
-            DirtyNodesCache.Key key = new DirtyNodesCache.Key(address, path, hash);
+            DirtyNodesCache.Key key = new DirtyNodesCache.Key(in address, path, hash);
             return FindCachedOrUnknown(key, isReadOnly);
         }
 
@@ -729,9 +721,9 @@ namespace Nethermind.Trie.Pruning
                     // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
                     candidateSets.Count == 1;
 
-                Dictionary<HashAndTinyPath, Hash256?>? persistedHashes =
+                Dictionary<HashAndTinyPath, ValueHash256>? persistedHashes =
                     shouldDeletePersistedNode
-                    ? new Dictionary<HashAndTinyPath, Hash256?>()
+                    ? new Dictionary<HashAndTinyPath, ValueHash256>()
                     : null;
 
                 INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
@@ -769,20 +761,20 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
-        private void RemovePastKeys(Dictionary<HashAndTinyPath, Hash256?>? persistedHashes)
+        private void RemovePastKeys(Dictionary<HashAndTinyPath, ValueHash256>? persistedHashes)
         {
             if (persistedHashes is null) return;
 
-            bool CanRemove(in ValueHash256 address, TinyTreePath path, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+            bool CanRemove(in ValueHash256 address, TinyTreePath path, in TreePath fullPath, in ValueHash256 keccak, in ValueHash256 currentlyPersistingKeccak)
             {
                 // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
-                if (currentlyPersistingKeccak is null) return false;
+                if (currentlyPersistingKeccak == default) return false;
 
                 // The persisted hash is the same as currently persisting hash. Do nothing.
                 if (currentlyPersistingKeccak == keccak) return false;
 
                 // We have it in cache and it is still needed.
-                if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
+                if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, fullPath, keccak), out TrieNode node) &&
                     !IsNoLongerNeeded(node)) return false;
 
                 // We don't have it in cache, but we know it was re-committed, so if it is still needed, don't remove
@@ -799,7 +791,7 @@ namespace Nethermind.Trie.Pruning
             try
             {
                 int round = 0;
-                foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
+                foreach (KeyValuePair<HashAndTinyPath, ValueHash256> keyValuePair in persistedHashes)
                 {
                     HashAndTinyPath key = keyValuePair.Key;
                     if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
@@ -808,8 +800,7 @@ namespace Nethermind.Trie.Pruning
                         if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
                         {
                             Metrics.RemovedNodeCount++;
-                            Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
-                            writeBatch.Set(address, fullPath, prevHash, default, WriteFlags.DisableWAL);
+                            writeBatch.Set(in key.addr, fullPath, prevHash, default, WriteFlags.DisableWAL);
                             round++;
                         }
                     }
@@ -891,7 +882,7 @@ namespace Nethermind.Trie.Pruning
                     if (keccak is null)
                     {
                         TreePath path2 = key.Path;
-                        keccak = node.GenerateKey(this.GetTrieStore(key.AddressAsHash256), ref path2, isRoot: true);
+                        keccak = node.GenerateKey(this.GetTrieStore(key.Address), ref path2, isRoot: true);
                         if (keccak != key.Keccak)
                         {
                             throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
@@ -1029,24 +1020,24 @@ namespace Nethermind.Trie.Pruning
         /// <param name="persistedHashes">Track persisted hashes in this dictionary if not null</param>
         /// <param name="writeFlags"></param>
         private void PersistBlockCommitSet(
-            Hash256? address,
+            in ValueHash256 address,
             BlockCommitSet commitSet,
             INodeStorage.WriteBatch writeBatch,
-            Dictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
+            Dictionary<HashAndTinyPath, ValueHash256>? persistedHashes = null,
             WriteFlags writeFlags = WriteFlags.None
         )
         {
-            void PersistNode(TrieNode tn, Hash256? address2, TreePath path)
+            void PersistNode(TrieNode tn, ValueHash256 address2, TreePath path)
             {
                 if (persistedHashes is not null && path.Length <= TinyTreePath.MaxNibbleLength)
                 {
                     HashAndTinyPath key = new(address2, new TinyTreePath(path));
-                    ref Hash256? hash = ref CollectionsMarshal.GetValueRefOrAddDefault(persistedHashes, key, out bool exists);
+                    ref ValueHash256 hash = ref CollectionsMarshal.GetValueRefOrAddDefault(persistedHashes, key, out bool exists);
                     if (exists)
                     {
                         // Null mark that there are multiple saved hash for this path. So we don't attempt to remove anything.
                         // Otherwise this would have to be a list, which is such a rare case that its not worth it to have a list.
-                        hash = null;
+                        hash = default;
                     }
                     else
                     {
@@ -1069,7 +1060,7 @@ namespace Nethermind.Trie.Pruning
             LastPersistedBlockNumber = commitSet.BlockNumber;
         }
 
-        private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None, INodeStorage.WriteBatch? writeBatch = null)
+        private void PersistNode(in ValueHash256 address, in TreePath path, TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None, INodeStorage.WriteBatch? writeBatch = null)
         {
             writeBatch ??= _currentBatch ??= _nodeStorage.StartWriteBatch();
             ArgumentNullException.ThrowIfNull(currentNode);
@@ -1270,7 +1261,7 @@ namespace Nethermind.Trie.Pruning
                     wasPersisted = Interlocked.Exchange(ref _wasPersisted, null) ??
                         new(CollectionExtensions.LockPartitions, nodesCopy.Length);
 
-                    void PersistNode(TrieNode n, Hash256? address, TreePath path)
+                    void PersistNode(TrieNode n, ValueHash256 address, TreePath path)
                     {
                         if (n.Keccak is null) return;
                         DirtyNodesCache.Key key = new DirtyNodesCache.Key(address, path, n.Keccak);
@@ -1285,8 +1276,7 @@ namespace Nethermind.Trie.Pruning
                         if (cancellationToken.IsCancellationRequested) return;
                         DirtyNodesCache.Key key = nodesCopy[i].Key;
                         TreePath path = key.Path;
-                        Hash256? address = key.AddressAsHash256;
-                        nodesCopy[i].Value.CallRecursively(PersistNode, address, ref path, GetTrieStore(address), false, _logger, false);
+                        nodesCopy[i].Value.CallRecursively(PersistNode, key.Address, ref path, GetTrieStore(key.Address), false, _logger, false);
                     });
                     PruneCache(allNodes: nodesCopy);
 
@@ -1316,19 +1306,19 @@ namespace Nethermind.Trie.Pruning
         // Used to serve node by hash
         private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            Hash256 asHash = new Hash256(key);
+            ValueHash256 asHash = new ValueHash256(key);
             return _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.TryGetValue(new DirtyNodesCache.Key(null, TreePath.Empty, asHash), out TrieNode? trieNode)
+                   && _dirtyNodes.TryGetValue(new DirtyNodesCache.Key(in ValueHash256.Empty, TreePath.Empty, asHash), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp.IsNotNull
                 ? trieNode.FullRlp.ToArray()
-                : _nodeStorage.Get(null, TreePath.Empty, asHash, flags);
+                : _nodeStorage.Get(in ValueHash256.Empty, TreePath.Empty, asHash, flags);
         }
 
         public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
-        public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
+        public void Set(in ValueHash256 address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
         {
             _nodeStorage.Set(address, path, keccak, rlp);
         }

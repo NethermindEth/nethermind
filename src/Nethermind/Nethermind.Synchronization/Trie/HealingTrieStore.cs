@@ -33,7 +33,7 @@ public sealed class HealingTrieStore : TrieStore
         _recovery = recovery;
     }
 
-    public override byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public override byte[]? LoadRlp(in ValueHash256 address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         try
         {
@@ -50,11 +50,11 @@ public sealed class HealingTrieStore : TrieStore
         }
     }
 
-    private bool TryRecover(Hash256? address, in TreePath path, Hash256 rlpHash, [NotNullWhen(true)] out byte[]? rlp)
+    private bool TryRecover(in ValueHash256 address, in TreePath path, in ValueHash256 rlpHash, [NotNullWhen(true)] out byte[]? rlp)
     {
         if (_recovery?.CanRecover == true)
         {
-            using ArrayPoolList<Hash256> request = new(1) { rlpHash };
+            using ArrayPoolList<Hash256> request = new(1) { new Hash256(rlpHash) };
             rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {

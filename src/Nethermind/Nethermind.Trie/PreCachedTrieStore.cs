@@ -34,18 +34,18 @@ public class PreCachedTrieStore : ITrieStore
         _inner.Dispose();
     }
 
-    public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+    public void CommitNode(long blockNumber, in ValueHash256 address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
     {
         _inner.CommitNode(blockNumber, address, in nodeCommitInfo, writeFlags);
     }
 
-    public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+    public void FinishBlockCommit(TrieType trieType, long blockNumber, in ValueHash256 address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
         _inner.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
         _preBlockCache.NoResizeClear();
     }
 
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
+    public bool IsPersisted(in ValueHash256 address, in TreePath path, in ValueHash256 keccak)
     {
         byte[]? rlp = _preBlockCache.GetOrAdd(new(address, in path, in keccak),
             key => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash));
@@ -63,7 +63,7 @@ public class PreCachedTrieStore : ITrieStore
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => _inner.TrieNodeRlpStore;
 
-    public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
+    public void Set(in ValueHash256 address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
     {
         _preBlockCache[new(address, in path, in keccak)] = rlp;
         _inner.Set(address, in path, in keccak, rlp);
@@ -71,16 +71,16 @@ public class PreCachedTrieStore : ITrieStore
 
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
+    public IScopedTrieStore GetTrieStore(in ValueHash256 address) => new ScopedTrieStore(this, address);
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
+    public TrieNode FindCachedOrUnknown(in ValueHash256 address, in TreePath path, in ValueHash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public byte[]? LoadRlp(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, hash),
             flags == ReadFlags.None ? _loadRlp :
             key => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public byte[]? TryLoadRlp(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, hash),
             flags == ReadFlags.None ? _tryLoadRlp :
             key => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
@@ -90,18 +90,11 @@ public class PreCachedTrieStore : ITrieStore
 
 public class NodeKey : IEquatable<NodeKey>
 {
-    public readonly Hash256? Address;
+    public readonly ValueHash256 Address;
     public readonly TreePath Path;
-    public readonly Hash256 Hash;
+    public readonly ValueHash256 Hash;
 
-    public NodeKey(Hash256? address, in TreePath path, in ValueHash256 hash)
-    {
-        Address = address;
-        Path = path;
-        Hash = hash.ToCommitment();
-    }
-
-    public NodeKey(Hash256? address, in TreePath path, Hash256 hash)
+    public NodeKey(in ValueHash256 address, in TreePath path, in ValueHash256 hash)
     {
         Address = address;
         Path = path;
@@ -116,7 +109,7 @@ public class NodeKey : IEquatable<NodeKey>
     public override int GetHashCode()
     {
         uint hashCode0 = (uint)Hash.GetHashCode();
-        ulong hashCode1 = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
+        ulong hashCode1 = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address.GetHashCode());
         return (int)BitOperations.Crc32C(hashCode0, hashCode1);
     }
 }

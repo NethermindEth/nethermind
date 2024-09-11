@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -19,11 +17,11 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => new(NodeType.Unknown, hash);
+        public TrieNode FindCachedOrUnknown(in TreePath treePath, in ValueHash256 hash) => new(NodeType.Unknown, hash);
 
-        public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+        public byte[] LoadRlp(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+        public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
@@ -31,7 +29,7 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot)
+        public ITrieNodeResolver GetStorageTrieNodeResolver(in ValueHash256 storageRoot)
         {
             return this;
         }

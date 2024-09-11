@@ -321,10 +321,10 @@ namespace Nethermind.Trie
 
                                 if (TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? storageRoot))
                                 {
-                                    Hash256 storageAccount;
+                                    ValueHash256 storageAccount;
                                     using (path.ScopedAppend(Key))
                                     {
-                                        storageAccount = path.Path.ToCommitment();
+                                        storageAccount = path.Path;
                                     }
 
                                     trieVisitContext.IsStorage = true;

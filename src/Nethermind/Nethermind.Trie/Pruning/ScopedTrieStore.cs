@@ -9,30 +9,30 @@ namespace Nethermind.Trie.Pruning;
 public sealed class ScopedTrieStore : IScopedTrieStore
 {
     private readonly ITrieStore _trieStoreImplementation;
-    private readonly Hash256? _address;
+    private readonly ValueHash256 _address;
 
-    public ScopedTrieStore(ITrieStore fullTrieStore, Hash256? address)
+    public ScopedTrieStore(ITrieStore fullTrieStore, in ValueHash256 address)
     {
         _trieStoreImplementation = fullTrieStore;
         _address = address;
     }
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
     {
         return _trieStoreImplementation.FindCachedOrUnknown(_address, path, hash);
     }
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         return _trieStoreImplementation.LoadRlp(_address, path, hash, flags);
     }
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         return _trieStoreImplementation.TryLoadRlp(_address, path, hash, flags);
     }
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
+    public ITrieNodeResolver GetStorageTrieNodeResolver(in ValueHash256 address)
     {
         if (address == _address) return this;
         return new ScopedTrieStore(_trieStoreImplementation, address);

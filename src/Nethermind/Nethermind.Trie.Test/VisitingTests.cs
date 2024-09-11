@@ -75,7 +75,7 @@ public class VisitingTests
             ValueHash256 stateKey = default;
             stateKey.BytesAsSpan[outi / 2] = (byte)(1 << (4 * (1 - outi % 2)));
 
-            StorageTree storage = new(trieStore.GetTrieStore(stateKey.ToCommitment()), LimboLogs.Instance);
+            StorageTree storage = new(trieStore.GetTrieStore(stateKey), LimboLogs.Instance);
             for (int i = 0; i < 64; i++)
             {
                 ValueHash256 storageKey = default;

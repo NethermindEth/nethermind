@@ -19,6 +19,7 @@ namespace Nethermind.Core.Crypto
     [JsonConverter(typeof(ValueHash256Converter))]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
+        public static readonly ValueHash256 Empty = default;
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
         // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
         // the performance of the network as a whole.
@@ -122,7 +123,7 @@ namespace Nethermind.Core.Crypto
         public static bool operator <(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) < 0;
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
-        public static implicit operator Hash256(in ValueHash256 keccak) => new(keccak);
+        public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>

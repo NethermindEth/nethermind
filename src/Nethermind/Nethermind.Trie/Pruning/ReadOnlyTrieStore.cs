@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -24,24 +23,24 @@ namespace Nethermind.Trie.Pruning
             _readOnlyStore = readOnlyStore;
         }
 
-        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath treePath, Hash256 hash) =>
+        public TrieNode FindCachedOrUnknown(in ValueHash256 address, in TreePath treePath, in ValueHash256 hash) =>
             _trieStore.FindCachedOrUnknown(address, treePath, hash, true);
 
-        public byte[] LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
+        public byte[] LoadRlp(in ValueHash256 address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
             _trieStore.LoadRlp(address, treePath, hash, _readOnlyStore, flags);
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
+        public byte[]? TryLoadRlp(in ValueHash256 address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
             _trieStore.TryLoadRlp(address, treePath, hash, _readOnlyStore, flags);
 
-        public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _trieStore.IsPersisted(address, path, keccak);
+        public bool IsPersisted(in ValueHash256 address, in TreePath path, in ValueHash256 keccak) => _trieStore.IsPersisted(address, path, keccak);
 
         public IReadOnlyTrieStore AsReadOnly(INodeStorage nodeStore)
         {
             return new ReadOnlyTrieStore(_trieStore, nodeStore);
         }
 
-        public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
+        public void CommitNode(long blockNumber, in ValueHash256 address, in NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, in ValueHash256 address, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -51,11 +50,11 @@ namespace Nethermind.Trie.Pruning
 
         public IReadOnlyKeyValueStore TrieNodeRlpStore => _trieStore.TrieNodeRlpStore;
 
-        public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
+        public void Set(in ValueHash256 address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
         {
         }
 
-        public IScopedTrieStore GetTrieStore(Hash256? address)
+        public IScopedTrieStore GetTrieStore(in ValueHash256 address)
         {
             return new ScopedReadOnlyTrieStore(this, address);
         }
@@ -76,30 +75,30 @@ namespace Nethermind.Trie.Pruning
         private class ScopedReadOnlyTrieStore : IScopedTrieStore
         {
             private readonly ReadOnlyTrieStore _trieStoreImplementation;
-            private readonly Hash256? _address;
+            private readonly ValueHash256 _address;
 
-            public ScopedReadOnlyTrieStore(ReadOnlyTrieStore fullTrieStore, Hash256? address)
+            public ScopedReadOnlyTrieStore(ReadOnlyTrieStore fullTrieStore, in ValueHash256 address)
             {
                 _trieStoreImplementation = fullTrieStore;
                 _address = address;
             }
 
-            public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+            public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
             {
                 return _trieStoreImplementation.FindCachedOrUnknown(_address, path, hash);
             }
 
-            public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+            public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
             {
                 return _trieStoreImplementation.LoadRlp(_address, path, hash, flags);
             }
 
-            public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+            public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
             {
                 return _trieStoreImplementation.TryLoadRlp(_address, path, hash, flags);
             }
 
-            public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
+            public ITrieNodeResolver GetStorageTrieNodeResolver(in ValueHash256 address)
             {
                 if (address == _address) return this;
                 return new ScopedReadOnlyTrieStore(_trieStoreImplementation, address);

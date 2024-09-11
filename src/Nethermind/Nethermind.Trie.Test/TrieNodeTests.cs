@@ -836,7 +836,7 @@ namespace Nethermind.Trie.Test
 
             trieNode.PrunePersistedRecursively(1);
             var trieStore = Substitute.For<ITrieNodeResolver>();
-            trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
+            trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(child);
             TreePath emptyPath = TreePath.Empty;
             trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
             trieNode.GetChild(trieStore, ref emptyPath, 1).Should().BeNull();
@@ -852,7 +852,7 @@ namespace Nethermind.Trie.Test
 
             trieNode.PrunePersistedRecursively(1);
             var trieStore = Substitute.For<ITrieNodeResolver>();
-            trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
+            trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(child);
             TreePath emptyPath = TreePath.Empty;
             trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
         }
@@ -871,12 +871,12 @@ namespace Nethermind.Trie.Test
             trieNode.Seal();
 
             ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-            trieStore.LoadRlp(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Throws(new TrieException());
+            trieStore.LoadRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Throws(new TrieException());
             TreePath emptyPath = TreePath.Empty;
             child.ResolveKey(trieStore, ref emptyPath, false);
             child.IsPersisted = true;
 
-            trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
+            trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
             trieNode.GetChild(trieStore, ref emptyPath, 0);
             Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, ref emptyPath, 0).ResolveNode(trieStore, TreePath.Empty));
         }

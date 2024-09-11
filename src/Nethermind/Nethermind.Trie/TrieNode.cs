@@ -34,7 +34,7 @@ namespace Nethermind.Trie
         private static readonly object _nullNode = new();
         private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
-        private static Action<TrieNode, Hash256?, TreePath> _markPersisted => (tn, _, _) => tn.IsPersisted = true;
+        private static Action<TrieNode, ValueHash256, TreePath> _markPersisted => (tn, _, _) => tn.IsPersisted = true;
         private RlpFactory? _rlp;
         private object?[]? _data;
         private int _isDirty;
@@ -259,6 +259,20 @@ namespace Nethermind.Trie
         {
             NodeType = nodeType;
             _isDirty = 1;
+        }
+
+        public TrieNode(NodeType nodeType, in ValueHash256 keccak)
+        {
+            NodeType = nodeType;
+            if (keccak == default)
+            {
+                _isDirty = 1;
+            }
+            else
+            {
+                Keccak = new(keccak);
+                IsPersisted = true;
+            }
         }
 
         public TrieNode(NodeType nodeType, Hash256 keccak)
@@ -875,8 +889,8 @@ namespace Nethermind.Trie
         /// Note that nodes referenced by hash are not called.
         /// </summary>
         public void CallRecursively(
-            Action<TrieNode, Hash256?, TreePath> action,
-            Hash256? storageAddress,
+            Action<TrieNode, ValueHash256, TreePath> action,
+            in ValueHash256 storageAddress,
             ref TreePath currentPath,
             ITrieNodeResolver resolver,
             bool skipPersisted,
@@ -912,11 +926,11 @@ namespace Nethermind.Trie
                 if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
-                    Hash256 storagePathAddr;
+                    ValueHash256 storagePathAddr;
                     using (currentPath.ScopedAppend(Key))
                     {
                         if (currentPath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
-                        storagePathAddr = currentPath.Path.ToCommitment();
+                        storagePathAddr = currentPath.Path;
                     }
 
                     TreePath emptyPath = TreePath.Empty;
@@ -1003,10 +1017,10 @@ namespace Nethermind.Trie
                     Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueContext);
                     if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
-                        Hash256 storagePath;
+                        ValueHash256 storagePath;
                         using (currentPath.ScopedAppend(Key))
                         {
-                            storagePath = currentPath.Path.ToCommitment();
+                            storagePath = currentPath.Path;
                         }
                         hasStorage = true;
                         TreePath emptyPath = TreePath.Empty;
@@ -1107,7 +1121,7 @@ namespace Nethermind.Trie
                         case 160:
                             {
                                 rlpStream.Position--;
-                                Hash256 keccak = rlpStream.DecodeKeccak();
+                                rlpStream.DecodeValueKeccak(out ValueHash256 keccak);
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 _data![i] = childOrRef = child;
