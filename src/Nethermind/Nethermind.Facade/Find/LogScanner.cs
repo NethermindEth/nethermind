@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Find
 
                 if (atGenesis)
                 {
-                    break;
+                    yield break;
                 }
 
                 if (events.Any())
