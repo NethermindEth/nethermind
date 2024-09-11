@@ -296,7 +296,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private void RunProcessingLoop()
     {
-        const int BlocksBacklogTriggeringManualGC = 20;
+        const int BlocksBacklogTriggeringManualGC = 4;
         const int MaxBlocksWithoutGC = 100;
 
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");

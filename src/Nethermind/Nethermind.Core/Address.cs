@@ -149,12 +149,15 @@ namespace Nethermind.Core
                 return true;
             }
 
+            // Address must be 20 bytes long Vector128 + uint
             ref byte bytes0 = ref MemoryMarshal.GetArrayDataReference(Bytes);
             ref byte bytes1 = ref MemoryMarshal.GetArrayDataReference(other.Bytes);
-            // 20 bytes which is uint+Vector128
-            return Unsafe.As<byte, uint>(ref bytes0) == Unsafe.As<byte, uint>(ref bytes1) &&
-                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes0, sizeof(uint))) ==
-                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes1, sizeof(uint)));
+            // Compare first 16 bytes with Vector128 and last 4 bytes with uint
+            return
+                Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
+                Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
+                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
+                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
         }
 
         public static Address FromNumber(in UInt256 number)
