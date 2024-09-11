@@ -58,6 +58,12 @@ namespace Nethermind.Blockchain.Test.Receipts
             CreateStorage();
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _receiptsDb.Dispose();
+        }
+
         private void CreateStorage()
         {
             _decoder = new ReceiptArrayStorageDecoder(_useCompactReceipts);

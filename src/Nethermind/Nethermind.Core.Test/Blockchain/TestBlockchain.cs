@@ -442,6 +442,8 @@ public class TestBlockchain : IDisposable
         {
             CodeDb?.Dispose();
             StateDb?.Dispose();
+            DbProvider.BlobTransactionsDb?.Dispose();
+            DbProvider.ReceiptsDb?.Dispose();
         }
 
         _trieStoreWatcher?.Dispose();
