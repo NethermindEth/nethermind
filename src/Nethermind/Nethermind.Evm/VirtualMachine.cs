@@ -1855,7 +1855,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Mid;
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
+
+                        if (!Jump(result, ref programCounter, in env))
+                        {
+                            if (env.Witness.AccessForCodeProgramCounter(vmState.To, (int)result, ref gasAvailable))
+                                goto OutOfGas;
+                            goto InvalidJumpDestination;
+                        }
                         break;
                     }
                 case Instruction.JUMPI:
@@ -1866,7 +1872,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = stack.PopWord256();
                         if (!bytes.SequenceEqual(BytesZero32))
                         {
-                            if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
+                            if (!Jump(result, ref programCounter, in env))
+                            {
+                                if (env.Witness.AccessForCodeProgramCounter(vmState.To, (int)result, ref gasAvailable))
+                                    goto OutOfGas;
+                                goto InvalidJumpDestination;
+                            }
                         }
 
                         break;
@@ -2307,7 +2318,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
 
                             if (!stack.PopUInt256(out UInt256 jumpDest)) goto StackUnderflow;
-                            if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
+                            if (!Jump(jumpDest, ref programCounter, in env, true))
+                            {
+                                if (env.Witness.AccessForCodeProgramCounter(vmState.To, (int)result, ref gasAvailable))
+                                    goto OutOfGas;
+                                goto InvalidJumpDestination;
+                            }
                             programCounter++;
 
                             break;
