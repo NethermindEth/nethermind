@@ -13,13 +13,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     public class StatsAnalyzerTests
     {
 
-        [TestCase(8, 9)]
-        [TestCase(2, 2)]
-        public void validate_top_n(int patternQty, int maxRepetitionsPerPattern)
+        [TestCase(8, 9, 3)]
+        [TestCase(2, 2, 2)]
+        public void validate_top_n(int patternQty, int maxRepetitionsPerPattern, int topN)
         {
             (List<Instruction> instructionBuffer, Dictionary<ulong, ulong> observedCounts) = RandNGrams(patternQty, true, maxRepetitionsPerPattern);
             Dictionary<ulong, HashSet<ulong>> countToSequences = new Dictionary<ulong, HashSet<ulong>>();
-            StatsAnalyzer statsAnalyzer = new StatsAnalyzer(patternQty, 600000, 30, 100000, 1);
+            StatsAnalyzer statsAnalyzer = new StatsAnalyzer(topN, 600000, 30, 100000, 1);
             foreach (var kvp in observedCounts)
             {
                 ulong seq = kvp.Key;
@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             List<ulong> sortedCounts = countToSequences.Keys.OrderByDescending(c => c).ToList();
             Dictionary<ulong, HashSet<ulong>> topNExpected = new Dictionary<ulong, HashSet<ulong>>();
 
-            int remainingItems = patternQty;
+            int remainingItems = topN;
             ulong minCount = 0;
 
             foreach (var count in sortedCounts)
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             statsAnalyzer.Add(instructionBuffer);
 
-            Assert.That(statsAnalyzer.topNQueue.Count == patternQty, $"Exxpected {patternQty} in topNQueue found {statsAnalyzer.topNQueue.Count}");
+            Assert.That(statsAnalyzer.topNQueue.Count == topN, $"Exxpected {topN} in topNQueue found {statsAnalyzer.topNQueue.Count}");
 
             while (statsAnalyzer.topNQueue.TryDequeue(out ulong ngram, out ulong itemCount))
             {
