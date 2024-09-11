@@ -10,7 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State;
-using Nethermind.State.CodeAnalysis;
 
 namespace Nethermind.Facade;
 
