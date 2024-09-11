@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.Bloom = Bloom.Empty;
             var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
-            if (_producingBlockLock.Wait(BlockProductionTimeout))
+            if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
             {
                 try
                 {
