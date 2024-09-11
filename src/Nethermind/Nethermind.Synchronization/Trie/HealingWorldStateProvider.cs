@@ -5,14 +5,14 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie;
+using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
 
 public class HealingWorldStateProvider : ReadOnlyWorldStateProvider
 {
-    private IWorldState _worldState { get; }
+    private HealingWorldState _worldState { get; }
 
     public HealingWorldStateProvider(
         ITrieStore preCachedTrieStore,
@@ -39,5 +39,10 @@ public class HealingWorldStateProvider : ReadOnlyWorldStateProvider
     public override IWorldState GetWorldState()
     {
         return _worldState;
+    }
+
+    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
+    {
+        _worldState.InitializeNetwork(recovery);
     }
 }

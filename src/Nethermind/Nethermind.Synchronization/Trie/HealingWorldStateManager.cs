@@ -5,6 +5,7 @@ using System;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
@@ -23,5 +24,10 @@ public class HealingWorldStateManager(
     {
         add => trieStore.ReorgBoundaryReached += value;
         remove => trieStore.ReorgBoundaryReached -= value;
+    }
+
+    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
+    {
+        worldStateProvider.InitializeNetwork(recovery);
     }
 }
