@@ -4,7 +4,6 @@ using System.Diagnostics;
 
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
-
     public class StatsAnalyzer
     {
 
@@ -26,11 +25,11 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private ulong _minSupport;
         private ulong _max = 1;
 
-        public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, uint minSupport, int sketchBufferSize = 100, double sketchResetError = 0.001) : this(topN, new CMSketch(numberOfHashFunctions, buckets), capacity, minSupport, sketchBufferSize, sketchResetError)
+        public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, ulong minSupport, int sketchBufferSize = 100, double sketchResetError = 0.001) : this(topN, new CMSketch(numberOfHashFunctions, buckets), capacity, minSupport, sketchBufferSize, sketchResetError)
         {
         }
 
-        public StatsAnalyzer(int topN, CMSketch sketch, int capacity, uint minSupport, int sketchBufferSize, double sketchResetError)
+        public StatsAnalyzer(int topN, CMSketch sketch, int capacity, ulong minSupport, int sketchBufferSize, double sketchResetError)
         {
             _topN = topN;
             _sketch = sketch;
