@@ -35,4 +35,9 @@ public class OptimismEthereumEcdsa : Ecdsa, IEthereumEcdsa
     public bool Verify(Address sender, Transaction tx) => _ethereumEcdsa.Verify(sender, tx);
 
     public Address? RecoverAddress(AuthorizationTuple tuple) => _ethereumEcdsa.RecoverAddress(tuple);
+
+    public AuthorizationTuple Sign(PrivateKey authority, ulong chainId, Address codeAddress, ulong nonce)
+    {
+        return _ethereumEcdsa.Sign(authority, chainId, codeAddress, nonce);
+    }
 }

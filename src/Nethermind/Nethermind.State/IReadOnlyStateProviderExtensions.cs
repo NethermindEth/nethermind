@@ -16,5 +16,7 @@ namespace Nethermind.State
         }
         public static bool IsInvalidContractSender(this IReadOnlyStateProvider stateProvider, IReleaseSpec spec, Address address) =>
            spec.IsEip3607Enabled && stateProvider.HasCode(address) && !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, address));
+
     }
+
 }
