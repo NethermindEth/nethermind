@@ -186,7 +186,7 @@ namespace Nethermind.State
             {
                 // this also works like this in Geth (they don't follow the spec ¯\_(*~*)_/¯)
                 // however we don't do it because of a consensus issue with Geth, just to avoid
-                // hitting non-existing account when substractin Zero-value from the sender
+                // hitting non-existing account when subtracting Zero-value from the sender
                 if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
                     Account touched = GetThroughCacheCheckExists();
