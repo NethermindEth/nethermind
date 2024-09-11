@@ -12,7 +12,10 @@ namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
 public class RpcTransactionTests
 {
-    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([IRpcTransaction.JsonConverter]);
+    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([
+        IRpcTransaction.JsonConverter,
+        RpcAccessList.JsonConverter
+    ]);
 
     private readonly IRpcTransactionConverter _converter = new ComposeTransactionConverter()
         .RegisterConverter(TxType.Legacy, RpcLegacyTransaction.Converter)
@@ -20,7 +23,8 @@ public class RpcTransactionTests
         .RegisterConverter(TxType.EIP1559, RpcEIP1559Transaction.Converter)
         .RegisterConverter(TxType.Blob, RpcBlobTransaction.Converter);
 
-    public static readonly Transaction[] Transactions = [
+    public static readonly Transaction[] Transactions =
+    [
         .. RpcLegacyTransactionTests.Transactions,
         .. RpcAccessListTransactionTests.Transactions,
         .. RpcEIP1559TransactionTests.Transactions,

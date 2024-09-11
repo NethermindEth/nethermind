@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -14,7 +12,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
     public static UInt256? DefaultChainId { get; set; }
 
-    public IEnumerable<AccessListItemForRpc> AccessList { get; set; }
+    public RpcAccessList AccessList { get; set; }
 
     public new UInt256 ChainId { get; set; }
 
@@ -28,9 +26,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
 
     public RpcAccessListTransaction(Transaction transaction) : base(transaction)
     {
-        AccessList = transaction.AccessList is null
-            ? Array.Empty<AccessListItemForRpc>()
-            : AccessListItemForRpc.FromAccessList(transaction.AccessList);
+        AccessList = RpcAccessList.FromAccessList(transaction.AccessList);
         ChainId = transaction.ChainId
                   ?? DefaultChainId
                   ?? BlockchainIds.Mainnet;
