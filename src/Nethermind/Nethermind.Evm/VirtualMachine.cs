@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Intrinsics;
+using Nethermind.Specs.Forks;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
@@ -839,11 +840,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             if (!_state.AccountExists(env.ExecutingAccount))
             {
-                // TODO: have to cross check what is the use case of this here
-                if (vmState.ExecutionType == ExecutionType.TRANSACTION && env.TransferValue.IsZero)
-                {
-                    if (!env.Witness.AccessForAbsentAccount(env.ExecutingAccount, ref gasAvailable)) goto OutOfGas;
-                }
+                // charge gas and add witness for proof of absence
+                if (!env.Witness.AccessForAbsentAccount(env.ExecutingAccount, ref gasAvailable)) goto OutOfGas;
                 _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
             }
             else
@@ -863,6 +861,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 Metrics.EmptyCalls++;
             }
+            vmState.GasAvailable = gasAvailable;
             goto Empty;
         }
 
@@ -2442,13 +2441,21 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ? codeSource
             : env.ExecutingAccount;
 
-        if (!transferValue.IsZero)
+        // for static call and delegateCall, transferValue is always zero
+        // transfer is technically a noOp in case of callCode as the caller = target
+        if (!transferValue.IsZero && instruction == Instruction.CALL)
         {
             if (!vmState.Env.Witness.AccessForValueTransfer(caller, target, ref gasAvailable))
                 return EvmExceptionType.OutOfGas;
         }
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, opCode: instruction)) return EvmExceptionType.OutOfGas;
+        if (!codeSource.IsPrecompile(spec))
+        {
+            var gasBefore = gasAvailable;
+            if (!vmState.Env.Witness.AccessForCodeOpCodes(codeSource, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (gasBefore == gasAvailable && !UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable))
+                return EvmExceptionType.OutOfGas;
+        }
 
 
         if (typeof(TLogger) == typeof(IsTracing))
