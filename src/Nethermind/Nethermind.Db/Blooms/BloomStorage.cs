@@ -213,7 +213,7 @@ namespace Nethermind.Db.Blooms
 
         private void Set(Hash256 key, long value)
         {
-            _bloomInfoDb.Set(key, value.ToBigEndianByteArrayWithoutLeadingZeros());
+            _bloomInfoDb.PutSpan(key.Bytes, value.MutateToBigEndianSpanWithoutLeadingZeros());
         }
 
         public void Dispose()

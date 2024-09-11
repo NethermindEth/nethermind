@@ -28,7 +28,7 @@ namespace Nethermind.Core
         /// </summary>
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
-        Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
+        Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
         bool KeyExists(ReadOnlySpan<byte> key)
         {

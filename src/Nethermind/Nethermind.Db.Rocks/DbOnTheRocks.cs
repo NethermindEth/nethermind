@@ -939,12 +939,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags)
+    public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
     {
         return GetSpanWithColumnFamily(key, null, flags);
     }
 
-    internal Span<byte> GetSpanWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags)
+    internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
