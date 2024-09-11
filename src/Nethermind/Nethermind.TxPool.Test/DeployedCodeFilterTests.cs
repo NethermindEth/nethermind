@@ -4,16 +4,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.TxPool.Test
 {

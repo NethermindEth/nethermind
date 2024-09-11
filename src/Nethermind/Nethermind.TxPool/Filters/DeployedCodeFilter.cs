@@ -15,7 +15,12 @@ namespace Nethermind.TxPool.Filters
     {
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
-            return codeInfoRepository.IsInvalidContractSender(worldState, tx.SenderAddress!, specProvider.GetCurrentHeadSpec())
+            return worldState
+                .IsInvalidContractSender(
+                specProvider.GetCurrentHeadSpec(),
+                tx.SenderAddress!,
+                () =>
+                codeInfoRepository.IsDelegation(worldState, tx.SenderAddress!, out _))
                 ? AcceptTxResult.SenderIsContract
                 : AcceptTxResult.Accepted;
         }

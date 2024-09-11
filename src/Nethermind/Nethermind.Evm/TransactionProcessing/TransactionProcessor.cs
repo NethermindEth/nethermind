@@ -299,8 +299,10 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
-            
-            if (validate && _codeInfoRepository.IsInvalidContractSender(WorldState, tx.SenderAddress, spec))
+            if (validate && WorldState.IsInvalidContractSender(
+                spec,
+                tx.SenderAddress,
+                () => _codeInfoRepository.IsDelegation(WorldState, tx.SenderAddress, out _)))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return "sender has deployed code";

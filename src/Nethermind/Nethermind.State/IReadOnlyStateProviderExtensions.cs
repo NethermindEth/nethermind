@@ -14,9 +14,28 @@ namespace Nethermind.State
             stateProvider.TryGetAccount(address, out AccountStruct account);
             return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash) ?? Array.Empty<byte>();
         }
-        public static bool IsInvalidContractSender(this IReadOnlyStateProvider stateProvider, IReleaseSpec spec, Address address) =>
-           spec.IsEip3607Enabled && stateProvider.HasCode(address) && !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, address));
-
+        /// <summary>
+        /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702.
+        /// Where possible a cache for code lookup should be used, since the fallback will read from <see cref="GetCode(IReadOnlyStateProvider, Address)"/>.
+        /// </summary>
+        /// <param name="stateProvider"></param>
+        /// <param name="spec"></param>
+        /// <param name="sender"></param>
+        /// <param name="isDelegatedCode"></param>
+        /// <returns></returns>
+        public static bool IsInvalidContractSender(
+            this IReadOnlyStateProvider stateProvider,
+            IReleaseSpec spec,
+            Address sender,
+            Func<bool>? isDelegatedCode = null)
+        {
+            return spec.IsEip3607Enabled
+                && stateProvider.HasCode(sender)
+                && (!spec.IsEip7702Enabled
+                || (isDelegatedCode != null
+                ? !isDelegatedCode()
+                : !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
+        }
     }
 
 }
