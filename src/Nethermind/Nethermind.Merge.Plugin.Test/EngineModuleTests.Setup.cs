@@ -5,8 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -236,6 +236,7 @@ public partial class EngineModuleTests
                 State,
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor),
                 LogManager,
                 WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());
@@ -305,6 +306,12 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
     {
         add => _blockProcessorImplementation.BlocksProcessing += value;
         remove => _blockProcessorImplementation.BlocksProcessing -= value;
+    }
+
+    public event EventHandler<BlockEventArgs>? BlockProcessing
+    {
+        add => _blockProcessorImplementation.BlockProcessing += value;
+        remove => _blockProcessorImplementation.BlockProcessing -= value;
     }
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed

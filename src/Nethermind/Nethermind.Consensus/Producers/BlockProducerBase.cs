@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
-        protected const int BlockProductionTimeout = 2000;
+        protected readonly int BlockProductionTimeoutMs;
         protected readonly SemaphoreSlim _producingBlockLock = new(1);
         protected ILogger Logger { get; }
         protected readonly IBlocksConfig _blocksConfig;
@@ -70,6 +70,8 @@ namespace Nethermind.Consensus.Producers
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
+
+            BlockProductionTimeoutMs = _blocksConfig.BlockProductionTimeoutMs;
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
@@ -77,7 +79,7 @@ namespace Nethermind.Consensus.Producers
         {
             token ??= default;
             Block? block = null;
-            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token.Value))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token.Value))
             {
                 try
                 {

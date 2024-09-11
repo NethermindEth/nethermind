@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -33,7 +34,9 @@ namespace Nethermind.Core
             {
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
                 if (tx.IsServiceTransaction)
+                {
                     effectiveGasPrice = UInt256.Zero;
+                }
 
                 return effectiveGasPrice * (ulong)tx.GasLimit + tx.Value;
             }
@@ -57,15 +60,23 @@ namespace Nethermind.Core
             return effectiveGasPrice;
         }
 
-        public static UInt256 CalculateMaxPriorityFeePerGas(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
-        {
-            return eip1559Enabled ? UInt256.Min(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas > baseFee ? tx.MaxFeePerGas - baseFee : 0) : tx.MaxPriorityFeePerGas;
-        }
-        public static bool IsAboveInitCode(this Transaction tx, IReleaseSpec spec)
-        {
-            return tx.IsContractCreation && spec.IsEip3860Enabled && (tx.DataLength) > spec.MaxInitCodeSize;
-        }
+        public static UInt256 CalculateMaxPriorityFeePerGas(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee) =>
+            eip1559Enabled ? UInt256.Min(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas > baseFee ? tx.MaxFeePerGas - baseFee : 0) : tx.MaxPriorityFeePerGas;
 
+        public static bool IsAboveInitCode(this Transaction tx, IReleaseSpec spec) =>
+            tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength > spec.MaxInitCodeSize;
 
+        public static bool TryGetByTxType<T>(this T?[] array, TxType txType, [NotNullWhen(true)] out T? item)
+        {
+            var type = (byte)txType;
+            if (type > Transaction.MaxTxType)
+            {
+                item = default;
+                return false;
+            }
+
+            item = array[type];
+            return item != null;
+        }
     }
 }

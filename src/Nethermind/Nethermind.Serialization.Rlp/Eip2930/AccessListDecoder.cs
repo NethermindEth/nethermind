@@ -13,6 +13,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
     {
         private const int IndexLength = 32;
 
+        public static readonly AccessListDecoder Instance = new();
+
         /// <summary>
         /// We pay a high code quality tax for the performance optimization on RLP.
         /// Adding more RLP decoders is costly (time wise) but the path taken saves a lot of allocations and GC.
