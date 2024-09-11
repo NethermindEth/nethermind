@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
 public class RpcTransactionTests
 {
-    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([IRpcTransaction.JsonConverter]);
+    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
     private readonly IRpcTransactionConverter _converter = new ComposeTransactionConverter()
         .RegisterConverter(TxType.Legacy, RpcLegacyTransaction.Converter)
