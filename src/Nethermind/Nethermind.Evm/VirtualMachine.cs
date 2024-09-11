@@ -2748,8 +2748,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
-
-        if (!env.Witness.AccessForContractCreationInit(contractAddress, ref gasAvailable))
+        // for the collision check, we need on check the existence of the account and no need to write to it
+        if (!env.Witness.AccessForContractCreationCheck(contractAddress, ref gasAvailable))
         {
             return (EvmExceptionType.OutOfGas, null);
         }
@@ -2782,6 +2782,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         else if (_state.IsDeadAccount(contractAddress))
         {
             if (!spec.IsVerkleTreeEipEnabled) _state.ClearStorage(contractAddress);
+        }
+
+        if (!env.Witness.AccessForContractCreationInit(contractAddress, ref gasAvailable))
+        {
+            return (EvmExceptionType.OutOfGas, null);
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);

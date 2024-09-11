@@ -31,16 +31,20 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
     public bool ChargeFillCost { get; set; } = false;
 
+    public bool AccessForContractCreationCheck(Address contractAddress, ref long gasAvailable)
+    {
+        return AccessCompleteAccount(contractAddress, ref gasAvailable);
+    }
+
     public bool AccessForContractCreationInit(Address contractAddress, ref long gasAvailable)
     {
-        return AccessBasicData(contractAddress, ref gasAvailable, true);
+        return AccessCompleteAccount(contractAddress, ref gasAvailable, true);
     }
 
     public bool AccessForContractCreated(Address contractAddress, ref long gasAvailable)
     {
         return AccessCompleteAccount(contractAddress, ref gasAvailable, true);
     }
-
 
 
     public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable)
@@ -217,13 +221,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     {
         long fakeGas = 1_000_000;
         if (!AccessBasicData(originAddress, ref fakeGas, true)) return false;
-        // when you are executing a transaction, you are writing to the nonce of the origin address
         if (!AccessCodeHash(originAddress, ref fakeGas)) return false;
 
-        return destinationAddress is null ||
-               // when you are executing a transaction with value transfer,
-               // you are writing to the balance of the origin and destination address
-               AccessBasicData(destinationAddress, ref fakeGas, isValueTransfer);
+        if (destinationAddress is null) return true;
+
+        return AccessBasicData(destinationAddress, ref fakeGas, isValueTransfer) && AccessCodeHash(destinationAddress, ref fakeGas);
     }
 
     private bool AccessAccountSubTree(Address address, UInt256 treeIndex, byte subIndex, ref long gasAvailable, bool isWrite = false)

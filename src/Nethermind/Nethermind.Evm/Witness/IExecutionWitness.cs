@@ -75,4 +75,7 @@ public interface IExecutionWitness
     byte[][] GetAccessedKeys();
 
     bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable);
+
+    bool AccessForContractCreationCheck(Address contractAddress, ref long gasAvailable);
+
 }

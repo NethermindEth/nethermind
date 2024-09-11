@@ -43,4 +43,5 @@ public class NoExecWitness : IExecutionWitness
         bool inheritorExist, ref long gasAvailable) => true;
     public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();
     public bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable) => true;
+    public bool AccessForContractCreationCheck(Address contractAddress, ref long gasAvailable) => true;
 }
