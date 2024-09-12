@@ -278,14 +278,28 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
     {
-        throw new NotSupportedException();
+        _gasAlreadySetForCurrentOp = false;
+        _traceEntry = new StateTestTxTraceEntry();
+        _traceEntry.Pc = pc;
+        _traceEntry.Operation = null;
+        _traceEntry.OperationName = segmentId;
+        _traceEntry.Gas = gas;
+        _traceEntry.Depth = env.GetGethTraceDepth();
+        _trace.Entries.Add(_traceEntry);
     }
     public void Dispose() { }
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
-        throw new NotImplementedException();
+        _gasAlreadySetForCurrentOp = false;
+        _traceEntry = new StateTestTxTraceEntry();
+        _traceEntry.Pc = pc;
+        _traceEntry.Operation = null;
+        _traceEntry.OperationName = segmentID;
+        _traceEntry.Gas = gas;
+        _traceEntry.Depth = env.GetGethTraceDepth();
+        _trace.Entries.Add(_traceEntry);
     }
 }

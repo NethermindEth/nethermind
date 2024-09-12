@@ -712,11 +712,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
         ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
-        IlInfo? ilInfo = (typeof(TTracingInstructions) == typeof(NotTracing) &&
-                          typeof(TTracingRefunds) == typeof(NotTracing) &&
-                          typeof(TTracingStorage) == typeof(NotTracing))
-            ? env.CodeInfo.IlInfo
-            : null;
+        IlInfo? ilInfo = env.CodeInfo.IlInfo;
+
 
         bool isRevert = false;
 #if DEBUG

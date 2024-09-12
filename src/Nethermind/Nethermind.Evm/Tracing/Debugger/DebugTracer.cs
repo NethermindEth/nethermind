@@ -293,10 +293,10 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void Dispose()
         => _autoResetEvent.Dispose();
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
-        => InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID);
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+        => InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
-        => InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId);
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
+        => InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
 }
 #endif

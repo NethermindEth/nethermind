@@ -31,7 +31,7 @@ public interface IILVMTracer
     /// </remarks>
     bool IsTracingCompiledSegments { get; }
 
-    void ReportPredefinedPatternExecution(long gas, int pc, string segmentID);
-    void ReportCompiledSegmentExecution(long gas, int pc, string segmentId);
+    void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env);
+    void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env);
 
 }

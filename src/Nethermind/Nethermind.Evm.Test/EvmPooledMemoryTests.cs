@@ -397,11 +397,11 @@ namespace Nethermind.Evm.Test
 
         public void Dispose() { }
 
-        public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID)
+        public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
         {
         }
 
-        public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId)
+        public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
         {
         }
     }
