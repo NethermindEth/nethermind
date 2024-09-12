@@ -93,7 +93,7 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                readOnlyWorldStateManager,
+                readOnlyWorldStateManager.GlobalWorldStateProvider,
                 readOnlyBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
@@ -235,7 +235,7 @@ namespace Nethermind.Facade.Test
                 LimboLogs.Instance);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                readOnlyWorldStateManager,
+                readOnlyWorldStateManager.GlobalWorldStateProvider,
                 roBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,

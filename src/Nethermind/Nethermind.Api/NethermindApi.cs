@@ -84,7 +84,7 @@ namespace Nethermind.Api
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
                 new SimulateReadOnlyBlocksProcessingEnvFactory(
-                    WorldStateManager!,
+                    WorldStateManager!.GlobalWorldStateProvider,
                     readOnlyTree,
                     DbProvider!,
                     SpecProvider!,

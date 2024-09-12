@@ -137,7 +137,7 @@ public class TestBlockchain : IDisposable
         WorldStateProvider = new WorldStateProvider(preCachedTrieStore, TrieStore, DbProvider, LimboLogs.Instance, preBlockCaches);
         WorldStateManager = new WorldStateManager(WorldStateProvider, DbProvider, TrieStore, LimboLogs.Instance, preBlockCaches);
         StateReader = WorldStateProvider.GetGlobalStateReader();
-        State = WorldStateManager.GlobalWorldStateProvider.GetWorldState();
+        State = WorldStateProvider.GetWorldState();
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
