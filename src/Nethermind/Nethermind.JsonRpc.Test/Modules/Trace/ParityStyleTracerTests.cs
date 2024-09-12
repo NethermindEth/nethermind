@@ -45,11 +45,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         private Tracer? _tracer;
         private IPoSSwitcher? _poSSwitcher;
         private IStateReader _stateReader;
-        private IDbProvider _dbProvider = null!;
         private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
 
         [SetUp]
-        public async Task Setup()
+        public void Setup()
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
 
@@ -58,11 +57,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            _dbProvider = await TestMemDbProvider.InitAsync();
-            ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-            _stateReader = new StateReader(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
+            IDbProvider dbProvider = new DbProvider();
 
-            var worldStateProvider = new WorldStateProvider(trieStore, _dbProvider, LimboLogs.Instance);
+            ITrieStore trieStore = new TrieStore(dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
+            _stateReader = new StateReader(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
+
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
