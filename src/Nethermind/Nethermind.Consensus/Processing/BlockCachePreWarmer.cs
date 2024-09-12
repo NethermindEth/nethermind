@@ -173,7 +173,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             }
             catch (Exception ex)
             {
-                if (PreWarmer._logger.IsInfo) PreWarmer._logger.Error($"Error pre-warming addresses", ex);
+                if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"Error pre-warming addresses", ex);
             }
             finally
             {
@@ -217,7 +217,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 }
                 catch (Exception ex)
                 {
-                    if (PreWarmer._logger.IsInfo) PreWarmer._logger.Error($"Error pre-warming addresses {i}", ex);
+                    if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"Error pre-warming addresses {i}", ex);
                 }
             });
         }
