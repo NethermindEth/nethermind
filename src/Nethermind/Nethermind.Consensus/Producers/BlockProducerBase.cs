@@ -189,7 +189,7 @@ namespace Nethermind.Consensus.Producers
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
         protected bool TrySetState(BlockHeader? parent)
         {
-            if (parent is not null && WorldStateProvider.GetGlobalStateReader().HasStateForRoot(parent.StateRoot!))
+            if (parent is not null && WorldStateProvider.HasStateForRoot(parent.StateRoot!))
             {
                 var worldStateToUse = WorldStateProvider.GetGlobalWorldState(parent);
                 worldStateToUse.StateRoot = parent.StateRoot;

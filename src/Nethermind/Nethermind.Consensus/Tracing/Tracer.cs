@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Tracing
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            _worldStateProvider.GetGlobalStateReader().RunTreeVisitor(visitor, stateRoot);
+            _worldStateProvider.RunTreeVisitor(visitor, stateRoot);
         }
     }
 }

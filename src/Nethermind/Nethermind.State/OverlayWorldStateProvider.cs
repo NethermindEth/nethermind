@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -34,5 +36,15 @@ public class OverlayWorldStateProvider : IWorldStateProvider
     public IWorldState GetWorldState()
     {
         return _worldState;
+    }
+
+    public bool HasStateForRoot(Hash256 stateRoot)
+    {
+        return _stateReader.HasStateForRoot(stateRoot);
+    }
+
+    public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
+    {
+        _stateReader.RunTreeVisitor(treeVisitor, stateRoot, visitingOptions);
     }
 }

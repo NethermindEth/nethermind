@@ -3,8 +3,10 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -34,4 +36,14 @@ public class ReadOnlyWorldStateProvider : IWorldStateProvider
     }
 
     public virtual IWorldState GetWorldState() => throw new InvalidOperationException("world state is not supported");
+
+    public bool HasStateForRoot(Hash256 stateRoot)
+    {
+        return _stateReader.HasStateForRoot(stateRoot);
+    }
+
+    public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
+    {
+        _stateReader.RunTreeVisitor(treeVisitor, stateRoot, visitingOptions);
+    }
 }
