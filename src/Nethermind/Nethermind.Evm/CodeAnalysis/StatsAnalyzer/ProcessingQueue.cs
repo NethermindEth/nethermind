@@ -4,22 +4,33 @@ using System.Collections.Generic;
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
 
-    public interface IQueueProcessor<T>
+    public enum Level
     {
-        void Add(IEnumerable<T> items);
+        Block,
+        Transaction,
+        Global,
+    }
+
+    public interface IStatsAccumulator<T>
+    {
+        void Add(Level level, ulong id, IEnumerable<T> items);
     }
 
     public class ProcessingQueue<T> : IDisposable
     {
 
-        private IQueueProcessor<T> _queueProcessor;
+        public readonly ulong id;
+        private Level _level;
+        private IStatsAccumulator<T> _statsAccumulator;
         private T[] _queue;
         private int bufferPos = 0;
         private bool disposed = false;
 
-        public ProcessingQueue(int size, IQueueProcessor<T> queueProcessor)
+        public ProcessingQueue(Level level, ulong id, int size, IStatsAccumulator<T> statsAccumulator)
         {
-            _queueProcessor = queueProcessor;
+            _level = level;
+            this.id = id;
+            _statsAccumulator = statsAccumulator;
             _queue = new T[size];
         }
 
@@ -44,7 +55,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             {
                 if (disposing)
                 {
-                    _queueProcessor.Add(_queue[..bufferPos]);
+                    _statsAccumulator.Add(_level, id, _queue[..bufferPos]);
                 }
                 disposed = true;
             }
