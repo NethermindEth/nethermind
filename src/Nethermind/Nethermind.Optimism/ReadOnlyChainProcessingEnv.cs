@@ -26,7 +26,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IBlockTree blockTree,
-    IWorldStateManager worldStateManager,
+    IWorldStateProvider worldStateProvider,
     ILogManager logManager,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
@@ -39,7 +39,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     receiptStorage,
     specProvider,
     blockTree,
-    worldStateManager.GlobalWorldStateProvider.GetGlobalStateReader(),
+    worldStateProvider.GetGlobalStateReader(),
     logManager,
     blockTransactionsExecutor)
 {
@@ -58,7 +58,7 @@ public class OptimismReadOnlyChainProcessingEnv(
             blockValidator,
             rewardCalculator,
             transactionsExecutor,
-            worldStateManager,
+            worldStateProvider,
             receiptStorage,
             new BlockhashStore(specProvider),
             logManager,

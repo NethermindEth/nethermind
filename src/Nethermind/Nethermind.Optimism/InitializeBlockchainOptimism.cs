@@ -99,7 +99,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
             new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor),
-            _api.WorldStateManager!,
+            _api.WorldStateManager!.GlobalWorldStateProvider,
             _api.ReceiptStorage,
             new BlockhashStore(_api.SpecProvider),
             _api.LogManager,

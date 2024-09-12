@@ -77,13 +77,13 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IRewardCalculatorSource rewardCalculatorSource,
         IReceiptStorage receiptStorage,
         ILogManager logManager,
-        IBlocksConfig blocksConfig, IWorldStateManager worldStateManager)
+        IBlocksConfig blocksConfig, IWorldStateProvider worldStateProvider)
     {
         return new OptimismBlockProcessor(specProvider,
             blockValidator,
             rewardCalculatorSource.Get(transactionProcessor),
             TransactionsExecutorFactory.Create(transactionProcessor),
-            worldStateManager,
+            worldStateProvider,
             receiptStorage,
             new BlockhashStore(specProvider),
             logManager,

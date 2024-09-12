@@ -12,12 +12,12 @@ namespace Nethermind.Optimism;
 public class OptimismBlockReceiptTracer : BlockReceiptsTracer
 {
     private readonly IOptimismSpecHelper _opSpecHelper;
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly IWorldStateProvider _worldStateProvider;
 
-    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldStateManager worldStateManager)
+    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldStateProvider worldStateProvider)
     {
         _opSpecHelper = opSpecHelper;
-        _worldStateManager = worldStateManager;
+        _worldStateProvider = worldStateProvider;
     }
 
     private (ulong?, ulong?) GetDepositReceiptData(BlockHeader header)
@@ -26,7 +26,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
 
         ulong? depositNonce = null;
         ulong? version = null;
-        IWorldState worldStateToUse = _worldStateManager.GlobalWorldStateProvider.GetGlobalWorldState(header);
+        IWorldState worldStateToUse = _worldStateProvider.GetGlobalWorldState(header);
         if (CurrentTx.IsDeposit())
         {
             depositNonce = worldStateToUse.GetNonce(CurrentTx.SenderAddress!).ToUInt64(null);

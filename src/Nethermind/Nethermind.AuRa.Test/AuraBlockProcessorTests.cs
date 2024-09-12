@@ -148,8 +148,6 @@ namespace Nethermind.AuRa.Test
             var dbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new(dbProvider.StateDb, LimboLogs.Instance);
             var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
-            var worldStateManager =
-                new WorldStateManager(worldStateProvider, dbProvider, trieStore, LimboLogs.Instance);
             IWorldState stateProvider = worldStateProvider.GetWorldState();
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
@@ -157,7 +155,7 @@ namespace Nethermind.AuRa.Test
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
-                worldStateManager,
+                worldStateProvider,
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),

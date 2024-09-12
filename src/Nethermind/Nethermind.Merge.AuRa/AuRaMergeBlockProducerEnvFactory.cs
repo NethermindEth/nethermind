@@ -59,7 +59,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         IRewardCalculatorSource rewardCalculatorSource,
         IReceiptStorage receiptStorage,
         ILogManager logManager,
-        IBlocksConfig blocksConfig, IWorldStateManager worldStateManager)
+        IBlocksConfig blocksConfig, IWorldStateProvider worldStateProvider)
     {
         var withdrawalContractFactory = new WithdrawalContractFactory(_auraApi.ChainSpec!.AuRa, _auraApi.AbiEncoder);
 
@@ -68,7 +68,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             blockValidator,
             rewardCalculatorSource.Get(readOnlyTxnProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxnProcessor),
-            worldStateManager,
+            worldStateProvider,
             receiptStorage,
             logManager,
             _blockTree,

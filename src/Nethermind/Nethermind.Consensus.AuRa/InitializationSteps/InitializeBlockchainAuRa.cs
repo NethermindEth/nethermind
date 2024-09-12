@@ -103,7 +103,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.BlockValidator!,
             _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
             new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor),
-            _api.WorldStateManager!,
+            _api.WorldStateManager!.GlobalWorldStateProvider,
             _api.ReceiptStorage!,
             _api.LogManager,
             _api.BlockTree!,
@@ -192,7 +192,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
         ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
-        _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, _auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.WorldStateManager!, _api.LogManager);
+        _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, _auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.WorldStateManager!.GlobalWorldStateProvider, _api.LogManager);
         _api.RewardCalculatorSource = new AuRaRewardCalculator.AuRaRewardCalculatorSource(_api.ChainSpec.AuRa, _api.AbiEncoder);
         _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, _auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
     }

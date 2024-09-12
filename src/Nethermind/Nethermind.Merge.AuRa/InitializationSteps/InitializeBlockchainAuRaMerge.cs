@@ -37,7 +37,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor!),
-                _api.WorldStateManager!,
+                _api.WorldStateManager!.GlobalWorldStateProvider,
                 _api.ReceiptStorage!,
                 _api.LogManager,
                 _api.BlockTree!,

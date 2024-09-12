@@ -293,7 +293,7 @@ public class TxPermissionFilterTest
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor),
-                WorldStateManager,
+                WorldStateManager.GlobalWorldStateProvider,
                 ReceiptStorage,
                 LimboLogs.Instance,
                 BlockTree,

@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.Producers
                     _receiptStorage,
                     _logManager,
                     _blocksConfig,
-                    _worldStateManager);
+                    txProcessingEnv.WorldStateProvider);
 
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
@@ -137,12 +137,12 @@ namespace Nethermind.Consensus.Producers
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
-            ILogManager logManager, IBlocksConfig blocksConfig, IWorldStateManager worldStateManager) =>
+            ILogManager logManager, IBlocksConfig blocksConfig, IWorldStateProvider worldStateProvider) =>
             new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessor),
-                worldStateManager.GlobalWorldStateProvider,
+                worldStateProvider,
                 receiptStorage,
                 new BlockhashStore(_specProvider),
                 logManager,

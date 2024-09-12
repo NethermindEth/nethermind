@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockchainProcessor,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                testRpc.WorldStateManager,
+                testRpc.WorldStateManager.GlobalWorldStateProvider,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,

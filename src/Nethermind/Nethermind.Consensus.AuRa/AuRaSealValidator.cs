@@ -25,9 +25,9 @@ namespace Nethermind.Consensus.AuRa
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
-        private readonly IWorldStateManager _worldStateManager;
+        private readonly IWorldStateProvider _worldStateProvider;
 
-        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, IWorldStateManager worldStateManager, ILogManager logManager)
+        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, IWorldStateProvider worldStateManager, ILogManager logManager)
         {
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
+            _worldStateProvider = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _logger = logManager?.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 long step = header.AuRaStep.Value;
 
-                IWorldState? worldState = _worldStateManager.GlobalWorldStateProvider.GetGlobalWorldState(header);
+                IWorldState? worldState = _worldStateProvider.GetGlobalWorldState(header);
                 if (step == parent.AuRaStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");

@@ -58,7 +58,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IValidatorStore>(),
                 _validSealerStrategy,
                 _ethereumEcdsa,
-                Substitute.For<IWorldStateManager>(),
+                Substitute.For<IWorldStateProvider>(),
                 _logManager)
             {
                 ReportingValidator = _reportingValidator
