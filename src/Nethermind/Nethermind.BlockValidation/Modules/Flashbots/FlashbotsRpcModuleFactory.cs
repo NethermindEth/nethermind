@@ -9,7 +9,7 @@ namespace Nethermind.BlockValidation.Modules.Flashbots
 {
     public class FlashbotsRpcModuleFactory(
         ValidateSubmissionHandler validateSubmissionHandler
-    ): ModuleFactoryBase<IFlashbotsRpcModule>
+    ) : ModuleFactoryBase<IFlashbotsRpcModule>
     {
         private readonly ValidateSubmissionHandler _validateSubmissionHandler = validateSubmissionHandler ?? throw new ArgumentNullException(nameof(validateSubmissionHandler));
 

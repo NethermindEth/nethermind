@@ -38,7 +38,7 @@ public class BlockValidation : INethermindPlugin
             readOnlyTxProcessingEnv,
             _blockValidationConfig
         );
-        
+
         ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(validateSubmissionHandler);
 
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
@@ -53,7 +53,7 @@ public class BlockValidation : INethermindPlugin
         _api = api;
         _blockValidationConfig = api.Config<IBlockValidationConfig>();
         _jsonRpcConfig = api.Config<IJsonRpcConfig>();
-        if(_blockValidationConfig.Enabled)
+        if (_blockValidationConfig.Enabled)
         {
             _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Append(ModuleType.Flashbots).ToArray();
         }
