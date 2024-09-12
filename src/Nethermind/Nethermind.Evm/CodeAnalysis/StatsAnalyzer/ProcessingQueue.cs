@@ -44,7 +44,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             {
                 if (disposing)
                 {
-                    _queueProcessor.Add(_queue);
+                    _queueProcessor.Add(_queue[..bufferPos]);
                 }
                 disposed = true;
             }
