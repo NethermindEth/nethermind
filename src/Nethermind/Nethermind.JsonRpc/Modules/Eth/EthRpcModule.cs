@@ -381,18 +381,73 @@ public partial class EthRpcModule(
         return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
     }
 
-    public Task<ResultWrapper<>> eth_getRawTransactionByHash(Hash256 transactionHash)
+    public Task<ResultWrapper<string>> eth_getRawTransactionByHash(Hash256 transactionHash)
     {
-        Task<ResultWrapper<TransactionForRpc>> transactionDataTask = Task.FromResult(eth_getTransactionByHash(transactionHash));
-
-        if (transactionDataTask.Result == null){
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        if (transaction is null)
+        {
             return Task.FromResult(ResultWrapper<string>.Success(null));
         }
 
-        ResultWrapper<TransactionForRpc> transactionData = transactionDataTask.Result; 
+        RecoverTxSenderIfNeeded(transaction);
 
+        // Convert hexadecimal fields to byte arrays
+        byte[] nonceBytes = HexStringToByteArray(transaction.Nonce);
+        byte[] gasPriceBytes = HexStringToByteArray(transaction.GasPrice);
+        byte[] gasLimitBytes = HexStringToByteArray(transaction.Gas);
+        byte[] toBytes = HexStringToByteArray(transaction.To);
+        byte[] valueBytes = HexStringToByteArray(transaction.Value);
+        byte[] inputBytes = HexStringToByteArray(transaction.Input);
+        byte[] vBytes = HexStringToByteArray(transaction.V);
+        byte[] rBytes = HexStringToByteArray(transaction.R);
+        byte[] sBytes = HexStringToByteArray(transaction.S);
 
+        // Create a list of objects to RLP encode
+        var rlpList = new List<object>
+        {
+            nonceBytes,
+            gasPriceBytes,
+            gasLimitBytes,
+            toBytes,
+            valueBytes,
+            inputBytes,
+            vBytes,
+            rBytes,
+            sBytes
+        };
+
+        // RLP encode the list
+        var rlpEncoded = Rlp.Encode(rlpList);
+
+        // Convert the RLP encoded byte array to a hex string
+        
+        // TODO: write a method to convert rlpEncoded to hex string. 
+
+        if (_logger.IsTrace) 
+        {
+            _logger.Trace($"eth_getRawTransactionByHash request {transactionHash}, result: {rlpEncodedHex}");
+        }
+
+        return Task.FromResult(ResultWrapper<string>.Success(rlpEncodedHex));
     }
+
+    // Helper method to convert hex string to byte array
+    private byte[] HexStringToByteArray(string hex)
+    {
+        if (hex.StartsWith("0x"))
+        {
+            hex = hex.Substring(2);
+        }
+
+        int numberChars = hex.Length;
+        byte[] bytes = new byte[numberChars / 2];
+        for (int i = 0; i < numberChars; i += 2)
+        {
+            bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
+        }
+        return bytes;
+    }
+
 
     public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
     {
