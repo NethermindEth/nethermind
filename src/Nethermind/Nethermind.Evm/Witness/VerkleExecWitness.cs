@@ -148,14 +148,25 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         if (inheritor.IsPrecompile(Osaka.Instance) && balanceIsZero) return true;
 
         // now if the contract and inheritor is not the same, then access the inheritor basic data
+        // here this is charged because we need gas to check if the inheritor exists or not
         bool contractNotSameAsBeneficiary = contract != inheritor;
         if (contractNotSameAsBeneficiary && !AccessBasicData(inheritor, ref gasAvailable)) return false;
 
         // now access for write when the balance is non-zero
         if (!balanceIsZero)
         {
+            // TODO: do we even need this here, i dont think there is a case where this is already not in witness
             if (!AccessBasicData(contract, ref gasAvailable, true)) return false;
-            if (contractNotSameAsBeneficiary && !AccessBasicData(inheritor, ref gasAvailable, true)) return false;
+            if (!contractNotSameAsBeneficiary) return true;
+
+            if (inheritorExist)
+            {
+                if(!AccessBasicData(inheritor, ref gasAvailable, true)) return false;
+            }
+            else
+            {
+                if(!AccessCompleteAccount(inheritor, ref gasAvailable, true)) return false;
+            }
         }
         return true;
     }
