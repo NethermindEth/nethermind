@@ -116,7 +116,6 @@ public class ChainParameters
     public ulong? Eip5656TransitionTimestamp { get; set; }
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
-    public ulong? GipxyzTransitionTimestamp { get; set; }
     public Address Eip4788ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
@@ -146,5 +145,10 @@ public class ChainParameters
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
     /// </summary>
     public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
+
+    /// <summary>
+    /// Enables blob gas fee collection for Gnosis chain
+    /// </summary>
+    public ulong? Eip4844PectraTransitionTimestamp { get; set; }
     #endregion
 }

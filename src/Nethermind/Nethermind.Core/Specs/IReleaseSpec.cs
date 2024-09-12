@@ -285,6 +285,11 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// Blob base fee collection for Gnosis
+        /// </summary>
+        bool IsEip4844PectraEnabled { get; }
+
+        /// <summary>
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
@@ -371,6 +376,5 @@ namespace Nethermind.Core.Specs
         public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
-        bool IsGnosisBlobFeeCollectionEnabled { get; }
     }
 }
