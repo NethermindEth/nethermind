@@ -7,6 +7,7 @@ namespace Nethermind.BlockValidation;
 
 public class BlockValidationConfig : IBlockValidationConfig
 {
+    public bool Enabled { get; set; }
     public bool UseBalanceDiffProfit { get; set; } = false;
 
     public bool ExcludeWithdrawals { get; set; } = false;

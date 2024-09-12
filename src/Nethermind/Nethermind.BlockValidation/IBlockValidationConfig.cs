@@ -7,6 +7,9 @@ namespace Nethermind.BlockValidation;
 
 public interface IBlockValidationConfig : IConfig
 {
+    [ConfigItem(Description = "Whether to enable the Flashbots endpoints.", DefaultValue = "false")]
+    bool Enabled { get; set; }
+
     [ConfigItem(Description = "If set to true, proposer payment is calculated as a balance difference of the fee recipient", DefaultValue = "false")]
     public bool UseBalanceDiffProfit { get; set; }
 

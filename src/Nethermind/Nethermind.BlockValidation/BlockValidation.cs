@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -52,6 +53,10 @@ public class BlockValidation : INethermindPlugin
         _api = api;
         _blockValidationConfig = api.Config<IBlockValidationConfig>();
         _jsonRpcConfig = api.Config<IJsonRpcConfig>();
+        if(_blockValidationConfig.Enabled)
+        {
+            _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Append(ModuleType.Flashbots).ToArray();
+        }
         return Task.CompletedTask;
     }
 

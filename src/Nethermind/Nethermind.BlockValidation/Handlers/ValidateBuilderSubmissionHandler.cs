@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.BlockValidation.Data;
@@ -362,9 +363,10 @@ public class ValidateSubmissionHandler
             stateProvider,
             _receiptStorage,
             new BlockhashStore(_txProcessingEnv.SpecProvider, stateProvider),
-            _txProcessingEnv.LogManager,
-            new WithdrawalProcessor(stateProvider, _txProcessingEnv.LogManager!),
-            new ReceiptsRootCalculator()
+            beaconBlockRootHandler: new BeaconBlockRootHandler(transactionProcessor),
+            logManager: _txProcessingEnv.LogManager,
+            withdrawalProcessor: new WithdrawalProcessor(stateProvider, _txProcessingEnv.LogManager!),
+            receiptsRootCalculator: new ReceiptsRootCalculator()
         );
     }
 
