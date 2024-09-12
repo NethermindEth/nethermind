@@ -45,6 +45,7 @@ public class ChiadoSpecProvider : ISpecProvider
     public long? DaoBlockNumber => null;
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;
+    public string SealEngine => SealEngineType.AuRa;
     public ForkActivation[] TransitionActivations { get; }
 
     public static ChiadoSpecProvider Instance { get; } = new();

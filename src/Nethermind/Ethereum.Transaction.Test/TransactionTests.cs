@@ -57,7 +57,7 @@ namespace Ethereum.Transaction.Test
                 {
                     TransactionJson transactionJson = byName.Value.Transaction;
                     TransactionTest test;
-                    if (transactionJson != null)
+                    if (transactionJson is not null)
                     {
                         test = new ValidTransactionTest(byDir.Key, byName.Key, byName.Value.Rlp);
                         ValidTransactionTest validTest = (ValidTransactionTest)test;
@@ -165,7 +165,7 @@ namespace Ethereum.Transaction.Test
             }
             catch (Exception)
             {
-                if (validTest == null)
+                if (validTest is null)
                 {
                     return;
                 }
@@ -177,7 +177,7 @@ namespace Ethereum.Transaction.Test
 
             TxValidator validator = new(useChainId ? BlockchainIds.Mainnet : 0UL);
 
-            if (validTest != null)
+            if (validTest is not null)
             {
                 Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
                 Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");
@@ -190,7 +190,7 @@ namespace Ethereum.Transaction.Test
                 Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
                 Assert.That(transaction.Signature, Is.EqualTo(expectedSignature), "signature");
 
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL, LimboLogs.Instance);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
                     transaction);

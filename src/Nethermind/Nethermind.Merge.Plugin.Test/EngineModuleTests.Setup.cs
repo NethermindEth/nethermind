@@ -5,8 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -127,6 +128,7 @@ public partial class EngineModuleTests
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
+            new GetBlobsHandler(chain.TxPool),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
@@ -210,12 +212,11 @@ public partial class EngineModuleTests
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
-            PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
-                blockProducerEnv, BlockProductionTrigger);
+            PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
+                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -234,9 +235,11 @@ public partial class EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor),
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
@@ -258,6 +261,7 @@ public partial class EngineModuleTests
         }
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
+        public IBlockImprovementContextFactory BlockImprovementContextFactory { get; set; } = null!;
 
         protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
@@ -302,6 +306,12 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
     {
         add => _blockProcessorImplementation.BlocksProcessing += value;
         remove => _blockProcessorImplementation.BlocksProcessing -= value;
+    }
+
+    public event EventHandler<BlockEventArgs>? BlockProcessing
+    {
+        add => _blockProcessorImplementation.BlockProcessing += value;
+        remove => _blockProcessorImplementation.BlockProcessing -= value;
     }
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed

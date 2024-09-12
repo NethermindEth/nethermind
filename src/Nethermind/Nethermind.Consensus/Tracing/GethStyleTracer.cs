@@ -7,11 +7,13 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
@@ -26,6 +28,7 @@ namespace Nethermind.Consensus.Tracing;
 
 public class GethStyleTracer : IGethStyleTracer
 {
+    private readonly IBlockStore _badBlockStore;
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
@@ -38,6 +41,7 @@ public class GethStyleTracer : IGethStyleTracer
         IWorldState worldState,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
+        IBlockStore badBlockStore,
         ISpecProvider specProvider,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
         IFileSystem fileSystem)
@@ -46,6 +50,7 @@ public class GethStyleTracer : IGethStyleTracer
         _worldState = worldState;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
         _specProvider = specProvider;
         _transactionProcessorAdapter = transactionProcessorAdapter;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -54,7 +59,7 @@ public class GethStyleTracer : IGethStyleTracer
     public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-        if (block is null) throw new InvalidOperationException("Only historical blocks");
+        if (block is null) throw new InvalidOperationException($"No historical block found for {blockHash}");
 
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
@@ -105,7 +110,7 @@ public class GethStyleTracer : IGethStyleTracer
     public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        if (block is null) throw new InvalidOperationException("Only historical blocks");
+        if (block is null) throw new InvalidOperationException($"No historical block found for {blockNumber}");
 
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
@@ -115,13 +120,21 @@ public class GethStyleTracer : IGethStyleTracer
     public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        if (block is null) throw new InvalidOperationException("Only historical blocks");
+        if (block is null) throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
-        _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
-        return blockTracer.BuildResult().SingleOrDefault();
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
+            return blockTracer.BuildResult().SingleOrDefault();
+        }
+        catch
+        {
+            blockTracer.TryDispose();
+            throw;
+        }
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
@@ -141,7 +154,7 @@ public class GethStyleTracer : IGethStyleTracer
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
 
-        var block = _blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException("Only historical blocks");
+        var block = _blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
 
         if (!block.IsGenesis)
         {
@@ -158,21 +171,46 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.FileNames;
     }
 
+    public IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(blockHash);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var block = _badBlockStore
+            .GetAll()
+            .Where(b => b.Hash == blockHash)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+
+        var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
+
+        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+
+        return tracer.FileNames;
+    }
+
     private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
 
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-
-        return tracer.BuildResult().SingleOrDefault();
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult().SingleOrDefault();
+        }
+        catch
+        {
+            tracer.TryDispose();
+            throw;
+        }
     }
 
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
         options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options),
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, _worldState)),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options),
         };
@@ -193,8 +231,16 @@ public class GethStyleTracer : IGethStyleTracer
         }
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-        return tracer.BuildResult();
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult();
+        }
+        catch
+        {
+            tracer.TryDispose();
+            throw;
+        }
     }
 
     private static Block GetBlockToTrace(Rlp blockRlp)

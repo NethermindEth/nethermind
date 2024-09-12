@@ -19,42 +19,22 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0c);
+    public static Address Address { get; } = Address.FromNumber(0x0b);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 600L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 500L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = 4 * BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
-
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
-
-        (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
         bool success = Pairings.BlsG1Add(inputData.Span, output);
-        if (success)
-        {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
-        }
-
-        return result;
+        return success ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }

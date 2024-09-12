@@ -18,7 +18,7 @@ public class BlockStore : IBlockStore
 {
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder = new();
-    private const int CacheSize = 128 + 32;
+    public const int CacheSize = 128 + 32;
 
     private readonly LruCache<ValueHash256, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");
@@ -59,8 +59,8 @@ public class BlockStore : IBlockStore
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
-        // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
+        // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
+        // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
         _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);

@@ -43,10 +43,10 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The diagnostic recording mode.", DefaultValue = "None")]
     RpcRecorderState RpcRecorderState { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service HTTP port.", DefaultValue = "8545")]
+    [ConfigItem(Description = "The JSON-RPC service HTTP port.", DefaultValue = "8545", IsPortOption = true)]
     int Port { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545")]
+    [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545", IsPortOption = true)]
     int WebSocketsPort { get; set; }
 
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
@@ -106,6 +106,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
+
+    [ConfigItem(
+        Description = "The max number of logs per response. For method `eth_getLogs`. If 0 then no limit.",
+        DefaultValue = "20000")]
+    public int MaxLogsPerResponse { get; set; }
+
     [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:
@@ -141,7 +147,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
     string EngineHost { get; set; }
 
-    [ConfigItem(Description = "The Engine API port.", DefaultValue = "null")]
+    [ConfigItem(Description = "The Engine API port.", DefaultValue = "null", IsPortOption = true)]
     int? EnginePort { get; set; }
 
     [ConfigItem(
@@ -154,6 +160,9 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
+
+    [ConfigItem(Description = "The max blocks count limit for eth_simulate JSON-RPC calls.", DefaultValue = "256")]
+    long? MaxSimulateBlocksCap { get; set; }
 
     [ConfigItem(Description = "The error margin used in eth_estimateGas expressed in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }

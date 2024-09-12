@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Tracing;
 
 public interface ITxTracer : IWorldStateTracer, IDisposable
 {
+    bool IsCancelable => false;
+    bool IsCancelled => false;
     /// <summary>
     /// Defines whether MarkAsSuccess or MarkAsFailed will be called
     /// </summary>
@@ -125,6 +127,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </remarks>
     bool IsTracingFees { get; }
 
+    /// <summary>
+    /// Traces operation logs
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="ReportLog"/>
+    /// </remarks>
+    bool IsTracingLogs { get; }
+
     bool IsTracing => IsTracingReceipt
                       || IsTracingActions
                       || IsTracingOpLevelStorage
@@ -135,7 +146,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingStack
                       || IsTracingBlockHash
                       || IsTracingAccess
-                      || IsTracingFees;
+                      || IsTracingFees
+                      || IsTracingLogs;
 
     /// <summary>
     /// Transaction completed successfully
@@ -157,18 +169,17 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="error">Error that failed the transaction</param>
     /// <param name="stateRoot">State root after transaction, depends on EIP-658</param>
     /// <remarks>Depends on <see cref="IsTracingReceipt"/></remarks>
-    void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null);
+    void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string? error, Hash256? stateRoot = null);
 
     /// <summary>
     ///
     /// </summary>
-    /// <param name="depth"></param>
-    /// <param name="gas"></param>
-    /// <param name="opcode"></param>
     /// <param name="pc"></param>
-    /// <param name="isPostMerge"></param>
+    /// <param name="opcode"></param>
+    /// <param name="gas"></param>
+    /// <param name="env"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false);
+    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env);
 
     /// <summary>
     ///
@@ -183,6 +194,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gas"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportOperationRemainingGas(long gas);
+
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="log"></param>
+    /// <remarks>Depends on <see cref="IsTracingLogs"/></remarks>
+    void ReportLog(LogEntry log);
 
     /// <summary>
     ///
@@ -349,7 +368,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasLeft"></param>
     /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
+    void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output);
 
     /// <summary>
     ///

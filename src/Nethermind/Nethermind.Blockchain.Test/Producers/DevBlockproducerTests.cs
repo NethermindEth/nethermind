@@ -3,8 +3,11 @@
 
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -55,15 +58,18 @@ namespace Nethermind.Blockchain.Test.Producers
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+            CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 specProvider,
+                codeInfoRepository,
                 LimboLogs.Instance);
             TransactionProcessor txProcessor = new(
                 specProvider,
                 stateProvider,
                 virtualMachine,
+                codeInfoRepository,
                 LimboLogs.Instance);
             BlockProcessor blockProcessor = new(
                 specProvider,
@@ -72,7 +78,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(txProcessor),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,
@@ -88,15 +95,16 @@ namespace Nethermind.Blockchain.Test.Producers
                 blockchainProcessor,
                 stateProvider,
                 blockTree,
-                trigger,
                 timestamper,
                 specProvider,
                 new BlocksConfig(),
                 LimboLogs.Instance);
 
+            StandardBlockProducerRunner blockProducerRunner = new StandardBlockProducerRunner(trigger, blockTree, devBlockProducer);
+
             blockchainProcessor.Start();
-            devBlockProducer.Start();
-            ProducedBlockSuggester _ = new ProducedBlockSuggester(blockTree, devBlockProducer);
+            blockProducerRunner.Start();
+            ProducedBlockSuggester _ = new ProducedBlockSuggester(blockTree, blockProducerRunner);
 
             AutoResetEvent autoResetEvent = new(false);
 

@@ -3,12 +3,14 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -73,9 +75,18 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        public static readonly Dictionary<Type, IRlpDecoder> Decoders = new();
+        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
+        private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
+        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
 
-        public static void RegisterDecoders(Assembly assembly)
+        public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
+        {
+            _decoderBuilder[key] = decoder;
+            // Mark FrozenDictionary as null to force re-creation
+            _decoders = null;
+        }
+
+        public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
         {
             foreach (Type? type in assembly.GetExportedTypes())
             {
@@ -100,20 +111,48 @@ namespace Nethermind.Serialization.Rlp
                     Type? interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
                     if (interfaceGenericDefinition == typeof(IRlpDecoder<>).GetGenericTypeDefinition())
                     {
-                        ConstructorInfo? constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor is null)
+                        bool isSetForAnyAttribute = false;
+                        IRlpDecoder? instance = null;
+
+                        foreach (DecoderAttribute rlpDecoderAttr in type.GetCustomAttributes<DecoderAttribute>())
                         {
-                            continue;
+                            RlpDecoderKey key = new(implementedInterface.GenericTypeArguments[0], rlpDecoderAttr.Key);
+                            AddEncoder(key);
+
+                            isSetForAnyAttribute = true;
                         }
 
-                        Type key = implementedInterface.GenericTypeArguments[0];
-                        if (!Decoders.ContainsKey(key))
+                        if (!isSetForAnyAttribute)
                         {
-                            Decoders[key] = (IRlpDecoder)Activator.CreateInstance(type);
+                            AddEncoder(new(implementedInterface.GenericTypeArguments[0]));
+                        }
+
+                        void AddEncoder(RlpDecoderKey key)
+                        {
+                            if (!_decoderBuilder.ContainsKey(key) || canOverrideExistingDecoders)
+                            {
+                                try
+                                {
+                                    _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
+                                        Activator.CreateInstance(type) :
+                                        Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
+                                }
+                                catch (Exception)
+                                {
+                                    throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.");
+                                }
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException($"Unable to override decoder for {key}, because the following decoder is already set: {_decoderBuilder[key]}.");
+                            }
                         }
                     }
                 }
             }
+
+            // Mark FrozenDictionary as null to force re-creation
+            _decoders = null;
         }
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -130,17 +169,6 @@ namespace Nethermind.Serialization.Rlp
         {
             var valueContext = bytes.AsRlpValueContext();
             return Decode<T>(ref valueContext, rlpBehaviors);
-        }
-
-        public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
-            if (rlpDecoder is not null)
-            {
-                return DecodeArray(rlpStream, rlpDecoder, rlpBehaviors);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
         public static T[] DecodeArray<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -219,10 +247,9 @@ namespace Nethermind.Serialization.Rlp
             return span.ToPooledList();
         }
 
-        public static IRlpValueDecoder<T>? GetValueDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
-        public static IRlpStreamDecoder<T>? GetStreamDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpStreamDecoder<T> : null;
-        public static IRlpObjectDecoder<T>? GetObjectDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpObjectDecoder<T> : null;
-        public static IRlpDecoder<T>? GetDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
+        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
+        public static IRlpStreamDecoder<T>? GetStreamDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamDecoder<T> : null;
+        public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -246,6 +273,12 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
+        public static Rlp Encode(Account item, RlpBehaviors behaviors = RlpBehaviors.None)
+            => AccountDecoder.Instance.Encode(item, behaviors);
+
+        public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
+            => LogEntryDecoder.Instance.Encode(item, behaviors);
+
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (item is Rlp rlp)
@@ -263,8 +296,7 @@ namespace Nethermind.Serialization.Rlp
                 return new Rlp(stream.Data.ToArray());
             }
 
-            IRlpObjectDecoder<T>? rlpDecoder = GetObjectDecoder<T>();
-            return rlpDecoder is not null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+            return GetObjectDecoder<T>().Encode(item, behaviors);
         }
 
         public static Rlp Encode<T>(T[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -283,13 +315,7 @@ namespace Nethermind.Serialization.Rlp
                 return new Rlp(stream.Data.ToArray());
             }
 
-            IRlpObjectDecoder<T> rlpDecoder = GetObjectDecoder<T>();
-            if (rlpDecoder is not null)
-            {
-                return rlpDecoder.Encode(items, behaviors);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+            return GetObjectDecoder<T>().Encode(items, behaviors);
         }
 
         public static Rlp Encode(int[] integers)
@@ -308,16 +334,8 @@ namespace Nethermind.Serialization.Rlp
             return Encode(transaction, false);
         }
 
-        public static Rlp Encode(
-            Transaction transaction,
-            bool forSigning,
-            bool isEip155Enabled = false,
-            ulong chainId = 0)
-        {
-            TxDecoder txDecoder = new TxDecoder();
-            return txDecoder.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled,
-                chainId);
-        }
+        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
+            TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
 
         public static Rlp Encode(int value)
         {
@@ -366,18 +384,6 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-
-        public static int Encode(Span<byte> buffer, int position, byte[]? input)
-        {
-            if (input is null || input.Length == 0)
-            {
-                buffer[position++] = OfEmptyByteArray.Bytes[0];
-                return position;
-            }
-
-            return Encode(buffer, position, input.AsSpan());
-        }
-
         public static int Encode(Span<byte> buffer, int position, ReadOnlySpan<byte> input)
         {
             if (input.Length == 1 && input[0] < 128)
@@ -403,6 +409,27 @@ namespace Nethermind.Serialization.Rlp
             position += input.Length;
 
             return position;
+        }
+
+        public static int Encode(Span<byte> buffer, int position, Hash256 hash)
+        {
+            Debug.Assert(hash is not null);
+            var newPosition = position + LengthOfKeccakRlp;
+            if ((uint)newPosition > (uint)buffer.Length)
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position) = 160;
+            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1)) = hash.ValueHash256;
+            return newPosition;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowArgumentOutOfRangeException()
+            {
+                throw new ArgumentOutOfRangeException(nameof(buffer));
+            }
         }
 
         public static Rlp Encode(ReadOnlySpan<byte> input)
@@ -528,7 +555,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            keccak.Bytes.CopyTo(result.AsSpan()[1..]);
+            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(result), 1)) = keccak.ValueHash256;
             return new Rlp(result);
         }
 
@@ -1830,18 +1857,58 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(LogEntry item)
         {
-            IRlpDecoder<LogEntry>? rlpDecoder = GetDecoder<LogEntry>();
-            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(LogEntry)}");
+            return LogEntryDecoder.Instance.GetLength(item, RlpBehaviors.None);
         }
 
         public static int LengthOf(BlockInfo item)
         {
-            IRlpDecoder<BlockInfo>? rlpDecoder = GetDecoder<BlockInfo>();
-            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(BlockInfo)}");
+            return BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
         }
 
+        [AttributeUsage(AttributeTargets.Class)]
         public class SkipGlobalRegistration : Attribute
         {
+        }
+
+        /// <summary>
+        /// Optional attribute for RLP decoders.
+        /// </summary>
+        /// <param name="key">Optional custom key that helps to have more than one decoder for the given type.</param>
+        [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
+        public sealed class DecoderAttribute(string key = RlpDecoderKey.Default) : Attribute
+        {
+            public string Key { get; } = key;
+        }
+    }
+
+    public readonly struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>
+    {
+        public const string Default = "default";
+        public const string Storage = "storage";
+        public const string LegacyStorage = "legacy-storage";
+        public const string Trie = "trie";
+
+        private readonly Type _type = type;
+        private readonly string _key = key;
+        public Type Type => _type;
+        public string Key => _key;
+
+        public static implicit operator Type(RlpDecoderKey key) => key._type;
+        public static implicit operator RlpDecoderKey(Type key) => new(key);
+
+        public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
+
+        public override int GetHashCode() => HashCode.Combine(_type, _key);
+
+        public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
+
+        public static bool operator ==(RlpDecoderKey left, RlpDecoderKey right) => left.Equals(right);
+
+        public static bool operator !=(RlpDecoderKey left, RlpDecoderKey right) => !(left == right);
+
+        public override string ToString()
+        {
+            return $"({Type.Name},{Key})";
         }
     }
 }

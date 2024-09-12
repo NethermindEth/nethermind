@@ -33,7 +33,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly LruKeyCache<Hash256AsKey> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
+        private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
+        private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -97,7 +98,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             EnrichStatusMessage(statusMessage);
 
-            Metrics.StatusesSent++;
             Send(statusMessage);
 
             CheckProtocolInitTimeout().ContinueWith(x =>
@@ -149,7 +149,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         break;
                     }
                 case Eth62MessageCode.NewBlockHashes:
-                    Metrics.Eth62NewBlockHashesReceived++;
                     if (CanAcceptBlockGossip())
                     {
                         using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
@@ -158,7 +157,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     }
                     break;
                 case Eth62MessageCode.Transactions:
-                    Metrics.Eth62TransactionsReceived++;
                     if (CanReceiveTransactions)
                     {
                         if (_floodController.IsAllowed())
@@ -201,7 +199,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
-                    Metrics.Eth62NewBlockReceived++;
                     if (CanAcceptBlockGossip())
                     {
                         using NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
@@ -227,7 +224,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(StatusMessage status)
         {
-            Metrics.StatusesReceived++;
             if (_statusReceived)
             {
                 throw new SubprotocolException($"{nameof(StatusMessage)} has already been received in the past");
@@ -343,7 +339,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return;
             }
 
-            if (_lastBlockNotificationCache.Set(block.Hash))
+            if (LastBlockNotificationCache.Set(block.Hash))
             {
                 switch (mode)
                 {

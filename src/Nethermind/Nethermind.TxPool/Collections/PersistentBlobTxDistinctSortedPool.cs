@@ -38,6 +38,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         {
             if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
             {
+                AddToBlobIndex(lightBlobTx);
                 numberOfTxsInDb++;
                 numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
@@ -47,6 +48,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         {
             long loadingTime = stopwatch.ElapsedMilliseconds;
             _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime}ms");
+            _logger.Info($"There are {BlobIndex.Count} unique blobs indexed");
         }
         stopwatch.Stop();
     }
@@ -88,10 +90,20 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    protected override bool Remove(ValueHash256 hash, Transaction tx)
+    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
     {
-        _blobTxCache.Delete(hash);
-        _blobTxStorage.Delete(hash, tx.Timestamp);
-        return base.Remove(hash, tx);
+        if (base.Remove(hash, out tx))
+        {
+            if (tx is not null)
+            {
+                _blobTxStorage.Delete(hash, tx.Timestamp);
+            }
+
+            _blobTxCache.Delete(hash);
+
+            return true;
+        }
+
+        return false;
     }
 }

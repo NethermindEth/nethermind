@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
@@ -13,6 +14,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.State;
@@ -53,7 +55,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
     }
 
     protected override BlockProcessor CreateBlockProcessor(
-        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+        IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -68,8 +70,9 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             blockValidator,
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-            readOnlyTxProcessingEnv.StateProvider,
+            readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
+            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
             logManager,
             _blockTree,
             new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
@@ -88,6 +91,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource(processingEnv);
+        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource();
     }
 }

@@ -38,6 +38,7 @@ namespace Nethermind.Specs.Test
 
         public ulong NetworkId => _specProvider.NetworkId;
         public ulong ChainId => _specProvider.ChainId;
+        public string SealEngine => _specProvider.SealEngine;
 
         public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
     }

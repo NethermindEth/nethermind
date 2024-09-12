@@ -56,7 +56,7 @@ public class TxBroadcasterTests
     {
         _logManager = LimboLogs.Instance;
         _specProvider = MainnetSpecProvider.Instance;
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
         _blockTree = Substitute.For<IBlockTree>();
         _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
         _txPoolConfig = new TxPoolConfig();
@@ -361,8 +361,8 @@ public class TxBroadcasterTests
         // tx should be immediately broadcasted only if MaxFeePerGas is equal at least 70% of current base fee
         peer.Received(shouldBroadcast ? 1 : 0).SendNewTransaction(Arg.Any<Transaction>());
 
-        // tx should always be added to persistent collection, without any fee restrictions
-        _broadcaster.GetSnapshot().Length.Should().Be(1);
+        // tx should only be added to persistent collection, if it is above the fee restriction
+        _broadcaster.GetSnapshot().Length.Should().Be(shouldBroadcast ? 1 : 0);
     }
 
     [Test]

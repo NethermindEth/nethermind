@@ -23,7 +23,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
-            IBlockProductionTrigger blockProductionTrigger,
             IWorldState stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ISealEngine sealEngine,
@@ -36,7 +35,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 processor,
                 sealEngine,
                 blockTree,
-                blockProductionTrigger,
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
@@ -56,7 +54,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.Bloom = Bloom.Empty;
             var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
-            if (_producingBlockLock.Wait(BlockProductionTimeout))
+            if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
             {
                 try
                 {

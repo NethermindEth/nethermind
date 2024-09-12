@@ -92,20 +92,20 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn($"Invalid request. Result of {requestStr}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
         {
-            if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
-            if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain. The last valid is {lastValidHash}");
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $"The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
 
@@ -128,7 +128,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
-                if (_logger.IsWarn) _logger.Info($"Invalid block without parent. Result of {requestStr}.");
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "orphaned block is invalid"));
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
@@ -154,9 +154,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
-            if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
+            if (!_blockValidator.ValidateSuggestedBlock(block, out string? error, validateHashes: false))
             {
-                if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "suggested block is invalid"));
                 return NewPayloadV1Result.Invalid(error);
             }
 
@@ -205,7 +205,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (result == ValidationResult.Invalid)
         {
-            if (_logger.IsInfo) _logger.Info($"Invalid block found. Validation message: {message}. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
             _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
             return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
         }
@@ -394,7 +394,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     {
         block.Header.TotalDifficulty ??= parent.TotalDifficulty + block.Difficulty;
         block.Header.IsPostMerge = true; // I think we don't need to set it again here.
-        bool isValid = _blockValidator.ValidateSuggestedBlock(block, out error);
+        bool isValid = _blockValidator.ValidateSuggestedBlock(block, out error, validateHashes: false);
         if (!isValid && _logger.IsWarn) _logger.Warn($"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}.");
         return isValid;
     }

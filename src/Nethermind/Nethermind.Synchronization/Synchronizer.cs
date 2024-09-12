@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization
 
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
-        private INodeStorage _nodeStorage;
+        private readonly INodeStorage _nodeStorage;
         private readonly ProgressTracker _progressTracker;
 
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
@@ -457,7 +457,9 @@ namespace Nethermind.Synchronization
             _syncReport.Dispose();
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();
+            _stateSyncFeed = null;
             SnapSyncFeed?.Dispose();
+            _snapSyncFeed = null;
             _fullSyncFeed?.Dispose();
             HeadersSyncFeed?.Dispose();
             BodiesSyncFeed?.Dispose();

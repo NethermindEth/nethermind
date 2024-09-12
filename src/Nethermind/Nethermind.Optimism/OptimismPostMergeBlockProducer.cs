@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Optimism.Rpc;
 using Nethermind.State;
 
 namespace Nethermind.Optimism;
@@ -26,7 +27,6 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         ITxSource txPoolTxSource,
         IBlockchainProcessor processor,
         IBlockTree blockTree,
-        IBlockProductionTrigger blockProductionTrigger,
         IWorldState stateProvider,
         IGasLimitCalculator gasLimitCalculator,
         ISealEngine sealEngine,
@@ -38,7 +38,6 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         payloadAttrsTxSource.Then(txPoolTxSource),
         processor,
         blockTree,
-        blockProductionTrigger,
         stateProvider,
         gasLimitCalculator,
         sealEngine,
@@ -61,7 +60,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
         Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
-        if (_producingBlockLock.Wait(BlockProductionTimeout))
+        if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
         {
             try
             {

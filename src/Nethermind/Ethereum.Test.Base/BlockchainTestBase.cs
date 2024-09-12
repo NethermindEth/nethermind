@@ -9,6 +9,8 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -130,7 +132,7 @@ namespace Ethereum.Test.Base
                 specProvider.UpdateMergeTransitionInfo(0, 0);
             }
 
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             TrieStore trieStore = new(stateDb, _logManager);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
@@ -142,30 +144,34 @@ namespace Ethereum.Test.Base
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, _logManager);
             ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+            CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
+                codeInfoRepository,
+                _logManager);
+
+            TransactionProcessor transactionProcessor = new(
+                specProvider,
+                stateProvider,
+                virtualMachine,
+                codeInfoRepository,
                 _logManager);
 
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(
-                    new TransactionProcessor(
-                        specProvider,
-                        stateProvider,
-                        virtualMachine,
-                        _logManager),
-                    stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(transactionProcessor),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
@@ -336,13 +342,13 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
         {
-            if (test.PostStateRoot != null)
+            if (test.PostStateRoot is not null)
             {
                 return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
             }
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
-                                                     .Where(b => b.BlockHeader != null)
+                                                     .Where(b => b.BlockHeader is not null)
                                                      .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
             BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
             List<string> differences = new();

@@ -55,7 +55,7 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip155Enabled => _spec.IsEip155Enabled;
 
-        public bool IsEip158Enabled => _spec.IsEip1559Enabled;
+        public bool IsEip158Enabled => _spec.IsEip158Enabled;
 
         public bool IsEip160Enabled => _spec.IsEip160Enabled;
 
@@ -97,9 +97,7 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip2200Enabled => _spec.IsEip2200Enabled;
 
-        public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
-
-        public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
+        public bool IsEip2537Enabled => _spec.IsEip2537Enabled;
 
         public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
@@ -113,12 +111,10 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
+        public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
         public bool IsEip3607Enabled { get; set; }
 
-        public bool IsEip158IgnoredAccount(Address address)
-        {
-            return _spec.IsEip158IgnoredAccount(address);
-        }
+        public bool IsEip158IgnoredAccount(Address address) => _spec.IsEip158IgnoredAccount(address);
 
         private long? _overridenEip1559TransitionBlock;
         public long Eip1559TransitionBlock
@@ -158,6 +154,9 @@ namespace Nethermind.Specs.Test
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public bool IsGnosisBlobFeeCollectionEnabled => _spec.IsGnosisBlobFeeCollectionEnabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
+        public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
+        public bool IsEip7709Enabled => _spec.IsEip7709Enabled;
+        public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;

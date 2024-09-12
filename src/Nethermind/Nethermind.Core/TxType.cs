@@ -9,7 +9,6 @@ namespace Nethermind.Core
         AccessList = 1,
         EIP1559 = 2,
         Blob = 3,
-
-        DepositTx = 0x7E,
+        DepositTx = 0x7E
     }
 }

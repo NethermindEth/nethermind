@@ -5,6 +5,7 @@ on:
     branches: [master]
   push:
     branches: [master]
+  merge_group:
 
 jobs:
   build:

@@ -22,7 +22,7 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class TxDecoderTests
     {
-        private readonly TxDecoder _txDecoder = new();
+        private readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
         public static IEnumerable<(TransactionBuilder<Transaction>, string)> TestObjectsSource()
         {
@@ -72,12 +72,11 @@ namespace Nethermind.Core.Test.Encoding
         {
             Transaction tx = testCase.Tx;
 
-            TxDecoder decoder = new TxDecoder();
-            Rlp rlp = decoder.Encode(tx);
+            Rlp rlp = _txDecoder.Encode(tx);
 
             Hash256 expectedHash = Keccak.Compute(rlp.Bytes);
 
-            Transaction decodedTx = decoder.Decode(new RlpStream(rlp.Bytes))!;
+            Transaction decodedTx = _txDecoder.Decode(new RlpStream(rlp.Bytes))!;
 
             decodedTx.SetPreHash(rlp.Bytes);
 
@@ -99,7 +98,7 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);
             decoded!.SenderAddress =
-                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+                new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.EqualToTransaction(testCase.Tx);
         }
@@ -115,7 +114,7 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
-                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+                new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.EqualToTransaction(testCase.Tx);
         }
@@ -130,7 +129,7 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
-                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+                new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.EqualToTransaction(testCase.Tx);
         }

@@ -65,7 +65,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
-            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
+            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider);
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _logger = logManager.GetClassLogger();
         }
@@ -220,16 +220,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out _))
                     {
-                        string message = $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.";
+                        string message = InvalidBlockHelper.GetMessage(currentBlock, "invalid block sent by peer") +
+                                         $" PeerInfo {bestPeer}";
                         if (_logger.IsWarn) _logger.Warn(message);
                         throw new EthSyncException(message);
                     }
 
                     if (shouldProcess)
                     {
-                        // An edge case when we've got state already, but still downloading blocks before it.
-                        // We cannot process such blocks, but still we are requested to process them via blocksRequest.Options
-                        // So we'are detecting it and chaing from processing to receipts downloading
+                        // An edge case where we already have the state but are still downloading preceding blocks.
+                        // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
+                        // Therefore, we detect this situation and switch from processing to receipts downloading.
                         bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                         bool toBeProcessedHasNoProcessedParent = currentBlock.Number > (bestProcessedBlock + 1);
                         bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;

@@ -44,9 +44,10 @@ public class GoerliSpecProvider : ISpecProvider
     }
 
     public ulong NetworkId => BlockchainIds.Goerli;
-    public ulong ChainId => NetworkId;
+    public ulong ChainId => BlockchainIds.Goerli;
+    public string SealEngine => SealEngineType.Clique;
     public long? DaoBlockNumber => null;
-    public ForkActivation? MergeBlockNumber { get; private set; } = null;
+    public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = 10790000;
     public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;

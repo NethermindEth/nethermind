@@ -19,10 +19,6 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Lifecycle;
-using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.Analyzers;
@@ -35,10 +31,8 @@ using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
@@ -66,7 +60,6 @@ public static class NettyMemoryEstimator
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    private const string DiscoveryNodesDbPath = "discoveryNodes";
     private const string PeersDbPath = "peers";
 
     protected readonly IApiWithNetwork _api;
@@ -101,8 +94,6 @@ public class InitializeNetwork : IStep
         {
             NetworkDiagTracer.Start(_api.LogManager);
         }
-
-        CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
@@ -179,13 +170,10 @@ public class InitializeNetwork : IStep
             _api.SyncPeerPool,
             _api.SyncModeSelector,
             _api.Config<ISyncConfig>(),
-            _api.WitnessRepository,
             _api.GossipPolicy,
             _api.SpecProvider!,
-            _api.LogManager,
-            cht);
+            _api.LogManager);
 
-        _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
@@ -273,7 +261,7 @@ public class InitializeNetwork : IStep
         }
 
         if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
-        _api.DiscoveryApp.Start();
+        _ = _api.DiscoveryApp.StartAsync();
         if (_logger.IsDebug) _logger.Debug("Discovery process started.");
         return Task.CompletedTask;
     }
@@ -310,90 +298,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
-
-        SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
-        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
-
-        NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
-        IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
-            _api.MessageSerializationService,
-            _api.EthereumEcdsa,
-            privateKeyProvider,
-            nodeIdResolver);
-
-        msgSerializersProvider.RegisterDiscoverySerializers();
-
-        NodeDistanceCalculator nodeDistanceCalculator = new(discoveryConfig);
-
-        NodeTable nodeTable = new(nodeDistanceCalculator, discoveryConfig, _networkConfig, _api.LogManager);
-        EvictionManager evictionManager = new(nodeTable, _api.LogManager);
-
-        NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
-            nodeTable,
-            evictionManager,
-            _api.NodeStatsManager,
-            selfNodeRecord,
-            discoveryConfig,
-            _api.Timestamper,
-            _api.LogManager);
-
-        // ToDo: DiscoveryDB is registered outside dbProvider - bad
-        SimpleFilePublicKeyDb discoveryDb = new(
-            "DiscoveryDB",
-            DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
-            _api.LogManager);
-
-        NetworkStorage discoveryStorage = new(
-            discoveryDb,
-            _api.LogManager);
-
-        DiscoveryManager discoveryManager = new(
-            nodeLifeCycleFactory,
-            nodeTable,
-            discoveryStorage,
-            discoveryConfig,
-            _api.LogManager
+        _api.DiscoveryApp = new CompositeDiscoveryApp(_api.NodeKey,
+            _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
+            _api.EthereumEcdsa, _api.MessageSerializationService,
+            _api.LogManager, _api.Timestamper, _api.CryptoRandom,
+            _api.NodeStatsManager, _api.IpResolver, _api.PeerManager
         );
 
-        NodesLocator nodesLocator = new(
-            nodeTable,
-            discoveryManager,
-            discoveryConfig,
-            _api.LogManager);
-
-        _api.DiscoveryApp = new DiscoveryApp(
-            nodesLocator,
-            discoveryManager,
-            nodeTable,
-            _api.MessageSerializationService,
-            _api.CryptoRandom,
-            discoveryStorage,
-            _networkConfig,
-            discoveryConfig,
-            _api.Timestamper,
-            _api.LogManager);
-
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
-    }
-
-    private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
-    {
-        NodeRecord selfNodeRecord = new();
-        selfNodeRecord.SetEntry(IdEntry.Instance);
-        selfNodeRecord.SetEntry(new IpEntry(_api.IpResolver!.ExternalIp));
-        selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
-        selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
-        selfNodeRecord.SetEntry(new Secp256K1Entry(_api.NodeKey!.CompressedPublicKey));
-        selfNodeRecord.EnrSequence = 1;
-        NodeRecordSigner enrSigner = new(_api.EthereumEcdsa, privateKeyProvider.Generate());
-        enrSigner.Sign(selfNodeRecord);
-        if (!enrSigner.Verify(selfNodeRecord))
-        {
-            throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
-        }
-
-        return selfNodeRecord;
     }
 
     private Task StartSync()
@@ -516,7 +428,7 @@ public class InitializeNetwork : IStep
             _api.BackgroundTaskScheduler,
             _api.TxPool,
             pooledTxsRequestor,
-            _api.DiscoveryApp!,
+            _api.DiscoveryApp,
             _api.MessageSerializationService,
             _api.RlpxPeer,
             _api.NodeStatsManager,
@@ -532,11 +444,6 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        }
-
-        if (_syncConfig.WitnessProtocolEnabled)
-        {
-            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
         }
 
         _api.ProtocolValidator = protocolValidator;

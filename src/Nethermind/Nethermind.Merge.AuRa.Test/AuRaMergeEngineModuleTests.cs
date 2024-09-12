@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -17,6 +19,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -96,6 +99,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             SealEngineType = Core.SealEngineType.AuRa;
         }
 
+        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        {
+            if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
+            return base.Build(specProvider, initialValues, addBlockOnStart);
+        }
+
         protected override IBlockProcessor CreateBlockProcessor()
         {
             _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
@@ -130,9 +139,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor),
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
@@ -170,12 +181,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
-            PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, BlockProductionTrigger);
+            PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
-                ),
+                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -188,7 +198,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             AuRaBlockProducer preMergeBlockProducer = new(
                 txPoolTxSource,
                 blockProducerEnvFactory.Create().ChainProcessor,
-                BlockProductionTrigger,
                 State,
                 sealer,
                 BlockTree,

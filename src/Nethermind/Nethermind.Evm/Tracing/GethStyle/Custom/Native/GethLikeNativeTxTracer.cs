@@ -10,8 +10,7 @@ public abstract class GethLikeNativeTxTracer : GethLikeTxTracer
 {
     protected int Depth { get; private set; }
 
-    protected GethLikeNativeTxTracer(
-        GethTraceOptions options) : base(options)
+    protected GethLikeNativeTxTracer(GethTraceOptions options) : base(options)
     {
         Depth = -1;
     }

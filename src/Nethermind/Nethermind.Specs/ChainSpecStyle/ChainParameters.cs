@@ -118,6 +118,9 @@ public class ChainParameters
     public ulong? Eip4788TransitionTimestamp { get; set; }
     public ulong? GipxyzTransitionTimestamp { get; set; }
     public Address Eip4788ContractAddress { get; set; }
+    public ulong? Eip2935TransitionTimestamp { get; set; }
+    public Address Eip2935ContractAddress { get; set; }
+    public ulong? Rip7212TransitionTimestamp { get; set; }
 
     #region EIP-4844 parameters
     /// <summary>

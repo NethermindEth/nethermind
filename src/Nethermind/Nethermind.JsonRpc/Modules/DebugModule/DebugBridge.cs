@@ -177,7 +177,7 @@ public class DebugBridge : IDebugBridge
     public byte[] GetBlockRlp(Hash256 blockHash)
     {
         BlockHeader? header = _blockTree.FindHeader(blockHash);
-        if (header == null) return null;
+        if (header is null) return null;
 
         return _blockStore.GetRaw(header.Number, blockHash);
     }
@@ -206,4 +206,10 @@ public class DebugBridge : IDebugBridge
         CancellationToken cancellationToken,
         GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public IEnumerable<string> TraceBadBlockToFile(
+        Hash256 blockHash,
+        CancellationToken cancellationToken,
+        GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBadBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 }

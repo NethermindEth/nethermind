@@ -34,9 +34,9 @@ namespace Nethermind.Trie;
 /// the pre-fetched data is wasted read, but overall, it significantly improve throughput.
 ///
 /// The exact minimum size of working set depends on the size of the database, which seems
-/// to increase linearly. For goerli, that seems to be 256MB, and mainnet it seems to be 1Gb. Increasing the working
+/// to increase linearly. For mainnet it seems to be 1Gb. Increasing the working
 /// set decreases reads, however up to a certain point, the time taken for writes is much higher than read, so no
-/// point in increasing memory budget further. For goerli, that seems to be 3GB and for mainnet, that seems to be 8Gb.
+/// point in increasing memory budget further. For mainnet, that seems to be 8Gb.
 /// </summary>
 public class BatchedTrieVisitor<TNodeContext>
     where TNodeContext : struct, INodeContext<TNodeContext>
@@ -429,7 +429,7 @@ public interface ITreePathContextWithStorage
     public Hash256? Storage { get; }
 }
 
-public struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<TreePathContextWithStorage>
+public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<TreePathContextWithStorage>
 {
     public TreePath Path { get; init; } = TreePath.Empty;
     public Hash256? Storage { get; init; } = null; // Not using ValueHash as value is shared with many context.
@@ -472,12 +472,12 @@ public struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeCon
 /// </summary>
 public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<NoopTreePathContextWithStorage>
 {
-    public NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    public readonly NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
     {
         return this;
     }
 
-    public NoopTreePathContextWithStorage Add(byte nibble)
+    public readonly NoopTreePathContextWithStorage Add(byte nibble)
     {
         return this;
     }
@@ -487,8 +487,8 @@ public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INod
         return this;
     }
 
-    public TreePath Path => TreePath.Empty;
-    public Hash256? Storage => null;
+    public readonly TreePath Path => TreePath.Empty;
+    public readonly Hash256? Storage => null;
 }
 
 

@@ -25,6 +25,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 
@@ -54,17 +56,16 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
-    public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null,
-        ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
     {
-        if (blockProductionTrigger is not null || additionalTxSource is not null)
+        if (additionalTxSource is not null)
             throw new ArgumentException(
-                "Optimism does not support custom block production trigger or additional tx source");
+                "Optimism does not support additional tx source");
 
         ArgumentNullException.ThrowIfNull(_api);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
 
-        return Task.FromResult(_api.BlockProducer);
+        return _api.BlockProducer;
     }
 
     #endregion
@@ -72,6 +73,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
         ILogManager logManager, ChainSpec chainSpec) =>
         new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+
+    public void InitRlpDecoders(INethermindApi api)
+    {
+        if (ShouldRunSteps(api))
+        {
+            Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
+        }
+    }
 
     public Task Init(INethermindApi api)
     {
@@ -108,8 +117,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         return Task.CompletedTask;
     }
-
-    public Task InitNetworkProtocol() => Task.CompletedTask;
 
     public Task InitSynchronization()
     {
@@ -170,6 +177,16 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.LogManager
         );
 
+        _ = new PivotUpdator(
+            _api.BlockTree,
+            _api.Synchronizer.SyncModeSelector,
+            _api.SyncPeerPool,
+            _syncConfig,
+            _blockCacheService,
+            _beaconSync,
+            _api.DbProvider.MetadataDb,
+            _api.LogManager);
+
         return Task.CompletedTask;
     }
 
@@ -185,6 +202,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.BlockValidator);
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
+        ArgumentNullException.ThrowIfNull(_api.TxPool);
 
         ArgumentNullException.ThrowIfNull(_beaconSync);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -200,7 +218,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         await Task.Delay(5000);
 
         BlockImprovementContextFactory improvementContextFactory = new(
-            _api.ManualBlockProductionTrigger,
+            _api.BlockProducer,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
@@ -216,7 +234,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -251,6 +269,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
+            new GetBlobsHandler(_api.TxPool),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload
@@ -263,6 +282,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
+    }
+
+    public IBlockProducerRunner CreateBlockProducerRunner()
+    {
+        return new StandardBlockProducerRunner(
+            DefaultBlockProductionTrigger,
+            _api!.BlockTree!,
+            _api.BlockProducer!);
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
