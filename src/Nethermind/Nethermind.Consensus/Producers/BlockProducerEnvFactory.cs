@@ -73,14 +73,13 @@ namespace Nethermind.Consensus.Producers
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(
-                    txProcessingEnv.TransactionProcessor,
+                    txProcessingEnv,
                     _specProvider,
                     _blockValidator,
                     _rewardCalculatorSource,
                     _receiptStorage,
                     _logManager,
-                    _blocksConfig,
-                    txProcessingEnv.WorldStateProvider);
+                    _blocksConfig);
 
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
@@ -95,7 +94,7 @@ namespace Nethermind.Consensus.Producers
 
             return new BlockProducerEnv
             {
-                ReadOnlyWorldStateProvider = _worldStateManager.GlobalWorldStateProvider,
+                ReadOnlyWorldStateProvider = txProcessingEnv.WorldStateProvider,
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
@@ -132,17 +131,17 @@ namespace Nethermind.Consensus.Producers
         protected virtual ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig) =>
             TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, blocksConfig);
 
-        protected virtual BlockProcessor CreateBlockProcessor(ITransactionProcessor readOnlyTxProcessor,
+        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv processingEnv,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
-            ILogManager logManager, IBlocksConfig blocksConfig, IWorldStateProvider worldStateProvider) =>
+            ILogManager logManager, IBlocksConfig blocksConfig) =>
             new(specProvider,
                 blockValidator,
-                rewardCalculatorSource.Get(readOnlyTxProcessor),
-                TransactionsExecutorFactory.Create(readOnlyTxProcessor),
-                worldStateProvider,
+                rewardCalculatorSource.Get(processingEnv.TransactionProcessor),
+                TransactionsExecutorFactory.Create(processingEnv.TransactionProcessor),
+                processingEnv.WorldStateProvider,
                 receiptStorage,
                 new BlockhashStore(_specProvider),
                 logManager,

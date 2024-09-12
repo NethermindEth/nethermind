@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv.TransactionProcessor, getFromApi!.SpecProvider, getFromApi.LogManager),
-                getFromApi.WorldStateManager?.GlobalWorldStateProvider,
+                producerEnv.WorldStateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.SpecProvider),
                 getFromApi.LogManager);

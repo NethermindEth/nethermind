@@ -71,19 +71,19 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         return new OptimismTxPoolTxSource(baseTxSource);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(ITransactionProcessor transactionProcessor,
+    protected override BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv processingEnv,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
         IReceiptStorage receiptStorage,
         ILogManager logManager,
-        IBlocksConfig blocksConfig, IWorldStateProvider worldStateProvider)
+        IBlocksConfig blocksConfig)
     {
         return new OptimismBlockProcessor(specProvider,
             blockValidator,
-            rewardCalculatorSource.Get(transactionProcessor),
-            TransactionsExecutorFactory.Create(transactionProcessor),
-            worldStateProvider,
+            rewardCalculatorSource.Get(processingEnv.TransactionProcessor),
+            TransactionsExecutorFactory.Create(processingEnv.TransactionProcessor),
+            processingEnv.WorldStateProvider,
             receiptStorage,
             new BlockhashStore(specProvider),
             logManager,
