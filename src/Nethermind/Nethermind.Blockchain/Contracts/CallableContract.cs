@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
         protected object[] Call(BlockHeader header, string functionName, Address sender, IWorldState worldState,
             params object[] arguments) =>
-            Call(header, functionName, sender, (long)DefaultContractGasLimit, worldState, arguments);
+            Call(header, functionName, sender, DefaultContractGasLimit, worldState, arguments);
 
         /// <summary>
         /// Calls the function in contract, state modification is allowed.
