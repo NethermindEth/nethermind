@@ -74,7 +74,7 @@ namespace Nethermind.Init.Steps
 
             IStateReader stateReader = setApi.StateReader!;
             PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
-            CodeInfoRepository codeInfoRepository = new(1, preBlockCaches?.PrecompileCache);
+            CodeInfoRepository codeInfoRepository = new(_api.SpecProvider!.ChainId, preBlockCaches?.PrecompileCache);
             ITxPool txPool = _api.TxPool = CreateTxPool(_api.WorldState!, codeInfoRepository);
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
