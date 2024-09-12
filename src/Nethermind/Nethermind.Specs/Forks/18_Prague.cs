@@ -18,6 +18,7 @@ public class Prague : Cancun
         IsEip2935Enabled = true;
         IsRip7212Enabled = true;
         Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
+        IsGnosisBlobFeeCollectionEnabled = true;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());
