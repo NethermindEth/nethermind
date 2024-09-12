@@ -16,7 +16,6 @@ namespace Nethermind.Consensus.Processing
     internal class ProcessingStats : IThreadPoolWorkItem
     {
         private readonly ILogger _logger;
-        private readonly Stopwatch _processingStopwatch = new();
         private readonly Stopwatch _runStopwatch = new();
         private long _lastBlockNumber;
         private long _lastElapsedRunningMicroseconds;
@@ -27,13 +26,11 @@ namespace Nethermind.Consensus.Processing
         private long _lastTotalSLoad;
         private long _lastTotalSStore;
         private long _lastSelfDestructs;
-        private long _totalBlocks;
         private long _chunkProcessingMicroseconds;
         private long _lastTotalCreates;
         private long _lastReportMs;
         private long _lastContractsAnalysed;
         private long _lastCachedContractsUsed;
-        private long _blockProcessingMicroseconds;
         private long _runningMicroseconds;
         private long _runMicroseconds;
         private long _reportMs;
@@ -68,8 +65,6 @@ namespace Nethermind.Consensus.Processing
                 return;
             }
 
-            _processingStopwatch.Stop();
-
             if (_lastBlockNumber == 0)
             {
                 _lastBlockNumber = block.Number;
@@ -88,7 +83,6 @@ namespace Nethermind.Consensus.Processing
             Metrics.BlockchainHeight = block.Header.Number;
             Metrics.BestKnownBlockNumber = blockTreeCtx.BestKnownNumber;
 
-            _blockProcessingMicroseconds = _processingStopwatch.ElapsedMicroseconds();
             _runningMicroseconds = _runStopwatch.ElapsedMicroseconds();
             _runMicroseconds = (_runningMicroseconds - _lastElapsedRunningMicroseconds);
 
@@ -126,19 +120,18 @@ namespace Nethermind.Consensus.Processing
             long currentSelfDestructs = Evm.Metrics.SelfDestructs;
 
             long chunkBlocks = Metrics.Blocks - _lastBlockNumber;
-            _totalBlocks += chunkBlocks;
 
             double chunkMicroseconds = _chunkProcessingMicroseconds;
-            double evmTotalMilliseconds = _evmTotalMilliseconds;
+            double evmMilliseconds = _evmTotalMilliseconds;
             double chunkMGas = Metrics.Mgas - _lastTotalMGas;
             double mgasPerSecond;
-            if (evmTotalMilliseconds == 0)
+            if (evmMilliseconds == 0)
             {
                 mgasPerSecond = -1;
             }
             else
             {
-                mgasPerSecond = chunkMGas / evmTotalMilliseconds * 1_000.0;
+                mgasPerSecond = chunkMGas / evmMilliseconds * 1_000.0;
 
                 if (chunkMGas != 0)
                 {
@@ -149,7 +142,6 @@ namespace Nethermind.Consensus.Processing
             Block? block = Interlocked.Exchange(ref _lastBlock, null);
             if (block is not null && _logger.IsInfo)
             {
-                double totalMicroseconds = _blockProcessingMicroseconds;
                 long chunkTx = Metrics.Transactions - _lastTotalTx;
                 long chunkCalls = _callsProcessing - _lastTotalCalls;
                 long chunkEmptyCalls = _emptyCallsProcessing - _lastTotalEmptyCalls;
@@ -158,11 +150,8 @@ namespace Nethermind.Consensus.Processing
                 long chunkSstore = _sstoreOpcodeProcessing - _lastTotalSStore;
                 long contractsAnalysed = _contractAnalysedProcessing - _lastContractsAnalysed;
                 long cachedContractsUsed = _codeDbCacheProcessing - _lastCachedContractsUsed;
-                double totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1_000_000.0;
-                double totalTxPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Transactions / totalMicroseconds * 1_000_000.0;
-                double totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : _totalBlocks / totalMicroseconds * 1_000_000.0;
-                double txps = chunkMicroseconds == 0 ? -1 : chunkTx / evmTotalMilliseconds * 1_000.0;
-                double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / evmTotalMilliseconds * 1_000.0;
+                double txps = evmMilliseconds == 0 ? -1 : chunkTx / evmMilliseconds * 1_000.0;
+                double bps = evmMilliseconds == 0 ? -1 : chunkBlocks / evmMilliseconds * 1_000.0;
                 double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
                 double runMs = (_runMicroseconds == 0 ? -1 : _runMicroseconds / 1000.0);
                 string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
@@ -250,12 +239,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     _logger.Info($"- Evm throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,9:F2} t/s |       {bps,7:F2} Blk/s | exec code {resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0}");
                 }
-
-                // Only output the total throughput in debug mode
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug($"- Total throughput {totalMgasPerSecond,9:F2} MGas/s  | {totalTxPerSecond,9:F2} t/s |       {totalBlocksPerSecond,7:F2} Blk/s |⛽ Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
-                }
             }
 
             _lastCachedContractsUsed = _codeDbCacheProcessing;
@@ -276,7 +259,6 @@ namespace Nethermind.Consensus.Processing
 
         public void Start()
         {
-            _processingStopwatch.Start();
             if (!_runStopwatch.IsRunning)
             {
                 _lastReportMs = Environment.TickCount64;
