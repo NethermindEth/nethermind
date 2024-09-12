@@ -27,4 +27,10 @@ public static class VerkleCrypto
 
     public static void VerifyUncompressed(byte[] input, UIntPtr length) =>
         RustVerkleLib.VerkleVerifyUncompressed(_rust, input, length);
+
+    public static void GetLeadDeltaBothValue(byte subIndex, byte[] oldValue, byte[] newValue, byte[] output) =>
+        RustVerkleLib.GetLeadDeltaBothValue(_rust, subIndex, oldValue, newValue, output);
+
+    public static void GetLeadDeltaNewValue(byte subIndex, byte[] newValue, byte[] output) =>
+        RustVerkleLib.GetLeadDeltaNewValue(_rust, subIndex, newValue, output);
 }

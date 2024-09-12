@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -167,37 +168,23 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
     private Banderwagon UpdateLeafAndGetDelta(Hash256 key, byte[] value)
     {
         var oldValue = Get(key);
-        Banderwagon leafDeltaCommitment = GetLeafDelta(oldValue, value, key.Bytes[31]);
+
+        byte[] data = new byte[64];
+        if (oldValue is null)
+            VerkleCrypto.GetLeadDeltaNewValue(key.Bytes[31], value, data);
+        else
+            VerkleCrypto.GetLeadDeltaBothValue(key.Bytes[31], oldValue, value, data);
+
+        var leafDeltaCommitment = Banderwagon.FromBytesUncompressedUnchecked(data, false);
         SetLeafCache(key, value);
         return leafDeltaCommitment;
     }
 
-    private static Banderwagon GetLeafDelta(byte[]? oldValue, byte[] newValue, byte index)
-    {
-        // break the values to calculate the commitments for the leaf
-        (FrE newValLow, FrE newValHigh) = VerkleUtils.BreakValueInLowHigh(newValue);
-        (FrE oldValLow, FrE oldValHigh) = VerkleUtils.BreakValueInLowHigh(oldValue);
-
-        var posMod128 = index % 128;
-        var lowIndex = 2 * posMod128;
-        var highIndex = lowIndex + 1;
-
-        Banderwagon deltaLow = Committer.ScalarMul(newValLow - oldValLow, lowIndex);
-        Banderwagon deltaHigh = Committer.ScalarMul(newValHigh - oldValHigh, highIndex);
-        return deltaLow + deltaHigh;
-    }
-
     private static Banderwagon GetLeafDelta(byte[] newValue, byte index)
     {
-        (FrE newValLow, FrE newValHigh) = VerkleUtils.BreakValueInLowHigh(newValue);
-
-        var posMod128 = index % 128;
-        var lowIndex = 2 * posMod128;
-        var highIndex = lowIndex + 1;
-
-        Banderwagon deltaLow = Committer.ScalarMul(newValLow, lowIndex);
-        Banderwagon deltaHigh = Committer.ScalarMul(newValHigh, highIndex);
-        return deltaLow + deltaHigh;
+        byte[] data = new byte[64];
+        VerkleCrypto.GetLeadDeltaNewValue(index, newValue, data);
+        return Banderwagon.FromBytesUncompressedUnchecked(data, false);
     }
 
     private void UpdateRootNode(in Banderwagon rootDelta)

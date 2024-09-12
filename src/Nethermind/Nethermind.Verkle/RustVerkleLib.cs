@@ -9,11 +9,15 @@ namespace Nethermind.Verkle;
 
 public static class RustVerkleLib
 {
+    private static int _done;
     private const string LibraryName = "c_verkle";
     private static string? _libraryFallbackPath;
     static RustVerkleLib()
     {
-        AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
+        if (Interlocked.CompareExchange(ref _done, 1, 0) == 0)
+        {
+            NativeLibrary.SetDllImportResolver(typeof(RustVerkleLib).Assembly, OnResolvingUnmanagedDll);
+        }
     }
 
     [DllImport("c_verkle", EntryPoint = "context_new", CallingConvention = CallingConvention.Cdecl)]
@@ -57,7 +61,13 @@ public static class RustVerkleLib
     [DllImport("c_verkle", EntryPoint = "verify_proof_uncompressed", CallingConvention = CallingConvention.Cdecl)]
     public static extern bool VerkleVerifyUncompressed(IntPtr ct, byte[] input, UIntPtr length);
 
-    private static nint OnResolvingUnmanagedDll(Assembly context, string name)
+    [DllImport("c_verkle", EntryPoint = "get_leaf_delta_both_value", CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool GetLeadDeltaBothValue(IntPtr ct, byte subIndex, byte[] oldValue, byte[] newValue, byte[] output);
+
+    [DllImport("c_verkle", EntryPoint = "get_leaf_delta_new_value", CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool GetLeadDeltaNewValue(IntPtr ct, byte subIndex, byte[] newValue, byte[] output);
+
+    private static IntPtr OnResolvingUnmanagedDll(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {
         if (_libraryFallbackPath is null)
         {
@@ -65,17 +75,17 @@ public static class RustVerkleLib
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                name = $"lib{name}.so";
+                libraryName = $"lib{libraryName}.so";
                 platform = "linux";
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                name = $"lib{name}.dylib";
+                libraryName = $"lib{libraryName}.dylib";
                 platform = "osx";
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                name = $"{name}.dll";
+                libraryName = $"{libraryName}.dll";
                 platform = "win";
             }
             else
@@ -83,9 +93,10 @@ public static class RustVerkleLib
 
             string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
 
-            _libraryFallbackPath = Path.Combine("runtimes", $"{platform}-{arch}", "native", name);
+            _libraryFallbackPath = Path.Combine("runtimes", $"{platform}-{arch}", "native", libraryName);
         }
 
-        return NativeLibrary.Load(_libraryFallbackPath, context, default);
+        NativeLibrary.TryLoad(_libraryFallbackPath, assembly, searchPath, out var handle);
+        return handle;
     }
 }
