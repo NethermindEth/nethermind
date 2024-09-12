@@ -179,7 +179,7 @@ namespace Ethereum.Test.Base
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec, false);
+                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
