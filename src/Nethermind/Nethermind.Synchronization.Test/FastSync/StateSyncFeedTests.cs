@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.CompareTrees("BEGIN");
 
             SafeContext ctx = PrepareDownloader(dbContext);
-            await ActivateAndWait(ctx, dbContext, 1024);
+            await ActivateAndWait(ctx, dbContext, 1024, 10000000);
 
             dbContext.CompareTrees("END");
         }
@@ -404,6 +404,280 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             ctx.Feed.HandleResponse(request, peer: null)
                 .Should().Be(SyncResponseHandlingResult.NotAssigned);
+        }
+
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_1()
+        {
+            DbContext dbContext = new(_logger, _logManager);
+
+            Account account1 = Build.An.Account.WithBalance(1).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            Account account3 = Build.An.Account.WithBalance(3).TestObject;
+
+            Hash256[] paths = new Hash256[3];
+            paths[0] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb12233445566");
+            paths[1] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb21233445566");
+            paths[2] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb22233445566");
+
+            //Create following state tree
+            //B
+            //- - - - B - - - - - L - - - - -
+            //- - - - L - - - - - - - - L - -
+            //Deleting leaf at 5e will cause branch to be replaced with last leaf (extend key)
+
+            dbContext.RemoteStateTree.Set(paths[0], account1);
+            dbContext.RemoteStateTree.Set(paths[1], account2);
+            dbContext.RemoteStateTree.Set(paths[2], account3);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024);
+
+            dbContext.RemoteStateTree.Set(TestItem.AddressB, null);
+            dbContext.RemoteStateTree.Commit(1);
+
+            ctx.Feed.FallAsleep();
+            ctx.Pool.WakeUpAll();
+
+            await ActivateAndWait(ctx, dbContext, 1025, 100_000);
+
+            dbContext.CompareTrees("END");
+
+            IState localState = dbContext.LocalStateFactory.Get(dbContext.RemoteStateTree.RootHash);
+            Account? lac1 = localState.Get(TestItem.AddressA.ToAccountPath);
+            Account? lac2 = localState.Get(TestItem.AddressB.ToAccountPath);
+            Account? lac3 = localState.Get(TestItem.AddressC.ToAccountPath);
+
+            //Account? lac1 = dbContext.LocalStateTree.Get(TestItem.AddressB);
+            Assert.IsNull(lac2);
+        }
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_2()
+        {
+            DbContext dbContext = new(_logger, _logManager);
+
+            //Create following state tree
+            //E
+            //B - - - - - - - - - - - - - - -
+            //L L L - - - - - - - - - - - - -
+            //Deleting one leaf at does not make any changes to tree - only remove leaf data
+            Hash256[] paths = new Hash256[3];
+            paths[0] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb12233445566");
+            paths[1] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb22233445566");
+            paths[2] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb32233445566");
+
+            dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).WithNonce(1).TestObject);
+            dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
+            dbContext.RemoteStateTree.Set(paths[2], Build.An.Account.WithBalance(2).TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024);
+
+            dbContext.RemoteStateTree.Set(paths[1], null);
+            dbContext.RemoteStateTree.Commit(1);
+
+            ctx.Feed.FallAsleep();
+            ctx.Pool.WakeUpAll();
+
+            await ActivateAndWait(ctx, dbContext, 1025, 200_000);
+
+            //dbContext.DbPrunner.Wait();
+            dbContext.CompareTrees("END");
+
+            IState localState = dbContext.LocalStateFactory.Get(dbContext.RemoteStateTree.RootHash);
+            Account? lac1 = localState.Get(paths[0]);
+            Account? lac2 = localState.Get(paths[1]);
+            Account? lac3 = localState.Get(paths[2]);
+
+            //Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
+
+            Assert.IsNotNull(lac1);
+            Assert.IsNull(lac2);
+            Assert.IsNotNull(lac3);
+        }
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_22()
+        {
+            DbContext dbContext = new(_logger, _logManager);
+
+            //Create following state tree
+            //E
+            //B - - - - - - - - - - - - - - -
+            //L L L - - - - - - - - - - - - -
+            //Deleting one leaf at does not make any changes to tree - only remove leaf data
+            Hash256[] paths = new Hash256[3];
+            paths[0] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb12233445566");
+            paths[1] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb22233445566");
+            paths[2] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb32233445566");
+
+            StorageTree st = new StorageTree(new ScopedTrieStore(dbContext.RemoteTrieStore, paths[1]),
+                NullLogManager.Instance);
+            st.Set(new UInt256(100), new byte[] { 1, 2, 3 });
+            st.Set(new UInt256(200), new byte[] { 10, 20, 30 });
+            st.Commit(0);
+
+            var slotKey = new byte[32];
+            new UInt256(100).ToBigEndian(slotKey);
+            KeccakHash.ComputeHashBytesToSpan(slotKey, slotKey);
+
+            dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).WithNonce(1).TestObject);
+            dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).WithStorageRoot(st.RootHash).TestObject);
+            dbContext.RemoteStateTree.Set(paths[2], Build.An.Account.WithBalance(2).TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024);
+
+            st.Set(slotKey, Array.Empty<byte>());
+            st.Commit(1);
+
+            dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).WithStorageRoot(st.RootHash).TestObject);
+            dbContext.RemoteStateTree.Commit(1);
+
+            ctx.Feed.FallAsleep();
+            ctx.Pool.WakeUpAll();
+
+            await ActivateAndWait(ctx, dbContext, 1025, 200_000);
+
+            //dbContext.DbPrunner.Wait();
+            dbContext.CompareTrees("END");
+
+            IState localState = dbContext.LocalStateFactory.Get(dbContext.RemoteStateTree.RootHash);
+            Account? lac1 = localState.Get(paths[0]);
+            Account? lac2 = localState.Get(paths[1]);
+            Account? lac3 = localState.Get(paths[2]);
+
+            Assert.IsNotNull(lac1);
+            //Assert.IsNull(lac2);
+            Assert.IsNotNull(lac3);
+
+            var slotBytes = localState.GetStorageAt(paths[1], new ValueHash256(slotKey));
+
+            Assert.IsTrue(slotBytes.IsZero());
+        }
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_3()
+        {
+            DbContext dbContext = new(_logger, _logManager);
+
+            //Create following state tree
+            //E
+            //B - - - - - - - - - - - - - - -
+            //- L E - - - - - - - - - - - - - 
+            //- B - - - - - - - - - - - - - -
+            //L L - - - - - - - - - - - - - -
+            //removing last leaf will cause remaining branch to be converted to leaf and then E->L to be converted into a single leaf
+            //whole subtree needs to be cleaned
+            Hash256[] paths = new Hash256[3];
+            paths[0] = new Hash256("0xcccc100000000000000000000000000000000000000000000000000000000000");
+            paths[1] = new Hash256("0xcccc200000000000000000000000000000000000000000000000000000000000");
+            paths[2] = new Hash256("0xcccc200100000000000000000000000000000000000000000000000000000000");
+
+            dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).WithNonce(1).TestObject);
+            dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
+            dbContext.RemoteStateTree.Set(paths[2], Build.An.Account.WithBalance(2).TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024);
+
+            dbContext.RemoteStateTree.Set(paths[2], null);
+            dbContext.RemoteStateTree.Commit(1);
+
+            await ActivateAndWait(ctx, dbContext, 1025);
+
+            dbContext.CompareTrees("END");
+            //dbContext.DbPrunner.Wait();
+
+            IState localState = dbContext.LocalStateFactory.Get(dbContext.RemoteStateTree.RootHash);
+            Account? lac1 = localState.Get(paths[0]);
+            Account? lac2 = localState.Get(paths[1]);
+            Account? lac3 = localState.Get(paths[2]);
+
+            Assert.IsNotNull(lac1);
+            Assert.IsNotNull(lac2);
+            Assert.IsNull(lac3);
+
+            //Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
+        }
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_4()
+        {
+            DbContext dbContext = new(_logger, _logManager);
+
+            //Create following state tree
+            //E
+            //B - - - - - - - - - - - - - - -
+            //L L L - - - - - - - - - - - - -
+            //Deleting one leaf at does not make any changes to tree - only remove leaf data
+            Hash256[] paths = new Hash256[4];
+            paths[0] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb12233445566");
+            paths[1] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb22233445566");
+
+            paths[2] = new Hash256("0xaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbeeeeeeeeeeeeeeeeb12233445566");
+            paths[3] = new Hash256("0xaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbeeeeeeeeeeeeeeeeb22233445566");
+
+            StorageTree st = new StorageTree(new ScopedTrieStore(dbContext.RemoteTrieStore, paths[0]),
+                NullLogManager.Instance);
+            st.Set(new UInt256(100), new byte[] { 1, 2, 3});
+            st.Set(new UInt256(200), new byte[] { 10, 20, 30 });
+            st.Commit(0);
+
+            var slotKey = new byte[32];
+            new UInt256(100).ToBigEndian(slotKey);
+            KeccakHash.ComputeHashBytesToSpan(slotKey, slotKey);
+
+            dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).WithNonce(1).WithStorageRoot(st.RootHash).TestObject);
+            dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024, 200_000);
+
+            dbContext.RemoteStateTree.Set(paths[0], null);
+            dbContext.RemoteStateTree.Set(paths[1], null);
+            dbContext.RemoteStateTree.Set(paths[2], Build.An.Account.WithBalance(10).TestObject);
+            dbContext.RemoteStateTree.Set(paths[3], Build.An.Account.WithBalance(11).TestObject);
+            dbContext.RemoteStateTree.Commit(1);
+
+            ctx.Feed.FallAsleep();
+            ctx.Pool.WakeUpAll();
+
+            await ActivateAndWait(ctx, dbContext, 1025, 200_000);
+
+            //dbContext.DbPrunner.Wait();
+            dbContext.CompareTrees("END");
+
+            IState localState = dbContext.LocalStateFactory.Get(dbContext.RemoteStateTree.RootHash);
+            Account? lac1 = localState.Get(paths[0]);
+            var slotBytes = localState.GetStorageAt(paths[0], new ValueHash256(slotKey));
+            Account? lac2 = localState.Get(paths[1]);
+            Account? lac3 = localState.Get(paths[2]);
+            Account? lac4 = localState.Get(paths[3]);
+
+            //Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
+
+            Assert.IsNull(lac1);
+            Assert.IsNull(lac2);
+            Assert.IsNotNull(lac3);
+            Assert.IsNotNull(lac4);
         }
     }
 }

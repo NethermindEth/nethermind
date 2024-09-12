@@ -3,26 +3,29 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using static System.Reflection.Metadata.BlobBuilder;
+using static Nethermind.Core.Extensions.Bytes;
+using Rlp = Nethermind.Serialization.Rlp.Rlp;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public static class SnapProviderHelper
+    public static class SnapProviderHelperPaprika
     {
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
-            StateTree tree,
+            IRawState state,
             long blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
@@ -32,9 +35,10 @@ namespace Nethermind.Synchronization.SnapSync
         )
         {
             // TODO: Check the accounts boundaries and sorting
-            if (accounts.Count == 0)
-                throw new ArgumentException("Cannot be empty.", nameof(accounts));
+
             ValueHash256 lastHash = accounts[^1].Path;
+            
+            StateTree tree = new StateTree();
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
@@ -60,29 +64,127 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                Rlp rlp = tree.Set(account.Path, account.Account);
-                if (rlp is not null)
-                {
-                    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
-                }
+                //TODO - should add add snap sync stats?
+                state.SetAccount(account.Path, account.Account);
             }
 
-            tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            TreePath firstPath = TreePath.FromPath(startingHash.BytesAsSpan);
+            TreePath lastPath = TreePath.FromPath(lastHash.BytesAsSpan);
+
+            TreePath treePath = TreePath.Empty;
+
+            if (sortedBoundaryList?.Count > 0)
             {
+                FillInProofNodes(state, Keccak.Zero, firstPath, lastPath, sortedBoundaryList[0].Item1, treePath);
+            }
+
+            ValueHash256 newStateRoot = state.RefreshRootHash();
+            if (newStateRoot != expectedRootHash)
+            {
+                //using var fileStream = new FileStream(@$"C:\Temp\case_{startingHash}_{lastHash}.txt", FileMode.Create);
+                //using var sw = new StreamWriter(fileStream);
+                ////sw.WriteLine($"{account.Path.ToString()}|{account.Account.Balance}|{account.Account.StorageRoot}");
+                //sw.WriteLine(startingHash.ToString());
+                //sw.WriteLine(expectedRootHash.ToString());
+                //sw.WriteLine(newStateRoot.ToString());
+
+                //for (var index = 0; index < accounts.Count; index++)
+                //{
+                //    PathWithAccount pwa = accounts[index];
+                //    sw.WriteLine($"{pwa.Path.ToString()}|{pwa.Account.Nonce}|{pwa.Account.Balance}|{pwa.Account.StorageRoot}|{pwa.Account.CodeHash}");
+                //}
+
+                //sw.WriteLine();
+                //for (var index = 0; index < proofs?.Count; index++)
+                //{
+                //    sw.WriteLine($"{proofs[index].ToHexString()}");
+                //}
+
+                state.Discard();
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
-
-            tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
-
+            state.Commit(false);
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
+        private static bool IsNotInRange(TreePath currentPath, TreePath firstPath, TreePath lastPath)
+        {
+            return currentPath.CompareToTruncatedWithEquality(firstPath, currentPath.Length) < 0 ||
+                   currentPath.CompareToTruncatedWithEquality(lastPath, currentPath.Length) > 0;
+        }
+
+        private static void FillInProofNodes(IRawState state, ValueHash256 accountHash, TreePath firstPath, TreePath lastPath, TrieNode node, TreePath treePath)
+        {
+            TreePath emptyPath = TreePath.Empty;
+            if (node.IsExtension)
+            {
+                TreePath childPath = treePath.Append(node.Key);
+                FillInProofNodes(state, accountHash, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0), childPath);
+                state.CreateProofExtension(accountHash, childPath.Span, treePath.Length, node.Key.Length, false);
+            }
+            else if (node.IsBranch)
+            {
+                List<byte> children = new List<byte>();
+                List<Hash256?> childHashes = new List<Hash256?>();
+                for (byte i = 0; i < 16; i++)
+                {
+                    TreePath childPath = treePath.Append(i);
+                    if (IsNotInRange(childPath, firstPath, lastPath))
+                    {
+                        if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                        {
+                            children.Add((byte)i);
+                            childHashes.Add(childHash.ToCommitment());
+                        }
+                        else
+                        {
+                            TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i);
+                            if (childNode is not null)
+                            {
+                                children.Add((byte)i);
+                                childHashes.Add(null);
+                                childNode.ResolveNode(NullTrieNodeResolver.Instance, in emptyPath);
+
+                                TreePath inlineChild = childPath.Append(childNode.Key);
+                                state.SetStorage(accountHash, inlineChild.Path, childNode.Value);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i);
+                        if (childNode is not null)
+                        {
+                            FillInProofNodes(state, accountHash, firstPath, lastPath, childNode, childPath);
+                            children.Add((byte)i);
+                            childHashes.Add(null);
+                        }
+                        else
+                        {
+                            if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash)) continue;
+                            children.Add((byte)i);
+                            childHashes.Add(null);
+                        }
+                    }
+                }
+
+                if (children.Count < 2)
+                {
+                    Console.WriteLine($"Less than 2 children for branch node {treePath.ToHexString()} | {treePath.Length} | {node.FullRlp.ToArray()?.ToHexString()}");
+                }
+                else
+                {
+                    state.CreateProofBranch(accountHash, treePath.Span, treePath.Length, children.ToArray(),
+                        childHashes.ToArray(), false);
+                }
+            }
+        }
+
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
-            StorageTree tree,
+            IRawState state,
+            PathWithAccount account,
             long blockNumber,
             in ValueHash256? startingHash,
             IReadOnlyList<PathWithStorageSlot> slots,
@@ -91,6 +193,9 @@ namespace Nethermind.Synchronization.SnapSync
         )
         {
             // TODO: Check the slots boundaries and sorting
+
+            StorageTree tree = new StorageTree(new ScopedTrieStore(new TrieStore(new MemDb(), NullLogManager.Instance), new Hash256(account.Path)),
+                NullLogManager.Instance);
 
             ValueHash256 lastHash = slots[^1].Path;
 
@@ -106,19 +211,49 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(slot.Path, slot.SlotRlpValue, false);
+
+                Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(slot.SlotRlpValue);
+                state.SetStorage(account.Path, slot.Path, rlpContext.DecodeByteArray());
             }
 
-            tree.UpdateRootHash();
+            TreePath firstPath = TreePath.FromPath((startingHash ?? slots[0].Path).BytesAsSpan);
+            TreePath lastPath = TreePath.FromPath(lastHash.BytesAsSpan);
 
-            if (tree.RootHash != expectedRootHash)
+            if (sortedBoundaryList?.Count > 0)
             {
+                TreePath treePath = TreePath.Empty;
+                FillInProofNodes(state, account.Path, firstPath, lastPath, sortedBoundaryList[0].Item1, treePath);
+            }
+
+
+            ValueHash256 newStorageRoot = state.RecalculateStorageRoot(account.Path);
+
+            if (newStorageRoot != expectedRootHash)
+            {
+                //using var fileStream = new FileStream(@$"C:\Temp\case_{account.Path}.txt", FileMode.Create);
+                //using var sw = new StreamWriter(fileStream);
+                //sw.WriteLine($"{account.Path.ToString()}|{account.Account.Balance}|{account.Account.StorageRoot}");
+                //sw.WriteLine(startingHash.ToString());
+                //sw.WriteLine(expectedRootHash.ToString());
+                //sw.WriteLine(newStorageRoot.ToString());
+
+                //for (var index = 0; index < slots.Count; index++)
+                //{
+                //    PathWithStorageSlot slot = slots[index];
+                //    sw.WriteLine($"{slot.Path.ToString()}|{slot.SlotRlpValue.ToHexString()}");
+                //}
+
+                //sw.WriteLine();
+                //for (var index = 0; index < proofs?.Count; index++)
+                //{
+                //    sw.WriteLine($"{proofs[index].ToHexString()}");
+                //}
+
+                state.Discard();
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
-
-            tree.Commit(blockNumber, writeFlags: WriteFlags.DisableWAL);
+            state.Commit(false);
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }
@@ -227,7 +362,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (ci >= left && ci <= right)
                         {
-                            node.SetChild(ci, null);
+                            //node.SetChild(ci, null);
                         }
 
                         if (hasKeccak && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
@@ -260,6 +395,8 @@ namespace Nethermind.Synchronization.SnapSync
             for (int i = 0; i < proofs.Count; i++)
             {
                 byte[] proof = proofs[i];
+                if (proof.Length == 0)
+                    continue;
                 TrieNode node = new(NodeType.Unknown, proof, isDirty: true);
                 node.IsBoundaryProofNode = true;
 
@@ -271,69 +408,6 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             return dict;
-        }
-
-        private static void StitchBoundaries(List<(TrieNode, TreePath)> sortedBoundaryList, IScopedTrieStore store)
-        {
-            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
-            {
-                return;
-            }
-
-            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
-            {
-                (TrieNode node, TreePath path) = sortedBoundaryList[i];
-
-                if (!node.IsPersisted)
-                {
-                    if (node.IsExtension)
-                    {
-                        if (IsChildPersisted(node, ref path, 1, store))
-                        {
-                            node.IsBoundaryProofNode = false;
-                        }
-                    }
-
-                    if (node.IsBranch)
-                    {
-                        bool isBoundaryProofNode = false;
-                        for (int ci = 0; ci <= 15; ci++)
-                        {
-                            if (!IsChildPersisted(node, ref path, ci, store))
-                            {
-                                isBoundaryProofNode = true;
-                                break;
-                            }
-                        }
-
-                        node.IsBoundaryProofNode = isBoundaryProofNode;
-                    }
-                }
-            }
-        }
-
-        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IScopedTrieStore store)
-        {
-            TrieNode data = node.GetData(childIndex) as TrieNode;
-            if (data is not null)
-            {
-                return data.IsBoundaryProofNode == false;
-            }
-
-            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
-            {
-                return true;
-            }
-
-            int previousPathLength = node.AppendChildPath(ref nodePath, childIndex);
-            try
-            {
-                return store.IsPersisted(nodePath, childKeccak);
-            }
-            finally
-            {
-                nodePath.TruncateMut(previousPathLength);
-            }
         }
     }
 }
