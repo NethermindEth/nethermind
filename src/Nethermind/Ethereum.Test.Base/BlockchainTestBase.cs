@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -131,7 +132,7 @@ namespace Ethereum.Test.Base
                 specProvider.UpdateMergeTransitionInfo(0, 0);
             }
 
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             TrieStore trieStore = new(stateDb, _logManager);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
@@ -155,7 +156,7 @@ namespace Ethereum.Test.Base
                 codeInfoRepository,
                 _logManager);
 
-            TransactionProcessor? txProcessor = new(
+            TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
                 virtualMachine,
@@ -166,10 +167,11 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor,
-                    stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
+                new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(transactionProcessor),
                 new BlockhashStore(blockTree, specProvider, stateProvider),
                 txProcessor,
                 _logManager);

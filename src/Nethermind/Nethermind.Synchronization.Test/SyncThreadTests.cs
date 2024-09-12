@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -263,7 +264,7 @@ namespace Nethermind.Synchronization.Test
 
             InMemoryReceiptStorage receiptStorage = new();
 
-            EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
+            EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockTree tree = Build.A.BlockTree().WithoutSettingHead.TestObject;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
@@ -301,8 +302,9 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(tree, specProvider, stateProvider),
                 txProcessor,
+                new BeaconBlockRootHandler(txProcessor),
+                new BlockhashStore(specProvider, stateProvider),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -324,8 +326,9 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
                 devState,
                 receiptStorage,
-                new BlockhashStore(tree, specProvider, devState),
                 devTxProcessor,
+                new BeaconBlockRootHandler(devTxProcessor),
+                new BlockhashStore(specProvider, devState),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

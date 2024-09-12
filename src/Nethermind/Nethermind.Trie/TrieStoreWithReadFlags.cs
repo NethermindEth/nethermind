@@ -9,7 +9,7 @@ namespace Nethermind.Trie;
 
 public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, IScopedTrieStore
 {
-    private IScopedTrieStore _baseImplementation;
+    private readonly IScopedTrieStore _baseImplementation;
 
     public TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags flags) : base(implementation, flags)
     {

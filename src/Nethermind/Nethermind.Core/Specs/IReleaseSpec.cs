@@ -202,7 +202,8 @@ namespace Nethermind.Core.Specs
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
         /// <param name="address"></param>
         /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);
+        bool IsEip158IgnoredAccount(Address address) => false;
+
         /// <summary>
         /// BaseFee opcode
         /// </summary>
@@ -286,6 +287,11 @@ namespace Nethermind.Core.Specs
         /// Save historical block hashes in state
         /// </summary>
         bool IsEip2935Enabled { get; }
+
+        /// <summary>
+        /// Fetch blockHashes from the state for BLOCKHASH opCode
+        /// </summary>
+        bool IsEip7709Enabled { get; }
         Address Eip2935ContractAddress { get; }
 
         /// <summary>
@@ -376,24 +382,9 @@ namespace Nethermind.Core.Specs
         public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => IsEip2935Enabled;
+        public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
 
-        /// <summary>
-        /// AuRaSystemCalls - true
-        /// GethStyleSystemCalls - false
-        /// </summary>
-        /// <remarks>
-        /// We support two types of system calls in Nethermind:
-        /// 1. Geth-style:
-        /// - We don't create a system account if it doesn't exist.
-        /// - We adhere to geth behavior for State clearing - no state touch for subtraction.
-        /// - We don't use a custom release spec for those transactions.
-        /// 2. AuRa (Parity-style):
-        /// - We create a system account if it doesn't exist.
-        /// - We use a custom release spec with EIP158 disabled.
-        /// </remarks>
-        public bool AuRaSystemCalls { get; }
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
 
         public bool ConsensusRequestsEnabled => WithdrawalRequestsEnabled || DepositsEnabled;

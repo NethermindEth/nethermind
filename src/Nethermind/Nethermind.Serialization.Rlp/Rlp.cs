@@ -75,7 +75,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        private static Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
+        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
         public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
 
@@ -334,15 +334,8 @@ namespace Nethermind.Serialization.Rlp
             return Encode(transaction, false);
         }
 
-        public static Rlp Encode(
-            Transaction transaction,
-            bool forSigning,
-            bool isEip155Enabled = false,
-            ulong chainId = 0)
-        {
-            return TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled,
-                chainId);
-        }
+        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
+            TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
 
         public static Rlp Encode(int value)
         {

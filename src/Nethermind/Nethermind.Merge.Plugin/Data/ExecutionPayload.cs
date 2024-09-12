@@ -146,8 +146,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         try
         {
-            var transactions = GetTransactions();
-            var header = new BlockHeader(
+            Transaction[] transactions = GetTransactions();
+            BlockHeader header = new(
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,

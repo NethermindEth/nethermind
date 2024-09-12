@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
@@ -88,7 +87,8 @@ public class BlockForRpc
         RequestsRoot = block.Header.RequestsRoot;
     }
 
-    public Address Author { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
     public long GasLimit { get; set; }

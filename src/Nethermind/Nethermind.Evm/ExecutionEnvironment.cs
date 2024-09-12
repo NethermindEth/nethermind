@@ -20,7 +20,6 @@ namespace Nethermind.Evm
             in TxExecutionContext txExecutionContext,
             UInt256 transferValue,
             UInt256 value,
-            bool isSystemExecutionEnv,
             int callDepth = 0)
         {
             CodeInfo = codeInfo;
@@ -32,7 +31,6 @@ namespace Nethermind.Evm
             TransferValue = transferValue;
             Value = value;
             CallDepth = callDepth;
-            IsSystemEnv = isSystemExecutionEnv;
         }
 
         /// <summary>

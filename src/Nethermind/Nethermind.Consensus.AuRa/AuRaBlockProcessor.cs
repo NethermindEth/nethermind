@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -21,6 +22,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -41,6 +43,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IWorldState stateProvider,
             IReceiptStorage receiptStorage,
+            IBeaconBlockRootHandler beaconBlockRootHandler,
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
@@ -58,8 +61,9 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(blockTree, specProvider, stateProvider),
                 transactionProcessor,
+                beaconBlockRootHandler,
+                new BlockhashStore(specProvider, stateProvider),
                 logManager,
                 withdrawalProcessor,
                 preWarmer: preWarmer,
@@ -148,7 +152,7 @@ namespace Nethermind.Consensus.AuRa
                 if (tx.Signature is not null)
                 {
                     IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
-                    EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
+                    EthereumEcdsa ecdsa = new(_specProvider.ChainId);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {

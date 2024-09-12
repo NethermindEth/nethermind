@@ -287,5 +287,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
+        public string SealEngine => _chainSpec.SealEngineType;
     }
 }

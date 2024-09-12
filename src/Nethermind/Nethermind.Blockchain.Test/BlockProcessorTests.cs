@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -49,8 +50,9 @@ namespace Nethermind.Blockchain.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                Substitute.For<IBlockhashStore>(),
                 transactionProcessor,
+                new BeaconBlockRootHandler(transactionProcessor),
+                Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -79,8 +81,9 @@ namespace Nethermind.Blockchain.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                Substitute.For<IBlockhashStore>(),
                 transactionProcessor,
+                new BeaconBlockRootHandler(transactionProcessor),
+                Substitute.For<IBlockhashStore>(),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

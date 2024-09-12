@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -51,7 +52,7 @@ namespace Nethermind.Clique.Test
             private readonly ILogger _logger;
             private static readonly ITimestamper _timestamper = Timestamper.Default;
             private readonly CliqueConfig _cliqueConfig;
-            private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+            private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli);
             private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
             private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
             private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -140,8 +141,9 @@ namespace Nethermind.Clique.Test
                     new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                     stateProvider,
                     NullReceiptStorage.Instance,
-                    new BlockhashStore(blockTree, goerliSpecProvider, stateProvider),
                     transactionProcessor,
+                    new BeaconBlockRootHandler(transactionProcessor),
+                    new BlockhashStore(goerliSpecProvider, stateProvider),
                     nodeLogManager);
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -160,8 +162,9 @@ namespace Nethermind.Clique.Test
                     new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
                     minerStateProvider,
                     NullReceiptStorage.Instance,
-                    new BlockhashStore(blockTree, goerliSpecProvider, minerStateProvider),
                     minerTransactionProcessor,
+                    new BeaconBlockRootHandler(minerTransactionProcessor),
+                    new BlockhashStore(goerliSpecProvider, minerStateProvider),
                     nodeLogManager);
 
                 BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);

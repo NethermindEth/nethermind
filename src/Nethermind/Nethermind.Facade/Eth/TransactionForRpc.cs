@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Facade.Eth;
 
@@ -24,12 +23,6 @@ public class TransactionForRpc
 
     public TransactionForRpc(Hash256? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
     {
-        if (transaction.Type == TxType.DepositTx)
-        {
-            SourceHash = transaction.SourceHash;
-            Mint = transaction.Mint;
-            IsSystemTx = transaction.IsOPSystemTransaction;
-        }
         Hash = transaction.Hash;
         Nonce = transaction.Nonce;
         BlockHash = blockHash;

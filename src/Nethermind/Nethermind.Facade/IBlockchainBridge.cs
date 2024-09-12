@@ -26,7 +26,7 @@ namespace Nethermind.Facade
         Address? RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash);
-        (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
+        (TxReceipt? Receipt, Transaction? Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
         CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, CancellationToken cancellationToken);
