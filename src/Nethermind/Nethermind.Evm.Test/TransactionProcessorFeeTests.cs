@@ -33,7 +33,7 @@ public class TransactionProcessorFeeTests
     [SetUp]
     public void Setup()
     {
-        _spec = new(London.Instance);
+        _spec = new(Prague.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
