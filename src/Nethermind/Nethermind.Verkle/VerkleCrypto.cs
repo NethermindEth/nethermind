@@ -10,6 +10,9 @@ public static class VerkleCrypto
     public static void PedersenHash(byte[] address, byte[] treeIndexLe, byte[] outHas) =>
         RustVerkleLib.VerklePedersenhash(_rust, address, treeIndexLe, outHas);
 
+    public static void PedersenHashFlat(byte[] addAndTreeIndexLe, byte[] outHas) =>
+        RustVerkleLib.VerklePedersenhashFlat(_rust, addAndTreeIndexLe, outHas);
+
     public static void MSM(byte[] input, UIntPtr length, byte[] outHash) =>
         RustVerkleLib.VerkleMSM(_rust, input, length, outHash);
 

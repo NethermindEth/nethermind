@@ -25,6 +25,9 @@ public static class RustVerkleLib
     [DllImport("c_verkle", EntryPoint = "pedersen_hash", CallingConvention = CallingConvention.Cdecl)]
     public static extern void VerklePedersenhash(IntPtr ct, byte[] address, byte[] treeIndexLe, byte[] outHash);
 
+    [DllImport("c_verkle", EntryPoint = "pedersen_hash_flat", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void VerklePedersenhashFlat(IntPtr ct, byte[] addAndTreeIndexLe, byte[] outHash);
+
     [DllImport("c_verkle", EntryPoint = "multi_scalar_mul", CallingConvention = CallingConvention.Cdecl)]
     public static extern void VerkleMSM(IntPtr ct, byte[] input, UIntPtr length, byte[] outHash);
 

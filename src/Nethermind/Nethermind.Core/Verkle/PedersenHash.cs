@@ -1,5 +1,7 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Verkle;
 using Nethermind.Verkle.Curve;
@@ -14,10 +16,13 @@ public static class PedersenHash
 
     public static byte[] HashRust(byte[] address, UInt256 treeIndex)
     {
+        byte[] data = new byte[64];
+        Span<byte> dataSpan = data;
+        address.CopyTo(data, address.Length == 20 ? 12 : 0);
+        treeIndex.ToLittleEndian(dataSpan[32..]);
+
         var hash = new byte[32];
-        byte[] address32 = new byte[32];
-        address.CopyTo(address32, address.Length == 20 ? 12 : 0);
-        VerkleCrypto.PedersenHash(address32, treeIndex.ToLittleEndian(), hash);
+        VerkleCrypto.PedersenHashFlat(data, hash);
         return hash;
     }
 }
