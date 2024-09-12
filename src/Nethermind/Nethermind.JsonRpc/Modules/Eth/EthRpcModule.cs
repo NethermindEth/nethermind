@@ -381,6 +381,19 @@ public partial class EthRpcModule(
         return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
     }
 
+    public Task<ResultWrapper<>> eth_getRawTransactionByHash(Hash256 transactionHash)
+    {
+        Task<ResultWrapper<TransactionForRpc>> transactionDataTask = Task.FromResult(eth_getTransactionByHash(transactionHash));
+
+        if (transactionDataTask.Result == null){
+            return Task.FromResult(ResultWrapper<string>.Success(null));
+        }
+
+        ResultWrapper<TransactionForRpc> transactionData = transactionDataTask.Result; 
+
+
+    }
+
     public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
     {
         Transaction[] transactions = _txPool.GetPendingTransactions();
