@@ -6,7 +6,7 @@ using Nethermind.BlockValidation.Data;
 using Nethermind.BlockValidation.Handlers;
 using Nethermind.JsonRpc;
 
-namespace Nethermind.BlockValidation;
+namespace Nethermind.BlockValidation.Modules.Flashbots;
 
 public class FlashbotsRpcModule : IFlashbotsRpcModule
 {

@@ -6,14 +6,14 @@ using Nethermind.BlockValidation.Data;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
-namespace Nethermind.BlockValidation;
+namespace Nethermind.BlockValidation.Modules.Flashbots;
 
 [RpcModule(ModuleType.Flashbots)]
 public interface IFlashbotsRpcModule : IRpcModule
 {
     [JsonRpcMethod(
         Description = " validate the builder submissions as received by a relay",
-        IsSharable = true,
+        IsSharable = false,
         IsImplemented = true)]
     Task<ResultWrapper<BlockValidationResult>> flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params);
 }

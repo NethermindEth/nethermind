@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.BlockValidation.Handlers;
+using Nethermind.BlockValidation.Modules.Flashbots;
 using Nethermind.Consensus.Processing;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.BlockValidation;
@@ -16,6 +18,8 @@ public class BlockValidation : INethermindPlugin
     private INethermindApi _api = null!;
 
     private IBlockValidationConfig _blockValidationConfig = null!;
+
+    private IJsonRpcConfig _jsonRpcConfig = null!;
 
     public virtual string Name => "BlockValidation";
     public virtual string Description => "BlockValidation";
@@ -31,13 +35,14 @@ public class BlockValidation : INethermindPlugin
         ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
             _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
             readOnlyTxProcessingEnv,
-            _api.GasLimitCalculator ?? throw new ArgumentNullException(nameof(_api.GasLimitCalculator)),
             _blockValidationConfig
         );
-        IFlashbotsRpcModule flashbotsRpcModule = new FlashbotsRpcModule(validateSubmissionHandler);
+        
+        ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(validateSubmissionHandler);
 
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
-        _api.RpcModuleProvider.RegisterSingle(flashbotsRpcModule);
+        _api.RpcModuleProvider.RegisterBounded(flashbotsRpcModule,
+            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
 
         return Task.CompletedTask;
     }
@@ -46,6 +51,7 @@ public class BlockValidation : INethermindPlugin
     {
         _api = api;
         _blockValidationConfig = api.Config<IBlockValidationConfig>();
+        _jsonRpcConfig = api.Config<IJsonRpcConfig>();
         return Task.CompletedTask;
     }
 

@@ -15,7 +15,7 @@ namespace Nethermind.Consensus
             _specProvider = specProvider;
         }
 
-        public long GetGasLimit(BlockHeader parentHeader, long? desiredGasLimit = null)
+        public long GetGasLimit(BlockHeader parentHeader)
         {
             long gasLimit = parentHeader.GasLimit;
             long newBlockNumber = parentHeader.Number + 1;

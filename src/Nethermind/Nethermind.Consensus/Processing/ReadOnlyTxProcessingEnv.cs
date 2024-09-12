@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Processing
         protected readonly ILogManager _logManager;
 
         protected ITransactionProcessor? _transactionProcessor;
-        public ITransactionProcessor TransactionProcessor
+        protected ITransactionProcessor TransactionProcessor
         {
             get
             {
