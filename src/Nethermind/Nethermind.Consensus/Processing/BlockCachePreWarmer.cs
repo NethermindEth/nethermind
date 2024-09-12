@@ -33,10 +33,16 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
             }
 
-            if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)
+            var physicalCoreCount = RuntimeInformation.PhysicalCoreCount;
+            if (!IsGenesisBlock(parentStateRoot) && physicalCoreCount > 2 && !cancellationToken.IsCancellationRequested)
             {
+                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = physicalCoreCount - 1, CancellationToken = cancellationToken };
+
+                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+                ThreadPool.UnsafeQueueUserWorkItem(
+                    new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, beaconRootsAddress, this), preferLocal: false);
                 // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
-                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, beaconRootsAddress, cancellationToken));
+                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, beaconRootsAddress, parallelOptions, cancellationToken));
             }
         }
 
@@ -50,25 +56,13 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
     public Task ClearCachesInBackground() => targetWorldState?.ClearCachesInBackground() ?? Task.CompletedTask;
 
-    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, Address? beaconRootsAddress, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, Address? beaconRootsAddress, ParallelOptions parallelOptions, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
         try
         {
-            var physicalCoreCount = RuntimeInformation.PhysicalCoreCount;
-            if (physicalCoreCount < 2)
-            {
-                if (_logger.IsDebug) _logger.Debug("Physical core count is less than 2. Skipping pre-warming.");
-                return;
-            }
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
-
-            ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = physicalCoreCount - 1, CancellationToken = cancellationToken };
-
-            // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-            ThreadPool.UnsafeQueueUserWorkItem(
-                new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, beaconRootsAddress, this), preferLocal: false);
 
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
