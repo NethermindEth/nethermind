@@ -10,12 +10,8 @@ namespace Nethermind.Verkle.Tree.Test
     [TestFixture]
     public class PedersenHashTests
     {
-        public static Random Random { get; } = new();
-        private readonly byte[] _testAddressBytesZero;
-        public PedersenHashTests()
-        {
-            _testAddressBytesZero = new byte[20];
-        }
+        private static Random Random { get; } = new();
+        private readonly byte[] _testAddressBytesZero = new byte[20];
 
         [Test]
         public void BenchPedersenHash()
@@ -27,7 +23,7 @@ namespace Nethermind.Verkle.Tree.Test
                 PedersenHash.HashRust(key, UInt256.Zero);
             }
 
-            Stopwatch sw = Stopwatch.StartNew();
+            var sw = Stopwatch.StartNew();
             for (int i = 0; i < 1000; i++)
             {
                 Random.NextBytes(key);
@@ -44,6 +40,7 @@ namespace Nethermind.Verkle.Tree.Test
             for (int i = 0; i < 10; i++)
             {
                 Random.NextBytes(key);
+                PedersenHash.HashRust(key, UInt256.Zero);
             }
 
             var xx = RustVerkleLib.VerkleContextNew();
