@@ -7,5 +7,6 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
+    Address? BeaconRootsAddress(Block block, IReleaseSpec spec);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
 }

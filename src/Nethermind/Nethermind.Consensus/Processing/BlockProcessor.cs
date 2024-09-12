@@ -110,7 +110,7 @@ public partial class BlockProcessor(
                 using CancellationTokenSource cancellationTokenSource = new();
                 Task? preWarmTask = suggestedBlock.Transactions.Length < 3
                     ? null
-                    : preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
+                    : preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, _beaconBlockRootHandler.BeaconRootsAddress(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header)), cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 // Block is processed, we can cancel the prewarm task
                 if (preWarmTask is not null)

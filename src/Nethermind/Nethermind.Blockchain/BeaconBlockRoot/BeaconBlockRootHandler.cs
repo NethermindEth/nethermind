@@ -15,6 +15,15 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
 {
     private const long GasLimit = 30_000_000L;
 
+    public Address? BeaconRootsAddress(Block block, IReleaseSpec spec)
+    {
+        BlockHeader? header = block.Header;
+        var canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
+                                  && !header.IsGenesis
+                                  && header.ParentBeaconBlockRoot is not null;
+        return !canInsertBeaconRoot ? null : spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress;
+    }
+
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
         BlockHeader? header = block.Header;
