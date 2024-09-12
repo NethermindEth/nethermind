@@ -28,11 +28,6 @@ public class ShutterTxFilter(
             if (tx.Type == TxType.Blob) _logger.Debug("Decrypted Shutter transaction was blob, cannot include.");
         }
 
-        if (wellFormed && tx.Type != TxType.Blob)
-        {
-            return AcceptTxResult.Accepted;
-        }
-
-        return AcceptTxResult.Invalid;
+        return (wellFormed && tx.Type != TxType.Blob) ? AcceptTxResult.Accepted : AcceptTxResult.Invalid;
     }
 }
