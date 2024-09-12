@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -11,7 +10,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -168,6 +166,8 @@ public partial class BlockProcessor(
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
+    public event EventHandler<Block> EvmProcessingStarted;
+    public event EventHandler<Block> EvmProcessingComplete;
 
     // TODO: move to branch processor
     private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
@@ -258,7 +258,9 @@ public partial class BlockProcessor(
         _blockhashStore.ApplyBlockhashStateChanges(block.Header);
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
+        EvmProcessingStarted?.Invoke(this, block);
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        EvmProcessingComplete?.Invoke(this, block);
 
         if (spec.IsEip4844Enabled)
         {

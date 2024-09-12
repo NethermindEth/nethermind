@@ -43,6 +43,16 @@ namespace Nethermind.Consensus.Processing
         event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 
         /// <summary>
+        /// Fired when a block's transactions are been processed.
+        /// </summary>
+        event EventHandler<Block> EvmProcessingStarted;
+
+        /// <summary>
+        /// Fired after a block's transactions have been processed.
+        /// </summary>
+        event EventHandler<Block> EvmProcessingComplete;
+
+        /// <summary>
         /// Fired after a transaction has been processed (even if inside the block).
         /// </summary>
         event EventHandler<TxProcessedEventArgs> TransactionProcessed;

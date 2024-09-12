@@ -123,6 +123,16 @@ namespace Nethermind.Blockchain.Test
                 public event EventHandler<BlockEventArgs>? BlockProcessing;
 
                 public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
+                public event EventHandler<Block>? EvmProcessingStarted
+                {
+                    add { }
+                    remove { }
+                }
+                public event EventHandler<Block>? EvmProcessingComplete
+                {
+                    add { }
+                    remove { }
+                }
 
                 public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
                 {

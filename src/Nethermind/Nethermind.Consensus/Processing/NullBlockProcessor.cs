@@ -43,5 +43,15 @@ namespace Nethermind.Consensus.Processing
             add { }
             remove { }
         }
+        public event EventHandler<Block>? EvmProcessingStarted
+        {
+            add { }
+            remove { }
+        }
+        public event EventHandler<Block>? EvmProcessingComplete
+        {
+            add { }
+            remove { }
+        }
     }
 }

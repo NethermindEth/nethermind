@@ -325,4 +325,14 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         add => _blockProcessorImplementation.TransactionProcessed += value;
         remove => _blockProcessorImplementation.TransactionProcessed -= value;
     }
+    public event EventHandler<Block>? EvmProcessingStarted
+    {
+        add => _blockProcessorImplementation.EvmProcessingStarted += value;
+        remove => _blockProcessorImplementation.EvmProcessingStarted -= value;
+    }
+    public event EventHandler<Block>? EvmProcessingComplete
+    {
+        add => _blockProcessorImplementation.EvmProcessingComplete += value;
+        remove => _blockProcessorImplementation.EvmProcessingComplete -= value;
+    }
 }

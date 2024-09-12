@@ -62,6 +62,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private const int MaxBlocksDuringFastSyncTransition = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
+    private readonly Stopwatch _evmTimer = new();
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 
@@ -92,7 +93,22 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
+        _blockProcessor.EvmProcessingStarted += EvmProcessingStarted;
+        _blockProcessor.EvmProcessingComplete += EvmProcessingComplete;
+
         _stats = new ProcessingStats(_logger);
+    }
+
+    private void EvmProcessingStarted(object? sender, Block e)
+    {
+        _evmTimer.Restart();
+    }
+
+    private void EvmProcessingComplete(object? sender, Block e)
+    {
+        _evmTimer.Stop();
+        double totalMilliseconds = _evmTimer.Elapsed.TotalMilliseconds;
+        _stats.UpdateEvmTime(totalMilliseconds);
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -798,6 +814,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _loopCancellationSource?.Dispose();
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        _blockProcessor.EvmProcessingStarted -= EvmProcessingStarted;
+        _blockProcessor.EvmProcessingComplete -= EvmProcessingComplete;
     }
 
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
