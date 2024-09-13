@@ -145,8 +145,8 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV4.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            var blockHashStore = new BlockhashStore(chain.BlockTree, chain.SpecProvider, chain.State);
-            blockHashStore.ApplyHistoryBlockHashes(block!.Header);
+            var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
+            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
             chain.ConsensusRequestsProcessor?.ProcessRequests(chain.SpecProvider.GenesisSpec, chain.State, block!, Array.Empty<TxReceipt>());
 

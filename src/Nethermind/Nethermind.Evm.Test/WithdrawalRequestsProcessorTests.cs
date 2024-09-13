@@ -63,7 +63,7 @@ public class WithdrawalRequestProcessorTests
                 return new TransactionResult();
             });
 
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
 
