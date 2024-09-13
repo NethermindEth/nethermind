@@ -13,21 +13,18 @@ namespace Nethermind.Core.Extensions;
 
 public static class Int64Extensions
 {
-    public static ReadOnlySpan<byte> MutateToBigEndianSpanWithoutLeadingZeros(ref this long value)
+    public static ReadOnlySpan<byte> ToBigEndianSpanWithoutLeadingZeros(this long value, out long buffer)
     {
         // Min 7 bytes as we still want a byte if the value is 0.
         var start = Math.Min(BitOperations.LeadingZeroCount((ulong)value) / sizeof(long), sizeof(long) - 1);
-        if (BitConverter.IsLittleEndian)
-        {
-            // We mutate the original so the span's stack space remains valid.
-            value = BinaryPrimitives.ReverseEndianness(value);
-        }
-        ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref value, 1));
+        // We create the span over the out value to ensure the span stack space remains valid.
+        buffer = BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
+        ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref buffer, 1));
         return span[start..];
     }
 
     public static byte[] ToBigEndianByteArrayWithoutLeadingZeros(this long value)
-        => value.MutateToBigEndianSpanWithoutLeadingZeros().ToArray();
+        => value.ToBigEndianSpanWithoutLeadingZeros(out _).ToArray();
 
     public static byte[] ToBigEndianByteArray(this long value)
     {

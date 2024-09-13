@@ -321,7 +321,7 @@ namespace Nethermind.Blockchain.Receipts
             set
             {
                 _migratedBlockNumber = value;
-                _defaultColumn.PutSpan(MigrationBlockNumberKey.Bytes, value.MutateToBigEndianSpanWithoutLeadingZeros());
+                _defaultColumn.PutSpan(MigrationBlockNumberKey.Bytes, value.ToBigEndianSpanWithoutLeadingZeros(out _));
             }
         }
 
