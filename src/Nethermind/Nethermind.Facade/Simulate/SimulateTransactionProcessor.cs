@@ -18,7 +18,7 @@ public sealed class SimulateTransactionProcessor(
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager,
     bool validate)
-    : TransactionProcessor(specProvider, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
+    : TransactionProcessorBase(specProvider, virtualMachine, codeInfoRepository, logManager)
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 

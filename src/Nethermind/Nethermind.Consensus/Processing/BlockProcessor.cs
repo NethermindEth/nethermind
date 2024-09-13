@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -11,9 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -31,57 +28,40 @@ using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-public partial class BlockProcessor : IBlockProcessor
-{
-    private readonly ILogger _logger;
-    private readonly ISpecProvider _specProvider;
-    protected readonly IWorldStateProvider _worldStateProvider;
-    private readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptsRootCalculator _receiptsRootCalculator;
-    private readonly IWithdrawalProcessor _withdrawalProcessor;
-    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
-    private readonly IBlockValidator _blockValidator;
-    private readonly IRewardCalculator _rewardCalculator;
-    private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-    private readonly IBlockhashStore _blockhashStore;
+public partial class BlockProcessor(
+    ISpecProvider? specProvider,
+    IBlockValidator? blockValidator,
+    IRewardCalculator? rewardCalculator,
+    IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
+    IWorldStateProvider? worldStateProvider,
+    IReceiptStorage? receiptStorage,
+    IBlockhashStore? blockHashStore,
     IBeaconBlockRootHandler? beaconBlockRootHandler,
-    private readonly IBlockCachePreWarmer? _preWarmer;
+    ILogManager? logManager,
+    IWithdrawalProcessor? withdrawalProcessor = null,
+    IReceiptsRootCalculator? receiptsRootCalculator = null,
+    IBlockCachePreWarmer? preWarmer = null)
+    : IBlockProcessor
+{
+    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly IWorldStateProvider _worldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
+    private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+    private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+    private readonly IWithdrawalProcessor _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(logManager);
+    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
+    private readonly IBlockValidator _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+    private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
+    private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+    private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private const int MaxUncommittedBlocks = 64;
+    private readonly Func<Task, Task> _clearCaches = _ => preWarmer.ClearCachesInBackground();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
-    protected BlockReceiptsTracer ReceiptsTracer { get; set; }
-
-    public BlockProcessor(
-        ISpecProvider? specProvider,
-        IBlockValidator? blockValidator,
-        IRewardCalculator? rewardCalculator,
-        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldStateProvider? worldStateProvider,
-        IReceiptStorage? receiptStorage,
-        IBlockhashStore? blockHashStore,
-        ILogManager? logManager,
-        IWithdrawalProcessor? withdrawalProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
-    {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-        _worldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
-        _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(logManager);
-        _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
-        _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-        _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
-        _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
-        _preWarmer = preWarmer;
-        _beaconBlockRootHandler = new BeaconBlockRootHandler();
-    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
-        ReceiptsTracer = new BlockReceiptsTracer();
-    }
+    protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -130,8 +110,8 @@ public partial class BlockProcessor : IBlockProcessor
                 _logger.Info($"Found the worldState to use: {worldStateToUse.StateRoot}");
                 Task? preWarmTask = suggestedBlock.Transactions.Length < 3
                     ? null
-                    : preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    : preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, worldStateToUse, cancellationTokenSource.Token);
+                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(worldStateToUse, suggestedBlock, options, blockTracer);
                 // Block is processed, we can cancel the prewarm task
                 if (preWarmTask is not null)
                 {
@@ -163,7 +143,7 @@ public partial class BlockProcessor : IBlockProcessor
                 preBlockStateRoot = processedBlock.StateRoot;
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
-                _stateProvider.Reset(resizeCollections: true);
+                worldStateToUse.Reset(resizeCollections: true);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
@@ -291,8 +271,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        StoreBeaconRoot(block, spec);
-        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, worldState);
+        StoreBeaconRoot(block, spec, worldState);
         _blockhashStore.ApplyBlockhashStateChanges(block.Header, worldState);
 
         worldState.Commit(spec, commitStorageRoots: false);
@@ -328,11 +307,11 @@ public partial class BlockProcessor : IBlockProcessor
         return receipts;
     }
 
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec, IWorldState worldState)
     {
         try
         {
-            _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, worldState);
         }
         catch (Exception e)
         {

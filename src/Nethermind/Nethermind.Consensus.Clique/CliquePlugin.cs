@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.WorldStateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.SpecProvider),
-                new BeaconBlockRootHandler(scope.TransactionProcessor),
+                new BeaconBlockRootHandler(producerEnv.TransactionProcessor),
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(getFromApi.LogManager)));
 

@@ -166,10 +166,6 @@ public class TestBlockchain : IDisposable
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
-        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LogManager);
-        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
-
         ChainLevelInfoRepository = new ChainLevelInfoRepository(this.DbProvider.BlockInfosDb);
         BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
             new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
@@ -384,13 +380,12 @@ public class TestBlockchain : IDisposable
             WorldStateManager.GlobalWorldStateProvider,
             ReceiptStorage,
             new BlockhashStore(SpecProvider),
-            LogManager);
             new BeaconBlockRootHandler(TxProcessor),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer());
 
     protected virtual IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
-        new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager, WorldStateManager.GlobalWorldState), SpecProvider, LogManager, WorldStateManager.GlobalWorldState);
+        new BlockCachePreWarmer(new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager), SpecProvider, WorldStateManager, LogManager);
 
     public async Task WaitForNewHead()
     {

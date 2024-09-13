@@ -154,7 +154,7 @@ public class StartBlockProducerAuRa
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(txnProcessor),
             _api.WorldStateManager!.GlobalWorldStateProvider,
             _api.ReceiptStorage,
-            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor),
+            new BeaconBlockRootHandler(txnProcessor),
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,

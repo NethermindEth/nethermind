@@ -20,42 +20,20 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockProductionTransactionsExecutor(
             ITransactionProcessor txProcessor,
-            IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
-            private readonly ILogger _logger = logManager.GetClassLogger();
-
-            public BlockProductionTransactionsExecutor(
-                IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-                ISpecProvider specProvider,
-                ILogManager logManager)
-                : this(
-                    readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessingEnv.WorldState,
-                    specProvider,
-                    logManager)
-            {
-            }
-
             public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
-                IWorldState stateProvider,
                 ISpecProvider specProvider,
-                ILogManager logManager) : this(transactionProcessor, stateProvider,
+                ILogManager logManager) : this(transactionProcessor,
                 new BlockProductionTransactionPicker(specProvider), logManager)
             {
             }
 
-            public BlockProductionTransactionsExecutor(ITransactionProcessor txProcessor,
-                IBlockProductionTransactionPicker txPicker, ILogManager logManager)
-            {
-                _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
-                _blockProductionTransactionPicker = txPicker;
-                _logger = logManager.GetClassLogger();
-            }
+            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
+            private readonly ILogger _logger = logManager.GetClassLogger();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 

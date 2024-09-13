@@ -47,9 +47,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     // Parent state root is null for genesis block
     private bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
-    public void ClearCaches() => worldStateManager?.ClearCache();
+    public void ClearCaches() => worldStateManager.ClearCache();
 
-    public Task ClearCachesInBackground() => targetWorldState?.ClearCachesInBackground() ?? Task.CompletedTask;
+    public Task ClearCachesInBackground() => worldStateManager.ClearCachesInBackground() ?? Task.CompletedTask;
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken)
     {

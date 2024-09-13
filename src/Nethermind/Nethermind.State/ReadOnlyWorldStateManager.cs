@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -37,5 +38,13 @@ public class ReadOnlyWorldStateManager(
         remove => throw new InvalidOperationException("Unsupported operation");
     }
 
-    public bool ClearCache() => Caches?.Clear() == true;
+    public Task ClearCachesInBackground()
+    {
+        return Caches?.ClearCachesInBackground() ?? Task.CompletedTask;
+    }
+
+    public bool ClearCache()
+    {
+        return Caches?.ClearImmediate() == true;
+    }
 }

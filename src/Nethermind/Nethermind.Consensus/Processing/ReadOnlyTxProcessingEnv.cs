@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Processing
             _logManager = logManager;
         }
 
-        protected virtual TransactionProcessor CreateTransactionProcessor()
+        protected virtual ITransactionProcessor CreateTransactionProcessor()
         {
             return new TransactionProcessor(SpecProvider, Machine, CodeInfoRepository, _logManager);
         }

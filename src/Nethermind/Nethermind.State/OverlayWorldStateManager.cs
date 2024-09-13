@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -43,5 +44,13 @@ public class OverlayWorldStateManager : IWorldStateManager
         remove => _overlayTrieStore.ReorgBoundaryReached -= value;
     }
 
-    public bool ClearCache() => Caches?.Clear() == true;
+    public Task ClearCachesInBackground()
+    {
+        return Caches?.ClearCachesInBackground() ?? Task.CompletedTask;
+    }
+
+    public bool ClearCache()
+    {
+        return Caches?.ClearImmediate() == true;
+    }
 }

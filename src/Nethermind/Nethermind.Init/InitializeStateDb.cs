@@ -196,7 +196,7 @@ public class InitializeStateDb : IStep
             stateManager.GlobalWorldStateProvider.GetWorldState().StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, setApi.StateReader, mainNodeStorage, trieStore);
+        InitializeFullPruning(pruningConfig, initConfig, _api, setApi.StateReader, mainNodeStorage, trieStore, _logger);
 
         return Task.CompletedTask;
     }

@@ -122,7 +122,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV3.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
+            var blockHashStore = new BlockhashStore(chain.SpecProvider);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.State);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec, chain.State);
 

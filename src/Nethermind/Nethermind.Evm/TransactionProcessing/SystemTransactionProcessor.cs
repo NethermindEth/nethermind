@@ -22,23 +22,22 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     private const int OriginalValidate = 2 << 30;
 
     public SystemTransactionProcessor(ISpecProvider? specProvider,
-        IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        : base(specProvider, virtualMachine, codeInfoRepository, logManager)
     {
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(IWorldState worldState, Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (_isAura && !blCtx.Header.IsGenesis)
         {
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, in blCtx, tracer, !opts.HasFlag(ExecutionOptions.NoValidation)
+        return base.Execute(worldState, tx, in blCtx, tracer, !opts.HasFlag(ExecutionOptions.NoValidation)
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.NoValidation
             : opts);
     }
@@ -48,11 +47,11 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long intrinsicGas, bool validate) => TransactionResult.Ok;
 
-    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
+    protected override TransactionResult IncrementNonce(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
     protected override void DecrementNonce(Transaction tx) { }
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode) { }
+    protected override void PayFees(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode) { }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
@@ -62,10 +61,10 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         }
     }
 
-    protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
+    protected override bool RecoverSenderIfNeeded(IWorldState worldState, Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
         return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
-               && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
+               && base.RecoverSenderIfNeeded(worldState, tx, spec, opts, in effectiveGasPrice);
     }
 }

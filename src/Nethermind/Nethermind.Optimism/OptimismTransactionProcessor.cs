@@ -20,7 +20,7 @@ public sealed class OptimismTransactionProcessor(
     IL1CostHelper l1CostHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
-    ) : TransactionProcessor(specProvider, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(specProvider, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 

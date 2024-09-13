@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -18,5 +19,7 @@ public interface IWorldStateManager : IPreBlockCaches
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    bool ClearCache();
+    public Task ClearCachesInBackground();
+
+    public bool ClearCache();
 }

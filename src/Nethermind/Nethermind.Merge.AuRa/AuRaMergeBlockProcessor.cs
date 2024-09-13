@@ -28,6 +28,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
         IWorldStateProvider worldStateProvider,
         IReceiptStorage receiptStorage,
+        IBeaconBlockRootHandler beaconBlockRootHandler,
         ILogManager logManager,
         IBlockTree blockTree,
         IWithdrawalProcessor withdrawalProcessor,

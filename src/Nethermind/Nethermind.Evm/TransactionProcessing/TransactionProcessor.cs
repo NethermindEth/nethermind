@@ -25,11 +25,10 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public sealed class TransactionProcessor(
         ISpecProvider? specProvider,
-        IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        : TransactionProcessorBase(specProvider, virtualMachine, codeInfoRepository, logManager);
 
     public abstract class TransactionProcessorBase : ITransactionProcessor
     {
@@ -108,15 +107,15 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult Trace(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             Execute(worldState, transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
 
-        private TransactionResult ExecuteCore(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+        private TransactionResult ExecuteCore(IWorldState worldState, Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (tx.IsSystem())
             {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, blCtx.Header, tracer, opts);
+                _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, VirtualMachine, _codeInfoRepository, _logManager);
+                return _systemTransactionProcessor.Execute(worldState, tx, blCtx.Header, tracer, opts);
             }
 
-            return Execute(tx, in blCtx, tracer, opts);
+            return Execute(worldState, tx, in blCtx, tracer, opts);
         }
 
         protected virtual TransactionResult Execute(IWorldState worldState, Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
@@ -300,11 +299,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 bool restore = opts.HasFlag(ExecutionOptions.Restore);
                 bool noValidation = opts.HasFlag(ExecutionOptions.NoValidation);
 
-            bool deleteCallerAccount = false;
-
-            Address sender = tx.SenderAddress;
-            if (sender is null || !worldState.AccountExists(sender))
-            {
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
                 // hacky fix for the potential recovery issue

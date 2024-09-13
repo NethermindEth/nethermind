@@ -10,7 +10,7 @@ namespace Nethermind.Evm.TransactionProcessing
     public class CallAndRestoreTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
         : ITransactionProcessorAdapter
     {
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            transactionProcessor.CallAndRestore(IWorldState worldState, transaction, in blkCtx, txTracer);
+        public TransactionResult Execute(IWorldState worldState, Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
+            transactionProcessor.CallAndRestore(worldState, transaction, in blkCtx, txTracer);
     }
 }
