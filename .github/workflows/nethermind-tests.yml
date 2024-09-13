@@ -77,6 +77,10 @@ jobs:
       uses: actions/checkout@v4
     - name: Set up .NET
       uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.x
+        cache: true
+    - run: dotnet restore --locked-mode
     - name: ${{ matrix.project }}
       id: test
       run: |
