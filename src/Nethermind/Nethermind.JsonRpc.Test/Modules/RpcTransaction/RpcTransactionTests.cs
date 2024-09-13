@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -44,7 +45,7 @@ public class RpcTransactionTests
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
-        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction, new TxReceipt());
+        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
@@ -70,10 +71,18 @@ public class RpcTransactionTests
 
     [TestCaseSource(nameof(Transactions))]
     public void RPC_JSON_Roundtrip_same_type(Transaction tx) {
-        IRpcTransaction rpcTx = _converter.FromTransaction(tx, new TxReceipt());
+        IRpcTransaction rpcTx = _converter.FromTransaction(tx);
         string serialized = _serializer.Serialize(rpcTx);
         IRpcTransaction deserialized = _serializer.Deserialize<IRpcTransaction>(serialized);
 
         rpcTx.GetType().Should().Be(deserialized.GetType());
     }
+
+    /*
+     JSON -> IRpcTransaction (`IRpcTransaction.JsonConverter`, with a registry of [TxType => C# Type])
+     IRpcTransaction -> Transaction (IRpcTransaction has `.ToTransaction`)
+     Transaction -> IRpcTransaction (IRpcTransactionConverter.FromTransaction, with a registry of [TxType => IRpcTransactionConverter])
+     IRpcTransaction -> JSON (derived by `System.Text.JSON`)
+     */
 }
+

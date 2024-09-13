@@ -28,6 +28,6 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
 
     private class ConverterImpl : IRpcTransactionConverter
     {
-        public IRpcTransaction FromTransaction(Transaction transaction, TxReceipt receipt) => new RpcBlobTransaction(transaction);
+        public IRpcTransaction FromTransaction(Transaction transaction) => new RpcBlobTransaction(transaction);
     }
 }

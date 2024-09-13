@@ -55,6 +55,6 @@ public class RpcLegacyTransaction : IRpcTransaction
 
     private class ConverterImpl : IRpcTransactionConverter
     {
-        public IRpcTransaction FromTransaction(Transaction tx, TxReceipt receipt) => new RpcLegacyTransaction(tx);
+        public IRpcTransaction FromTransaction(Transaction tx) => new RpcLegacyTransaction(tx);
     }
 }

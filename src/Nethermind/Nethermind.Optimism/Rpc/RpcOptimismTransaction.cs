@@ -35,7 +35,7 @@ public class RpcOptimismTransaction : IRpcTransaction
     public UInt256? DepositReceiptVersion { get; set; }
     #endregion
 
-    public RpcOptimismTransaction(Transaction transaction, OptimismTxReceipt? receipt)
+    public RpcOptimismTransaction(Transaction transaction)
     {
         Type = transaction.Type;
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
@@ -47,7 +47,9 @@ public class RpcOptimismTransaction : IRpcTransaction
         IsSystemTx = transaction.IsOPSystemTransaction ? true : null;
         Input = transaction.Data?.ToArray() ?? [];
 
-        DepositReceiptVersion = receipt?.DepositReceiptVersion;
+        // TODO: Handle extra data
+        // DepositReceiptVersion = receipt?.DepositReceiptVersion;
+        
         // NOTE: According to https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L79 `nonce == 0`
         // Nonce = receipt?.DepositNonce;
     }
@@ -56,7 +58,6 @@ public class RpcOptimismTransaction : IRpcTransaction
 
     private class ConverterImpl : IRpcTransactionConverter
     {
-        // TODO: Is there a design where we avoid casting?
-        public IRpcTransaction FromTransaction(Transaction tx, TxReceipt receipt) => new RpcOptimismTransaction(tx, receipt as OptimismTxReceipt);
+        public IRpcTransaction FromTransaction(Transaction tx) => new RpcOptimismTransaction(tx);
     }
 }

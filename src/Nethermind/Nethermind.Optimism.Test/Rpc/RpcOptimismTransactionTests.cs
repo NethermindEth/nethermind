@@ -43,7 +43,7 @@ public class RpcOptimismTransactionTests
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
-        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction, new OptimismTxReceipt());
+        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;

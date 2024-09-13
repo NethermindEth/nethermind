@@ -33,6 +33,6 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
 
     private class ConverterImpl : IRpcTransactionConverter
     {
-        public IRpcTransaction FromTransaction(Transaction transaction, TxReceipt receipt) => new RpcEIP1559Transaction(transaction);
+        public IRpcTransaction FromTransaction(Transaction transaction) => new RpcEIP1559Transaction(transaction);
     }
 }
