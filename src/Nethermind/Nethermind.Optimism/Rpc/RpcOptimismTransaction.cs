@@ -54,6 +54,22 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
+    public override Transaction ToTransaction()
+    {
+        return new Transaction
+        {
+            Type = Type,
+            SourceHash = SourceHash,
+            SenderAddress = From,
+            To = To,
+            Mint = Mint ?? 0,
+            Value = Value,
+            GasLimit = Gas,
+            IsOPSystemTransaction = IsSystemTx ?? false,
+            Data = Input,
+        };
+    }
+
     public static readonly ITransactionConverter<RpcOptimismTransaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcOptimismTransaction>

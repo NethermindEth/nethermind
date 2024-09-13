@@ -53,6 +53,25 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         V = transaction.Signature?.V ?? 0;
     }
 
+    public override Transaction ToTransaction()
+    {
+        return new Transaction()
+        {
+            Type = Type,
+            Nonce = Nonce,
+            To = To,
+            GasLimit = Gas,
+            Value = Value,
+            Data = Input,
+            GasPrice = GasPrice,
+
+            // TODO: Dangerous cast
+            ChainId = (ulong)ChainId,
+            // TODO: Get `From`
+            // SenderAddress = From,
+        };
+    }
+
     public static readonly ITransactionConverter<RpcLegacyTransaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcLegacyTransaction>
