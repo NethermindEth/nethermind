@@ -8,9 +8,18 @@ using Nethermind.Core;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+// General flows:
+// * JSON -> IRpcTransaction (`IRpcTransaction.JsonConverter`, with a registry of [TxType => C# Type])
+// * IRpcTransaction -> Transaction (IRpcTransaction has `.ToTransaction`)
+// * Transaction -> IRpcTransaction (IRpcTransaction.TransactionConverter with a registry of [TxType => ITransactionConverter<IRpcTransaction>])
+// * IRpcTransaction -> JSON (derived by `System.Text.JSON`)
+
 public interface IRpcTransaction
 {
     Transaction ToTransaction();
+
+    // TODO: Implement
+    // Transaction ToTransactionWitDefaults();
 
     // TODO: Should/can we merge `JsonConverter` and `ITransactionConverter`?
     public class JsonConverter : JsonConverter<IRpcTransaction>

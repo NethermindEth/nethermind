@@ -70,11 +70,6 @@ public class RpcTransactionTests
         // TODO: Test that implementors satisfy the schema for the base `RpcNethermindTransaction`
     }
 
-    // * JSON -> IRpcTransaction (`IRpcTransaction.JsonConverter`, with a registry of [TxType => C# Type])
-    // * IRpcTransaction -> Transaction (IRpcTransaction has `.ToTransaction`)
-    // * Transaction -> IRpcTransaction (IRpcTransaction.TransactionConverter with a registry of [TxType => ITransactionConverter<IRpcTransaction>])
-    // * IRpcTransaction -> JSON (derived by `System.Text.JSON`)
-
     [TestCaseSource(nameof(Transactions))]
     public void RpcTransaction_JSON_roundtrip(Transaction tx)
     {
