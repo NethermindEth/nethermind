@@ -3,9 +3,9 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.BlockValidation;
+namespace Nethermind.Flashbots;
 
-public class BlockValidationConfig : IBlockValidationConfig
+public class FlashbotsConfig : IFlashbotsConfig
 {
     public bool Enabled { get; set; }
     public bool UseBalanceDiffProfit { get; set; } = false;

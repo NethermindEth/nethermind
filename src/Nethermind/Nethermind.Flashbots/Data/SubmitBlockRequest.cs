@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.BlockValidation.Data;
+namespace Nethermind.Flashbots.Data;
 
 public readonly struct SubmitBlockRequest
 {

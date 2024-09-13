@@ -3,9 +3,9 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.BlockValidation;
+namespace Nethermind.Flashbots;
 
-public interface IBlockValidationConfig : IConfig
+public interface IFlashbotsConfig : IConfig
 {
     [ConfigItem(Description = "Whether to enable the Flashbots endpoints.", DefaultValue = "false")]
     bool Enabled { get; set; }

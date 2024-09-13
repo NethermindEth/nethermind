@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Nethermind.BlockValidation</RootNamespace>
+    <RootNamespace>Nethermind.Flashbots</RootNamespace>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 

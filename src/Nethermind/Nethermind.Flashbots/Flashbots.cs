@@ -6,24 +6,24 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.BlockValidation.Handlers;
-using Nethermind.BlockValidation.Modules.Flashbots;
+using Nethermind.Flashbots.Handlers;
+using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Consensus.Processing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
-namespace Nethermind.BlockValidation;
+namespace Nethermind.Flashbots;
 
-public class BlockValidation : INethermindPlugin
+public class Flashbots : INethermindPlugin
 {
     private INethermindApi _api = null!;
 
-    private IBlockValidationConfig _blockValidationConfig = null!;
+    private IFlashbotsConfig _flashbotsConfig = null!;
 
     private IJsonRpcConfig _jsonRpcConfig = null!;
 
-    public virtual string Name => "BlockValidation";
-    public virtual string Description => "BlockValidation";
+    public virtual string Name => "Flashbots";
+    public virtual string Description => "Flashbots";
     public string Author => "Nethermind";
     public Task InitRpcModules()
     {
@@ -36,7 +36,7 @@ public class BlockValidation : INethermindPlugin
         ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
             _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
             readOnlyTxProcessingEnv,
-            _blockValidationConfig
+            _flashbotsConfig
         );
 
         ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(validateSubmissionHandler);
@@ -51,9 +51,9 @@ public class BlockValidation : INethermindPlugin
     public Task Init(INethermindApi api)
     {
         _api = api;
-        _blockValidationConfig = api.Config<IBlockValidationConfig>();
+        _flashbotsConfig = api.Config<IFlashbotsConfig>();
         _jsonRpcConfig = api.Config<IJsonRpcConfig>();
-        if (_blockValidationConfig.Enabled)
+        if (_flashbotsConfig.Enabled)
         {
             _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Append(ModuleType.Flashbots).ToArray();
         }

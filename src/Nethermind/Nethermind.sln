@@ -218,7 +218,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Signer", "Signer", "{89311B
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.ExternalSigner.Plugin", "Nethermind.ExternalSigner.Plugin\Nethermind.ExternalSigner.Plugin.csproj", "{6528010D-7DCE-4935-9785-5270FF515F3E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BlockValidation", "Nethermind.BlockValidation\Nethermind.BlockValidation.csproj", "{580DB104-AE89-444F-BD99-7FE0C84C615C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Flashbots", "Nethermind.Flashbots\Nethermind.Flashbots.csproj", "{580DB104-AE89-444F-BD99-7FE0C84C615C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

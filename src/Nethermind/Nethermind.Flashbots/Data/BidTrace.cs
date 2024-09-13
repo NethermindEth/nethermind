@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.BlockValidation.Data;
+namespace Nethermind.Flashbots.Data;
 
 public readonly struct BidTrace
 {

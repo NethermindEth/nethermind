@@ -9,7 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.BlockValidation.Data;
+using Nethermind.Flashbots.Data;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -26,7 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.State;
 
-namespace Nethermind.BlockValidation.Handlers;
+namespace Nethermind.Flashbots.Handlers;
 
 public class ValidateSubmissionHandler
 {
@@ -39,23 +39,23 @@ public class ValidateSubmissionHandler
     private readonly IBlockValidator _blockValidator;
     private readonly ILogger _logger;
 
-    private readonly IBlockValidationConfig _blockValidationConfig;
+    private readonly IFlashbotsConfig _flashbotsConfig;
 
     private readonly IReceiptStorage _receiptStorage = new InMemoryReceiptStorage();
 
     public ValidateSubmissionHandler(
         IBlockValidator blockValidator,
         ReadOnlyTxProcessingEnv txProcessingEnv,
-        IBlockValidationConfig blockValidationConfig)
+        IFlashbotsConfig flashbotsConfig)
     {
         _blockValidator = blockValidator;
         _txProcessingEnv = txProcessingEnv;
         _blockTree = _txProcessingEnv.BlockTree;
         _logger = txProcessingEnv.LogManager!.GetClassLogger();
-        _blockValidationConfig = blockValidationConfig;
+        _flashbotsConfig = flashbotsConfig;
     }
 
-    public Task<ResultWrapper<BlockValidationResult>> ValidateSubmission(BuilderBlockValidationRequest request)
+    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderFlashbotsRequest request)
     {
         ExecutionPayload payload = request.BlockRequest.ExecutionPayload;
         BlobsBundleV1 blobsBundle = request.BlockRequest.BlobsBundle;
@@ -67,23 +67,23 @@ public class ValidateSubmissionHandler
         if (!payload.TryGetBlock(out Block? block))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}.");
-            return BlockValidationResult.Invalid($"Block {payload} coud not be parsed as a block");
+            return FlashbotsResult.Invalid($"Block {payload} coud not be parsed as a block");
         }
 
         if (block is not null && !ValidateBlock(block, request.BlockRequest.Message, request.RegisterGasLimit, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}. Error: {error}");
-            return BlockValidationResult.Invalid(error ?? "Block validation failed");
+            return FlashbotsResult.Invalid(error ?? "Block validation failed");
         }
 
         if (block is not null && !ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid blobs bundle. Result of {payloadStr}. Error: {blobsError}");
-            return BlockValidationResult.Invalid(blobsError ?? "Blobs bundle validation failed");
+            return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
         }
 
 
-        return BlockValidationResult.Valid();
+        return FlashbotsResult.Valid();
     }
 
     private bool ValidateBlock(Block block, BidTrace message, long registerGasLimit, out string? error)
@@ -117,7 +117,7 @@ public class ValidateSubmissionHandler
         Address feeRecipient = message.ProposerFeeRecipient;
         UInt256 expectedProfit = message.Value;
 
-        if (!ValidatePayload(block, feeRecipient, expectedProfit, registerGasLimit, _blockValidationConfig.UseBalanceDiffProfit, _blockValidationConfig.ExcludeWithdrawals, out error))
+        if (!ValidatePayload(block, feeRecipient, expectedProfit, registerGasLimit, _flashbotsConfig.UseBalanceDiffProfit, _flashbotsConfig.ExcludeWithdrawals, out error))
         {
             return false;
         }

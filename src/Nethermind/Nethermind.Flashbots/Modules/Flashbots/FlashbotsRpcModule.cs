@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Nethermind.BlockValidation.Data;
-using Nethermind.BlockValidation.Handlers;
+using Nethermind.Flashbots.Data;
+using Nethermind.Flashbots.Handlers;
 using Nethermind.JsonRpc;
 
-namespace Nethermind.BlockValidation.Modules.Flashbots;
+namespace Nethermind.Flashbots.Modules.Flashbots;
 
 public class FlashbotsRpcModule : IFlashbotsRpcModule
 {
@@ -17,7 +17,7 @@ public class FlashbotsRpcModule : IFlashbotsRpcModule
         _validateSubmissionHandler = validateSubmissionHandler;
     }
 
-    Task<ResultWrapper<BlockValidationResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params) =>
+    Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderFlashbotsRequest @params) =>
         _validateSubmissionHandler.ValidateSubmission(@params);
 
 }
