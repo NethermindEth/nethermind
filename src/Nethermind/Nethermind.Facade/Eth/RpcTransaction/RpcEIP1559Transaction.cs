@@ -18,7 +18,7 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
     /// The effective gas price paid by the sender in wei. For transactions not yet included in a block, this value should be set equal to the max fee per gas.
     /// This field is <b>DEPRECATED</b>, please transition to using <c>effectiveGasPrice</c> in the receipt object going forward.
     /// </summary>
-    public new UInt256 GasPrice { get; set; }
+    public override UInt256 GasPrice { get; set; }
 
     [JsonConstructor]
     public RpcEIP1559Transaction() { }

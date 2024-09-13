@@ -24,7 +24,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     /// For backwards compatibility, <c>v</c> is optionally provided as an alternative to <c>yParity</c>.
     /// This field is <b>DEPRECATED</b> and all use of it should migrate to <c>yParity</c>.
     /// </summary>
-    public new UInt256? V { get; set; }
+    public override UInt256 V { get; set; }
 
     [JsonConstructor]
     public RpcAccessListTransaction() { }
@@ -37,7 +37,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
                   ?? DefaultChainId
                   ?? BlockchainIds.Mainnet;
         YParity = transaction.Signature?.RecoveryId ?? 0;
-        V = transaction.Signature?.RecoveryId;
+        V = YParity;
     }
 
     public override Transaction ToTransaction()

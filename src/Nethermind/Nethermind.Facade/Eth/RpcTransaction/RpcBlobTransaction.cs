@@ -16,6 +16,12 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
     // Currently we don't enforce this (hashes can have any length)
     public byte[][] BlobVersionedHashes { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public override UInt256 GasPrice { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public override UInt256 V { get; set; }
+
     [JsonConstructor]
     public RpcBlobTransaction() { }
 

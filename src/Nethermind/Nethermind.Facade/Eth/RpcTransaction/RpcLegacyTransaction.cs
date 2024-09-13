@@ -24,11 +24,11 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
 
     public byte[] Input { get; set; }
 
-    public UInt256 GasPrice { get; set; }
+    public virtual UInt256 GasPrice { get; set; }
 
     public UInt256? ChainId { get; set; }
 
-    public UInt256 V { get; set; }
+    public virtual UInt256 V { get; set; }
 
     public UInt256 R { get; set; }
     public UInt256 S { get; set; }
