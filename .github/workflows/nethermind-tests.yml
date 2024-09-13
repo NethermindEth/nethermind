@@ -85,7 +85,6 @@ jobs:
       with:
         # nuget cache files are stored in `~/.nuget/packages/` on Linux/macOS
         path: ~/.nuget/packages/
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/Directory.Packages.props') }}
         restore-keys: |
           ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/Directory.Packages.props') }}
     - name: ${{ matrix.project }}
