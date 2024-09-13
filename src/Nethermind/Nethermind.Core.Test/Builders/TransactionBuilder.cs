@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -218,6 +220,22 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx()
+        {
+            return TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;
+        }
+
+        public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple authTuple)
+        {
+            TestObjectInternal.AuthorizationList = TestObjectInternal.AuthorizationList is not null ? [.. TestObjectInternal.AuthorizationList, authTuple] : [authTuple];
+            return this;
+        }
+        public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple[] authList)
+        {
+            TestObjectInternal.AuthorizationList = authList;
+            return this;
+        }
+
         public TransactionBuilder<T> With(Action<T> anyChange)
         {
             anyChange(TestObjectInternal);
@@ -280,6 +298,12 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithIsServiceTransaction(bool isServiceTransaction)
         {
             TestObjectInternal.IsServiceTransaction = isServiceTransaction;
+            return this;
+        }
+
+        public TransactionBuilder<T> From(T item)
+        {
+            TestObjectInternal = item;
             return this;
         }
     }

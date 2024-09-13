@@ -115,7 +115,9 @@ namespace Nethermind.Clique.Test
                     new TxPoolConfig(),
                     new TxValidator(goerliSpecProvider.ChainId),
                     _logManager,
-                    transactionComparerProvider.GetDefaultComparer());
+                    transactionComparerProvider.GetDefaultComparer(),
+                    new CodeInfoRepository(specProvider.ChainId),
+                    stateProvider);
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
@@ -129,7 +131,7 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-                CodeInfoRepository codeInfoRepository = new();
+                CodeInfoRepository codeInfoRepository = new(1);
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
                     new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                     codeInfoRepository,

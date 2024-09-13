@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
+using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -114,6 +116,90 @@ namespace Nethermind.Evm.Test
             Test(GrayGlacier.Instance, true);
             Test(Shanghai.Instance, true);
             Test(Cancun.Instance, true);
+        }
+        public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
+        {
+            yield return (
+                [], 0);
+            yield return (
+                [new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+                ],
+                GasCostOf.NewAccount);
+            yield return (
+               [new AuthorizationTuple(
+                   TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10)),
+                   new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+               ],
+               GasCostOf.NewAccount * 2);
+            yield return (
+               [new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10)),
+                   new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10)),
+                   new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+               ],
+               GasCostOf.NewAccount * 3);
+        }
+        [TestCaseSource(nameof(AuthorizationListTestCaseSource))]
+        public void Calculate_TxHasAuthorizationList_ReturnsExpectedCostOfTx((AuthorizationTuple[] AuthorizationList, long ExpectedCost) testCase)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(testCase.AuthorizationList)
+                .TestObject;
+
+            IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
+                .Should().Be(21000 + (testCase.ExpectedCost));
+        }
+
+        [Test]
+        public void Calculate_TxHasAuthorizationListBeforePrague_ThrowsInvalidDataException()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(
+                new AuthorizationTuple(
+                    0,
+                    TestItem.AddressF,
+                    0,
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextBytes(10),
+                    TestContext.CurrentContext.Random.NextBytes(10))
+                )
+                .TestObject;
+
+            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
         }
     }
 }

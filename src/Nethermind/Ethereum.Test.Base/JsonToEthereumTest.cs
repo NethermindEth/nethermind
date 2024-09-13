@@ -127,6 +127,7 @@ namespace Ethereum.Test.Base
         {
             Transaction transaction = new();
 
+            transaction.Type = string.IsNullOrEmpty(transactionJson.Type) ? TxType.Legacy : (TxType)ParseFromHex(transactionJson.Type);
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
             transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
@@ -157,7 +158,42 @@ namespace Ethereum.Test.Base
             if (transaction.BlobVersionedHashes?.Length > 0)
                 transaction.Type = TxType.Blob;
 
+            if (transactionJson.AuthorizationList is not null)
+            {
+                transaction.AuthorizationList =
+                    transactionJson.AuthorizationList
+                    .Select(i => new AuthorizationTuple(
+                        ParseFromHex(i.ChainId),
+                        new Address(i.Address),
+                        ParseFromHex(i.Nonce),
+                        ParseFromHex(i.V),
+                        Bytes.FromHexString(i.R),
+                        Bytes.FromHexString(i.S))).ToArray();
+                if (transaction.AuthorizationList.Any())
+                {
+                    transaction.Type = TxType.SetCode;
+                }
+            }
+
             return transaction;
+
+            static ulong ParseFromHex(string i)
+            {
+                Span<byte> bytes = stackalloc byte[8];
+                var bytes1 = Bytes.FromHexString(i).AsSpan();
+                if (bytes1.Length <= 8)
+                {
+                    bytes1.Reverse();
+                    bytes1.CopyTo(bytes);
+                }
+                else
+                {
+                    throw new InvalidDataException("Transaction json contains an invalid value for uint64.");
+                }
+
+                var result = BitConverter.ToUInt64(bytes);
+                return result;
+            }
         }
 
         private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)

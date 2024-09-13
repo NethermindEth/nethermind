@@ -22,7 +22,6 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
     public bool Get(TKey key)
     {
-        if (MaxCapacity == 0) return false;
         if (_cacheMap.TryGetValue(key, out int offset))
         {
             MarkAccessed(offset);
@@ -33,7 +32,6 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
     public bool Set(TKey key)
     {
-        if (MaxCapacity == 0) return true;
         if (_cacheMap.TryGetValue(key, out int offset))
         {
             MarkAccessed(offset);
@@ -45,7 +43,6 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
     private bool SetSlow(TKey key)
     {
-        if (MaxCapacity == 0) return false;
         using var lockRelease = _lock.Acquire();
 
         // Recheck under lock
@@ -111,7 +108,6 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
     public bool Delete(TKey key)
     {
-        if (MaxCapacity == 0) return false;
         using var lockRelease = _lock.Acquire();
 
         if (_cacheMap.Remove(key, out int offset))
@@ -127,7 +123,6 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
     public new void Clear()
     {
-        if (MaxCapacity == 0) return;
         using var lockRelease = _lock.Acquire();
 
         base.Clear();
@@ -136,7 +131,6 @@ public sealed class ClockKeyCache<TKey>(int maxCapacity) : ClockCacheBase<TKey>(
 
     public bool Contains(TKey key)
     {
-        if (MaxCapacity == 0) return false;
         return _cacheMap.ContainsKey(key);
     }
 }

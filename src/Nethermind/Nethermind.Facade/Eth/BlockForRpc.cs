@@ -87,8 +87,7 @@ public class BlockForRpc
         RequestsRoot = block.Header.RequestsRoot;
     }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Address? Author { get; set; }
+    public Address Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
     public long GasLimit { get; set; }

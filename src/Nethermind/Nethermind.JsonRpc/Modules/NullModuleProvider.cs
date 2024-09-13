@@ -32,11 +32,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<string> All => Array.Empty<string>();
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
-        {
-            module = null;
-            return ModuleResolution.Unknown;
-        }
+        public ModuleResolution Check(string methodName, JsonRpcContext context) => ModuleResolution.Unknown;
 
         public ResolvedMethodInfo Resolve(string methodName) => new();
 

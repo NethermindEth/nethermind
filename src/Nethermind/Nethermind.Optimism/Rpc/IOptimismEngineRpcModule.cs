@@ -61,7 +61,7 @@ public interface IOptimismEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<OptimismGetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
+    Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",

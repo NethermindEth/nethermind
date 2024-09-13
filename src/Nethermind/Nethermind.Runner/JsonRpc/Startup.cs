@@ -131,7 +131,7 @@ public class Startup
             }
         });
 
-        app.Run(async ctx =>
+        app.Run(async (ctx) =>
         {
             if (ctx.Request.Method == "GET")
             {

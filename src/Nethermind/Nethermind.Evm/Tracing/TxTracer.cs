@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class TxTracer : ITxTracer
+public abstract class TxTracer : ITxTracer
 {
     [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
     protected TxTracer()

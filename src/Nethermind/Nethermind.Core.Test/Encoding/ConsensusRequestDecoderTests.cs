@@ -51,6 +51,26 @@ public class ConsensusRequestDecoderTests
     }
 
     [Test]
+    public void Roundtrip_consolidationRequest()
+    {
+        byte[] SourcePubkey = new byte[48];
+        SourcePubkey[11] = 11;
+        byte[] TargetPubkey = new byte[48];
+        TargetPubkey[22] = 22;
+        ConsensusRequest consolidationRequest = new ConsolidationRequest()
+        {
+            SourceAddress = TestItem.AddressA,
+            SourcePubkey = SourcePubkey,
+            TargetPubkey = TargetPubkey
+        };
+
+        byte[] rlp = Rlp.Encode(consolidationRequest).Bytes;
+        ConsensusRequest decoded = Rlp.Decode<ConsensusRequest>(rlp);
+
+        decoded.Should().BeEquivalentTo(consolidationRequest);
+    }
+
+    [Test]
     public void Should_decode_deposit_with_ValueDecoderContext()
     {
         ConsensusRequest deposit = new Deposit()
@@ -93,7 +113,27 @@ public class ConsensusRequestDecoderTests
     }
 
     [Test]
-    public void Should_encode_deposit_same_for_Rlp_Encode_and_DepositDecoder_Encode()
+    public void Should_decode_consolidationRequest_with_ValueDecoderContext()
+    {
+        ConsensusRequest consolidationRequest = new ConsolidationRequest()
+        {
+            SourceAddress = TestItem.AddressA,
+            SourcePubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
+        };
+        RlpStream stream = new(1024);
+        ConsensusRequestDecoder codec = new();
+
+        codec.Encode(stream, consolidationRequest);
+
+        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
+        ConsolidationRequest? decoded = (ConsolidationRequest?)codec.Decode(ref decoderContext);
+
+        decoded.Should().BeEquivalentTo(consolidationRequest);
+    }
+
+    [Test]
+    public void Should_encode_deposit_same_for_Rlp_Encode_and_ConsensusRequestDecoder_Encode()
     {
         ConsensusRequest deposit = new Deposit()
         {
@@ -110,7 +150,7 @@ public class ConsensusRequestDecoderTests
     }
 
     [Test]
-    public void Should_encode_withdrawalRequest_same_for_Rlp_Encode_and_DepositDecoder_Encode()
+    public void Should_encode_withdrawalRequest_same_for_Rlp_Encode_and_ConsensusRequestDecoder_Encode()
     {
         ConsensusRequest withdrawalRequest = new WithdrawalRequest()
         {
@@ -120,6 +160,21 @@ public class ConsensusRequestDecoderTests
         };
         byte[] rlp1 = new ConsensusRequestDecoder().Encode(withdrawalRequest).Bytes;
         byte[] rlp2 = Rlp.Encode(withdrawalRequest).Bytes;
+
+        rlp1.Should().BeEquivalentTo(rlp2);
+    }
+
+    [Test]
+    public void Should_encode_consolidationRequest_same_for_Rlp_Encode_and_ConsensusRequestDecoder_Encode()
+    {
+        ConsensusRequest consolidationRequest = new ConsolidationRequest()
+        {
+            SourceAddress = TestItem.AddressA,
+            SourcePubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
+        };
+        byte[] rlp1 = new ConsensusRequestDecoder().Encode(consolidationRequest).Bytes;
+        byte[] rlp2 = Rlp.Encode(consolidationRequest).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);
     }
@@ -142,6 +197,12 @@ public class ConsensusRequestDecoderTests
                 SourceAddress = TestItem.AddressA,
                 ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
                 Amount = int.MaxValue
+            },
+            new ConsolidationRequest()
+            {
+                SourceAddress = TestItem.AddressA,
+                SourcePubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
             }
         };
 

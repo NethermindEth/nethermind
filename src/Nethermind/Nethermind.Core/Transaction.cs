@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -55,6 +56,10 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
+        public bool HasAuthorizationList =>
+            Type == TxType.SetCode &&
+            AuthorizationList is not null &&
+            AuthorizationList.Length > 0;
 
         private Hash256? _hash;
 
@@ -162,6 +167,12 @@ namespace Nethermind.Core
         public object? NetworkWrapper { get; set; }
 
         /// <summary>
+        /// List of EOA code authorizations.
+        /// https://eips.ethereum.org/EIPS/eip-7702
+        /// </summary>
+        public AuthorizationTuple[]? AuthorizationList { get; set; }
+
+        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
@@ -263,6 +274,7 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
+                obj.AuthorizationList = default;
 
                 return true;
             }
@@ -293,6 +305,7 @@ namespace Nethermind.Core
             tx.IsServiceTransaction = IsServiceTransaction;
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
+            tx.AuthorizationList = AuthorizationList;
         }
     }
 

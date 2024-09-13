@@ -232,10 +232,7 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", false)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("sepolia.cfg", true)]
-        [TestCase("gnosis.cfg", true)]
-        [TestCase("chiado.cfg", true)]
-        [TestCase("energyweb.cfg", false)]
-        [TestCase("volta.cfg", false)]
+        [TestCase("gnosis.cfg", false)]
         public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);

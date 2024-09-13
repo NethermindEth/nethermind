@@ -42,6 +42,4 @@ public class DiscoveryConfig : IDiscoveryConfig
     public int MaxOutgoingMessagePerSecond { get; set; } = 100;
 
     public string Bootnodes { get; set; } = string.Empty;
-
-    public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.V4;
 }

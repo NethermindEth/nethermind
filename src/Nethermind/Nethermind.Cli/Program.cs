@@ -8,7 +8,7 @@ using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Jint.Native;
-using McMaster.Extensions.CommandLineUtils;
+using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Config;
@@ -36,7 +36,7 @@ namespace Nethermind.Cli
             app.OnExecute(() =>
             {
                 ColorScheme? cs;
-                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value()!)) is not null
+                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value())) is not null
                     ? new ColorfulCliConsole(cs)
                     : new CliConsole();
 
@@ -56,7 +56,7 @@ namespace Nethermind.Cli
                 ReadLine.AutoCompletionHandler = new AutoCompletionHandler(moduleLoader);
 
                 string nodeAddress = nodeAddressOption.HasValue()
-                    ? nodeAddressOption.Value()!
+                    ? nodeAddressOption.Value()
                     : "http://localhost:8545";
                 nodeManager.SwitchUri(new Uri(nodeAddress));
                 historyManager.Init();

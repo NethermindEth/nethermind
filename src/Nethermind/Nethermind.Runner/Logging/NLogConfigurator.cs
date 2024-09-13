@@ -3,7 +3,7 @@
 
 using System;
 using System.Linq;
-using McMaster.Extensions.CommandLineUtils;
+using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Core.Collections;
 using NLog;
 using NLog.Config;

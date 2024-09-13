@@ -114,7 +114,4 @@ public interface IDiscoveryConfig : IConfig
 
     [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "100", HiddenFromDocs = true)]
     int MaxOutgoingMessagePerSecond { get; set; }
-
-    [ConfigItem(Description = "Discovery version(s) to enable", DefaultValue = "All", HiddenFromDocs = true)]
-    DiscoveryVersion DiscoveryVersion { get; set; }
 }

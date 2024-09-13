@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using System;
 
 namespace Nethermind.Core
 {
@@ -9,8 +10,5 @@ namespace Nethermind.Core
     {
         public static bool HasCode(this IAccountStateProvider stateProvider, Address address) =>
             stateProvider.TryGetAccount(address, out AccountStruct account) && account.HasCode;
-
-        public static bool IsInvalidContractSender(this IAccountStateProvider stateProvider, IReleaseSpec spec, Address address) =>
-            spec.IsEip3607Enabled && stateProvider.HasCode(address);
     }
 }

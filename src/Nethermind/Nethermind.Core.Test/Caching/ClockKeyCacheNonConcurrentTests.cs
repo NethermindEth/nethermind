@@ -177,25 +177,5 @@ namespace Nethermind.Core.Test.Caching
             cache.Delete(_addresses[0]);
             cache.Get(_addresses[0]).Should().BeFalse();
         }
-
-        [Test]
-        public void Capacity_zero()
-        {
-            ClockKeyCacheNonConcurrent<AddressAsKey> cache = new(0);
-            for (int i = 0; i < Capacity * 2; i++)
-            {
-                cache.Set(_addresses[i]).Should().BeTrue();
-            }
-
-            for (int i = 0; i < Capacity; i++)
-            {
-                cache.Get(_addresses[i]).Should().BeFalse();
-            }
-            // Check in reverse order
-            for (int i = Capacity * 2 - 1; i >= Capacity; i--)
-            {
-                cache.Get(_addresses[i]).Should().BeFalse();
-            }
-        }
     }
 }

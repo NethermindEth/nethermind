@@ -41,7 +41,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly ILogger _logger;
         private readonly IDb _db;
-        string? _lastStateRangesReport;
 
         // Partitions are indexed by its limit keccak/address as they are keep in the request struct and remain the same
         // throughout the sync. So its easy.
@@ -422,22 +421,14 @@ namespace Nethermind.Synchronization.SnapSync
 
                 float progress = (float)(totalPathProgress / (double)(256 * 256));
 
-                if (_logger.IsInfo)
-                {
-                    string stateRangesReport = $"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
-                    if (_lastStateRangesReport != stateRangesReport)
-                    {
-                        _logger.Info(stateRangesReport);
-                        _lastStateRangesReport = stateRangesReport;
-                    }
-                }
+                if (_logger.IsInfo) _logger.Info($"Snap         State Ranges (Phase 1): ({progress,8:P2}) [{new string('*', (int)(progress * 71))}{new string(' ', 71 - (int)(progress * 71))}]");
             }
 
-            if (_logger.IsTrace || (_logger.IsDebug && _reqCount % 1000 == 0))
+            if (_logger.IsTrace || _reqCount % 1000 == 0)
             {
                 int moreAccountCount = AccountRangePartitions.Count(kv => kv.Value.MoreAccountsToRight);
 
-                _logger.Debug(
+                _logger.Info(
                     $"Snap - ({reqType}, diff: {_pivot.Diff}) {moreAccountCount} - Requests Account: {_activeAccountRequests} | Storage: {_activeStorageRequests} | Code: {_activeCodeRequests} | Refresh: {_activeAccRefreshRequests} - Queues Slots: {NextSlotRange.Count} | Storages: {StoragesToRetrieve.Count} | Codes: {CodesToRetrieve.Count} | Refresh: {AccountsToRefresh.Count}");
             }
         }

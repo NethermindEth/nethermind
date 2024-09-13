@@ -17,13 +17,13 @@ using System.Buffers.Binary;
 namespace Nethermind.Consensus.Requests;
 
 // https://eips.ethereum.org/EIPS/eip-7002#block-processing
-public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProcessor) : IWithdrawalRequestsProcessor
+public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProcessor)
 {
     private const long GasLimit = 30_000_000L;
 
     public IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
-        if (!spec.IsEip7002Enabled)
+        if (!spec.WithdrawalRequestsEnabled)
             yield break;
 
         Address eip7002Account = spec.Eip7002ContractAddress;

@@ -56,6 +56,7 @@ public class OptimismEthModuleFactory(
     private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     private readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     private readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+    private readonly IJsonRpcClient? _sequencerRpcClient = sequencerRpcClient ?? throw new ArgumentNullException(nameof(sequencerRpcClient));
     private readonly IAccountStateProvider _accountStateProvider = accountStateProvider ?? throw new ArgumentNullException(nameof(accountStateProvider));
     private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
     private readonly ITxSealer _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
@@ -81,7 +82,7 @@ public class OptimismEthModuleFactory(
             _feeHistoryOracle,
             secondsPerSlot,
 
-            sequencerRpcClient,
+            _sequencerRpcClient,
             _accountStateProvider,
             _ecdsa,
             _sealer,

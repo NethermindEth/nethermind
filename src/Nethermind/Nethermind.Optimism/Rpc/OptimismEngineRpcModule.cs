@@ -48,10 +48,9 @@ public class OptimismEngineRpcModule : IOptimismEngineRpcModule
         return await _engineRpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
     }
 
-    public async Task<ResultWrapper<OptimismGetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId)
+    public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId)
     {
-        ResultWrapper<GetPayloadV3Result?> result = await _engineRpcModule.engine_getPayloadV3(payloadId);
-        return ResultWrapper<OptimismGetPayloadV3Result?>.From(result, result.Data is null ? null : new OptimismGetPayloadV3Result(result.Data));
+        return _engineRpcModule.engine_getPayloadV3(payloadId);
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)

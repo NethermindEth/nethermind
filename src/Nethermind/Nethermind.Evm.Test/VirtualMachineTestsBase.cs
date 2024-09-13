@@ -68,7 +68,7 @@ public class VirtualMachineTestsBase
         TestState = new WorldState(trieStore, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new CodeInfoRepository();
+        CodeInfoRepository = new CodeInfoRepository(1);
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
@@ -124,9 +124,21 @@ public class VirtualMachineTestsBase
         return tracer;
     }
 
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, Transaction tx)
+    {
+        (Block block, _) = PrepareTx(activation, 100000, null);
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(tx, block.Header, tracer);
+        return tracer;
+    }
+
     protected TestAllTracerWithOutput Execute(params byte[] code)
     {
         return Execute(Activation, code);
+    }
+    protected TestAllTracerWithOutput Execute(Transaction tx)
+    {
+        return Execute(Activation, tx);
     }
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
@@ -197,7 +209,8 @@ public class VirtualMachineTestsBase
         int value = 1,
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
-        ulong excessBlobGas = 0)
+        ulong excessBlobGas = 0,
+        Transaction transaction = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -227,7 +240,7 @@ public class VirtualMachineTestsBase
         TestState.CommitTree(0);
         GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
-        Transaction transaction = Build.A.Transaction
+        transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)
             .WithGasPrice(1)
             .WithValue(value)

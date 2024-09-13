@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -20,12 +21,18 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result
             : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
+        delegationAddress = null;
+        return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
+            ? result
+            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+    }
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) => codeInfoRepository.GetOrAdd(codeHash, initCode);
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(state, code, codeOwner, spec);
-
 
     public void SetCodeOverwrite(
         IWorldState worldState,
@@ -40,5 +47,25 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         }
 
         _codeOverwrites[key] = value;
+    }
+
+    public void ClearOverwrites()
+    {
+        _codeOverwrites.Clear();
+    }
+
+    public int InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec)
+    {
+        return codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, accessedAddresses, spec);
+    }
+
+    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        return codeInfoRepository.IsDelegation(worldState, address, out delegatedAddress);
+    }
+
+    public ValueHash256 GetCodeHash(IWorldState worldState, Address address)
+    {
+        return codeInfoRepository.GetCodeHash(worldState, address);
     }
 }

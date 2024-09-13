@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -129,7 +128,7 @@ public class JsonRpcSocketsClientTests
                 }
 
                 disposeCount.Should().Be(messageCount);
-                await cts.CancelAsync();
+                cts.Cancel();
 
                 return messageCount;
             });
@@ -224,7 +223,7 @@ public class JsonRpcSocketsClientTests
                     }
                 }
                 stream.Close();
-                await cts.CancelAsync();
+                cts.Cancel();
 
                 return messageCount;
             });
@@ -299,7 +298,7 @@ public class JsonRpcSocketsClientTests
                     await client.SendJsonRpcResult(result);
                     await Task.Delay(100);
                 }
-                await cts.CancelAsync();
+                cts.Cancel();
 
                 return messageCount;
             });
@@ -341,7 +340,7 @@ public class JsonRpcSocketsClientTests
                 await client.SendJsonRpcResult(result);
 
                 await Task.Delay(100);
-                await cts.CancelAsync();
+                cts.Cancel();
             });
 
             await Task.WhenAll(sendCollection, server);
@@ -381,7 +380,7 @@ public class JsonRpcSocketsClientTests
                 int sent = await client.SendJsonRpcResult(result);
 
                 await Task.Delay(100);
-                await cts.CancelAsync();
+                cts.Cancel();
 
                 return sent;
             });
@@ -390,27 +389,6 @@ public class JsonRpcSocketsClientTests
             int sent = sendCollection.Result;
             long received = receiveBytes.Result;
             Assert.That(received, Is.LessThanOrEqualTo(Math.Min(sent, maxByteCount)));
-        }
-
-        [Test]
-        public async Task Can_serialize_collection()
-        {
-            await using MemoryMessageStream stream = new();
-            EthereumJsonSerializer ethereumJsonSerializer = new();
-            using JsonRpcSocketsClient<MemoryMessageStream> client = new(
-                clientName: "TestClient",
-                stream: stream,
-                endpointType: RpcEndpoint.Ws,
-                jsonRpcProcessor: null!,
-                jsonRpcLocalStats: new NullJsonRpcLocalStats(),
-                jsonSerializer: ethereumJsonSerializer,
-                maxBatchResponseBodySize: 10_000
-            );
-            using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
-            await client.SendJsonRpcResult(result);
-            stream.Seek(0, SeekOrigin.Begin);
-            JsonRpcSuccessResponse[]? response = ethereumJsonSerializer.Deserialize<JsonRpcSuccessResponse[]>(stream);
-            response.Should().NotContainNulls();
         }
 
         private static async Task<T> OneShotServer<T>(string uri, Func<WebSocket, Task<T>> func)

@@ -198,9 +198,9 @@ namespace Nethermind.Synchronization
                     BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
 
                     SyncMode syncMode = _syncModeSelector.Current;
-                    bool notInFastSyncNorStateSyncNorSnap = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes | SyncMode.SnapSync)) == SyncMode.None;
+                    bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
                     bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
-                    if (notInFastSyncNorStateSyncNorSnap || inFullSyncOrWaitingForBlocks)
+                    if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
                     {
                         LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                         SyncBlock(block, nodeWhoSentTheBlock);

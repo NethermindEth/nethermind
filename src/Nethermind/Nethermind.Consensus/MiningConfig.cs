@@ -71,5 +71,5 @@ public class MiningConfig : IMiningConfig
         }
     }
 
-    public string? Signer { get; set; }
+    public string Signer { get; set; }
 }

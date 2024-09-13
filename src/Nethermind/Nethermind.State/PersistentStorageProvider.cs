@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -303,10 +302,10 @@ namespace Nethermind.State
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+            ref Dictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new Dictionary<UInt256, byte[]>();
             }
 
             dict[change.StorageCell.Index] = change.Value;
@@ -348,10 +347,7 @@ namespace Nethermind.State
         {
             if (isEmpty)
             {
-                if (_preBlockCache is not null)
-                {
-                    _preBlockCache[storageCell] = [];
-                }
+                _preBlockCache[storageCell] = Array.Empty<byte>();
             }
             else
             {
@@ -361,13 +357,13 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+            ref Dictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new Dictionary<UInt256, byte[]>();
             }
 
-            ref byte[]? value = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
+            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell.Index, out exists);
             if (!exists)
             {
                 value = !_populatePreBlockCache ?
@@ -456,13 +452,14 @@ namespace Nethermind.State
         {
             base.ClearStorage(address);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
-            if (!exists)
+            // Bit heavy-handed, but we need to clear all the cache for that address
+            if (_blockCache.TryGetValue(address, out Dictionary<UInt256, byte[]> values))
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                foreach (UInt256 storageSlot in values.Keys)
+                {
+                    values[storageSlot] = StorageTree.EmptyBytes;
+                }
             }
-
-            dict.SelfDestruct();
 
             // here it is important to make sure that we will not reuse the same tree when the contract is revived
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
@@ -476,34 +473,6 @@ namespace Nethermind.State
         {
             public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
                 => new(trieStore, storageRoot, logManager);
-        }
-
-        private class SelfDestructDictionary<TKey, TValue>(TValue destructedValue) where TKey : notnull
-        {
-            private bool _selfDestruct;
-            private readonly Dictionary<TKey, TValue> _dictionary = new();
-
-            public void SelfDestruct()
-            {
-                _selfDestruct = true;
-                _dictionary.Clear();
-            }
-
-            public ref TValue? GetValueRefOrAddDefault(TKey storageCellIndex, out bool exists)
-            {
-                ref TValue value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
-                if (!exists && _selfDestruct)
-                {
-                    value = destructedValue;
-                    exists = true;
-                }
-                return ref value;
-            }
-
-            public TValue? this[TKey key]
-            {
-                set => _dictionary[key] = value;
-            }
         }
     }
 }

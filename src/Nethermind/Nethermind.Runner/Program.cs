@@ -17,7 +17,7 @@ using System.Threading.Tasks;
 #if !DEBUG
 using DotNetty.Common;
 #endif
-using McMaster.Extensions.CommandLineUtils;
+using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -224,6 +224,8 @@ public static partial class Program
             await ethereumRunner.StopAsync();
             _logger.Info("All done, goodbye!");
             _appClosed.Set();
+
+            return _processExitSource.ExitCode;
         });
 
         try

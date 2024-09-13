@@ -180,16 +180,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.LogManager
         );
 
-        _ = new PivotUpdator(
-            _api.BlockTree,
-            _api.Synchronizer.SyncModeSelector,
-            _api.SyncPeerPool,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.DbProvider.MetadataDb,
-            _api.LogManager);
-
         return Task.CompletedTask;
     }
 

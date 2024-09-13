@@ -37,6 +37,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -186,7 +187,7 @@ public class TestBlockchain : IDisposable
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new(1);
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
@@ -320,7 +321,9 @@ public class TestBlockchain : IDisposable
             new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
-            TransactionComparerProvider.GetDefaultComparer());
+            TransactionComparerProvider.GetDefaultComparer(),
+            new CodeInfoRepository(SpecProvider.ChainId),
+            WorldStateManager.GlobalWorldState);
 
     protected virtual TxPoolTxSource CreateTxPoolTxSource()
     {
@@ -359,8 +362,11 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
 
-        if (SpecProvider.GenesisSpec.ConsensusRequestsEnabled)
+        if (SpecProvider.GenesisSpec.RequestsEnabled)
+        {
             genesisBlockBuilder.WithConsensusRequests(0);
+        }
+
 
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;

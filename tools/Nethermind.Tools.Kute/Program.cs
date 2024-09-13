@@ -53,12 +53,11 @@ static class Program
         collection.AddSingleton<IMessageProvider<JsonRpc?>>(serviceProvider =>
         {
             var messageProvider = serviceProvider.GetRequiredService<IMessageProvider<string>>();
-            var jsonMessageProvider = new JsonRpcMessageProvider(messageProvider);
-
-            return config.UnwrapBatch
-                ? new UnwrapBatchJsonRpcMessageProvider(jsonMessageProvider)
-                : jsonMessageProvider;
+            bool unwrapBatches = config.UnwrapBatch;
+            return new JsonRpcMessageProvider(messageProvider, unwrapBatches);
         });
+
+
         collection.AddSingleton<IJsonRpcValidator>(
             config.DryRun
                 ? new NullJsonRpcValidator()
@@ -70,7 +69,7 @@ static class Program
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 config.MethodFilters
-                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
+                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern))
                     .ToList()
             )
         );
@@ -88,7 +87,7 @@ static class Program
             // For dry runs we still want to trigger the generation of an AuthToken
             // This is to ensure that all parameters required for the generation are correct,
             // and not require a real run to verify that this is the case.
-            string _ = provider.GetRequiredService<IAuth>().AuthToken;
+            string _  = provider.GetRequiredService<IAuth>().AuthToken;
             return new NullJsonRpcSubmitter();
         });
         collection.AddSingleton<IResponseTracer>(
@@ -100,16 +99,13 @@ static class Program
         {
             if (config.ShowProgress)
             {
-                // NOTE:
+                // TODO:
                 // Terrible, terrible hack since it forces a double enumeration:
                 // - A first one to count the number of messages.
                 // - A second one to actually process each message.
                 // We can reduce the cost by not parsing each message on the first enumeration
-                // only when we're not unwrapping batches. If we are, we need to parse.
-                // This optimization relies on implementation details.
-                IMessageProvider<object?> messagesProvider = config.UnwrapBatch
-                    ? provider.GetRequiredService<IMessageProvider<JsonRpc?>>()
-                    : provider.GetRequiredService<IMessageProvider<string>>();
+                // At the same time, this optimization relies on implementation details.
+                var messagesProvider = provider.GetRequiredService<IMessageProvider<JsonRpc?>>();
                 var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
                 return new ConsoleProgressReporter(totalMessages);
             }
@@ -125,6 +121,7 @@ static class Program
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );
+
         collection.AddSingleton<IJsonRpcFlowManager>(new JsonRpcFlowManager(config.RequestsPerSecond, config.UnwrapBatch));
 
         return collection.BuildServiceProvider();

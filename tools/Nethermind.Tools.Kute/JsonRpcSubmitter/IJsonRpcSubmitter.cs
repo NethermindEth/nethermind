@@ -7,5 +7,5 @@ namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
 
 interface IJsonRpcSubmitter
 {
-    Task<HttpResponseMessage?> Submit(JsonRpc rpc);
+    Task<HttpResponseMessage> Submit(JsonRpc rpc);
 }

@@ -13,6 +13,7 @@ using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Mev;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -92,7 +93,7 @@ public class PluginLoaderTests
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader("", fileSystem,
             typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin),
-            typeof(MergePlugin));
+            typeof(MergePlugin), typeof(MevPlugin));
         loader.Load(new TestLogManager());
         IPluginConfig pluginConfig =
             new PluginConfig();
@@ -103,6 +104,7 @@ public class PluginLoaderTests
             typeof(EthashPlugin),
             typeof(NethDevPlugin),
             typeof(MergePlugin),
+            typeof(MevPlugin),
             typeof(HealthChecksPlugin),
             typeof(HivePlugin)
         };

@@ -9,17 +9,26 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public class Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, ISpecProvider specProvider, IBlockTree blockTree)
+public class Create2DeployerContractRewriter
 {
+    private readonly IOptimismSpecHelper _opSpecHelper;
+    private readonly ISpecProvider _specProvider;
+    private readonly IBlockTree _blockTree;
+
+    public Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, ISpecProvider specProvider, IBlockTree blockTree)
+    {
+        _opSpecHelper = opSpecHelper;
+        _specProvider = specProvider;
+        _blockTree = blockTree;
+    }
+
     public void RewriteContract(BlockHeader header, IWorldState worldState)
     {
-        IReleaseSpec spec = specProvider.GetSpec(header);
-        BlockHeader? parent = blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
-
-        // A migration at the first block of Canyon unless it's genesis
-        if ((parent is null || !opSpecHelper.IsCanyon(parent)) && opSpecHelper.IsCanyon(header) && !header.IsGenesis)
+        IReleaseSpec spec = _specProvider.GetSpec(header);
+        BlockHeader? parent = _blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
+        if ((parent is null || !_opSpecHelper.IsCanyon(parent)) && _opSpecHelper.IsCanyon(header))
         {
-            worldState.InsertCode(opSpecHelper.Create2DeployerAddress!, opSpecHelper.Create2DeployerCode, spec);
+            worldState.InsertCode(_opSpecHelper.Create2DeployerAddress!, _opSpecHelper.Create2DeployerCode, spec);
         }
     }
 }

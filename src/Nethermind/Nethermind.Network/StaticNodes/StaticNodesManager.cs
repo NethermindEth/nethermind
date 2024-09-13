@@ -136,8 +136,10 @@ namespace Nethermind.Network.StaticNodes
             => File.WriteAllTextAsync(_staticNodesPath,
                 JsonSerializer.Serialize(_nodes.Select(n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
-        public List<Node> LoadInitialList() =>
-            _nodes.Values.Select(n => new Node(n)).ToList();
+        public List<Node> LoadInitialList()
+        {
+            return _nodes.Values.Select(n => new Node(n)).ToList();
+        }
 
         public event EventHandler<NodeEventArgs>? NodeAdded;
 

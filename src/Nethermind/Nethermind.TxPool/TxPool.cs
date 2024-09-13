@@ -16,8 +16,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
@@ -50,6 +52,8 @@ namespace Nethermind.TxPool
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly ICodeInfoRepository _codeInfoRepository;
+        private readonly IWorldState _worldState;
         private readonly bool _blobReorgsSupportEnabled;
 
         private readonly ILogger _logger;
@@ -91,6 +95,8 @@ namespace Nethermind.TxPool
             ITxValidator validator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
+            ICodeInfoRepository codeInfoRepository,
+            IWorldState worldState,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             bool thereIsPriorityContract = false)
@@ -100,6 +106,8 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _codeInfoRepository = codeInfoRepository;
+            _worldState = worldState;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.AccountStateProvider);
             _specProvider = _headInfo.SpecProvider;
@@ -141,6 +149,7 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
+                new RecoverAuthorityFilter(ecdsa),
             };
 
             if (incomingTxFilter is not null)
@@ -148,7 +157,7 @@ namespace Nethermind.TxPool
                 postHashFilters.Add(incomingTxFilter);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(_specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(_worldState, _codeInfoRepository, _specProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -301,6 +310,7 @@ namespace Nethermind.TxPool
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
+            long eip7702Txs = 0;
             long blobTxs = 0;
             long blobs = 0;
 
@@ -330,6 +340,11 @@ namespace Nethermind.TxPool
                     }
                 }
 
+                if (blockTx.Type == TxType.SetCode)
+                {
+                    eip7702Txs++;
+                }
+
                 if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
@@ -352,6 +367,7 @@ namespace Nethermind.TxPool
                 Metrics.DarkPoolRatioLevel1 = (float)discoveredForHashCache / transactionsInBlock;
                 Metrics.DarkPoolRatioLevel2 = (float)discoveredForPendingTxs / transactionsInBlock;
                 Metrics.Eip1559TransactionsRatio = (float)eip1559Txs / transactionsInBlock;
+                Metrics.Eip7702TransactionsInBlock = eip7702Txs;
                 Metrics.BlobTransactionsInBlock = blobTxs;
                 Metrics.BlobsInBlock = blobs;
             }
@@ -901,6 +917,7 @@ Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
 ------------------------------------------------
 Ratios in last block:
 * Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,24:P5}
+* Eip7702 Transactions: {Metrics.Eip7702TransactionsInBlock,24:P5}
 * DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
 Amounts:

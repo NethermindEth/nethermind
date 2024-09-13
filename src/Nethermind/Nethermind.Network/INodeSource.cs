@@ -9,7 +9,7 @@ namespace Nethermind.Network;
 
 public interface INodeSource
 {
-    List<Node> LoadInitialList() => [];
+    List<Node> LoadInitialList();
     event EventHandler<NodeEventArgs> NodeAdded;
     event EventHandler<NodeEventArgs> NodeRemoved;
 }

@@ -49,7 +49,7 @@ public class WithdrawalRequestProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        _codeInfoRepository = new CodeInfoRepository();
+        _codeInfoRepository = new CodeInfoRepository(1);
 
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, _codeInfoRepository, LimboLogs.Instance);
 
@@ -72,7 +72,7 @@ public class WithdrawalRequestProcessorTests
     {
 
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip7002Enabled.Returns(true);
+        spec.WithdrawalRequestsEnabled.Returns(true);
         spec.Eip7002ContractAddress.Returns(eip7002Account);
 
         Block block = Build.A.Block.TestObject;

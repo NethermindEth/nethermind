@@ -16,6 +16,9 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
+using Nethermind.Int256;
+using Nethermind.Crypto;
+using System.Linq;
 
 namespace Nethermind.Evm;
 
@@ -62,6 +65,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
+    private readonly EthereumEcdsa _ethereumEcdsa;
 
     private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
     {
@@ -95,8 +99,9 @@ public class CodeInfoRepository : ICodeInfoRepository
         }.ToFrozenDictionary();
     }
 
-    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)>? precompileCache = null)
+    public CodeInfoRepository(ulong chainId, ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)>? precompileCache = null)
     {
+        _ethereumEcdsa = new EthereumEcdsa(chainId);
         _localPrecompiles = precompileCache is null
             ? _precompiles
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
@@ -104,11 +109,30 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
+        return GetCachedCodeInfo(worldState, codeSource, vmSpec, out _);
+    }
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
+        delegationAddress = null;
         if (codeSource.IsPrecompile(vmSpec))
         {
             return _localPrecompiles[codeSource];
         }
 
+        CodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource);
+
+        if (Eip7702Constants.IsDelegatedCode(cachedCodeInfo.MachineCode.Span))
+        {
+            Address parsedDelegated = ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span);
+            cachedCodeInfo = InternalGetCachedCode(worldState, parsedDelegated);
+            delegationAddress = parsedDelegated;
+        }
+
+        return cachedCodeInfo;
+    }
+
+    private static CodeInfo InternalGetCachedCode(IWorldState worldState, Address codeSource)
+    {
         CodeInfo? cachedCodeInfo = null;
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
@@ -169,10 +193,139 @@ public class CodeInfoRepository : ICodeInfoRepository
         _codeCache.Set(codeHash, codeInfo);
     }
 
+    /// <summary>
+    /// Insert code delegations from transaction authorization_list authorized by signature,
+    /// and return all authority addresses that was accessed and amount of autorization refunds.
+    /// eip-7702
+    /// </summary>
+    public int InsertFromAuthorizations(
+        IWorldState worldState,
+        AuthorizationTuple?[] authorizations,
+        ISet<Address> accessedAddresses,
+        IReleaseSpec spec)
+    {
+        int refunds = 0;
+        //TODO optimize
+        foreach (AuthorizationTuple? authTuple in authorizations)
+        {
+            if (authTuple is null)
+                continue;
+            authTuple.Authority = authTuple.Authority ?? _ethereumEcdsa.RecoverAddress(authTuple);
+            string? error;
+
+            if (!IsValidForExecution(authTuple, worldState, _ethereumEcdsa.ChainId, accessedAddresses, out error))
+                continue;
+
+            if (worldState.AccountExists(authTuple.Authority))
+                refunds++;
+            else
+                worldState.CreateAccount(authTuple.Authority, 0);
+
+            InsertDelegationCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
+            worldState.IncrementNonce(authTuple.Authority);
+        }
+        return refunds;
+
+        void InsertDelegationCode(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
+        {
+            byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
+            Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
+            codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
+            Hash256 codeHash = Keccak.Compute(authorizedBuffer);
+            state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec);
+
+            _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+        }
+    }
+
+    /// <summary>
+    /// Retrieves code hash of delegation if delegated. Otherwise code hash of <paramref name="address"/>.
+    /// </summary>
+    /// <param name="worldState"></param>
+    /// <param name="address"></param>
+    public ValueHash256 GetCodeHash(IWorldState worldState, Address address)
+    {
+        ValueHash256 codeHash = worldState.GetCodeHash(address);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+            return Keccak.OfAnEmptyString.ValueHash256;
+
+        CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
+        if (codeInfo.IsEmpty)
+            return Keccak.OfAnEmptyString.ValueHash256;
+
+        if (Eip7702Constants.IsDelegatedCode(codeInfo.MachineCode.Span))
+            return worldState.GetCodeHash(ParseDelegatedAddress(codeInfo.MachineCode.Span));
+        return codeHash;
+    }
+
+    /// <summary>
+    /// Determines if a <see cref="AuthorizationTuple"/> is wellformed according to spec.
+    /// </summary>
+    private bool IsValidForExecution(
+        AuthorizationTuple authorizationTuple,
+        IWorldState stateProvider,
+        ulong chainId,
+        ISet<Address> accessedAddresses,
+        [NotNullWhen(false)] out string? error)
+    {
+        if (authorizationTuple.Authority is null)
+        {
+            error = "Bad signature.";
+            return false;
+        }
+        if (authorizationTuple.ChainId != 0 && chainId != authorizationTuple.ChainId)
+        {
+            error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+            return false;
+        }
+        accessedAddresses.Add(authorizationTuple.Authority);
+
+        if (stateProvider.HasCode(authorizationTuple.Authority)
+         && !HasDelegatedCode(stateProvider, authorizationTuple.Authority))
+        {
+            error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
+            return false;
+        }
+        UInt256 authNonce = stateProvider.GetNonce(authorizationTuple.Authority);
+        if (authNonce != authorizationTuple.Nonce)
+        {
+            error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    private bool HasDelegatedCode(IWorldState worldState, Address source)
+    {
+        return
+            Eip7702Constants.IsDelegatedCode(InternalGetCachedCode(worldState, source).MachineCode.Span);
+    }
+
+    private static Address ParseDelegatedAddress(ReadOnlySpan<byte> code)
+    {
+        if (code.Length != Eip7702Constants.DelegationHeader.Length + Address.Size)
+            throw new ArgumentException("Not valid delegation code.", nameof(code));
+        return new Address(code.Slice(Eip7702Constants.DelegationHeader.Length).ToArray());
+    }
+
     private CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
         new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+
+    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
+        if (Eip7702Constants.IsDelegatedCode(codeInfo.MachineCode.Span))
+        {
+            delegatedAddress = ParseDelegatedAddress(codeInfo.MachineCode.Span);
+            return true;
+        }
+        delegatedAddress = null;
+        return false;
+    }
 
     private class CachedPrecompile(
         Address address,
@@ -200,3 +353,4 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 }
+

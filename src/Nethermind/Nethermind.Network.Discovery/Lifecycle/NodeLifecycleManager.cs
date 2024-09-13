@@ -293,14 +293,6 @@ public class NodeLifecycleManager : INodeLifecycleManager
         UpdateState(NodeLifecycleState.EvictCandidate);
     }
 
-    public void ResetUnreachableStatus()
-    {
-        if (State == NodeLifecycleState.Unreachable)
-        {
-            UpdateState(NodeLifecycleState.New);
-        }
-    }
-
     public void LostEvictionProcess()
     {
         if (State == NodeLifecycleState.Active)
@@ -391,10 +383,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 {
                     await CreateAndSendPingAsync(counter - 1);
                 }
-                else
-                {
-                    UpdateState(NodeLifecycleState.Unreachable);
-                }
+
+                UpdateState(NodeLifecycleState.Unreachable);
             }
         }
         catch (Exception e)

@@ -13,7 +13,7 @@ namespace Nethermind.Merge.Plugin.Data;
 
 public class ExecutionPayloadBodyV1Result
 {
-    public ExecutionPayloadBodyV1Result(IList<Transaction> transactions, IList<Withdrawal>? withdrawals)
+    public ExecutionPayloadBodyV1Result(IReadOnlyList<Transaction> transactions, IReadOnlyList<Withdrawal>? withdrawals)
     {
         ArgumentNullException.ThrowIfNull(transactions);
 
@@ -28,8 +28,8 @@ public class ExecutionPayloadBodyV1Result
         Withdrawals = withdrawals;
     }
 
-    public IList<byte[]> Transactions { get; set; }
+    public IReadOnlyList<byte[]> Transactions { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public IList<Withdrawal>? Withdrawals { get; set; }
+    public IReadOnlyList<Withdrawal>? Withdrawals { get; set; }
 }

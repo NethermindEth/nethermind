@@ -35,6 +35,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.Evm;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -79,7 +80,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
-                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer());
+                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer(),
+                new CodeInfoRepository(specProvider.ChainId),
+                stateProvider);
 
             _receiptStorage = new InMemoryReceiptStorage();
 

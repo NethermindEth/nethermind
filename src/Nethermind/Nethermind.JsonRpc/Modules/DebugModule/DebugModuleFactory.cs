@@ -106,7 +106,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             scope.WorldState,
             _receiptStorage,
             _blockTree,
-            _badBlockStore,
             _specProvider,
             transactionProcessorAdapter,
             _fileSystem);

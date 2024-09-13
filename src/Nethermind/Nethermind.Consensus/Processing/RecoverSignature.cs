@@ -3,11 +3,15 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -112,6 +116,32 @@ namespace Nethermind.Consensus.Processing
                     tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
 
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                }
+            }
+
+            if (releaseSpec.IsAuthorizationListEnabled)
+            {
+                foreach (Transaction tx in block.Transactions.AsSpan())
+                {
+                    if (!tx.HasAuthorizationList)
+                    {
+                        continue;
+                    }
+
+                    if (tx.AuthorizationList.Length >= 4)
+                    {
+                        Parallel.ForEach(tx.AuthorizationList, (tuple) =>
+                        {
+                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                        });
+                    }
+                    else
+                    {
+                        foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                        {
+                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                        }
+                    }
                 }
             }
         }

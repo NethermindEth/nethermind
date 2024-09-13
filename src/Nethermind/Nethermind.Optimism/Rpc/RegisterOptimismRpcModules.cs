@@ -51,7 +51,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
 
         if (_config.SequencerUrl is null && _logger.IsWarn)
         {
-            _logger.Warn($"SequencerUrl is not set. Nethermind will behave as a Sequencer");
+            _logger.Warn($"SequencerUrl is not set.");
         }
 
         BasicJsonRpcClient? sequencerJsonRpcClient = _config.SequencerUrl is null

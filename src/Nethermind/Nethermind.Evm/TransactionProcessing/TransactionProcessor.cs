@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -89,7 +91,6 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
         }
@@ -149,10 +150,20 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
+            HashSet<Address> accessedAddresses = new();
+            int delegationRefunds = 0;
+            if (spec.IsEip7702Enabled)
+            {
+                if (tx.HasAuthorizationList)
+                {
+                    delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, accessedAddresses, spec);
+                }
+            }
+
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessedAddresses);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, accessedAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -286,7 +297,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
                 return "block gas limit exceeded";
             }
-
             return TransactionResult.Ok;
         }
 
@@ -430,16 +440,24 @@ namespace Nethermind.Evm.TransactionProcessing
             Transaction tx,
             in BlockExecutionContext blCtx,
             IReleaseSpec spec,
-            in UInt256 effectiveGasPrice)
+            in UInt256 effectiveGasPrice,
+            ICodeInfoRepository codeInfoRepository,
+            HashSet<Address> accessedAddresses)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress!, effectiveGasPrice, tx.BlobVersionedHashes!);
+            accessedAddresses.Add(recipient);
+            accessedAddresses.Add(tx.SenderAddress);
 
+            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress!, effectiveGasPrice, tx.BlobVersionedHashes!, codeInfoRepository);
+            Address? delegationAddress = null;
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
+                : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out delegationAddress);
+
+            if (delegationAddress is not null)
+                accessedAddresses.Add(delegationAddress);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -466,6 +484,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ITxTracer tracer,
             ExecutionOptions opts,
+            int delegationRefunds,
+            IEnumerable<Address> accessedAddresses,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
@@ -489,28 +509,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tx.IsContractCreation)
                 {
                     // if transaction is a contract creation then recipient address is the contract deployment address
-                    PrepareAccountForContractDeployment(env.ExecutingAccount, spec);
+                    PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec);
                 }
 
                 ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
-                    if (spec.UseTxAccessLists)
-                    {
-                        state.WarmUp(tx.AccessList); // eip-2930
-                    }
-
-                    if (spec.UseHotAndColdStorage)
-                    {
-                        state.WarmUp(tx.SenderAddress!); // eip-2929
-                        state.WarmUp(env.ExecutingAccount); // eip-2929
-                    }
-
-                    if (spec.AddCoinbaseToTxAccessList)
-                    {
-                        state.WarmUp(header.GasBeneficiary!);
-                    }
+                    WarmUp(tx, header, spec, state, accessedAddresses);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -571,7 +577,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice);
+                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, delegationRefunds);
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -586,6 +592,27 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
+        }
+
+        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state, IEnumerable<Address> accessedAddresses)
+        {
+            if (spec.UseTxAccessLists)
+            {
+                state.WarmUp(tx.AccessList); // eip-2930
+            }
+
+            if (spec.UseHotAndColdStorage) // eip-2929
+            {
+                foreach (Address authorized in accessedAddresses)
+                {
+                    state.WarmUp(authorized);
+                }
+            }
+
+            if (spec.AddCoinbaseToTxAccessList)
+            {
+                state.WarmUp(header.GasBeneficiary!);
+            }
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
@@ -606,9 +633,9 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
+        private void PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
         {
-            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, WorldState))
+            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, codeInfoRepository, WorldState))
             {
                 if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
@@ -623,22 +650,36 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
+            in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds)
         {
             long spentGas = tx.GasLimit;
+            var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                long refund = substate.ShouldRevert
-                    ? 0
-                    : RefundHelper.CalculateClaimableRefund(spentGas,
-                        substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled), spec);
+
+                long totalToRefund = codeInsertRefund;
+                if (!substate.ShouldRevert)
+                    totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
+                long actualRefund = RefundHelper.CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
-                    Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
+                    Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
                 // If noValidation we didn't charge for gas, so do not refund
                 if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(unspentGas + refund) * gasPrice, spec);
+                    WorldState.AddToBalance(tx.SenderAddress, (ulong)(unspentGas + actualRefund) * gasPrice, spec);
+                spentGas -= actualRefund;
+            }
+            else if (codeInsertRefund > 0)
+            {
+                long refund = RefundHelper.CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
+
+                if (Logger.IsTrace)
+                    Logger.Trace("Refunding delegations only: " + refund);
+                // If noValidation we didn't charge for gas, so do not refund
+                if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)refund * gasPrice, spec);
                 spentGas -= refund;
             }
 

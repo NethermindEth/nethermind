@@ -23,7 +23,5 @@ public interface INodeLifecycleManager
 
     void StartEvictionProcess();
     void LostEvictionProcess();
-    void ResetUnreachableStatus();
-
     event EventHandler<NodeLifecycleState> OnStateChanged;
 }

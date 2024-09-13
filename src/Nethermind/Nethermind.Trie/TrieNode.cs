@@ -784,20 +784,34 @@ namespace Nethermind.Trie
             int nodeTypeSize = 1;
             /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
 
-            object?[] data = _data;
-            if (data is not null)
+            for (int i = 0; i < (_data?.Length ?? 0); i++)
             {
-                for (int i = 0; i < data.Length; i++)
+                if (_data![i] is null)
                 {
-                    var child = data[i];
-                    dataSize += child switch
+                    continue;
+                }
+
+                if (_data![i] is Hash256)
+                {
+                    dataSize += Hash256.MemorySize;
+                }
+
+                if (_data![i] is byte[] array)
+                {
+                    dataSize += MemorySizes.ArrayOverhead + array.Length;
+                }
+
+                if (_data![i] is CappedArray<byte> cappedArray)
+                {
+                    dataSize += MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead;
+                }
+
+                if (recursive)
+                {
+                    if (_data![i] is TrieNode node)
                     {
-                        null => 0,
-                        Hash256 => Hash256.MemorySize,
-                        byte[] array => MemorySizes.ArrayOverhead + array.Length,
-                        CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead,
-                        _ => recursive && child is TrieNode node ? node.GetMemorySize(true) : 0
-                    };
+                        dataSize += node.GetMemorySize(true);
+                    }
                 }
             }
 

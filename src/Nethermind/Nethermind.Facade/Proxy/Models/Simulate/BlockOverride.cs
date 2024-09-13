@@ -18,7 +18,6 @@ public class BlockOverride
     public ulong? GasLimit { get; set; }
     public Address? FeeRecipient { get; set; }
     public UInt256? BaseFeePerGas { get; set; }
-    public UInt256? BlobBaseFee { get; set; }
 
     public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg, IReleaseSpec spec)
     {

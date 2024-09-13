@@ -28,7 +28,7 @@ public abstract class ClockCacheBase<TKey>
 
     protected ClockCacheBase(int maxCapacity)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity);
 
         MaxCapacity = maxCapacity;
         KeyToOffset = maxCapacity == 0 ? Array.Empty<TKey>() : new TKey[maxCapacity];

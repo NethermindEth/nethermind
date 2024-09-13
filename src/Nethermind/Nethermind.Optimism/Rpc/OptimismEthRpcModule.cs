@@ -130,15 +130,13 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
     {
         if (_sequencerRpcClient is null)
         {
-            return await base.eth_sendRawTransaction(transaction);
+            return ResultWrapper<Hash256>.Fail("No sequencer url in the config");
         }
-
         Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
         if (result is null)
         {
             return ResultWrapper<Hash256>.Fail("Failed to forward transaction");
         }
-
         return ResultWrapper<Hash256>.Success(result);
     }
 
@@ -165,15 +163,22 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public new Task<ResultWrapper<OptimismTransactionForRpc?>> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        UInt256? baseFee = null;
+        _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction? transaction);
+        TxReceipt? receipt = null; // note that if transaction is pending then for sure no receipt is known
         if (transaction is null)
         {
-            return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(null!));
+            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
+            if (transaction is null)
+            {
+                return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(null!));
+            }
         }
 
         RecoverTxSenderIfNeeded(transaction);
         OptimismTransactionForRpc transactionModel = new(receipt?.BlockHash, receipt as OptimismTxReceipt, transaction, baseFee);
-        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+        if (_logger.IsTrace)
+            _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(transactionModel));
     }
 

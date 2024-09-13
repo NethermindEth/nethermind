@@ -23,8 +23,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _modules = new(StringComparer.InvariantCultureIgnoreCase);
+        private readonly HashSet<string> _enabledModules = new(StringComparer.InvariantCultureIgnoreCase);
 
         private FrozenDictionary<string, ResolvedMethodInfo> _methods = FrozenDictionary<string, ResolvedMethodInfo>.Empty;
         private FrozenDictionary<string, Pool> _pools = FrozenDictionary<string, Pool>.Empty;
@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 _modules.Add(moduleType);
 
-                if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.OrdinalIgnoreCase))
+                if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.InvariantCultureIgnoreCase))
                 {
                     _enabledModules.Add(moduleType);
                 }
@@ -99,28 +99,16 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
+        public ModuleResolution Check(string methodName, JsonRpcContext context)
         {
-            module = null;
-
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
-            {
                 return ModuleResolution.Unknown;
-            }
-
-            module = result.ModuleType;
 
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
-            {
                 return ModuleResolution.EndpointDisabled;
-            }
 
             if (context.Url is not null)
-            {
-                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.OrdinalIgnoreCase)
-                    ? ModuleResolution.Enabled
-                    : ModuleResolution.Disabled;
-            }
+                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
 
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }

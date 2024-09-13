@@ -223,7 +223,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (IsTheModeSwitchWorthMentioning(current, newModes))
                             {
                                 if (_logger.IsInfo)
-                                    _logger.Info($"Changing sync {current} to {newModes} at {BuildStateString(best)}");
+                                    _logger.Info($"Changing state {current} to {newModes} at {BuildStateString(best)}");
                             }
                         }
                         catch (InvalidAsynchronousStateException)
@@ -288,9 +288,8 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
-        private static string BuildStateString(Snapshot best) => best.Block == best.Header ?
-            $"block: {best.Block} | target: {best.TargetBlock} | peer: {best.Peer.Block}" :
-            $"block: {best.Block} | header: {best.Header} | target: {best.TargetBlock} | peer: {best.Peer.Block}";
+        private static string BuildStateString(Snapshot best) =>
+            $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | target block: {best.TargetBlock} | peer block: {best.Peer.Block}";
 
         private static string BuildStateStringDebug(Snapshot best) =>
             $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | chain difficulty: {best.ChainDifficulty} | target block: {best.TargetBlock} | peer block: {best.Peer.Block} | peer total difficulty: {best.Peer.TotalDifficulty}";

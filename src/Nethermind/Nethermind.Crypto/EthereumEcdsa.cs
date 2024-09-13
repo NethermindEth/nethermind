@@ -5,6 +5,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -26,7 +27,9 @@ namespace Nethermind.Crypto
             BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
                 NumberStyles.HexNumber);
 
+        private readonly AuthorizationTupleDecoder _tupleDecoder = new();
         private readonly ulong _chainIdValue;
+        public ulong ChainId => _chainIdValue;
 
         public EthereumEcdsa(ulong chainId)
         {
@@ -97,6 +100,16 @@ namespace Nethermind.Crypto
             Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
 
             return RecoverAddress(tx.Signature, hash);
+        }
+
+        [SkipLocalsInit]
+        public Address? RecoverAddress(AuthorizationTuple tuple)
+        {
+            Span<byte> buffer = stackalloc byte[128];
+            buffer[0] = Eip7702Constants.Magic;
+            RlpStream stream = _tupleDecoder.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+            stream.Data.AsSpan().CopyTo(buffer.Slice(1));
+            return RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(buffer.Slice(0, stream.Data.Length + 1)));
         }
 
         public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);

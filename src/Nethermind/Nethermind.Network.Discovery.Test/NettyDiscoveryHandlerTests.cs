@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
@@ -18,7 +16,6 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -172,22 +169,6 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
 
             AssertMetrics(210);
-        }
-
-        [Test]
-        public void ForwardsUnrecognizedMessageToNextHandler()
-        {
-            byte[] data = [1, 2, 3];
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10003");
-            var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
-
-            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
-            _discoveryHandlers[0].ChannelRead(ctx, packet);
-
-            ctx.FireChannelRead(Arg.Is<DatagramPacket>(
-                p => p.Content.ReadAllBytesAsArray().SequenceEqual(data)
-            ));
         }
 
         private static void ResetMetrics()

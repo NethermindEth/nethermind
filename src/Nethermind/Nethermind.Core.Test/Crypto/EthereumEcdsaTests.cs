@@ -1,10 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Net;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto
@@ -72,6 +77,36 @@ namespace Nethermind.Core.Test.Crypto
             ecdsa.Sign(key, tx, true);
             Address? address = ecdsa.RecoverAddress(tx);
             Assert.That(address, Is.EqualTo(key.Address));
+        }
+
+        public static IEnumerable<AuthorizationTuple> AuthorityTupleTestCaseSources()
+        {
+            yield return CreateAuthorizationTuple(ulong.MaxValue, Build.A.Address.TestObjectInternal, ulong.MaxValue);
+            yield return CreateAuthorizationTuple(1, Address.Zero, 0);
+        }
+
+        [TestCaseSource(nameof(AuthorityTupleTestCaseSources))]
+        public void RecoverAddress_AuthorizationTupleOfDifferentSize_RecoversAddressCorrectly(AuthorizationTuple authorization)
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.GenericNonRealNetwork);
+
+            Address? authority = ecdsa.RecoverAddress(authorization);
+
+            Assert.That(authority, Is.EqualTo(authorization.Authority));
+        }
+
+        private static AuthorizationTuple CreateAuthorizationTuple(ulong chainId, Address codeAddress, ulong nonce)
+        {
+            AuthorizationTupleDecoder decoder = new();
+            RlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
+            Span<byte> code = stackalloc byte[rlp.Length + 1];
+            code[0] = Eip7702Constants.Magic;
+            rlp.Data.AsSpan().CopyTo(code.Slice(1));
+            EthereumEcdsa ecdsa = new(1);
+            PrivateKey signer = Build.A.PrivateKey.TestObject;
+            Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
+
+            return new AuthorizationTuple(chainId, codeAddress, nonce, sig, signer.Address);
         }
     }
 }

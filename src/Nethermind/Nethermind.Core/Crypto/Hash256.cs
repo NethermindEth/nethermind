@@ -142,7 +142,6 @@ namespace Nethermind.Core.Crypto
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {
         public const int Size = 32;
-        public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         public const int MemorySize =
             MemorySizes.SmallObjectOverhead -
@@ -295,8 +294,6 @@ namespace Nethermind.Core.Crypto
         }
 
         public Hash256StructRef ToStructRef() => new(Bytes);
-
-        public bool IsZero => Extensions.Bytes.IsZero(Bytes);
     }
 
     public ref struct Hash256StructRef

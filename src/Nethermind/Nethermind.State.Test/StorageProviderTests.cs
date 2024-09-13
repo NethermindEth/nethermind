@@ -419,14 +419,12 @@ namespace Nethermind.Store.Test
             PreBlockCaches preBlockCaches = new PreBlockCaches();
             Context ctx = new(preBlockCaches);
             WorldState provider = BuildStorageProvider(ctx);
-            StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
-            StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
-            preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
-            provider.Get(accessedStorageCell);
+            StorageCell storageCell = new StorageCell(TestItem.AddressA, 1);
+            preBlockCaches.StorageCache[storageCell] = [1, 2, 3];
+            provider.Get(storageCell);
             provider.Commit(Paris.Instance);
             provider.ClearStorage(TestItem.AddressA);
-            provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
-            provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
+            provider.Get(storageCell).ToArray().Should().BeEquivalentTo(StorageTree.EmptyBytes);
         }
 
         private class Context

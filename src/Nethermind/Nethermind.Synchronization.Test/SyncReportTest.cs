@@ -103,15 +103,15 @@ namespace Nethermind.Synchronization.Test
 
             if (setBarriers)
             {
-                iLogger.Received(1).Info("Old Headers           0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Bodies            0 /         70 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Receipts          0 /         65 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
+                iLogger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Bodies     0 / 70 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Receipts   0 / 65 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
             else
             {
-                iLogger.Received(1).Info("Old Headers           0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Bodies            0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Receipts          0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
+                iLogger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
         }
 
