@@ -29,17 +29,11 @@ public class ShutterTxSource(
     private readonly ConcurrentDictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> _keyWaitTasks = new();
     private readonly object _syncObject = new();
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
     {
         if (!shutterConfig.Validator)
         {
             if (_logger.IsDebug) _logger.Debug($"Not building Shutterized block since running in non-validator mode.");
-            return [];
-        }
-
-        if (payloadAttributes is null)
-        {
-            if (_logger.IsError) _logger.Error($"Not building Shutterized block since payload attributes was null.");
             return [];
         }
 
