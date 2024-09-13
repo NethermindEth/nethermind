@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Flashbots.Data;
 
-public class BuilderFlashbotsRequest
+public class BuilderBlockValidationRequest
 {
     /// <summary>
     /// The block hash of the parent beacon block.

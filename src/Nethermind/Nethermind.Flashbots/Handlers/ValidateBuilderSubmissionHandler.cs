@@ -55,7 +55,7 @@ public class ValidateSubmissionHandler
         _flashbotsConfig = flashbotsConfig;
     }
 
-    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderFlashbotsRequest request)
+    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
         ExecutionPayload payload = request.BlockRequest.ExecutionPayload;
         BlobsBundleV1 blobsBundle = request.BlockRequest.BlobsBundle;

@@ -15,5 +15,5 @@ public interface IFlashbotsRpcModule : IRpcModule
         Description = " validate the builder submissions as received by a relay",
         IsSharable = false,
         IsImplemented = true)]
-    Task<ResultWrapper<FlashbotsResult>> flashbots_validateBuilderSubmissionV3(BuilderFlashbotsRequest @params);
+    Task<ResultWrapper<FlashbotsResult>> flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params);
 }
