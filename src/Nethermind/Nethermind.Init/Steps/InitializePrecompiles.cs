@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 

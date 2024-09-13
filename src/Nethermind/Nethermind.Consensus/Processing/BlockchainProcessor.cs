@@ -6,15 +6,16 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -295,12 +296,25 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private void RunProcessingLoop()
     {
+        const int BlocksBacklogTriggeringManualGC = 4;
+        const int MaxBlocksWithoutGC = 100;
+
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
         FireProcessingQueueEmpty();
 
+        var fireGC = false;
+        var countToGC = 0;
         foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
         {
+            if (!fireGC && _blockQueue.Count > BlocksBacklogTriggeringManualGC)
+            {
+                // Long chains in archive sync don't force GC and don't call MallocTrim;
+                // so we trigger it manually
+                fireGC = true;
+                countToGC = MaxBlocksWithoutGC;
+            }
+
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -338,9 +352,27 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
+
+            if (fireGC)
+            {
+                countToGC--;
+                if (countToGC <= 0)
+                {
+                    fireGC = false;
+                    PerformFullGC();
+                }
+            }
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+    }
+
+    private void PerformFullGC()
+    {
+        if (_logger.IsDebug) _logger.Debug($"Performing Full GC");
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        System.GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        MallocHelper.Instance.MallocTrim((uint)1.MiB());
     }
 
     private void FireProcessingQueueEmpty()

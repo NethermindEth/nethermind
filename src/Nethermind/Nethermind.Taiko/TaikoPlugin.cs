@@ -33,6 +33,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Blockchain.BeaconBlockRoot;
 
 namespace Nethermind.Taiko;
 
@@ -163,6 +164,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                     scope.WorldState,
                     _api.ReceiptStorage,
                     new BlockhashStore(_api.SpecProvider, scope.WorldState),
+                    new BeaconBlockRootHandler(_api.TransactionProcessor),
                     _api.LogManager,
                     new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
 
@@ -228,6 +230,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
+            new GetBlobsHandler(_api.TxPool),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

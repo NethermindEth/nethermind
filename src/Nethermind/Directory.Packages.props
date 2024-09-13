@@ -60,13 +60,13 @@
     <PackageVersion Include="NUnit.Analyzers" Version="3.9.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.5.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
-    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.3" />
+    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.4" />
     <PackageVersion Include="Polly" Version="8.4.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.10.0.45817" />
+    <PackageVersion Include="RocksDB" Version="9.4.0.50294" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
     <PackageVersion Include="Snappier" Version="1.1.6" />

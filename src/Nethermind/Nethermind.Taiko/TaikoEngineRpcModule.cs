@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
+using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
 
 namespace Nethermind.Taiko;
 

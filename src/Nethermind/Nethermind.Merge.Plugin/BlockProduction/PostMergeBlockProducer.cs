@@ -50,7 +50,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             Block block = CreateEmptyBlock(parent, payloadAttributes);
 
-            if (_producingBlockLock.Wait(BlockProductionTimeout))
+            if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
             {
                 try
                 {

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Api;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -87,6 +87,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             _api.WorldState,
             _api.ReceiptStorage,
             new BlockhashStore(_api.SpecProvider, _api.WorldState),
+            new BeaconBlockRootHandler(_api.TransactionProcessor),
             _api.LogManager,
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
             preWarmer: preWarmer);

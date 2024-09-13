@@ -23,6 +23,6 @@ public class TaikoReadOnlyTxProcessingEnv(
       worldStateToWarmUp
      )
 {
-    protected override TransactionProcessor CreateTransactionProcessor() =>
+    protected override ITransactionProcessor CreateTransactionProcessor() =>
         new TaikoTransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
 }

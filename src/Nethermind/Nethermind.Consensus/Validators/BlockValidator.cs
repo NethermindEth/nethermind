@@ -292,9 +292,11 @@ public class BlockValidator : IBlockValidator
         {
             Transaction transaction = transactions[txIndex];
 
-            if (!_txValidator.IsWellFormed(transaction, spec, out errorMessage))
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
+            if (!isWellFormed)
             {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {errorMessage}");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
+                errorMessage = isWellFormed.Error;
                 return false;
             }
         }

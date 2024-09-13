@@ -58,7 +58,28 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
         IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
 
-        return new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+        Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+
+        if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
+        {
+            try
+            {
+                if (TrySetState(parent.StateRoot))
+                {
+                    return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+                }
+                else
+                {
+                    throw new EmptyBlockProductionException($"Setting state for processing block failed: couldn't set state to stateRoot {parent.StateRoot}");
+                }
+            }
+            finally
+            {
+                _producingBlockLock.Release();
+            }
+        }
+
+        throw new EmptyBlockProductionException("Setting state for processing block failed");
     }
 
     protected override void AmendHeader(BlockHeader blockHeader, BlockHeader parent, PayloadAttributes? payloadAttributes = null)

@@ -18,7 +18,7 @@ public class TaikoTransactionProcessor(
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager logManager
-    ) : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private readonly Address TaikoL2Address = new(
         specProvider.ChainId.ToString().TrimStart('0')
@@ -26,12 +26,13 @@ public class TaikoTransactionProcessor(
         TaikoL2AddressSuffix);
     private const string TaikoL2AddressSuffix = "10001";
 
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         out long intrinsicGas)
     {
         if (tx.IsAnchorTx)
             opts |= ExecutionOptions.NoValidation;
-        return base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
+
+        return base.ValidateStatic(tx, header, spec, opts, out intrinsicGas);
     }
 
     protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
