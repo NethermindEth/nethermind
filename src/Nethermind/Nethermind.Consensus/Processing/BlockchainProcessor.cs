@@ -64,6 +64,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private const int MaxBlocksDuringFastSyncTransition = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
+    private readonly Timer _gcTimer;
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 
@@ -95,6 +96,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(_logger);
+        _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -307,10 +309,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         FireProcessingQueueEmpty();
 
+        var gcTimerSet = false;
         var fireGC = false;
         var countToGC = 0L;
         foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
         {
+            if (gcTimerSet)
+            {
+                // Have block, switch off background GC timer
+                _gcTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            }
             var queueCount = _blockQueue.Count;
             if (!fireGC && queueCount > BlocksBacklogTriggeringManualGC)
             {
@@ -364,6 +372,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
 
+            if (_blockQueue.Count == 0)
+            {
+                // No blocks, switch on background GC timer
+                gcTimerSet = true;
+                _gcTimer.Change(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
+            }
             if (fireGC)
             {
                 countToGC--;
@@ -373,7 +387,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     stopwatch.Reset();
                     if (_lastGcTask.IsCompleted)
                     {
-                        _lastGcTask = PerformFullGC();
+                        _lastGcTask = PerformFullGCAsync();
                     }
                 }
             }
@@ -382,15 +396,28 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
     }
 
-    private async Task PerformFullGC()
+    int _isPerformingGC = 0;
+    private async Task PerformFullGCAsync()
     {
         // Flip to ThreadPool to avoid blocking the main processing thread
         await Task.Yield();
+
+        PerformFullGC();
+    }
+
+    private void PerformFullGC()
+    {
+        if (Interlocked.CompareExchange(ref _isPerformingGC, 1, 0) == 1)
+        {
+            return;
+        }
 
         if (_logger.IsDebug) _logger.Debug($"Performing Full GC");
         GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
         System.GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         MallocHelper.Instance.MallocTrim((uint)1.MiB());
+
+        Volatile.Write(ref _isPerformingGC, 0);
     }
 
     private void FireProcessingQueueEmpty()
