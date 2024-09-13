@@ -28,8 +28,6 @@ namespace Nethermind.TxPool
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
 
-        public static IEnumerable<Transaction> GetPendingBlobTransactions() => Array.Empty<Transaction>();
-
         public void AddPeer(ITxPoolPeer peer) { }
 
         public void RemovePeer(PublicKey nodeId) { }
@@ -39,6 +37,10 @@ namespace Nethermind.TxPool
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
         public bool RemoveTransaction(Hash256? hash) => false;
+
+        public Transaction? GetBestTx() => null;
+
+        public IEnumerable<Transaction> GetBestTxOfEachSender() => Array.Empty<Transaction>();
 
         public bool IsKnown(Hash256 hash) => false;
 
@@ -51,6 +53,15 @@ namespace Nethermind.TxPool
         public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
             blobTransaction = null;
+            return false;
+        }
+
+        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[]? proof)
+        {
+            blob = null;
+            proof = null;
             return false;
         }
 

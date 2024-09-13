@@ -117,12 +117,12 @@ namespace Nethermind.Core.Crypto
         }
 
         public static bool operator ==(in ValueHash256 left, in ValueHash256 right) => left.Equals(in right);
-
         public static bool operator !=(in ValueHash256 left, in ValueHash256 right) => !(left == right);
         public static bool operator >(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) > 0;
         public static bool operator <(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) < 0;
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
+        public static implicit operator Hash256(in ValueHash256 keccak) => new(keccak);
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
@@ -142,6 +142,7 @@ namespace Nethermind.Core.Crypto
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {
         public const int Size = 32;
+        public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         public const int MemorySize =
             MemorySizes.SmallObjectOverhead -
@@ -294,6 +295,8 @@ namespace Nethermind.Core.Crypto
         }
 
         public Hash256StructRef ToStructRef() => new(Bytes);
+
+        public bool IsZero => Extensions.Bytes.IsZero(Bytes);
     }
 
     public ref struct Hash256StructRef

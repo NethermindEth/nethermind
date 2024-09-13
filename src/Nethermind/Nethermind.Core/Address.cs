@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core.Crypto;
@@ -35,9 +36,9 @@ namespace Nethermind.Core
 
         public byte[] Bytes { get; }
 
-        public Address(Hash256 keccak) : this(keccak.Bytes.Slice(12, Size).ToArray()) { }
+        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size).ToArray()) { }
 
-        public Address(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, Size).ToArray()) { }
+        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -153,7 +154,15 @@ namespace Nethermind.Core
                 return true;
             }
 
-            return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            // Address must be 20 bytes long Vector128 + uint
+            ref byte bytes0 = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            ref byte bytes1 = ref MemoryMarshal.GetArrayDataReference(other.Bytes);
+            // Compare first 16 bytes with Vector128 and last 4 bytes with uint
+            return
+                Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
+                Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
+                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
+                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
         }
 
         public static Address FromNumber(in UInt256 number)
@@ -235,6 +244,14 @@ namespace Nethermind.Core
         }
 
         public Hash256 ToAccountPath => Keccak.Compute(Bytes);
+
+        [SkipLocalsInit]
+        public ValueHash256 ToHash()
+        {
+            Span<byte> addressBytes = stackalloc byte[Hash256.Size];
+            Bytes.CopyTo(addressBytes.Slice(Hash256.Size - Address.Size));
+            return new ValueHash256(addressBytes);
+        }
     }
 
     public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>
@@ -245,8 +262,12 @@ namespace Nethermind.Core
         public static implicit operator Address(AddressAsKey key) => key._key;
         public static implicit operator AddressAsKey(Address key) => new(key);
 
-        public bool Equals(AddressAsKey other) => _key.Equals(other._key);
-        public override int GetHashCode() => _key.GetHashCode();
+        public bool Equals(AddressAsKey other) => _key == other._key;
+        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+        public override string ToString()
+        {
+            return _key?.ToString() ?? "<null>";
+        }
     }
 
     public ref struct AddressStructRef

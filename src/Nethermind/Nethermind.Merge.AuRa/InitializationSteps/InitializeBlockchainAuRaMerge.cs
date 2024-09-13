@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
@@ -24,7 +25,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             _api = api;
         }
 
-        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter)
+        protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)
         {
             IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
@@ -36,18 +37,19 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             return new AuRaMergeBlockProcessor(
                 _api.SpecProvider!,
                 _api.BlockValidator!,
-                _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor!, worldState),
+                _api.RewardCalculatorSource!.Get(transactionProcessor),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage!,
+                new BeaconBlockRootHandler(transactionProcessor),
                 _api.LogManager,
                 _api.BlockTree!,
-                new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
+                new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
                 CreateAuRaValidator(),
                 txFilter,
                 GetGasLimitCalculator(),
-                contractRewriter
+                contractRewriter,
+                preWarmer: preWarmer
             );
         }
 

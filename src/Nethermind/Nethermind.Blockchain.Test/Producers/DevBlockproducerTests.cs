@@ -3,6 +3,7 @@
 
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -58,14 +59,17 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+            CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 specProvider,
+                codeInfoRepository,
                 LimboLogs.Instance);
             TransactionProcessor txProcessor = new(
                 specProvider,
                 stateProvider,
                 virtualMachine,
+                codeInfoRepository,
                 LimboLogs.Instance);
             BlockProcessor blockProcessor = new(
                 specProvider,
@@ -74,7 +78,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                new BlockhashStore(blockTree, specProvider, stateProvider),
+                new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(txProcessor),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,

@@ -13,23 +13,16 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public class OptimismTransactionProcessor : TransactionProcessor
+public sealed class OptimismTransactionProcessor(
+    ISpecProvider specProvider,
+    IWorldState worldState,
+    IVirtualMachine virtualMachine,
+    ILogManager logManager,
+    IL1CostHelper l1CostHelper,
+    IOptimismSpecHelper opSpecHelper,
+    ICodeInfoRepository? codeInfoRepository
+    ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
-    private readonly IL1CostHelper _l1CostHelper;
-    private readonly IOPConfigHelper _opConfigHelper;
-
-    public OptimismTransactionProcessor(
-        ISpecProvider? specProvider,
-        IWorldState? worldState,
-        IVirtualMachine? virtualMachine,
-        ILogManager? logManager,
-        IL1CostHelper l1CostHelper,
-        IOPConfigHelper opConfigHelper) : base(specProvider, worldState, virtualMachine, logManager)
-    {
-        _l1CostHelper = l1CostHelper;
-        _opConfigHelper = opConfigHelper;
-    }
-
     private UInt256? _currentTxL1Cost;
 
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
@@ -71,14 +64,6 @@ public class OptimismTransactionProcessor : TransactionProcessor
         return result;
     }
 
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        out long intrinsicGas)
-    {
-        TransactionResult result = base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
-
-        return result;
-    }
-
     protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
     {
@@ -108,7 +93,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
                 return "insufficient sender balance";
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+            UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost, out balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
@@ -158,10 +143,10 @@ public class OptimismTransactionProcessor : TransactionProcessor
             // Skip coinbase payments for deposit tx in Regolith
             base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
-            if (_opConfigHelper.IsBedrock(header))
+            if (opSpecHelper.IsBedrock(header))
             {
-                UInt256 l1Cost = _currentTxL1Cost ??= _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-                WorldState.AddToBalanceAndCreateIfNotExists(_opConfigHelper.L1FeeReceiver, l1Cost, spec);
+                UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver, l1Cost, spec);
             }
         }
     }
@@ -171,7 +156,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
-        if (tx.IsDeposit() && !_opConfigHelper.IsRegolith(header))
+        if (tx.IsDeposit() && !opSpecHelper.IsRegolith(header))
         {
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)

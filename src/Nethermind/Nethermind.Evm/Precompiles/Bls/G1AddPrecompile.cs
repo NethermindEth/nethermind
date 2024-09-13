@@ -22,22 +22,16 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0b);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 500L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 500L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = 2 * BlsParams.LenG1;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
         (byte[], bool) result;

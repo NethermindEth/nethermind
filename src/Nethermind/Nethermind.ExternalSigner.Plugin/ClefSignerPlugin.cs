@@ -23,45 +23,30 @@ public class ClefSignerPlugin : INethermindPlugin
 
     public string Author => "Nethermind";
 
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public async Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-
-        if (_nethermindApi == null)
-            throw new InvalidOperationException("Init() must be called first.");
-
         IMiningConfig miningConfig = _nethermindApi.Config<IMiningConfig>();
         if (miningConfig.Enabled)
         {
             if (!string.IsNullOrEmpty(miningConfig.Signer))
             {
-                Uri? uri;
-                if (!Uri.TryCreate(miningConfig.Signer, UriKind.Absolute, out uri))
+                if (!Uri.TryCreate(miningConfig.Signer, UriKind.Absolute, out Uri? uri))
                 {
                     throw new ConfigurationErrorsException($"{miningConfig.Signer} must have be a valid uri.");
                 }
-                ClefSigner signer =
-                    await SetupExternalSigner(uri, _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount);
-                _nethermindApi.EngineSigner = signer;
+
+                string blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
+                _nethermindApi.EngineSigner = await SetupExternalSigner(uri, blockAuthorAccount);
             }
         }
-
     }
 
-    public Task InitNetworkProtocol()
-    {
-        return Task.CompletedTask;
-    }
+    public Task InitNetworkProtocol() => Task.CompletedTask;
 
-    public Task InitRpcModules()
-    {
-        return Task.CompletedTask;
-    }
+    public Task InitRpcModules() => Task.CompletedTask;
 
     private async Task<ClefSigner> SetupExternalSigner(Uri urlSigner, string blockAuthorAccount)
     {

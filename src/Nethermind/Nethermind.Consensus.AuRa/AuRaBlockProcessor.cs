@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -19,6 +20,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -39,13 +41,15 @@ namespace Nethermind.Consensus.AuRa
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IWorldState stateProvider,
             IReceiptStorage receiptStorage,
+            IBeaconBlockRootHandler beaconBlockRootHandler,
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            IAuRaValidator? auRaValidator,
+            IAuRaValidator? auRaValidator = null,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null)
+            ContractRewriter? contractRewriter = null,
+            IBlockCachePreWarmer? preWarmer = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -53,9 +57,11 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(blockTree, specProvider, stateProvider),
+                new BlockhashStore(specProvider, stateProvider),
+                beaconBlockRootHandler,
                 logManager,
-                withdrawalProcessor)
+                withdrawalProcessor,
+                preWarmer: preWarmer)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -140,7 +146,7 @@ namespace Nethermind.Consensus.AuRa
                 if (tx.Signature is not null)
                 {
                     IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
-                    EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
+                    EthereumEcdsa ecdsa = new(_specProvider.ChainId);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {

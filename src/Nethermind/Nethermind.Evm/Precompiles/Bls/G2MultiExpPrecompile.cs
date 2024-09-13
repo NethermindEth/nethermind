@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -25,10 +26,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x10);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
@@ -42,7 +40,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
     {
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
         (byte[], bool) result;

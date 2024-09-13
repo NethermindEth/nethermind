@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
@@ -21,22 +22,16 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
     public static Address Address { get; } = Address.FromNumber(0x12);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 5500L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 5500L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
         (byte[], bool) result;

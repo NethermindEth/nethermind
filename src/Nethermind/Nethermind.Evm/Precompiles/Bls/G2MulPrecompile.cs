@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -23,22 +24,16 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0f);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 45000L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 45000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = BlsParams.LenG2 + BlsParams.LenFr;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
         (byte[], bool) result;

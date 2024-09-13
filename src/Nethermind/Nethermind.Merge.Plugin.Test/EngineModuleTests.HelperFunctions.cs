@@ -20,7 +20,6 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -28,7 +27,6 @@ namespace Nethermind.Merge.Plugin.Test
     public partial class EngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
-        private static readonly IBeaconBlockRootHandler _beaconBlockRootHandler = new BeaconBlockRootHandler();
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
              Hash256 safeBlockHash)
@@ -50,17 +48,30 @@ namespace Nethermind.Merge.Plugin.Test
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
             Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
-            Transaction BuildTransaction(uint index, AccountStruct senderAccount) =>
-                Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
+            Transaction BuildTransaction(uint index, AccountStruct senderAccount)
+            {
+                TransactionBuilder<Transaction> builder = Build.A.Transaction
+                    .WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
                     .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
-                    .WithSenderAddress(from.Address)
-                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
+                    .WithSenderAddress(from.Address);
+
+                if (blobCountPerTx != 0)
+                {
+                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx);
+                }
+                else
+                {
+                    builder = builder.WithType(TxType.EIP1559);
+                }
+
+                return builder
                     .WithMaxFeePerGasIfSupports1559(1.GWei())
                     .SignedAndResolved(from).TestObject;
+            }
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
             chain.StateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);
@@ -111,9 +122,8 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV3.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
-            var blockHashStore = new BlockhashStore(chain.BlockTree, chain.SpecProvider, chain.State);
-            blockHashStore.ApplyHistoryBlockHashes(block!.Header);
+            var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
+            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);

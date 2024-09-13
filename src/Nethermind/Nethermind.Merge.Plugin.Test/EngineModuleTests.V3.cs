@@ -27,6 +27,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -145,9 +146,8 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        TxDecoder rlpEncoder = new();
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => rlpEncoder.Encode(tx, rlpBehaviors).Bytes).ToArray();
+        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
         byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
@@ -214,6 +214,26 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be("INVALID");
         Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
+    }
+
+    [Test]
+    public async Task NewPayloadV3_UnsupportedTxType_BlockIsRejectedWithCorrectErrorMessage()
+    {
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+
+        payload.TryGetBlock(out Block? b);
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.GetTransactions()[0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        txRlp[0] = 100; // set TxType to 100
+        payload.Transactions = [txRlp];
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
     }
 
     [Test]
@@ -361,6 +381,7 @@ public partial class EngineModuleTests
                  Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+                 Substitute.For<IAsyncHandler<byte[][], GetBlobsV1Result>>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
                  Substitute.For<ILogManager>()));
@@ -473,6 +494,171 @@ public partial class EngineModuleTests
             Assert.That(fcuResponse.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(payload.BlockHash));
         });
+    }
+
+    [Test]
+    public async Task ForkChoiceUpdated_should_return_valid_for_previous_blocks_without_state_synced()
+    {
+        static void MarkAsUnprocessed(MergeTestBlockchain chain, int blockNumber)
+        {
+            ChainLevelInfo lvl = chain.ChainLevelInfoRepository.LoadLevel(blockNumber)!;
+            foreach (BlockInfo info in lvl.BlockInfos)
+            {
+                info.WasProcessed = false;
+            }
+            chain.ChainLevelInfoRepository.PersistLevel(blockNumber, lvl);
+        }
+
+        const int BlockCount = 10;
+        const int SyncingBlockNumber = 5;
+
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        for (var i = 1; i < BlockCount; i++)
+        {
+            await AddNewBlockV3(rpcModule, chain, 1);
+        }
+
+        Hash256 syncingBlockHash = chain.BlockTree.FindBlock(SyncingBlockNumber)!.Hash!;
+        MarkAsUnprocessed(chain, SyncingBlockNumber);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> res2 = await rpcModule.engine_forkchoiceUpdatedV3(
+            new ForkchoiceStateV1(syncingBlockHash, syncingBlockHash, syncingBlockHash), null);
+
+        Assert.That(res2.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+    }
+
+    [Test]
+    public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        List<byte[]> request = new List<byte[]>(requestSize);
+        for (int i = 0; i < requestSize; i++)
+        {
+            request.Add(Bytes.FromHexString(i.ToString("X64")));
+        }
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(request.ToArray());
+
+        if (requestSize > 128)
+        {
+            result.Result.Should().BeEquivalentTo(Result.Fail($"The number of requested blobs must not exceed 128"));
+            result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+        }
+        else
+        {
+            result.Result.Should().Be(Result.Success);
+            result.Data.BlobsAndProofs.Should().HaveCount(requestSize);
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV1_should_handle_empty_request()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1([]);
+
+        result.Result.Should().Be(Result.Success);
+        result.Data.Should().BeEquivalentTo(new GetBlobsV1Result(ArraySegment<BlobAndProofV1?>.Empty));
+    }
+
+    [Test]
+    public async Task GetBlobsV1_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfBlobs)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithMaxFeePerBlobGas(1000.Wei())
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        result.Data.BlobsAndProofs.Select(b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data.BlobsAndProofs.Select(b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+    }
+
+    [Test]
+    public async Task GetBlobsV1_should_return_nulls_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        // we are not adding this tx
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfRequestedBlobs)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithMaxFeePerBlobGas(1000.Wei())
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        // requesting hashes that are not present in TxPool
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+
+        result.Data.BlobsAndProofs.Should().HaveCount(numberOfRequestedBlobs);
+        result.Data.BlobsAndProofs.Should().AllBeEquivalentTo<BlobAndProofV1?>(null);
+    }
+
+    [Test]
+    public async Task GetBlobsV1_should_return_mix_of_blobs_and_nulls([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
+    {
+        int requestSize = 10 * numberOfBlobs;
+
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfBlobs)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithMaxFeePerBlobGas(1000.Wei())
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
+
+        int actualIndex = 0;
+        for (int i = 0; i < requestSize; i++)
+        {
+            bool addActualHash = i % 10 == 0;
+
+            blobsAndProofs.Add(addActualHash && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.Proofs[actualIndex])
+                : null);
+            blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
+        }
+        GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
+
+        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
+
+        result.Data.Should().BeEquivalentTo(expected);
+        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
+        resultBlobsAndProofs.Length.Should().Be(requestSize);
+        for (int i = 0; i < requestSize; i++)
+        {
+            if (i % 10 == 0)
+            {
+                resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
+                resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
+            }
+            else
+            {
+                resultBlobsAndProofs[i].Should().BeNull();
+            }
+        }
     }
 
     public static IEnumerable<TestCaseData> ForkchoiceUpdatedV3DeclinedTestCaseSource
@@ -627,15 +813,40 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, Withdrawal[]? withdrawals)
+    private async Task AddNewBlockV3(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
     {
-        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, parentBeaconBlockRoot: TestItem.KeccakE);
-        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(), executionPayload.ParentBeaconBlockRoot);
+        Transaction[] txs = BuildTransactions(chain, chain.BlockTree.Head!.Hash!, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 0);
+        chain.AddTransactions(txs);
 
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE
+        };
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
+        ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
-        return executionPayload;
+        using SemaphoreSlim blockImprovementLock = new(0);
+        EventHandler<BlockEventArgs> onBlockImprovedHandler = (_, _) => blockImprovementLock.Release(1);
+        chain.PayloadPreparationService!.BlockImproved += onBlockImprovedHandler;
+
+        string payloadId = (await rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes)).Data.PayloadId!;
+
+        await blockImprovementLock.WaitAsync(10000);
+        chain.PayloadPreparationService!.BlockImproved -= onBlockImprovedHandler;
+
+        ResultWrapper<GetPayloadV3Result?> payloadResult = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
+        Assert.That(payloadResult.Result, Is.EqualTo(Result.Success));
+        Assert.That(payloadResult.Data, Is.Not.Null);
+
+        GetPayloadV3Result payload = payloadResult.Data;
+        await rpcModule.engine_newPayloadV3(payload.ExecutionPayload, payload.BlobsBundle.GetBlobVersionedHashes(), TestItem.KeccakE);
+
+        ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
+        await rpcModule.engine_forkchoiceUpdatedV3(newForkchoiceState, null);
     }
 
     private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
@@ -643,21 +854,18 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
-        Transaction[] txs = Array.Empty<Transaction>();
+        Transaction[] txs = [];
+
+        using SemaphoreSlim blockImprovementLock = new(0);
+        EventHandler<BlockEventArgs> onBlockImprovedHandler = (_, _) => blockImprovementLock.Release(1);
+        chain.PayloadPreparationService!.BlockImproved += onBlockImprovedHandler;
+
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
 
         if (transactionCount is not 0)
         {
-            using SemaphoreSlim blockImprovementLock = new(0);
-
-            ExecutionPayload executionPayload1 = await SendNewBlockV3(rpcModule, chain, Array.Empty<Withdrawal>());
-            txs = BuildTransactions(chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 1);
+            txs = BuildTransactions(chain, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 1);
             chain.AddTransactions(txs);
-
-            EventHandler<BlockEventArgs> onBlockImprovedHandler = (_, _) => blockImprovementLock.Release(1);
-
-            chain.PayloadPreparationService!.BlockImproved += onBlockImprovedHandler;
-            await blockImprovementLock.WaitAsync(10000);
-            chain.PayloadPreparationService!.BlockImproved -= onBlockImprovedHandler;
         }
 
         PayloadAttributes payloadAttributes = new()
@@ -668,11 +876,19 @@ public partial class EngineModuleTests
             Withdrawals = [TestItem.WithdrawalA_1Eth],
             ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
-        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
+
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
+
         string? payloadId = spec.IsBeaconBlockRootAvailable
             ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId
             : rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId;
+
+        if (transactionCount is not 0)
+        {
+            await blockImprovementLock.WaitAsync(10000);
+        }
+        chain.PayloadPreparationService!.BlockImproved -= onBlockImprovedHandler;
+
         return (rpcModule, payloadId, txs, chain);
     }
 }

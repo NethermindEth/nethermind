@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -96,9 +97,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void UpdateStorageRoot(Address address, Hash256 storageRoot);
 
-    void IncrementNonce(Address address);
+    void IncrementNonce(Address address, UInt256 delta);
 
-    void DecrementNonce(Address address);
+    void DecrementNonce(Address address, UInt256 delta);
+
+    void IncrementNonce(Address address) => IncrementNonce(address, UInt256.One);
+
+    void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
     /* snapshots */
 
@@ -108,4 +113,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
+
+    bool ClearCache() => false;
+
+    Task ClearCachesInBackground() => Task.CompletedTask;
 }
