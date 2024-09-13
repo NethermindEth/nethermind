@@ -10,6 +10,8 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 public interface IRpcTransaction
 {
+    // TODO: Should/can we merge `JsonConverter` and `ITransactionConverter`?
+
     public class JsonConverter : JsonConverter<IRpcTransaction>
     {
         private readonly Type[] _transactionTypes = new Type[Transaction.MaxTxType + 1];
