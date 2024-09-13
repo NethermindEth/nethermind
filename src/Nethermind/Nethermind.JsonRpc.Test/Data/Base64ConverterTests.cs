@@ -11,7 +11,7 @@ internal class Base64FieldType
 {
     [JsonConverter(typeof(Base64Converter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public byte[]? Base64 { get; set; }
+    public required byte[] Base64 { get; set; }
 }
 
 [Parallelizable(ParallelScope.Self)]
